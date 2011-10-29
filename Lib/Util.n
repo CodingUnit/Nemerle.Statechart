@@ -99,6 +99,42 @@ namespace Nemerle.Statechart
       }
     }
     
+    public CreateConstrBody(type : PExpr, pars : list[string], parms : list[string * string]) : PExpr
+    {
+      def inst_par(p, pars)
+      {
+        match (pars.Find((x, _) => p == x))
+        {
+          | Some((_, n)) => <[ $(n : usesite) ]>
+          | _            => <[ $(p : usesite) ]>
+        }
+      }
+      
+      def expr = pars.Map(inst_par(_, parms));
+      <[ $type(..$expr) ]>
+    }
+    
+    public CreateNewInst(typer : Typer, type : PExpr, parms : list[PExpr]) : PExpr
+    {
+      def split(p)
+      {
+       | <[ $(x : name) = $(y : name) ]> => (x.Id, y.Id)
+       | _             => Message.Error(p.Location, "Unknown expression for new_inst assignment"); ("", "")
+      }
+      
+      
+      def cur_type = typer.CurrentTypeBuilder;
+      def constr = cur_type.GetConstructors();
+      def fields = cur_type.GetFields(BindingFlags.Public).Rev();
+      match (constr.Find(x => x.GetParameters().Map(x => x.Name).Equals(fields, (x, y) => x == y.Name)))
+      {
+        | Some(c) => def pars = c.GetParameters().Map(x => x.Name);
+                     def parms = parms.Map(split);
+                     CreateConstrBody(type, pars, parms)
+        | _ => Message.Error("Cannot find right constructor for new_inst");
+               <[ () ]>
+      }
+    }
   }
   
   public variant Tree[T]
@@ -159,6 +195,14 @@ namespace Nemerle.Statechart
         | _ => throw InvalidOperationException("down of empty")
       } 
     }
+    
+    
   }
   
+  
+  macro @^&(type, params parms : list[PExpr])
+  syntax (type, "^&", "(", parms,")")
+  {
+    Utils.CreateNewInst(Macros.ImplicitCTX(), type, parms)
+  }
 }

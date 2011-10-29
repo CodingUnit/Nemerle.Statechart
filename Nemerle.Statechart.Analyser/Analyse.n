@@ -46,7 +46,7 @@ namespace Nemerle.Statechart
       InitStatechart();
       UpdateStateMap(); // first update state map
       concurrent_states = states.Filter(_ is FsmState.ConcurrentSubRegion);
-      states.Iter(_.UpdateReference(statemap));
+      states = states.Map(_.UpdateReference(statemap));
       states.Iter(CheckAddFinalState); // check to add final state
       UpdateStateMap(); // second update state map
       CreateHistoryStates();
@@ -62,7 +62,7 @@ namespace Nemerle.Statechart
     {
       statemap.Init(TopState); // initialize the state map
       InitStates();
-      states.Iter(_.UpdateReference(statemap));
+      states = states.Map(_.UpdateReference(statemap));
       StateId.CreateMasks(this);
     }
     
@@ -83,19 +83,19 @@ namespace Nemerle.Statechart
       {
         st.CopyNum = n;
         st.is_new = true;
-        st.UpdateReference(statemap);
+        st.UpdateReference(statemap)
       }
       
       def rename_group(st)
       {
         def (head :: _) = st;
         statemap.Rem(head);
-        st.IterI(do_rename);
+        st.Map(do_rename);
       }
       
       def dups = states.Duplicates(FsmState.NameComparer);
       def dups = dups.Group(FsmState.NameComparer);
-      dups.Iter(rename_group);
+      dups.Map(rename_group);
     }
     
     CreateHistoryStates() : void
@@ -150,7 +150,7 @@ namespace Nemerle.Statechart
       def sub =  history_states |> (_, state, SubStatesParticipateInHistory);  // get all substates participate in history
       def paths =  $[HistoryPath(par, st, h, this), (h, par, s) in sub, st in s, !(st is FsmState.Final)]; // create history paths
       paths.Iter(_.CreatePath());
-      def paths = paths.Filter(x  => !x.IsDefault);
+      def paths = paths.Exclude(_.IsDefault);
       def paths = paths.RemoveDuplicatesSort((x, y) => x.Name.CompareTo(y.Name));
       history_paths = paths
     }

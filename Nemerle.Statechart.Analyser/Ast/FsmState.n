@@ -105,7 +105,14 @@ namespace Nemerle.Statechart
             }
           }
           
-          NeedHistorySave : bool {get;set;}
+          NeedHistorySave : bool
+          {
+            get
+            {
+              !ParticipateInHistory.IsEmpty()
+            }
+          }
+          
           /// <summary>
 		      /// Indicates that maybe transitions from outer states forking control to this orthogonal region
 		      /// </summary>
@@ -216,15 +223,74 @@ namespace Nemerle.Statechart
           
         }
    
+    | InlinedSubMachineInstance
+      {
+        instance_of : InlinedSubMachine;
+
+          this(st : InlinedSubMachineInstance, ncopy : int = 0) 
+          {
+            base(st, false, ncopy);
+            instance_of = st.instance_of;
+          }
+
+          InitInline() : InlinedSubMachineInstance
+          {
+            //def update_pseudo(tar, _, new_st)
+            //{
+            //  match (tar)
+            //  {
+            //    | TransitionTarget.PseudoState(node) as t when (node == new_st) => t.ChangeNode(new_st)
+            //    | _ => null
+            //  }
+            //}
+
+            def st = instance_of.SetCopy(instance_of.ncopy + 1); // clone the inline sub machine instance
+            def do_act = st.do_activity; // take data from it except transitions to outer world
+            def inter_tran = st.internal_tran;
+            def entry = st.entry;
+            def exit = st.exit;
+            def history = st.history;
+            def init = st.initial;
+            def sub_st = st.sub_states;
+            def tran = st.all_transitions_nested;
+            def tran = tran %+ st.AllHistory.FilterValues(_.Default);
+            def ren_st = (instance_of, this) :: (st.AllSubStates |> (cloneFor, _)); // take old and new copy
+            //def pst = st.AllPseudoStates |> (CloneFor, _);
+            sub_states.Iter(x => x.super_state = this); // change super state to this
+            //pst.Iter((ost, nst) => tran.Iter(x => x.TargetTraverse(update_pseudo(_, ost, nst)))); // update pseudo states in this sub machine
+            ren_st.Iter((ost, nst) => tran.Iter(x => x.UpdateTargets(ost, nst))); // change targets according to rename in new location
+            st.AllSubStates.Iter(x => x.history.Iter(x => x.reference = true)); // history must point to real state history
+            st.AllSubStates.Iter(_.RenameState()); // actions renaming state
+            pseudo_states = st.pseudo_states;
+            //UpdateReference(Analyser.Statemap, true);
+            Analyser.UpdateStateMap(); // updates state map
+          }
+
+          override UpdateReference(map : StateMap) : FsmState
+          {
+            base.UpdateReference(map);
+            if (!inlined)
+            {
+              def fsm = Analyser.States.FilterType();
+              match (fsm.Find(x => x.type == type))
+              {
+                | Some(InlinedSubMachine as f) => 
+                    inlined = true;
+                    inlined_st = f;
+                    
+                | _ => ()
+              }
+            } else this
+          }
+          
+      }
     | SubMachine
         {
           type : string;
       
-          mutable ref_sub_states : list[string] = [];
-          mutable proc_events : list[string] = [];
-          private mutable scanned : bool;
-          mutable inlined : bool;
-          mutable inlined_st : FsmState.InlinedSubMachine;
+          ref_sub_states : array[string] = array[];
+          proc_events : array[string] = array[];
+          private scanned : bool;
           
           this(st : SubMachine, ncopy : int = 0) 
           {
@@ -233,7 +299,6 @@ namespace Nemerle.Statechart
             ref_sub_states = st.ref_sub_states;
             proc_events = st.proc_events;
             scanned = st.scanned;
-            inlined = st.inlined;
           }
           
           this(st : StateNode.State, super : FsmState)
@@ -245,67 +310,35 @@ namespace Nemerle.Statechart
             transitions = Transition.Create(this, st.transitions);
           }
       
-          Scan() : void
+          SetScan(ref_sub : array[string], evts : array[string]) : SubMachine
           {
-            when (!inlined && !scanned)
+            //SubMachine()
+            SubMachine ^& (ref_sub_states = ref_sub, proc_events = evts, scanned = true)
+          }
+          
+          Scan() : SubMachine
+          {
+            if (!scanned)
             {
               def type = Type.GetType(type);
               def st = type.GetField("ContainsStates");
-              ref_sub_states = st.GetValue(null) :> list[string];
+              def ref_sub_states = st.GetValue(null) :> array[string];
               def evt = type.GetField("ProcessEvents");
-              proc_events = evt.GetValue(null) :> list[string];
-              scanned = true;
-            }
+              def proc_events = evt.GetValue(null) :> array[string];
+              SetScan(ref_sub_states, proc_events)
+            } else this
           }
           
-          InitInline() : void
-          {
-            //def update_pseudo(tar, _, new_st)
-            //{
-            //  match (tar)
-            //  {
-            //    | TransitionTarget.PseudoState(node) as t when (node == new_st) => t.ChangeNode(new_st)
-            //    | _ => null
-            //  }
-            //}
-
-            def st = inlined_st.Clone(inlined_st.ncopy + 1); // clone the inline sub machine instance
-            do_activity = st.do_activity; // take data from it except transitions to outer world
-            internal_tran = st.internal_tran;
-            entry = st.entry;
-            exit = st.exit;
-            history = st.history;
-            initial = st.initial;
-            sub_states = st.sub_states;
-            def tran = st.all_transitions_nested;
-            def tran = tran %+ st.AllHistory.FilterValues(_.Default);
-            def ren_st = (inlined_st, this) :: (st.AllSubStates |> (CloneFor, _)); // take old and new copy
-            //def pst = st.AllPseudoStates |> (CloneFor, _);
-            sub_states.Iter(x => x.super_state = this); // change super state to this
-            //pst.Iter((ost, nst) => tran.Iter(x => x.TargetTraverse(update_pseudo(_, ost, nst)))); // update pseudo states in this sub machine
-            ren_st.Iter((ost, nst) => tran.Iter(x => x.UpdateTargets(ost, nst))); // change targets according to rename in new location
-            st.AllSubStates.Iter(x => x.history.Iter(x => x.reference = true)); // history must point to real state history
-            st.AllSubStates.Iter(_.RenameState()); // actions renaming state
-            pseudo_states = st.pseudo_states;
-            //UpdateReference(Analyser.Statemap, true);
-            Analyser.UpdateStateMap(); // updates state map
-          }
           
-          override UpdateReference(map : StateMap, force : bool = false) : void
+          override UpdateReference(map : StateMap) : FsmState
           {
-            base.UpdateReference(map, force);
-            when (!inlined)
-            {
-              def fsm = Analyser.States.FilterType();
+            base.UpdateReference(map);
+            def fsm = analyser.States.FilterType();
               match (fsm.Find(x => x.type == type))
               {
-                | Some(InlinedSubMachine as f) => 
-                    inlined = true;
-                    inlined_st = f;
-                    
-                | _ => ()
+                | Some(InlinedSubMachine as f) => InlinedSubMachineInstance ^& (instance_of = f)
+                | _ => this
               }
-            }
           }
 
         }

@@ -1,0 +1,64 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+
+namespace Nemerle.Statechart
+{
+  [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Field)]
+  macro NeedChange(typeBuilder : TypeBuilder, field : FieldBuilder)
+  {
+    NeedChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, field)
+  }
+  
+  module NeedChangeImpl
+  {
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, field : FieldBuilder) : void
+    {
+      Macros.DefineCTX(typer);
+      def fields = typeBuilder.GetFields(BindingFlags.Public).Rev();
+      def constr = typeBuilder.GetConstructors();
+      def get_short_name()
+      {
+        def name = field.Name;
+        def len = name.Length;
+        def end = match (len)
+        {
+          | 1 => 1
+          | 2 => 1
+          | x when x > 4 => 4
+          | _ => 2
+        }
+        name.Substring(0, end)
+      }
+      
+      match (constr.Find(x => x.GetParameters().Map(x => x.Name).Equals(fields, (x, y) => x == y.Name)))
+      {
+        | Some(c) => def fname = field.Name;
+                  def ty = field.Ast.ty;
+                  def fname_up = Char.ToUpper(fname[0]).ToString() + fname.Substring(1);
+                  def name = $"Change$fname_up";
+                  def pars = c.GetParameters().Map(x => x.Name);
+                  def sname = get_short_name();
+                  def type = typeBuilder.GetMemType();
+                  def body = Utils.CreateConstrBody(<[ $(typeBuilder.Name : usesite) ]>, pars, [(fname, sname)]);
+                  typeBuilder.Define(<[decl: public $(name : usesite)($(sname : usesite) : $ty) : $(type : typed)
+                      {
+                        $body
+                      }]>);
+        | _ => Message.Error("Cannot find right constructor for NeedChange");               
+      }
+      
+      // TODO: Add implementation here.
+      _ = typeBuilder; _ = field;
+    }
+  }
+}
