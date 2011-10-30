@@ -14,22 +14,22 @@ using System.Linq;
 namespace Nemerle.Statechart
 {
   [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Field)]
-  macro NeedChange(typeBuilder : TypeBuilder, field : FieldBuilder)
+  macro NeedChange(typeBuilder : TypeBuilder, field : FieldBuilder, params pars : list[PExpr])
   {
-    NeedChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, field)
+    NeedChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, field, pars)
   }
   
   module NeedChangeImpl
   {
-    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, field : FieldBuilder) : void
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, field : FieldBuilder, aliases : list[PExpr]) : void
     {
       Macros.DefineCTX(typer);
       //assert2(false);
       def fields = typeBuilder.GetFields(BindingFlags.Public | BindingFlags.Instance).Rev();
       def constr = typeBuilder.GetConstructors();
-      def get_short_name()
+      
+      def get_short_name(name)
       {
-        def name = field.Name;
         def len = name.Length;
         def end = match (len)
         {
@@ -41,17 +41,33 @@ namespace Nemerle.Statechart
         name.Substring(0, end)
       }
       
+      def to_camel(s)
+      {
+        def str = Char.ToUpper(s[0]).ToString() + s.Substring(1);
+        def idx = str.IndexOf('_');
+        if (idx != -1)
+        {
+          def rem = str.Substring(idx, 2);
+          def rep = Char.ToUpper(rem[1]).ToString();
+          str.Replace(rem, rep)
+        } else str
+      }
+      
       match (constr.Find(x => x.GetParameters().Map(x => x.Name).Equals(fields, (x, y) => string.Compare(x, y.Name, StringComparison.CurrentCultureIgnoreCase) == 0)))
       {
-        | Some(c) => def fname = field.Name;
-                  def ty = field.Ast.ty;
-                  def fname_up = Char.ToUpper(fname[0]).ToString() + fname.Substring(1);
-                  def name = $"Change$fname_up";
+        | Some(c) => 
+                  def fields = field :: fields.Filter(x => aliases.Exists(y => y.ToString() == x.Name));
+                  def names = fields.Map(x => x.Name);
+                  def cnames = names.Map(to_camel);
+                  def fname = string.Join("", cnames);
+                  def name = $"Change$fname";
                   def pars = c.GetParameters().Map(x => x.Name);
-                  def sname = get_short_name();
+                  def sname = fields.Map(x => (get_short_name(x.Name), x.GetMemType()));
+                  def sname = sname.Map((x, t) => <[ parameter: $(x : usesite) : $(t : typed) ]>);
                   def type = typeBuilder.GetMemType();
-                  def body = Utils.CreateConstrBody(<[ $(typeBuilder.Name : usesite) ]>, pars, [(fname, sname)]);
-                  typeBuilder.Define(<[decl: public $(name : usesite)($(sname : usesite) : $ty) : $(type : typed)
+                  def clist = names.Map(x => (x, get_short_name(x)));
+                  def body = Utils.CreateConstrBody(<[ $(typeBuilder.Name : usesite) ]>, pars, clist);
+                  typeBuilder.Define(<[ decl: public $(name : usesite)(..$sname) : $(type : typed)
                       {
                         $body
                       }]>);
