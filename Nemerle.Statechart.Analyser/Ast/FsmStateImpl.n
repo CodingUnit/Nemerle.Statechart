@@ -52,16 +52,16 @@ namespace Nemerle.Statechart
     public AddSubState(st : FsmState) : FsmState
     {
       //st.analyser = Analyser;
-      if (sub_states.Exists(x => x.Name == st.Name)) this else {1;this}//sub_states = sub_states + [st];
+      if (sub_states.Exists(x => x.Name == st.Name)) this else ChangeSubStates(sub_states + [st])//sub_states = sub_states + [st];
     }
     
-    public DefineTransition(tr : StateTransition) : void
-    {
-      | Transition as tr => transitions ::= Transition(this, tr)
-      | Internal   as tr => internal_tran ::= Internal(this, tr)
-      | Initial    as tr => initial ::= tr
-      | _ => ()
-    }
+    //public DefineTransition(tr : StateTransition) : void
+    //{
+    //  | Transition as tr => transitions ::= Transition(this, tr)
+    //  | Internal   as tr => internal_tran ::= Internal(this, tr)
+    //  | Initial    as tr => initial ::= tr
+    //  | _ => ()
+    //}
 
     public SetCopy(ncopy : int) : FsmState
     {
@@ -75,31 +75,37 @@ namespace Nemerle.Statechart
                  | Final               as st => Final(st, false, ncopy)
                }
                
-      clones ::= st;
-      st.CopyNum = ncopy;
-      st.cloneFor = this;
+      //clones ::= st;
+      st.ChangeCopyNumCloneFor(ncopy, this);
       //st.FindCopyName();
-      st
     }
     
-    public clones : list[FsmState] = [];
+    //public clones : list[FsmState] = [];
     
-    public DefineTransitions(tr : list[StateTransition]) : void
+    public DefineTransitions(tr : list[StateTransition]) : FsmState
     {
-      tr.Iter(DefineTransition)
+      def (tran, other)   = tr.PartitionType();
+      def (intern, other) = other.PartitionType();
+      def (init, _)       = other.PartitionType();
+      ChangeInternalTranInitialTransitions(intern, init, tran)
+          //  | Transition as tr => transitions ::= Transition(this, tr)
+    //  | Internal   as tr => internal_tran ::= Internal(this, tr)
+    //  | Initial    as tr => initial ::= tr
+
+      //tr.Iter(DefineTransition)
     }
 
-    public DefineHistoryPath(st : string, nodes : HistoryPath) : void
-    {
-      history_paths ::= (st, nodes)
-    }
+    //public DefineHistoryPath(st : string, nodes : HistoryPath) : void
+    //{
+    //  history_paths ::= (st, nodes)
+    //}
 
-    public DefineHistoryPathRecurse(st : string, nodes : HistoryPath) : void
-    {
-      def reg = this is ConcurrentRegion;
-      when (Lived || reg) DefineHistoryPath(st, nodes);
-      when (!reg) sub_states.Iter(x  => x.DefineHistoryPathRecurse(st, nodes))
-    }
+    //public DefineHistoryPathRecurse(st : string, nodes : HistoryPath) : void
+    //{
+    //  def reg = this is ConcurrentRegion;
+    //  when (Lived || reg) DefineHistoryPath(st, nodes);
+    //  when (!reg) sub_states.Iter(x  => x.DefineHistoryPathRecurse(st, nodes))
+    //}
 
     public DeleteTransitions(tr : list[StateTransition]) : void
     {
@@ -123,17 +129,8 @@ namespace Nemerle.Statechart
       paths.TraverseTransitions(true);
     }
     
-    public CreatePathFromOut() : void
-    {
-      path_from_out = StateTransition.Initial(Analyser.TopState, this);
-      path_from_out.TraversePath();
-    }
-
-    //public mutable super_state_cross_transitions : list[StateTransition] = [];
-    
     public this()
     {
-      is_new = true;
     }
 
     public this(st : StateNode.State, super : FsmState, analyser : FsmAnalyser, reference : bool = false)
@@ -202,33 +199,64 @@ namespace Nemerle.Statechart
     public history : TwoOption[StateHistory] = TwoOption.None();
     [NeedChange] public pseudo_states : list[PseudoStateNode] = [];
     
-    public history_paths : list[string * HistoryPath] = []; // paths from outer history
+    public history_paths : list[string * HistoryPath] // paths from outer history
+    {
+      get
+      {
+        //def reg = this is ConcurrentRegion;
+        //when (Lived || reg) DefineHistoryPath(st, nodes);
+        //when (!reg) sub_states.Iter(x  => x.DefineHistoryPathRecurse(st, nodes))
+        def shist = SuperStates.Filter(x => x.ParticipateInHistory.Exists(x => x.Type == HistoryType.Shallow));
+        def spaths = shist |>< history_paths;
+        def paths = ParticipateInHistory.Map(x => (x.state.name, HistoryPath(x.state, this, x, analyser)));
+        paths.Iter((_, x) => x.CreatePath());
+        paths + spaths
+      }
+    }
     
-    public path_from_out : StateTransition.Initial;
+    public path_from_out : StateTransition.Initial
+    {
+      get
+      {
+        def path = StateTransition.Initial(analyser.TopState, this);
+        path.TraversePath();        
+        path
+      }
+    }
+    
     public state : StateNode.State;
     
     public initial : list[StateTransition] = [];
     public entry : list[StateAction.Entry] = [];
     public exit  : list[StateAction.Exit] = [];
+    [NeedChange(transitions, initial)]
     public internal_tran : list[StateTransition] = [];
     public transitions : list[StateTransition] = [];
     public super_state  : FsmState;
-    [NeedChange]
+    [NeedChange(cloneFor)]
     public copy_num : int;
+    [NeedChange]
     public paths : TransitionPaths;
     public lived : bool;
-    public Num : int;
     
-    /// <summary>
-    /// Indicates what fsm lived in this state and it not only composite for others
-    /// </summary>
-    public Lived : bool 
+    public Num : int
     {
       get
       {
-        lived || clones.Exists(_.Lived)
+        analyser.Statemap.IndexOf(this)
       }
     }
+    
+    ///// <summary>
+    ///// Indicates what fsm lived in this state and it not only composite for others
+    ///// </summary>
+    //public Lived : bool 
+    //{
+    //  get
+    //  {
+    //    lived || clones.Exists(_.Lived)
+    //  }
+    //}
     
     public UsedInGenerate : bool
     {
@@ -249,7 +277,14 @@ namespace Nemerle.Statechart
       }
     }
     
-    public source_pos : int;
+    public source_pos : int
+    {
+      get
+      {
+        state.pos
+      }
+    }
+    
     public cloneFor : FsmState;
     
     public IsTopState : bool
