@@ -20,7 +20,7 @@ namespace Nemerle.Statechart
 
     public virtual UpdateReference(map : StateMap) : FsmState
     {
-      when (is_new) map.Add(this);
+      map.CheckNew(this);
       def super = if (super_state != null && super_state.reference)
         {
           def name = if (super_state.AstName == null) TopStateName else super_state.name;
@@ -34,25 +34,25 @@ namespace Nemerle.Statechart
       this//FsmState.State()
     }
 
-    public FormatName() : void
-    {
-      def name = name.SplitToList('.');
-      this.name = name.Last();
-    }
+    //public FormatName() : void
+    //{
+    //  def name = name.SplitToList('.');
+    //  this.name = name.Last();
+    //}
     
-    public DefineInitial(st : FsmState) : void
+    public DefineInitial(st : FsmState) : FsmState
     {
       match (this)
       {
-        | ConcurrentSubRegion(contained_in = r) => initial ::= Initial(r, st)
-        | _ => initial ::= Initial(this, st)
+        | ConcurrentSubRegion(contained_in = r) => this//initial ::= Initial(r, st)
+        | _ => this//initial ::= Initial(this, st)
       }
     }
 
-    public AddSubState(st : FsmState) : void
+    public AddSubState(st : FsmState) : FsmState
     {
-      st.Analyser = Analyser;
-      when (!sub_states.Exists(x => x.Name == st.Name)) sub_states = sub_states + [st];
+      //st.analyser = Analyser;
+      if (sub_states.Exists(x => x.Name == st.Name)) this else {1;this}//sub_states = sub_states + [st];
     }
     
     public DefineTransition(tr : StateTransition) : void
@@ -82,7 +82,7 @@ namespace Nemerle.Statechart
       st
     }
     
-    clones : list[FsmState] = [];
+    public clones : list[FsmState] = [];
     
     public DefineTransitions(tr : list[StateTransition]) : void
     {
@@ -140,15 +140,16 @@ namespace Nemerle.Statechart
     {
       this();
       this.Analyser = analyser;
+      this(st, super, reference);
       Create(st, super, reference)
     }
 
-    Create(st : StateNode.State, super : FsmState, reference : bool = false) : void
+    public this(st : StateNode.State, super : FsmState, reference : bool = false)
     {
-      this.Analyser = Analyser ?? super?.Analyser;
+      this();      
       state = st;
       source_pos = st.pos;
-      Name = st.name;
+      name = st.name;
       this.reference = reference || state.reference;
       
       def st_from_node(n)
@@ -158,7 +159,7 @@ namespace Nemerle.Statechart
         | _                                  => FsmState.State(n, this, false)
       }
       
-      when (!Reference)
+      when (!reference)
       {
         do_activity = st.do_activity |> StateAction.Do(_.action.ActionList, this, _.flags);
         internal_tran = Internal.Create(this, st.internal_tran);
@@ -176,18 +177,12 @@ namespace Nemerle.Statechart
       }
     }
     
-    public this(st : StateNode.State, super : FsmState, reference : bool = false)
-    {
-      this();
-      Create(st, super, reference)
-    }
-    
     public this(st : FsmState, reference : bool = false, ncopy : int = 0)
     {
       this();
       this.reference = reference;
       name = st.name;
-      Analyser = st.Analyser;
+      analyser = st.Analyser;
       do_activity = st.do_activity;
       internal_tran = if (ncopy != 0) st.internal_tran |> Clone(ncopy) else st.internal_tran;
       entry = st.entry |> Clone() :> StateAction.Entry;
@@ -197,16 +192,15 @@ namespace Nemerle.Statechart
       transitions = if (ncopy != 0) st.transitions |> Clone(ncopy) else st.transitions;
       initial = if (ncopy != 0) st.initial |> Clone(ncopy) else st.initial;
       super_state = st.SuperState;
-      sub_states = if (ncopy != 0) st.SubStates |> Clone(ncopy) else st.SubStates;
+      sub_states = if (ncopy != 0) st.SubStates |> SetCopy(ncopy) else st.SubStates;
       sub_states.Iter(x => x.super_state = this);
       pseudo_states = if (ncopy != 0) st.pseudo_states |> SetCopy(ncopy) else st.pseudo_states
     }
     
     public do_activity : option[StateAction.Do];
-      
-    public sub_states : list[FsmState] = [];
+    [NeedChange] public sub_states : list[FsmState] = [];
     public history : TwoOption[StateHistory] = TwoOption.None();
-    public pseudo_states : list[PseudoStateNode] = [];
+    [NeedChange] public pseudo_states : list[PseudoStateNode] = [];
     
     public history_paths : list[string * HistoryPath] = []; // paths from outer history
     
@@ -219,7 +213,8 @@ namespace Nemerle.Statechart
     public internal_tran : list[StateTransition] = [];
     public transitions : list[StateTransition] = [];
     public super_state  : FsmState;
-    public CopyNum : int;
+    [NeedChange]
+    public copy_num : int;
     public paths : TransitionPaths;
     public lived : bool;
     public Num : int;
@@ -246,7 +241,14 @@ namespace Nemerle.Statechart
     /// <summary>
     /// Hierarchy position
     /// </summary>
-    public hierarchy_pos : int;
+    public hierarchy_pos : int
+    {
+      get
+      {
+        SuperStates.Length
+      }
+    }
+    
     public source_pos : int;
     public cloneFor : FsmState;
     

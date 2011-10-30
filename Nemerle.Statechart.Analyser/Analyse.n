@@ -22,21 +22,23 @@ namespace Nemerle.Statechart
       {   
         def is_top(st)
         {
-          def super = st.SuperState; 
+          def super = st.super_state; 
           // check if state is top or state is sub of top and don't have transitions
-          super == null || (super.SuperState == null && super.this_transitions.IsEmpty())
+          super == null || (super.super_state == null && super.this_transitions.IsEmpty())
         }
         
         def check_target(t, tran)
         {
           | (TransitionTarget.Final as t, _) when (is_top(st))=> 
               def term = PseudoStateNode.Terminate(TopState, 0);
-              TopState.pseudo_states ::= term;
+              1;
+              //TopState.pseudo_states ::= term;
               TransitionTarget.PseudoState(t.transition, term)
           | (Final as t, Initial) with super = st
-          | (Final as t, _) with super = st.SuperState =>
+          | (Final as t, _) with super = st.super_state =>
               def fst = FsmState.Final(super, true);
-              super.AddSubState(fst);t.ChangeState(fst);
+              super.AddSubState(fst);
+              t.ChangeState(fst);
           | (t, _) => t
         }
       
@@ -68,12 +70,12 @@ namespace Nemerle.Statechart
     
     InitStates() : void
     {
-      def init_states(st, pos)
-      {
-        st.hierarchy_pos = pos;
-        st.SubStates.Iter(init_states(_, pos + 1)); // init sub states
-      }
-      init_states(TopState, 0); // init state map
+      //def init_states(st, pos)
+      //{
+      //  st.hierarchy_pos = pos;
+      //  st.SubStates.Iter(init_states(_, pos + 1)); // init sub states
+      //}
+      //init_states(TopState, 0); // init state map
       states = statemap.States.NToList();
     }
     
@@ -81,21 +83,20 @@ namespace Nemerle.Statechart
     {
       def do_rename(n, st)
       {
-        st.CopyNum = n;
-        st.is_new = true;
-        st.UpdateReference(statemap)
+        def st = st.ChangeCopy_num(n);
+        _ = st.UpdateReference(statemap)
       }
       
       def rename_group(st)
       {
         def (head :: _) = st;
         statemap.Rem(head);
-        st.Map(do_rename);
+        st.IterI(do_rename)
       }
       
       def dups = states.Duplicates(FsmState.NameComparer);
       def dups = dups.Group(FsmState.NameComparer);
-      dups.Map(rename_group);
+      dups.Iter(rename_group);
     }
     
     CreateHistoryStates() : void

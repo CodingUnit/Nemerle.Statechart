@@ -58,6 +58,7 @@ namespace Nemerle.Statechart
           
           this(region : ConcurrentRegion, st : StateNode.State, idx : int)
           {
+            base(st, false);
             contained_in = region;
             do_activity = st.do_activity |> StateAction.Do(_.action.ActionList, this, _.flags);
             internal_tran = Internal.Create(this, st.internal_tran);
@@ -124,13 +125,13 @@ namespace Nemerle.Statechart
               {
                 | null => false
                 | _ => match (r.PartOfRegion)
-                {
-                  | Some(r) when (r == this) => true
-                  | _ => false
-                }
+                  {
+                    | Some(r) when (r == this) => true
+                    | _ => false
+                  }
               }
               
-              Analyser.Forks.Exists(x => x.target.Exists(x => is_this(x.ToState)))
+              analyser.Forks.Exists(x => x.target.Exists(x => is_this(x.ToState)))
             }
           }
           
@@ -266,23 +267,6 @@ namespace Nemerle.Statechart
             Analyser.UpdateStateMap(); // updates state map
           }
 
-          override UpdateReference(map : StateMap) : FsmState
-          {
-            base.UpdateReference(map);
-            if (!inlined)
-            {
-              def fsm = Analyser.States.FilterType();
-              match (fsm.Find(x => x.type == type))
-              {
-                | Some(InlinedSubMachine as f) => 
-                    inlined = true;
-                    inlined_st = f;
-                    
-                | _ => ()
-              }
-            } else this
-          }
-          
       }
     | SubMachine
         {
@@ -312,7 +296,6 @@ namespace Nemerle.Statechart
       
           SetScan(ref_sub : array[string], evts : array[string]) : SubMachine
           {
-            //SubMachine()
             SubMachine ^& (ref_sub_states = ref_sub, proc_events = evts, scanned = true)
           }
           
@@ -334,11 +317,11 @@ namespace Nemerle.Statechart
           {
             base.UpdateReference(map);
             def fsm = analyser.States.FilterType();
-              match (fsm.Find(x => x.type == type))
-              {
-                | Some(InlinedSubMachine as f) => InlinedSubMachineInstance ^& (instance_of = f)
-                | _ => this
-              }
+            match (fsm.Find(x => x.type == type))
+            {
+              | Some(InlinedSubMachine as f) => InlinedSubMachineInstance ^& (instance_of = f)
+              | _ => this
+            }
           }
 
         }
