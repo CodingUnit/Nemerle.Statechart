@@ -99,41 +99,83 @@ namespace Nemerle.Statechart
       }
     }
     
-    public CreateConstrBody(type : PExpr, pars : list[string], parms : list[string * string]) : PExpr
+    public CreateConstrBody(type : string, pars : list[string], parms : list[string * string]) : PExpr
     {
       def inst_par(p, pars)
       {
+        def ep = p.ToLower();
         match (pars.Find((x, _) => p == x))
         {
-          | Some((_, n)) => <[ $(n : usesite) ]>
-          | _            => <[ $(p : usesite) ]>
+          | Some((_, n)) => <[ $(ep : usesite) = $(n : usesite) ]>
+          | _            => <[ $(ep : usesite) = $(p : usesite) ]>
         }
       }
       
       def expr = pars.Map(inst_par(_, parms));
-      <[ $type(..$expr) ]>
+      <[ $(type : usesite)(..$expr) ]>
     }
     
     public CreateNewInst(typer : Typer, type : PExpr, parms : list[PExpr]) : PExpr
     {
       def split(p)
       {
-       | <[ $(x : name) = $(y : name) ]> => (x.Id, y.Id)
-       | _             => Message.Error(p.Location, "Unknown expression for new_inst assignment"); ("", "")
+        | <[ $(x : name) = $(y : name) ]> => (x.Id, y.Id)
+        | _             => Message.Error(p.Location, "Unknown expression for new_inst assignment"); ("", "")
+      }
+
+      def def_constr(cur_type)
+      {
+        //def constr = cur_type.GetConstructors();
+        def fields = cur_type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        //match (constr.Find(x => x.GetParameters().Length == fields.Length))
+        //{
+              def pars = fields.Map(_.Name);//c.GetParameters().Map(_.Name);
+              def parms = parms.Map(split);
+              CreateConstrBody(cur_type.Name, pars, parms)
+          //| _ => Message.Error("Cannot find right constructor for new_inst");
+                 //<[ () ]>
+        //}
       }
       
       //assert2(false);
       def cur_type = typer.CurrentTypeBuilder;
-      def constr = cur_type.GetConstructors();
-      def fields = cur_type.GetFields(BindingFlags.Public | BindingFlags.Instance).Rev();
-      match (constr.Find(x => x.GetParameters().Map(x => x.Name).Equals(fields, (x, y) => string.Compare(x, y.Name, StringComparison.CurrentCultureIgnoreCase) == 0)))
+      def type = type?.ToString();
+      match (cur_type.GetVariantOptions())
       {
-        | Some(c) => def pars = c.GetParameters().Map(x => x.Name);
-                     def parms = parms.Map(split);
-                     CreateConstrBody(type, pars, parms)
-        | _ => Message.Error("Cannot find right constructor for new_inst");
-               <[ () ]>
-      }
+        | [] => def cur_type = if (type == null) cur_type else
+                {
+                  if (cur_type.Name == type) cur_type else 
+                  {
+                    def cur_type = cur_type.GetVariantOptionParent();
+                    if (type == cur_type.Name) cur_type else 
+                    match (cur_type.GetVariantOptions().Find(x => x.Name == type))
+                      {
+                        | Some(t) => t
+                        | _       => Message.Error($"Cannot find the '$type' type");null
+                      }
+                  }
+                }
+                
+            if (cur_type != null) def_constr(cur_type) else <[]>
+            
+        | lst => 
+        
+            def def_opts(o)
+            {
+              def fields = o.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+              def names = fields.Map(x => <[ $(x.Name : usesite) ]>);
+              def body = def_constr(o);
+              <[case: | $(o.Name : usesite)(..$names) => $body ]>
+            }
+        
+            def expr = lst.Map(def_opts);
+            <[
+            match (this)
+              {
+                ..$expr
+              }
+            ]>
+      }     
     }
   }
   
@@ -203,6 +245,7 @@ namespace Nemerle.Statechart
   macro @^&(type, params parms : list[PExpr])
   syntax (type, "^&", "(", parms,")")
   {
+    //assert2(false);
     Utils.CreateNewInst(Macros.ImplicitCTX(), type, parms)
   }
 }
