@@ -24,16 +24,16 @@ namespace Nemerle.Statechart
       {
         | FsmState.Final 
         | ConcurrentRegion => ()
-        | (FsmState where (Initial = [], SubStates = head :: _)) when (!(head is FsmState.Final)) =>
+        | (FsmState where (initial = [], sub_states = head :: _)) when (!(head is FsmState.Final)) =>
             st.DefineInitial(head);
         | _ => ()
       }
 
-      states.Iter(x => check_duplicates(x.Initial));  // check duplicates
-      when (fsm.flags.AutoInitial) states.Iter(check_auto_initial);
+      States.Iter(x => check_duplicates(x.initial));  // check duplicates
+      when (fsm.flags.AutoInitial) States.Iter(check_auto_initial);
 
-      when (TopState.Initial.IsEmpty()) // if not have initial transition in top state
-        if (TopState.Transitions.IsEmpty()) // if not have other transitions
+      when (TopState.initial.IsEmpty()) // if not have initial transition in top state
+        if (TopState.transitions.IsEmpty()) // if not have other transitions
           check_auto_initial(TopState) // initial is first substate
         else TopState.DefineInitial(TopState); // else initial transition is top state
 
@@ -51,8 +51,8 @@ namespace Nemerle.Statechart
     {
       def create_trans(st)
       {
-        | FsmState.State(SuperState = null) => ()
-        | FsmState where (SuperState = super, PartOfSubRegion = r) =>
+        | FsmState.State(super_state = null) => ()
+        | FsmState where (super_state = super, PartOfSubRegion = r) =>
             single_func
             {
               super.combined_transitions;
@@ -61,44 +61,45 @@ namespace Nemerle.Statechart
             }
       }
 
-      states.Iter(create_trans)
+      States.Iter(create_trans)
     }
     
-    CheckCrossTransitions() : void
+    CheckCrossTransitions() : FsmAnalyser
     {
-      def group(st, tr)
+      def group(tr, st)
       {
         match (tr)
         {
-          | _ :: []  => () // if not have group exit
+          | _ :: []  => st // if not have group exit
           | StateTransition where (Guard = Some()) as head :: tail  => head.IsCrossed = true; // cross transition
               def (path, end) = tail.SplitFind(x  => x.Guard.IsNone); // get all include last without GuardNode
               head.ParentCrossed = path;
               path.Iter(x => x.CrossFor = true);
               st.DeleteTransitions(end); // delete from usual transitions in state
           | _ :: tail  => st.DeleteTransitions(tail)
-          | _  => ()
+          | _  => st
         }
       }
 
-      def check_cross_tran(st, tr)
+      def check_cross_tran(tr, st)
       {
         single_func
         {
           tr.Sort((x, y) => StateTransition.GuardComparer(y, x));
           __.Sort((x, y) => y.From.hierarchy_pos - x.From.hierarchy_pos); // sort on hierarchy position
-          group(st, __); // group transitions
+          group(__, st); // group transitions
         }
       }
 
       def check_cross(st)
       {
-        def tran = st.Transitions + st.InternalTran + st.Initial;
+        def tran = st.transitions + st.internal_tran + st.initial;
         def group = FsmState.create_transition_group(tran).Filter((_, x) => x.Length > 1).Values();
-        group.Iter(check_cross_tran(st,_))
+        group.FoldLeft(st, check_cross_tran)
       }
 
-      states.Iter(check_cross); // check from the top state
+      def states = States.Map(check_cross); // check from the top state
+      ChangeStatemap(statemap.ChangeStates(states))
     }
 
     check_duplicates(tr : list[StateTransition]) : void
@@ -156,8 +157,8 @@ namespace Nemerle.Statechart
 	  /// </summary>
     CheckDuplicates() : void
     {
-      states.Iter(x => check_duplicates(x.this_transitions));
-      states.Iter(x => check_duplicates(x.Initial))
+      States.Iter(x => check_duplicates(x.this_transitions));
+      States.Iter(x => check_duplicates(x.initial))
     }
 
     
@@ -189,8 +190,8 @@ namespace Nemerle.Statechart
       match (tr)
       {
         | TransitionTarget.Final(state = null) as t =>
-            def super = if (tran is Initial) st else st.SuperState;
-            match (super.SubStates.FindType()[0])
+            def super = if (tran is Initial) st else st.super_state;
+            match (super.sub_states.FindType()[0])
             {
               | Some(st)  => t.ChangeState(st)
               | _  => t
@@ -221,7 +222,7 @@ namespace Nemerle.Statechart
         | Qualified(parent = st, target = t) => 
             match (statemap.Get(st), t)
             {
-              | (FsmState.SubMachine(inlined = false) as m, TransitionTarget.State(FsmState where (Name = n))) =>
+              | (FsmState.SubMachine as m, TransitionTarget.State(FsmState where (Name = n))) =>
                   m.Scan(); // scan external sub machine for states
                   when (!m.ref_sub_states.Contains(n)) AddError(FsmError.SubMachineStateNotFound(m, n));
                   TransitionTarget.SubMachine(tran, m, n)
@@ -274,7 +275,7 @@ namespace Nemerle.Statechart
         }
       }
       
-      def join_tran = states.Map(x => x.all_transitions_with_init.FoldLeft([], get_join)).Flatten();
+      def join_tran = States.Map(x => x.all_transitions_with_init.FoldLeft([], get_join)).Flatten();
       def jtrans = join_tran.Group((x, y) => x[0].name.CompareTo(y[0].name)).Map(x => (x.Head[0], x.Split()[1]));
       jtrans.Iter(check_join);
       
@@ -317,28 +318,25 @@ namespace Nemerle.Statechart
         }
       }
       
-      def tran = states |>< _.all_transitions_with_init.FoldLeft([], get_fork);
+      def tran = States |>< all_transitions_with_init.FoldLeft([], get_fork);
       tran.Iter(check_fork)
     }
     /// <summary>
 	  /// Creating Transitions
 	  /// </summary>
-    CreateTransitions() : void
+    CreateTransitions() : FsmAnalyser
     {
       def check_tran(st)
       {
         st.all_transitions_with_init.Iter(x => x.TargetTraverse(check_targets))
       }
             
-      states.Iter(check_tran);
+      States.Iter(check_tran);
       create_join_transitions(); // creating join transitions
       create_fork_transitions(); // creating fork transitions
       CreateSuperStateTransitions(); // create parent transitions
       CheckDuplicates(); // check duplicates
       CheckCrossTransitions(); // look for cross transitions
-      def int_tran =  states |>< InternalTran;
-      def int_tran =  RenameTransition(int_tran);
-      internal_transitions = Map(int_tran);
     }
 
     CheckTransitions() : void
@@ -360,7 +358,7 @@ namespace Nemerle.Statechart
       
       def init(st)
       {
-        st.Initial.Iter(proc_tran(st, _));
+        st.initial.Iter(proc_tran(st, _));
         st.all_transitions.Iter(proc_tran(st, _));
       }
 
@@ -369,11 +367,11 @@ namespace Nemerle.Statechart
         st.all_transitions_with_init.Iter(x => x.TargetTraverse(resolve_targets(st, _)))
       }
       
-      states.Iter(init);
-      states.Iter(x => x.all_transitions.Iter(check_cross_orthogonal));
-      states.Iter(check_tran);
-      def trans = states |>< all_transitions_with_init;
-      states.Iter(x => trans.Iter(y => x.UpdateFromTarget(y.To))); // updating states to new transition analyse info
+      States.Iter(init);
+      States.Iter(x => x.all_transitions.Iter(check_cross_orthogonal));
+      States.Iter(check_tran);
+      def trans = States |>< all_transitions_with_init;
+      States.Iter(x => trans.Iter(y => x.UpdateFromTarget(y.To))); // updating states to new transition analyse info
     }
 
     RenameTransition(tran : list[StateTransition]) : list[string * StateTransition]
@@ -393,9 +391,9 @@ namespace Nemerle.Statechart
     {
       def traverse()
       {
-        traverser.Add(TopState.Initial);
+        traverser.Add(TopState.initial);
         traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
-        $[x.paths, x in states, x.paths != null]
+        $[x.paths, x in States, x.paths != null]
       }
 
       def determine_used()
@@ -408,17 +406,14 @@ namespace Nemerle.Statechart
           | _ => true
         }
 
-        def (lived, empty) =  states.Partition(_.LivedNested); // determine lived states
-        states.Iter(_.CreatePathFromOut()); // creating paths from outer world for using as sub machine to go to any state from out
+        def (lived, empty) =  States.Partition(_.LivedNested); // determine lived states
+        //States.Iter(_.CreatePathFromOut()); // creating paths from outer world for using as sub machine to go to any state from out
         def empty = empty.Filter(filter_used);
-        lived_nested_states = lived;
-        lived_states = states.Filter(_.Lived);
-        def all_tran = states |>< all_transitions;
+        def all_tran = States |>< all_transitions;
         def (trans, not_used) = all_tran.Partition(_.UsedInGenerate);
-        def not_used = not_used.Filter(x => x.From.Lived);
+        def not_used = not_used.Filter(x => x.From.lived);
         def not_used = not_used.Exclude(_.NotWork);
         def not_used = not_used.Exclude(_.Used);
-        paths_from_out = states |> PathFromOut;
         empty.Iter(x => AddWarning(FsmWarning.StateNotUsed(x))); // warning about all without substates and not lived that is not used
         not_used.Iter(x => AddWarning(FsmWarning.TransitionNotUsed(x)));
         trans

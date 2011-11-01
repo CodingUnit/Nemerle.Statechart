@@ -12,35 +12,36 @@ namespace Nemerle.Statechart
 {
   using FsmState;
   
+  [Record]
   public class StateMap
   {
-    [Accessor]
-    mutable map : array[FsmState];
+    [NeedChange]
+    public states : list[FsmState] = [];
         
-    [Accessor]
-    mutable errors : list[FsmError] = [];
+    //[Accessor]
+    //errors : list[FsmError] = [];
 
     [Accessor] analyser : FsmAnalyser;
     
-    public HaveErrors : bool
-    {
-      get
-      {
-         !errors.IsEmpty()
-      }
-    }
+    //public HaveErrors : bool
+    //{
+    //  get
+    //  {
+    //     !errors.IsEmpty()
+    //  }
+    //}
 
     public Count : int
     {
       get
       {
-        map.Length
+        states.Length
       }
     }
 
     public Contains(state : string) : bool
     {
-      map.Exists(x => x.Name == state)
+      states.Exists(x => x.Name == state)
     }
 
     public static GetFullName(st : list[FsmState]) : string
@@ -61,15 +62,15 @@ namespace Nemerle.Statechart
            def path = head :: p;
            match (get_all_state(st, head), tail)
            {
-             | ([], _) => errors ::= FsmError.StateNotFound(State(merge_name(path.Rev())));null
+             | ([], _) => analyser.AddError(FsmError.StateNotFound(State(merge_name(path.Rev()))));null
              | ([st], []) => st
-             | ([st], _) => get_loop(st.SubStates, tail, path)
-             | (lst, _) => errors ::= FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev())));null
+             | ([st], _) => get_loop(st.sub_states, tail, path)
+             | (lst, _) => analyser.AddError(FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev()))));null
            }
         | _ => null   
       }
       
-      get_loop(map.NToList(), state, [])
+      get_loop(states, state, [])
     }
 
     get_all_state(map : list[FsmState], state : string) : list[FsmState]
@@ -92,29 +93,31 @@ namespace Nemerle.Statechart
 
     public Get(num : int) : FsmState
     {
-      map[num]
+      states.ElementAt(num)
     }
     
-    public CheckNew(st : FsmState) : void
+    public CheckNew(st : FsmState) : StateMap
     {
-      when (!map.Contains(st)) Add(st)
+      if (states.Contains(st)) this else Add(st)
     }
     
-    public Add(st : FsmState) : void
+    public Add(st : FsmState) : StateMap
     {
-      map = map.Append(st);
-      st.FormatName();
+      def states = st :: states;
+      ChangeStates(states)
+      //st.FormatName();
     }
     
-    public Rem(st : FsmState) : void
+    public Rem(st : FsmState) : StateMap
     {
-      def st = get_all_state(map.NToList(), st.NativeName);
-      map = map.FilterToArray(x => !st.Contains(x));
+      def st = get_all_state(states, st.NativeName);
+      def st = states.Exclude(x => st.Contains(x));
+      ChangeStates(st)
     }
     
     public IndexOf(st : FsmState) : int
     {
-      map.FindIndex(_ == st : object)
+      states.FindIndex(_ == st : object)
     }
     
     public Item[index : string] : FsmState
@@ -138,31 +141,18 @@ namespace Nemerle.Statechart
       this.analyser = analyser;
     }    
     
-    public Init(topstate : FsmState) : void
+    public Init(topstate : FsmState) : StateMap
     {
-      def sub = topstate :: topstate.AllSubStates;
-      sub.IterI((i, x) => 
-       {
-         x.is_new = false;
-         x.Num = i;
-       });
-      map = sub.ToArray()
+      ChangeStates(topstate :: topstate.AllSubStates)
     }
 
-    public Names : array[string]
+    public Names : list[string]
     {
       get
       {
-        map |> Name
+        states |> Name
       }
     }
 
-    public States : array[FsmState]
-    {
-      get
-      {
-        map
-      }
-    }
   }
 }

@@ -11,42 +11,90 @@ namespace Nemerle.Statechart
 {
   using ListUtils;
    
+  [Record]
   public partial class FsmAnalyser
   {
 
-    [Accessor] statemap : StateMap;
-    [Accessor] mutable lived_states : list[FsmState];
-    [Accessor] mutable lived_nested_states : list[FsmState];
-    [Accessor] mutable states : list[FsmState];
-    [Accessor] mutable events : list[string];
-    [Accessor] mutable transitions : Map[string, StateTransition];
-    [Accessor] mutable internal_transitions : Map[string, StateTransition];
-    mutable events_map : Map[string, StateEvent]; // event * for internal transition
-    mutable trans_paths : list[TransitionPaths];
-    [Accessor] mutable transition_nodes : Map[string, PathNode];
-    [Accessor] mutable int_trans_nodes : Map[string, PathNode];
-    [Accessor] mutable actions : list[string];
-    [Accessor] mutable action_node : PathNode;
-    [Accessor] mutable history_states : list[StateHistory];
-    [Accessor] mutable history_paths : list[HistoryPath];
-    [Accessor] mutable work_transitions : Map[string, StateTransition];
-    [Accessor] mutable work_transition_nodes : Map[string, PathNode];
-    [Accessor] mutable initial_transition_nodes : Map[string, PathNode];
-    [Accessor] mutable initial_transitions : Map[string, StateTransition];
-    [Accessor] mutable do_activities : list[StateAction.Do];
-    [Accessor] mutable regions : list[FsmState.ConcurrentRegion];
-    [Accessor] mutable pseudo_states : list[PseudoStateNode] = [];
-    [Accessor] mutable junctions : list[PseudoStateNode.Junction] = [];
-    [Accessor] mutable choices : list[PseudoStateNode.Choice] = [];
-    [Accessor] mutable merges : list[PseudoStateNode.Merge] = [];
-    [Accessor] mutable forks : list[PseudoStateNode.Fork] = [];
-    [Accessor] traverser : TransitionTraverser = TransitionTraverser();
-    [Accessor] mutable concurrent_states : list[FsmState];
-    [Accessor] mutable special_transitions : list[StateTransition];
-    [Accessor] mutable paths_from_out : list[StateTransition];
+    [NeedChange]
+    public statemap : StateMap = StateMap(this);
     
-    [Accessor]    
-    fsm : StateNode.StateMachine;
+    //[Accessor] mutable states : list[FsmState];
+    [Accessor] events : list[string];
+    [Accessor] transitions : Map[string, StateTransition];
+    events_map : Map[string, StateEvent]; // event * for internal transition
+    trans_paths : list[TransitionPaths];
+    [Accessor] transition_nodes : Map[string, PathNode];
+    [Accessor] int_trans_nodes : Map[string, PathNode];
+    [Accessor] actions : list[string];
+    [Accessor] action_node : PathNode;
+    [Accessor] history_states : list[StateHistory];
+    [Accessor] history_paths : list[HistoryPath];
+    [Accessor] work_transitions : Map[string, StateTransition];
+    [Accessor] work_transition_nodes : Map[string, PathNode];
+    [Accessor] initial_transition_nodes : Map[string, PathNode];
+    [Accessor] initial_transitions : Map[string, StateTransition];
+    [Accessor] do_activities : list[StateAction.Do];
+    [Accessor] regions : list[FsmState.ConcurrentRegion];
+    [Accessor] pseudo_states : list[PseudoStateNode] = [];
+    [Accessor] junctions : list[PseudoStateNode.Junction] = [];
+    [Accessor] choices : list[PseudoStateNode.Choice] = [];
+    [Accessor] merges : list[PseudoStateNode.Merge] = [];
+    [Accessor] forks : list[PseudoStateNode.Fork] = [];
+    [Accessor] traverser : TransitionTraverser = TransitionTraverser();
+    [Accessor] special_transitions : list[StateTransition];
+    
+    concurrent_states : list[FsmState]
+    {
+      get
+      {
+        States.Filter(_ is FsmState.ConcurrentSubRegion)
+      }
+    }
+
+    lived_states : list[FsmState]
+    {
+      get
+      {
+        States.Filter(_.lived)
+        
+      }
+    }
+    
+    lived_nested_states : list[FsmState]
+    {
+      get
+      {
+        States.Filter(_.lived_nested) // determine lived states
+      }
+    }
+    
+    internal_transitions : Map[string, StateTransition]
+    {
+      get
+      {
+        def int_tran =  States |>< internal_tran;
+        def int_tran =  RenameTransition(int_tran);
+        Map(int_tran)
+      }
+    }
+    
+    public States : list[FsmState]
+    {
+      get
+      {
+        statemap.states
+      }
+    }
+    
+    public PathsFromOut : list[StateTransition]
+    {
+      get
+      {
+        States |> PathFromOut
+      }
+    }
+    
+    public fsm : StateNode.StateMachine;
 
     Init() : void
     {
@@ -160,8 +208,8 @@ namespace Nemerle.Statechart
       Init();
     }
 
-    public Errors : list[string] {get;set;}
-    public Warnings : list[string] {get;set;}
+    public Errors : list[string];
+    public Warnings : list[string];
 
     FinalizeAnalyse() : void
     {
@@ -262,9 +310,13 @@ namespace Nemerle.Statechart
     //public static StringComparator : string * string -> int = string.Compare(_, _, StringComparison.CurrentCulture);
     //public static StrEq : string * string -> bool = (x, y) => StringComparator(x, y) == 0;
 
-
-    [Accessor]
-    public mutable topState : FsmState;
+    public TopState : FsmState
+    {
+      get
+      {
+        States.Find(x => x.IsTopState).Value
+      }
+    }
 
   }
 }

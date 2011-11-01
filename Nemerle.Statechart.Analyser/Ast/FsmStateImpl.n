@@ -20,7 +20,7 @@ namespace Nemerle.Statechart
 
     public virtual UpdateReference(map : StateMap) : FsmState
     {
-      map.CheckNew(this);
+      def map = map.CheckNew(this);
       def super = if (super_state != null && super_state.reference)
         {
           def name = if (super_state.AstName == null) TopStateName else super_state.name;
@@ -31,7 +31,7 @@ namespace Nemerle.Statechart
       history.Iter(_.UpdateReference(map));
       // !!! mutable
       def pseudo = pseudo_states.Map(_.UpdateReference(map));
-      this//FsmState.State()
+      ChangeSuperStatePseudoStates(super, pseudo)//FsmState.State()
     }
 
     //public FormatName() : void
@@ -42,11 +42,12 @@ namespace Nemerle.Statechart
     
     public DefineInitial(st : FsmState) : FsmState
     {
-      match (this)
+      def init = match (this)
       {
-        | ConcurrentSubRegion(contained_in = r) => this//initial ::= Initial(r, st)
-        | _ => this//initial ::= Initial(this, st)
+        | ConcurrentSubRegion(contained_in = r) => Initial(r, st)//initial ::= Initial(r, st)
+        | _ => Initial(this, st)//initial ::= Initial(this, st)
       }
+      ChangeInitial(init :: initial)
     }
 
     public AddSubState(st : FsmState) : FsmState
@@ -63,22 +64,22 @@ namespace Nemerle.Statechart
     //  | _ => ()
     //}
 
-    public SetCopy(ncopy : int) : FsmState
-    {
-      def st = match (this)
-               {
-                 | State               as st => State(st, false, ncopy)
-                 | ConcurrentRegion    as st => ConcurrentRegion(st, ncopy)
-                 | ConcurrentSubRegion as st => ConcurrentSubRegion(st, ncopy)
-                 | InlinedSubMachine   as st => InlinedSubMachine(st, ncopy)
-                 | SubMachine          as st => SubMachine(st, ncopy)
-                 | Final               as st => Final(st, false, ncopy)
-               }
+    //public SetCopy(ncopy : int) : FsmState
+    //{
+    //  def st = match (this)
+    //           {
+    //             | State               as st => State(st, false, ncopy)
+    //             | ConcurrentRegion    as st => ConcurrentRegion(st, ncopy)
+    //             | ConcurrentSubRegion as st => ConcurrentSubRegion(st, ncopy)
+    //             | InlinedSubMachine   as st => InlinedSubMachine(st, ncopy)
+    //             | SubMachine          as st => SubMachine(st, ncopy)
+    //             | Final               as st => Final(st, false, ncopy)
+    //           }
                
-      //clones ::= st;
-      st.ChangeCopyNumCloneFor(ncopy, this);
-      //st.FindCopyName();
-    }
+    //  //clones ::= st;
+    //  st.ChangeCopyNumCloneFor(ncopy);
+    //  //st.FindCopyName();
+    //}
     
     //public clones : list[FsmState] = [];
     
@@ -107,26 +108,28 @@ namespace Nemerle.Statechart
     //  when (!reg) sub_states.Iter(x  => x.DefineHistoryPathRecurse(st, nodes))
     //}
 
-    public DeleteTransitions(tr : list[StateTransition]) : void
+    public DeleteTransitions(tr : list[StateTransition]) : FsmState
     {
-      def (tran, other) = tr.PartitionType();
+      def (tran, other)     = tr.PartitionType();
       def (int_tran, other) = other.PartitionType();
-      def (init, _) = other.PartitionType();
-      initial = initial.Exclude(init, (x, y) => StateTransition.FullComparer(x, y) == 0);
-      internal_tran = internal_tran.Exclude(int_tran, (x, y) => StateTransition.FullComparer(x, y) == 0);
-      transitions = transitions.Exclude(tran, (x, y) => StateTransition.FullComparer(x, y) == 0)
+      def (init, _)         = other.PartitionType();
+      def initial           = initial.Exclude(init, (x, y) => StateTransition.FullComparer(x, y) == 0);
+      def internal_tran     = internal_tran.Exclude(int_tran, (x, y) => StateTransition.FullComparer(x, y) == 0);
+      def transitions       = transitions.Exclude(tran, (x, y) => StateTransition.FullComparer(x, y) == 0);
+      ChangeInternalTranInitialTransitions(internal_tran, initial, transitions)
     }
 
-    public DeleteTransitionsNested(tr : list[StateTransition]) : void
-    {
-      DeleteTransitions(tr);
-      AllSubStates.Iter(x => x.DeleteTransitionsNested(tr));
-    }
+    //public DeleteTransitionsNested(tr : list[StateTransition]) : void
+    //{
+    //  DeleteTransitions(tr);
+    //  AllSubStates.Iter(x => x.DeleteTransitionsNested(tr));
+    //}
     
-    public TraverseTransitions() : void
+    public TraverseTransitions() : FsmState
     {
-      paths = TransitionPaths(this);
+      def paths = TransitionPaths(this);
       paths.TraverseTransitions(true);
+      ChangePaths(paths)
     }
     
     public this()
@@ -145,7 +148,6 @@ namespace Nemerle.Statechart
     {
       this();      
       state = st;
-      source_pos = st.pos;
       name = st.name;
       this.reference = reference || state.reference;
       
@@ -174,25 +176,25 @@ namespace Nemerle.Statechart
       }
     }
     
-    public this(st : FsmState, reference : bool = false, ncopy : int = 0)
-    {
-      this();
-      this.reference = reference;
-      name = st.name;
-      analyser = st.Analyser;
-      do_activity = st.do_activity;
-      internal_tran = if (ncopy != 0) st.internal_tran |> Clone(ncopy) else st.internal_tran;
-      entry = st.entry |> Clone() :> StateAction.Entry;
-      exit = st.exit |> Clone() :> StateAction.Exit;
-      history =  if (ncopy != 0) st.history |> Clone(ncopy) else st.history;
-      history.Iter(x => x.state = this);
-      transitions = if (ncopy != 0) st.transitions |> Clone(ncopy) else st.transitions;
-      initial = if (ncopy != 0) st.initial |> Clone(ncopy) else st.initial;
-      super_state = st.SuperState;
-      sub_states = if (ncopy != 0) st.SubStates |> SetCopy(ncopy) else st.SubStates;
-      sub_states.Iter(x => x.super_state = this);
-      pseudo_states = if (ncopy != 0) st.pseudo_states |> SetCopy(ncopy) else st.pseudo_states
-    }
+    //public this(st : FsmState, reference : bool = false, ncopy : int = 0)
+    //{
+    //  this();
+    //  this.reference = reference;
+    //  name = st.name;
+    //  analyser = st.analyser;
+    //  do_activity = st.do_activity;
+    //  internal_tran = if (ncopy != 0) st.internal_tran |> Clone(ncopy) else st.internal_tran;
+    //  entry = st.entry |> Clone() :> StateAction.Entry;
+    //  exit = st.exit |> Clone() :> StateAction.Exit;
+    //  history =  if (ncopy != 0) st.history |> Clone(ncopy) else st.history;
+    //  history.Iter(x => x.state = this);
+    //  transitions = if (ncopy != 0) st.transitions |> Clone(ncopy) else st.transitions;
+    //  initial = if (ncopy != 0) st.initial |> Clone(ncopy) else st.initial;
+    //  super_state = st.super_state;
+    //  sub_states = if (ncopy != 0) st.sub_states |> ChangeCopyNum(ncopy) else st.sub_states;
+    //  sub_states.Iter(x => x.super_state = this);
+    //  pseudo_states = if (ncopy != 0) st.pseudo_states |> SetCopy(ncopy) else st.pseudo_states
+    //}
     
     public do_activity : option[StateAction.Do];
     [NeedChange] public sub_states : list[FsmState] = [];
@@ -226,17 +228,19 @@ namespace Nemerle.Statechart
     
     public state : StateNode.State;
     
+    [NeedChange]
     public initial : list[StateTransition] = [];
     public entry : list[StateAction.Entry] = [];
     public exit  : list[StateAction.Exit] = [];
     [NeedChange(transitions, initial)]
     public internal_tran : list[StateTransition] = [];
     public transitions : list[StateTransition] = [];
-    public super_state  : FsmState;
-    [NeedChange(cloneFor)]
-    public copy_num : int;
-    [NeedChange]
-    public paths : TransitionPaths;
+    
+    [NeedChange(pseudo_states)]
+    [NeedChange] public super_state  : FsmState;
+    
+    [NeedChange] public copy_num : int;
+    [NeedChange] public paths : TransitionPaths;
     public lived : bool;
     
     public Num : int
@@ -262,7 +266,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        lived || !AllLivedSubStates.IsEmpty()
+        lived || AllLivedSubStates is _ :: _
       }
     }
     
@@ -284,8 +288,6 @@ namespace Nemerle.Statechart
         state.pos
       }
     }
-    
-    public cloneFor : FsmState;
     
     public IsTopState : bool
     {
@@ -309,7 +311,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (CopyNum == 0) "" else $"$CopyNum"
+        if (copy_num == 0) "" else $"$copy_num"
       }
     }
     
@@ -485,25 +487,25 @@ namespace Nemerle.Statechart
       history.Iter(x => x.state = this)
     }
     
-    public UpdateFromTarget(target : TransitionTarget) : void
-    {
-      def update_pseudo(op, p)
-      {
-        | (Choice(name = on), Choice(name = n))
-        | (Junction(name = on), Junction(name = n))
-        | (Join(name = on), Join(name = n)) 
-        | (Merge(name = on), Merge(name = n)) when (on == n) => p
-        | (Terminate(state = on), Terminate(state = n)) when (on.Name == n.Name) => p
-        | _ => op
-      }
+    //public UpdateFromTarget(target : TransitionTarget) : void
+    //{
+    //  def update_pseudo(op, p)
+    //  {
+    //    | (Choice(name = on), Choice(name = n))
+    //    | (Junction(name = on), Junction(name = n))
+    //    | (Join(name = on), Join(name = n)) 
+    //    | (Merge(name = on), Merge(name = n)) when (on == n)                     => p
+    //    | (Terminate(state = on), Terminate(state = n)) when (on.Name == n.Name) => p
+    //    | _                                                                      => op
+    //  }
       
-      match (target)
-      {
-        | History(h)       => history = history.Map(x => if (x == h) h else x)
-        | Final(f)         => sub_states = sub_states.Map(x => if (f.Name == x.Name) f else x)
-        | PseudoState(p)   => pseudo_states = pseudo_states.Map(update_pseudo(_, p))
-        | _                => ()
-      }
-    }
+    //  match (target)
+    //  {
+    //    | History(h)       => history = history.Map(x => if (x == h) h else x)
+    //    | Final(f)         => sub_states = sub_states.Map(x => if (f.Name == x.Name) f else x)
+    //    | PseudoState(p)   => pseudo_states = pseudo_states.Map(update_pseudo(_, p))
+    //    | _                => ()
+    //  }
+    //}
   }
 }
