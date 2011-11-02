@@ -21,46 +21,20 @@ namespace Nemerle.Statechart
           body : DecisionNode;
           else_node : DecisionNode;
           
-          //this(c : Condition)
-          //{
-          //  base(c);
-          //  condition = c.condition;
-          //  body      = c.body.Clone();
-          //  else_node = c.else_node.Clone();
-          //}
         }
     | Action
         {
           condition : option[GuardNode];
           body : DecisionNode;
-          
-          //this(c : DecisionNode.Action)
-          //{
-          //  base(c);
-          //  condition = c.condition;
-          //  body      = c.body.Clone()
-          //}
         }
     | Else
         {
           body : DecisionNode;
-          
-          //this(c : Else)
-          //{
-          //  base(c);
-          //  body = c.body.Clone()
-          //}
         }
     | Target 
         {
           target : TransitionTarget;
           destination : TransitionDestination;
-          
-          //this(c : Target)
-          //{
-          //  base(c);
-          //  target = c.target.Clone();
-          //}
           
           SetDestination(dest : TransitionDestination) : Target
           {
@@ -73,51 +47,13 @@ namespace Nemerle.Statechart
           }
         }
       
-    public this(node : DecisionNode)
-    {
-      obj_assign (node)
-      {
-        level;
-        state;
-        actions;
-        PrevState;
-        node_path;
-        out_path;
-      }
-    }
-    
     public level : int;
-        
     public state : FsmState;
-    
     public actions : list[Actions] = [];
-        
     public PrevState : FsmState;
     
     public this() {}
     
-    public this(lev : int, st : FsmState, act : list[Actions], npath : PathNode, out_path : PathNode, prev_st : FsmState) 
-    {
-      level = lev;
-      state = st;
-      actions = act;
-      node_path = npath;
-      PrevState = prev_st;
-      this.out_path = out_path;
-    }
-
-    //public Clone() : DecisionNode
-    //{
-    //  match (this)
-    //  {
-    //    | Condition as j     => Condition(j)
-    //    | Else as j          => Else(j)
-    //    | Target as j        => Target(j)
-    //    | Action as j        => Action(j)
-
-    //  }
-    //}
-
     public SetCopy(n : int) : DecisionNode
     {
       def inc(t)
@@ -156,14 +92,14 @@ namespace Nemerle.Statechart
             def nb = b.Map(func);
             def ne = e.Map(func);
             if (nb != b : object || ne != e : object) 
-              Condition(level, state, actions, j.node_path, j.out_path, j.PrevState, c, nb, ne) else node
+              Condition(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb, ne) else node
         | Else(b) as j => 
             def nb = b.Map(func);
-            if (nb != b : object) Else(level, state, actions, j.node_path, j.out_path, j.PrevState, nb) else node
+            if (nb != b : object) Else(level, state, actions,  j.PrevState, j.node_path, j.out_path,nb) else node
                      
         | Action(c, b) as j => 
             def nb = b.Map(func);
-            if (nb != b : object) Action(level, state, actions, j.node_path, j.out_path, j.PrevState, c, nb) else node
+            if (nb != b : object) Action(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb) else node
         
         | Target => node
         
@@ -174,10 +110,10 @@ namespace Nemerle.Statechart
     {
       match (this)
       {
-        | Condition(c, b, e) => Condition(level, state, actions, npath, out_path, PrevState, c, b, e)
-        | Else(b)            => Else(level, state, actions,npath, out_path, PrevState, b)
-        | Action(c, b)       => Action(level, state, actions, npath, out_path, PrevState, c, b)
-        | Target(t, d)       => Target(level, state, actions, npath, out_path, PrevState, t, d)
+        | Condition(c, b, e) => Condition(level, state, actions, PrevState, npath, out_path, c, b, e)
+        | Else(b)            => Else(level, state, actions, PrevState, npath, out_path, b)
+        | Action(c, b)       => Action(level, state, actions, PrevState, npath, out_path, c, b)
+        | Target(t, d)       => Target(level, state, actions, PrevState, npath, out_path, t, d)
       }
     }
     
@@ -230,8 +166,8 @@ namespace Nemerle.Statechart
       }
     }
     
-    [RecordIgnore] public node_path : PathNode = PathNode.Empty();
-    [RecordIgnore] public out_path : PathNode = PathNode.Empty();
+    public node_path : PathNode = PathNode.Empty();
+    public out_path : PathNode = PathNode.Empty();
 
     public ThisOutPath : PathNode
     {
@@ -287,9 +223,9 @@ namespace Nemerle.Statechart
             | PseudoState(Merge(node = JunctionNode(g, a, t, _), state = st)) => 
                 def prevst = st ?? prevst;
                 //def st = nst ?? m.state =. st;
-                DecisionNode.Action(lev, st, a %:: [], prevst, g, get_sub_node(t, lev + 1, st, prevst, els))
+                DecisionNode.Action(lev, st, a %:: [], prevst, PathNode.Empty(), PathNode.Empty(), g, get_sub_node(t, lev + 1, st, prevst, els))
                 
-            | _ => Target(lev, st, [], prevst, t, null)
+            | _ => Target(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), t, null)
           }
         }
         
@@ -319,16 +255,16 @@ namespace Nemerle.Statechart
                                            def st = node.state;
                                            (st, prevst, get_sub_node(t, lev, st, prevst, els))
                                          } else (st, prevst, node);
-                def st = if (st != prevst) st else null;                         
+                def st = if (st != prevst) st else null;
                 def prevst = prevst ?? (t.transition?.From ?? st);
-                Else(lev, st, a, prevst, node)
+                Else(lev, st, a, prevst, PathNode.Empty(), PathNode.Empty(), node)
               }
 
           | JunctionNode(Some(g), a, t, _) :: tail => 
               def a = a %:: [];
-              def st = if (st != prevst) st else null;                         
+              def st = if (st != prevst) st else null;
               def prevst = prevst ?? (t.transition?.From ?? st);
-              Condition(lev, st, a, prevst, g, get_sub_node(t, lev, st, prevst, els), create_choice_tree_node(tail, lev, st, prevst, els))
+              Condition(lev, st, a, prevst, PathNode.Empty(), PathNode.Empty(), g, get_sub_node(t, lev, st, prevst, els), create_choice_tree_node(tail, lev, st, prevst, els))
 
             // if no guards or actions there is error
           | JunctionNode(None(), None(), _, Choice as p) :: _ => 
@@ -351,9 +287,9 @@ namespace Nemerle.Statechart
                                          // cache it, process path before, traverse it with new values of state
                                          (st, prevst, get_sub_node(t, lev, st, prevst, els))
                                        } else (st, prevst, node);
-              def st = if (st != prevst) st else null;                         
+              def st = if (st != prevst) st else null;
               def prevst = prevst ?? (t.transition?.From ?? st);
-              Else(lev, st, [a], prevst, node)
+              Else(lev, st, [a], prevst, PathNode.Empty(), PathNode.Empty(), node)
               
             // if action have other nodes after it
           | JunctionNode(None(), Some(a), _, Choice as p) :: _ => analyser.AddError(FsmError.ChoiceActionMaybeLast(p, a));null
@@ -384,7 +320,7 @@ namespace Nemerle.Statechart
                 //def st = nst ?? m.state =. st;
                 create_junc_tree_node([n], aa, lev + 1, st, prevst, els)
             
-            | _ => Target(lev, st, aa.Rev(), prevst, t, null)
+            | _ => Target(lev, st, aa.Rev(), prevst, PathNode.Empty(), PathNode.Empty(), t, null)
           }
         }
         
@@ -404,14 +340,14 @@ namespace Nemerle.Statechart
                 analyser.AddError(FsmError.JunctionElseMustAfterAnotherGuard(p));
                 null
               } else
-                Else(lev, st, [], prevst, get_sub_node(t, a %:: aa, lev, st, els))
+                Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), get_sub_node(t, a %:: aa, lev, st, els))
 
           | JunctionNode(Some(g), a, t, _) :: [] => 
-              Condition(lev, st, [], prevst, g, get_sub_node(t, a %:: aa, lev, st, els), els)
+              Condition(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), g, get_sub_node(t, a %:: aa, lev, st, els), els)
                 
           | JunctionNode(Some(g), a, t, _) :: tail => 
               def els = create_junc_tree_node(tail, aa, lev, st, prevst, els);
-              Condition(lev, st, [], prevst, g, get_sub_node(t, a %:: aa, lev, st, els), els)
+              Condition(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), g, get_sub_node(t, a %:: aa, lev, st, els), els)
           
             // if no guards or actions there is error
           | JunctionNode(None(), None(), _, Junction as p) :: _ => 
@@ -422,12 +358,12 @@ namespace Nemerle.Statechart
           | [JunctionNode(None(), Some(a), t, Junction(nodes = [_]))] => 
               get_sub_node(t, a :: aa, lev, st, els)
             // if last action node it is else
-          | [JunctionNode(None(), Some(a), t, _)] => Else(lev, st, [], prevst, get_sub_node(t, a :: aa , lev, st, els))
+          | [JunctionNode(None(), Some(a), t, _)] => Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), get_sub_node(t, a :: aa , lev, st, els))
             
             // if action have other nodes after it
           | JunctionNode(None(), Some(a), _, Junction as p) :: _ => analyser.AddError(FsmError.JunctionActionMaybeLast(p, a));
               null
-          | JunctionNode(None(), Some(), _, _) :: _ => null    
+          | JunctionNode(None(), Some(), _, _) :: _ => null
           | [] => null
         }
       }
