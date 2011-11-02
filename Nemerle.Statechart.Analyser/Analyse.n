@@ -24,14 +24,13 @@ namespace Nemerle.Statechart
         {
           def super = st.super_state; 
           // check if state is top or state is sub of top and don't have transitions
-          super == null || (super.super_state == null && super.this_transitions.IsEmpty())
+          super == null || (super.super_state == null && super.this_transitions is [])
         }
         
         def check_target(t, tran)
         {
           | (TransitionTarget.Final as t, _) when (is_top(st))=> 
               def term = PseudoStateNode.Terminate(TopState, 0);
-              1;
               //TopState.pseudo_states ::= term;
               TransitionTarget.PseudoState(t.transition, term)
           | (Final as t, Initial) with super = st
@@ -39,10 +38,12 @@ namespace Nemerle.Statechart
               def fst = FsmState.Final(super, true);
               def super = super.AddSubState(fst);
               //st.ChangeSuper();
-              t.ChangeState(fst);
+              //def fst = fst.ChangeSuperState(super);
+              t.ChangeState(fst)
+              
           | (t, _) => t
         }
-      
+        
         st.all_transitions_with_init.Iter(x => x.TargetTraverse(check_target(_, x)))
       }
       
@@ -50,10 +51,12 @@ namespace Nemerle.Statechart
       UpdateStateMap(); // first update state map
       def states = States.Map(_.UpdateReference(statemap));
       states.Iter(CheckAddFinalState); // check to add final state
-      UpdateStateMap(); // second update state map
-      CreateHistoryStates();
+      def super = states.Map(x => x.super_state);
+      def analyser = super.Map(x => x.UpdateReference(statemap)).Last().analyser;
+      analyser.UpdateStateMap(); // second update state map
+      analyser.CreateHistoryStates();
       when (Error) throw FsmErrorException();
-      RenameDuplicates();
+      analyser.RenameDuplicates();
       states.Last().analyser
     }
 
@@ -116,7 +119,7 @@ namespace Nemerle.Statechart
       {
         | StateHistory where (state = FsmState where (exit = []) as st) =>
              //st.exit = [StateAction.Exit([], st)]
-             1;
+            1;
         | _ => ()
       }
 
@@ -142,8 +145,8 @@ namespace Nemerle.Statechart
       def events = events_map.Keys()
     }
 
-    //static nodes_eq : ((string * PathNode) * (string * PathNode)) -> bool = (x, y) => PathNode.Equals(x[1], y[1]);
-    //nodes_cmp : ((string * PathNode) * (string * PathNode)) -> int = (x, y) => PathNode.Compare(x[1], y[1]);
+    static nodes_eq : ((string * PathNode) * (string * PathNode)) -> bool = (x, y) => PathNode.Equals(x[1], y[1]);
+    static nodes_cmp : ((string * PathNode) * (string * PathNode)) -> int = (x, y) => PathNode.Compare(x[1], y[1]);
 
     CreateHistory() : void
     {
@@ -176,10 +179,8 @@ namespace Nemerle.Statechart
 
     CreateConcurrentRegion() : void
     {
-      def regs = States.FilterType();
-      def (used, not_used) = regs.Partition(_.LivedNested);
-      not_used.Iter(x => AddWarning(FsmWarning.RegionNotUsed(x)));
-      def regions = used;
+      def warn = not_used_regions |> FsmWarning.RegionNotUsed(_);
+      AddWarnings(warn)
     }
     
     CreateSubMachines() : void

@@ -141,15 +141,16 @@ namespace Nemerle.Statechart
         match (tr.Find(x => x.Guard.IsNone))
         {
           | Some(t) => def tr = tr.Exclude([t], (x, y) => x == y : object);
-              tr.Iter(x => AddWarning(FsmWarning.TransitionOverriden(x, t)));
-          | _ => ()
+              tr.Map(x => FsmWarning.TransitionOverriden(x, t))
+          | _ => []
         }
       }
       
       def group = FsmState.create_transition_group(tr).Values();
       def group = group.Filter(x => x.Length > 1);
       group.Iter(check_duplicate_tran);
-      group.Iter(check_override)
+      def warn = group |>< check_override(_);
+      AddWarnings(warn)
     }
 
     /// <summary>
@@ -339,7 +340,7 @@ namespace Nemerle.Statechart
       CheckCrossTransitions(); // look for cross transitions
     }
 
-    CheckTransitions() : void
+    CheckTransitions() : FsmAnalyser
     {
       def proc_tran(st, tran)
       {
@@ -371,7 +372,8 @@ namespace Nemerle.Statechart
       States.Iter(x => x.all_transitions.Iter(check_cross_orthogonal));
       States.Iter(check_tran);
       def trans = States |>< all_transitions_with_init;
-      States.Iter(x => trans.Iter(y => x.UpdateFromTarget(y.To))); // updating states to new transition analyse info
+      def states = States.Map(x => trans.FoldLeft(x, (y, s) => s.UpdateFromTarget(y.To))); // updating states to new transition analyse info
+      ChangeStatemap(statemap.ChangeStates(states))
     }
 
     RenameTransition(tran : list[StateTransition]) : list[string * StateTransition]
@@ -387,7 +389,7 @@ namespace Nemerle.Statechart
       tran
     }
 
-    CreateTransitionPaths() : void
+    CreateTransitionPaths() : FsmAnalyser
     {
       def traverse()
       {
@@ -398,68 +400,26 @@ namespace Nemerle.Statechart
 
       def determine_used()
       {
-        def filter_used(st)
-        {
-          | FsmState.ConcurrentSubRegion
-          | ConcurrentRegion
-          | Final => false
-          | _ => true
-        }
-
-        def (lived, empty) =  States.Partition(_.LivedNested); // determine lived states
-        //States.Iter(_.CreatePathFromOut()); // creating paths from outer world for using as sub machine to go to any state from out
-        def empty = empty.Filter(filter_used);
-        def all_tran = States |>< all_transitions;
-        def (trans, not_used) = all_tran.Partition(_.UsedInGenerate);
-        def not_used = not_used.Filter(x => x.From.lived);
-        def not_used = not_used.Exclude(_.NotWork);
-        def not_used = not_used.Exclude(_.Used);
-        empty.Iter(x => AddWarning(FsmWarning.StateNotUsed(x))); // warning about all without substates and not lived that is not used
-        not_used.Iter(x => AddWarning(FsmWarning.TransitionNotUsed(x)));
-        trans
+        def empty = empty_states.Map(x => FsmWarning.StateNotUsed(x) : FsmWarning); // warning about all without substates and not lived that is not used
+        def not_used = not_used_transitions.Map(x => FsmWarning.TransitionNotUsed(x) : FsmWarning);
+        empty + not_used
       }
 
-      def get_special_transitions(tran)
-      {
-        | StateTransition.Transition(Destination = TransitionDestination.Fork(sub_tran = tr)) => tr
-        | StateTransition.Transition(To = PseudoState(PseudoStateNode.Join(transition = tr))) => [tr]
-        | _ => []
-      }
 
       def paths = traverse(); // traverse paths
-      def trans = determine_used(); // determine used elements
-      def special = trans |>< get_special_transitions(_);
-      special_transitions = special.RemoveDuplicatesSort(StateTransition.Comparer);
-      special_transitions.Iter(x => x.UpdateReference(statemap));
-      trans_paths = paths; // save in field
-      def trans = RenameTransition(trans);
-      def trans_nodes =  trans.Map((x, y) => (x, y.PathNode));  // nodes
-      def trans_nodes = trans_nodes.RemoveDuplicatesSort(nodes_cmp);
-      def map = Map(trans);
-      transitions = map;
-      def int_nodes = internal_transitions |> (_, _[2].PathNode);
-      int_trans_nodes = Map(int_nodes.RemoveDuplicatesSort(nodes_cmp));
-      transition_nodes = Map(trans_nodes);
-      def (used_hstates, not_used) = history_states.Partition(_.Used);
-      history_states = used_hstates;
-      not_used.Iter(x => AddWarning(FsmWarning.HistoryNotUsed(x)));
-      def select = trans.Filter((_, x)  => x.HistoryTarget == null);
-      work_transitions = Map(select);
-      def work_nodes = select |> (_, _[2].PathNode);
-      work_transition_nodes = Map(work_nodes.RemoveDuplicatesSort(nodes_cmp));
+      def warnings = determine_used(); // determine used elements
+      
+      //def (used_hstates, not_used) = history_states.Partition(_.Used);
+      //history_states = used_hstates;
+      def hist = not_used_history.Map(x => FsmWarning.HistoryNotUsed(x) : FsmWarning);
+      def warnings = warnings + hist;
+      ChangeTransPathsWarnings(paths, GetWarnings(warnings))
     }
 
-    UpdateInitial() : void
+    UpdateInitial() : FsmAnalyser
     {
-      def init = states |>< Initial;
-      def (init, not_used) = init.Partition(_.Used);
-      not_used.Iter(x => AddWarning(FsmWarning.TransitionNotUsed(x)));
-      def (init, not_used) = init.Partition(_.Used);
-      not_used.Iter(x => AddWarning(FsmWarning.TransitionNotUsed(x)));
-      def init = RenameTransition(init);
-      initial_transitions = Map(init);
-      def init_nodes = init |> (_, _[2].PathNode);
-      initial_transition_nodes = Map(init_nodes.RemoveDuplicatesSort(nodes_cmp));
+      def warn = not_used_states_initial_tran |> FsmWarning.TransitionNotUsed(_);
+      AddWarnings(warn)
     }
 
   }
