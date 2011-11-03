@@ -15,20 +15,14 @@ namespace Nemerle.Statechart
   public partial class FsmAnalyser
   {
 
+    [NeedChange(Errors)]
     [NeedChange]
-    public statemap : StateMap = StateMap(this);
+    public statemap : StateMap;
 
     //[Accessor] mutable states : list[FsmState];
     [Accessor] events : list[string];
 
-    public transitions : Map[string, StateTransition]
-    {
-      get
-      {
-        def trans = RenameTransition(used_transitions);
-        Map(trans)
-      }
-    }
+    public transitions : Map[string, StateTransition];
 
     events_map : Map[string, StateEvent]; // event * for internal transition
     [NeedChange(Warnings)]
@@ -141,15 +135,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public initial_transitions : Map[string, StateTransition]
-    {
-      get
-      {
-        def init = used_states_initial_tran;
-        def map = RenameTransition(init);
-        Map(map)
-      }
-    }
+    public initial_transitions : Map[string, StateTransition];
 
     [Accessor] do_activities : list[StateAction.Do];
 
@@ -319,15 +305,8 @@ namespace Nemerle.Statechart
       }
     }
 
-    public internal_transitions : Map[string, StateTransition]
-    {
-      get
-      {
-        def int_tran =  States |>< internal_tran;
-        def int_tran =  RenameTransition(int_tran);
-        Map(int_tran)
-      }
-    }
+    [NeedChange(transitions, initial_transitions)]
+    public internal_transitions : Map[string, StateTransition];
 
     public States : list[FsmState]
     {
@@ -457,6 +436,11 @@ namespace Nemerle.Statechart
       ChangeErrors(GetErrors(err))
     }
 
+    public AddErrors(err : FsmError) : FsmAnalyser
+    {
+      ChangeErrors(GetErrors(err))
+    }
+    
     public AddErrors(err : list[ParseError]) : FsmAnalyser
     {
       ChangeErrors(GetErrors(err))
@@ -467,6 +451,11 @@ namespace Nemerle.Statechart
       Errors + (err |> AddError(_))
     }
 
+    public GetErrors(err : FsmError) : list[string]
+    {
+      AddError(err) :: Errors
+    }
+    
     public GetErrors(err : list[ParseError]) : list[string]
     {
       Errors + (err |> AddParseError(_))
@@ -481,7 +470,6 @@ namespace Nemerle.Statechart
     {
       this.fsm = fsm;
       statemap = StateMap(this);
-      Init();
     }
 
     [NeedChange(Warnings)] [NeedChange] public Errors : list[string] = [];

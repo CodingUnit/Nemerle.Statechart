@@ -19,9 +19,9 @@ namespace Nemerle.Statechart
         {
           history : StateHistory;
          
-          override UpdateReference(map : StateMap, force : bool = false) : TransitionTarget
+          override UpdateReference(map : StateMap) : TransitionTarget
           {
-            if (history.reference || force) ChangeHistory(map[history.state.Name].GetHistory(history)) else this
+            if (history.reference) ChangeHistory(map[history.state.Name].GetHistory(history)) else this
           }
 
           ChangeHistory(h : StateHistory) : History
@@ -59,9 +59,9 @@ namespace Nemerle.Statechart
             Final(transition, st)
           }
           
-          public override UpdateReference(map : StateMap, force : bool = false) : TransitionTarget
+          public override UpdateReference(map : StateMap) : TransitionTarget
           {
-            if (force || (state != null && state.Reference)) ChangeState(map[state.NativeName] :> FsmState.Final) else this
+            if (state != null && state.reference) ChangeState(map[state.NativeName] :> FsmState.Final) else this
           }
         }
     | PseudoState
@@ -85,9 +85,9 @@ namespace Nemerle.Statechart
             //Traverse(init_target)
           }
 
-          override UpdateReference(map : StateMap, force : bool = false) : TransitionTarget
+          override UpdateReference(map : StateMap) : TransitionTarget
           {
-            def n = node.UpdateReference(map, force);
+            def n = node.UpdateReference(map);
             if (n != node : object) PseudoState(transition, n) else this
           }
           
@@ -105,9 +105,9 @@ namespace Nemerle.Statechart
             State(transition, st)
           }
           
-          override UpdateReference(map : StateMap, force : bool = false) : TransitionTarget
+          override UpdateReference(map : StateMap) : TransitionTarget
           {
-            if (state.Reference || force) ChangeState(map[state.NativeName]) else this
+            if (state.reference) ChangeState(map[state.NativeName]) else this
           }
 
           Name : string
@@ -142,9 +142,9 @@ namespace Nemerle.Statechart
           }
           
           // TODO: вообще могут быть ссылки null если все immutable
-          override UpdateReference(map : StateMap, force : bool = false) : TransitionTarget
+          override UpdateReference(map : StateMap) : TransitionTarget
           {
-            if (force || (state != null && state.Reference)) ChangeState(map[state.NativeName]) else this
+            if (state != null && state.reference) ChangeState(map[state.NativeName]) else this
           }
 
           Name : string
@@ -174,11 +174,11 @@ namespace Nemerle.Statechart
           parent : string;
           target : TransitionTarget;
       
-          override UpdateReference(map : StateMap, force : bool = false) : TransitionTarget
+          override UpdateReference(map : StateMap) : TransitionTarget
           {
             match (target)
             {
-              | State(st) as t when (st.Reference || force) => t.ChangeState(map[$"$parent.$(st.NativeName)"])
+              | State(st) as t when (st.reference) => t.ChangeState(map[$"$parent.$(st.NativeName)"])
               | _ => target.UpdateReference(map)
             }
           }
@@ -200,12 +200,11 @@ namespace Nemerle.Statechart
            //SubMachine(transition, st, state) 
           }
           
-          override UpdateReference(map : StateMap, force : bool = false) : TransitionTarget
+          override UpdateReference(map : StateMap) : TransitionTarget
           {
             match (machine)
             {
-              | FsmState where (Reference = true, Name = n)
-              | FsmState where (Name = n) when force => ChangeMachine(map[n] :> FsmState.SubMachine)
+              | FsmState where (reference = true, Name = n) => ChangeMachine(map[n] :> FsmState.SubMachine)
               | _ => this
             }
           }
@@ -306,49 +305,56 @@ namespace Nemerle.Statechart
     
     public transition : StateTransition;
     
-    public Traverse(func : TransitionTarget -> TransitionTarget) : TransitionTarget
+    public Traverse(analyser : FsmAnalyser, func : TransitionTarget * FsmAnalyser -> TransitionTarget * FsmAnalyser) : TransitionTarget * FsmAnalyser
     {
-      def check_target(tr, p, j, t)
+      def check_target(tr, p, j, t, a)
       {
         
-        def check_change(tr, p, j, ot)
+        def check_change(tr, p, j, ot, a)
         {
-          match (func(ot), tr, j)
+          match (func(ot, a), tr, j)
           {
-            | (null, _, _)                                  => ot
-            | (nt, _, null) when (nt.GetType() != ot.GetType()) => check_target(tr, p, j, nt)
-            | (nt, _, _)                                    => nt
+            | ((null, a), _, _)                                  => (ot, a)
+            | ((nt, a), _, null) when (nt.GetType() != ot.GetType()) => check_target(tr, p, j, nt, a)
+            | ((nt, a), _, _)                                    => (nt, a)
           }
         }
         
-        def check_node(p, n)
+        def check_node(p, n, a)
         {
           //def to = check_change(null, p, n, n.to);
           def to = n.to;
-          match (check_target(null, p, n, to))
+          match (check_target(null, p, n, to, a))
           {
-           | nto when (nto : object != to) => n.ChangeTo(nto)
-           | _ => n
+           | (nto, a) when (nto : object != to) => (n.ChangeTo(nto), a)
+           | (_, a) => (n, a)
           }
         }
       
-        def traverse(p, n) : list[PseudoStateNode.JunctionNode]
+        def traverse(p, n, a)
         { // TODO: избежать лишних изменений
-          n.Map(check_node(p, _))
+          n.FoldLeft(([], a), (n, (nl, a)) => {def (nn, na) = check_node(p, n, a); (nn :: nl, na) })
         }
       
-        match (check_change(tr, p, j, t))
+        match (check_change(tr, p, j, t, a))
         {
-          | TransitionTarget.PseudoState(Merge(node = n)) as p => p.ChangeNode(check_node(p, n))
-          | PseudoState(Junction(nodes = n) as j)         as p => p.ChangeNode(j.ChangeNodes(traverse(p, n)))   // TODO: проверить как часто создается и зачем
-          | PseudoState(Choice(nodes = n) as c)           as p => p.ChangeNode(c.ChangeNodes(traverse(p, n)))//p.ChangeNode(c.ChangeNodes(traverse(p, n))
-          | t => t
+          | (TransitionTarget.PseudoState(Merge(node = n)) as p, a) => def (n, a) = check_node(p, n, a); 
+              (p.ChangeNode(n), a)
+          | (PseudoState(Junction(nodes = n) as j) as p, a) => 
+             def (n, a) = traverse(p, n, a);
+             (p.ChangeNode(j.ChangeNodes(n)), a)   // TODO: проверить как часто создается и зачем
+             
+          | (PseudoState(Choice(nodes = n) as c) as p, a)   => 
+             def (n, a) = traverse(p, n, a);
+             (p.ChangeNode(c.ChangeNodes(n)), a)
+             
+          | x => x
 
         }
       
       }
     
-      check_target(this, null, null, this)
+      check_target(this, null, null, this, analyser)
     }
    
     public SetCopy(ncopy : int) : TransitionTarget
@@ -365,7 +371,7 @@ namespace Nemerle.Statechart
     //[Accessor]
     //clone_for : TransitionTarget;
     
-    public virtual UpdateReference(_ : StateMap, _ : bool = false) : TransitionTarget
+    public virtual UpdateReference(_ : StateMap) : TransitionTarget
     {
       this
     }

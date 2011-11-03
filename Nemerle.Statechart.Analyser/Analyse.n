@@ -18,7 +18,7 @@ namespace Nemerle.Statechart
 
     InitStateMap() : FsmAnalyser
     {
-      def CheckAddFinalState(st)
+      def CheckAddFinalState(st, an)
       {   
         def is_top(st)
         {
@@ -27,45 +27,55 @@ namespace Nemerle.Statechart
           super == null || (super.super_state == null && super.this_transitions is [])
         }
         
-        def check_target(t, tran)
+        def check_target(t, tran, an)
         {
+          match (t, tran)
+          {
           | (TransitionTarget.Final as t, _) when (is_top(st))=> 
               def term = PseudoStateNode.Terminate(TopState, 0);
               //TopState.pseudo_states ::= term;
-              TransitionTarget.PseudoState(t.transition, term)
+              (TransitionTarget.PseudoState(t.transition, term), an)
           | (Final as t, Initial) with super = st
           | (Final as t, _) with super = st.super_state =>
               def fst = FsmState.Final(super, true);
               def super = super.AddSubState(fst);
+              def an = an.ChangeStatemap(an.statemap.CheckNew(super));
               //st.ChangeSuper();
               //def fst = fst.ChangeSuperState(super);
-              t.ChangeState(fst)
+              (t.ChangeState(fst), an)
               
-          | (t, _) => t
+          | (t, _) => (t, an)
+         }
         }
         
-        st.all_transitions_with_init.Iter(x => x.TargetTraverse(check_target(_, x)))
+        st.all_transitions_with_init.FoldLeft(an, (x, a) => x.TargetTraverse(a, check_target(_, x, _)))
       }
       
-      InitStatechart();
-      UpdateStateMap(); // first update state map
-      def states = States.Map(_.UpdateReference(statemap));
-      states.Iter(CheckAddFinalState); // check to add final state
-      def super = states.Map(x => x.super_state);
-      def analyser = super.Map(x => x.UpdateReference(statemap)).Last().analyser;
-      analyser.UpdateStateMap(); // second update state map
-      analyser.CreateHistoryStates();
-      when (Error) throw FsmErrorException();
-      analyser.RenameDuplicates();
-      states.Last().analyser
+      def an = InitStatechart();
+      def an = an.UpdateStateMap(); // first update state map 
+      def an = an.States.FoldLeft(an, CheckAddFinalState); // check to add final state
+      def an = an.UpdateStateMap(); // second update state map
+      an.CreateHistoryStates();
+      when (an.Error) throw FsmErrorException();
+      an.RenameDuplicates();
+      an
     }
 
-    public UpdateStateMap() : void
+    UpdateReference() : FsmAnalyser
     {
-      statemap.Init(TopState); // initialize the state map
+      def (st, map) = States.FoldLeft(([], statemap), (s, (ss, m)) => {def (ns, m) = s.UpdateReference(m); (ns :: ss, m)});
+      def map = map.ChangeStates(st);
+      ChangeStatemap(map)
+    }
+    
+    public UpdateStateMap() : FsmAnalyser
+    {
+      def map =  statemap.Init(TopState); // initialize the state map
+      def an = ChangeStatemap(map);
       InitStates();
-      def states = States.Map(_.UpdateReference(statemap));
-      StateId.CreateMasks(this);
+      def an = an.UpdateReference();
+      StateId.CreateMasks(an);
+      an
     }
     
     InitStates() : void
