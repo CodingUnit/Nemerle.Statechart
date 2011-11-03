@@ -136,17 +136,23 @@ namespace Nemerle.Statechart
     {
     }
 
-    public this(st : StateNode.State, super : FsmState, analyser : FsmAnalyser, reference : bool = false)
+    public this(super : FsmState, name : string, reference : bool = false)
     {
       this();
-      this.Analyser = analyser;
+      this.name = name;
+      this.super_state = super;
+      this.reference = reference
+    }
+    
+    public this(st : StateNode.State, super : FsmState, analyser : FsmAnalyser, reference : bool = false)
+    {
       this(st, super, reference);
-      Create(st, super, reference)
+      this.analyser = analyser;
     }
 
     public this(st : StateNode.State, super : FsmState, reference : bool = false)
     {
-      this();      
+      this();
       state = st;
       name = st.name;
       this.reference = reference || state.reference;
@@ -168,7 +174,7 @@ namespace Nemerle.Statechart
         transitions = Transition.Create(this, st.transitions);
         initial = st.initial |> Initial(this, _);
         def (regs, subst) = st.sub_states.Partition(x => x.regions.HasValue);
-        def regs = regs |> ConcurrentRegion(this, _.regions.Value); // TODO: сделать с помощью st_from_node
+        def regs = regs |> ConcurrentRegion(this, _, _.regions.Value); // TODO: сделать с помощью st_from_node
         super_state = super;
         def subst = (subst |> st_from_node(_)) + regs;
         sub_states = subst.Sort((x, y) => x.source_pos - y.source_pos);
@@ -247,7 +253,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        analyser.Statemap.IndexOf(this)
+        analyser.statemap.IndexOf(this)
       }
     }
     
@@ -321,12 +327,13 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | Final                       => $"$(super_state)Final$CopyName"
+          | Final                               => $"$(super_state)Final$CopyName"
           | State
           | ConcurrentRegion
-          | ConcurrentSubRegion         => NativeName
-          | SubMachine(name = n)        => $"SubMachine$n$CopyName"
-          | InlinedSubMachine(name = n) => $"InlinedSubMachine$n$CopyName"
+          | ConcurrentSubRegion                 => NativeName
+          | SubMachine(name = n)                => $"SubMachine$n$CopyName"
+          | InlinedSubMachine(name = n)         => $"InlinedSubMachine$n$CopyName"
+          | InlinedSubMachineInstance(name = n) => $"InlinedSubMachineInstance$n$CopyName"
         }
       }
     }
