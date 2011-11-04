@@ -9,9 +9,9 @@ using System.Linq;
 
 namespace Nemerle.Statechart
 {
- 
+
   using ListUtils;
-  
+
   [Record]
   public variant DecisionNode
   {
@@ -20,7 +20,7 @@ namespace Nemerle.Statechart
           condition : GuardNode;
           body : DecisionNode;
           else_node : DecisionNode;
-          
+
         }
     | Action
         {
@@ -35,36 +35,39 @@ namespace Nemerle.Statechart
         {
           target : TransitionTarget;
           destination : TransitionDestination;
-          
+
           SetDestination(dest : TransitionDestination) : Target
           {
             Target(level, state, actions, PrevState, node_path, out_path, target, dest)
           }
-          
+
           SetDestination(dest : TransitionDestination, npath : PathNode, out_path : PathNode) : Target
           {
             Target(level, state, actions, PrevState, npath, out_path, target, dest)
           }
         }
-      
+
     public level : int;
     public state : FsmState;
     public actions : list[Actions] = [];
     public PrevState : FsmState;
-    
+
     public this() {}
-    
-    public SetCopy(n : int) : DecisionNode
+
+    public SetCopy(n : int, an : FsmAnalyser) : DecisionNode * FsmAnalyser
     {
-      def inc(t)
+      def inc(t, an)
       {
-        | Target(t, d)      => Target(t.SetCopy(n), d)
-        | _                 => this
-     }
-     
-     Map(inc)
+        match (t)
+        {
+          | Target(t, d)      => def (t, an) = t.SetCopy(n, an);(Target(t, d), an)
+          | _                 => (this, an)
+        }
+      }
+
+      Map(an, inc)
     }
-    
+
     public ActionNode : PathNode
     {
       get
@@ -72,7 +75,7 @@ namespace Nemerle.Statechart
         PathNode.Sequence(actions |> PathNode.Action(_))
       }
     }
-        
+
     public Actions : PathNode
     {
       get
@@ -81,42 +84,31 @@ namespace Nemerle.Statechart
         PathNode.Sequence(act)
       }
     }
-    
-    public Map(func : DecisionNode -> DecisionNode) : DecisionNode
+
+    public Map(an : FsmAnalyser, func : DecisionNode * FsmAnalyser -> DecisionNode * FsmAnalyser) : DecisionNode * FsmAnalyser
     {
-      def node = func(this);
+      def (node, an) = func(this, an);
       def node = node ?? this;
       match (node)
       {
         | Condition(c, b, e) as j => 
-            def nb = b.Map(func);
-            def ne = e.Map(func);
+            def (nb, an) = b.Map(an, func);
+            def (ne, an) = e.Map(an, func);
             if (nb != b : object || ne != e : object) 
-              Condition(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb, ne) else node
+                          (Condition(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb, ne), an) else (node, an)
         | Else(b) as j => 
-            def nb = b.Map(func);
-            if (nb != b : object) Else(level, state, actions,  j.PrevState, j.node_path, j.out_path,nb) else node
-                     
+            def (nb, an) = b.Map(an, func);
+            if (nb != b : object) (Else(level, state, actions,  j.PrevState, j.node_path, j.out_path,nb), an) else (node, an)
+
         | Action(c, b) as j => 
-            def nb = b.Map(func);
-            if (nb != b : object) Action(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb) else node
-        
-        | Target => node
-        
+            def (nb, an) = b.Map(an, func);
+            if (nb != b : object) (Action(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb), an) else (node, an)
+
+        | Target => (node, an)
+
       }
     }
 
-    public SetPath(npath : PathNode, out_path : PathNode) : DecisionNode
-    {
-      match (this)
-      {
-        | Condition(c, b, e) => Condition(level, state, actions, PrevState, npath, out_path, c, b, e)
-        | Else(b)            => Else(level, state, actions, PrevState, npath, out_path, b)
-        | Action(c, b)       => Action(level, state, actions, PrevState, npath, out_path, c, b)
-        | Target(t, d)       => Target(level, state, actions, PrevState, npath, out_path, t, d)
-      }
-    }
-    
     public Iterator : IEnumerable[DecisionNode]
     {
       get
@@ -144,12 +136,12 @@ namespace Nemerle.Statechart
           | Action(Some(c), _) => Some(c)
           | _ => None()
         }
-        
+
         Iterator.FilterValues(get_guard)
       }
     }
-    
-    
+
+
     public ThisPath : PathNode
     {
       get
@@ -165,7 +157,8 @@ namespace Nemerle.Statechart
         PathNode.Sequence(Iterator |> Path)
       }
     }
-    
+
+    [NeedChange(out_path)]
     public node_path : PathNode = PathNode.Empty();
     public out_path : PathNode = PathNode.Empty();
 
@@ -176,7 +169,7 @@ namespace Nemerle.Statechart
         ThisPath + node_path
       }
     }
-    
+
     public Path : PathNode
     {
       get
@@ -184,7 +177,7 @@ namespace Nemerle.Statechart
         node_path + ThisPath + out_path
       }
     }
-    
+
     public Traverse(func : DecisionNode -> void) : void
     {
       Iterator.Iter(func)
@@ -199,10 +192,10 @@ namespace Nemerle.Statechart
           | _ => true
         }
       }
-    
+
       static create_junc_tree_node(n : list[PseudoStateNode.JunctionNode], aa : list[Actions], lev : int, st : FsmState, prevst : FsmState, els : DecisionNode, err : list[FsmError]) : DecisionNode * list[FsmError]
       {
-        
+
         def get_sub_node(t, aa, lev, st, els, err)
         {
           match (t)
@@ -211,53 +204,53 @@ namespace Nemerle.Statechart
                 def prevst = st;
                 //def st = nst ?? j.state =. st;
                 create_junc_tree_node(n, aa, lev + 1, st, prevst, els, err)
-                
+
             | PseudoState(Choice(nodes = n, state = st)) => 
                 def prevst = st;
                 //def st = nst ?? c.state =. st;
                 create_choice_tree_node(n, lev + 1, st, prevst, els, err)
-                
+
             | PseudoState(Merge(node = JunctionNode as n, state = st)) => 
                 def prevst = st;
                 //def st = nst ?? m.state =. st;
                 create_junc_tree_node([n], aa, lev + 1, st, prevst, els, err)
-            
+
             | _ => (Target(lev, st, aa.Rev(), prevst, PathNode.Empty(), PathNode.Empty(), t, null), err)
           }
         }
-        
+
         match (n)
         {
           | JunctionNode(guard = Some(Else), parent = Junction as p) :: (_ :: _) => 
               (null, FsmError.JunctionElseMustBeLast(p) :: err)
-              
+
           | [JunctionNode(Some(Else), a, t, Junction as p) as j] => 
 
               def n = p.nodes.Exclude([j]);
-              
+
               // if same node not contains other previous decision node
               if (!n.Exists(contains_decision)) 
-              {
-                (null, FsmError.JunctionElseMustAfterAnotherGuard(p) :: err)
-              } else
-              {
-                def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
-                (Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), n), err)
-              }
+                            {
+                              (null, FsmError.JunctionElseMustAfterAnotherGuard(p) :: err)
+                            } else
+                            {
+                              def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
+                              (Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), n), err)
+                            }
 
           | JunctionNode(Some(g), a, t, _) :: [] => 
               def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
               (Condition(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), g, n, els), err)
-                
+
           | JunctionNode(Some(g), a, t, _) :: tail => 
               def (els, err) = create_junc_tree_node(tail, aa, lev, st, prevst, els, err);
               def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
               (Condition(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), g, n, els), err)
-          
+
             // if no guards or actions there is error
           | JunctionNode(None(), None(), _, Junction as p) :: _ => (null, FsmError.EmptyJunction(p) :: err)
           | JunctionNode(None(), None(), _, _) :: _ => (null, err)
-             // if single action node and not decision, taking sub node collecting action
+            // if single action node and not decision, taking sub node collecting action
           | [JunctionNode(None(), Some(a), t, Junction(nodes = [_]))] => 
               get_sub_node(t, a :: aa, lev, st, els, err)
             // if last action node it is else
@@ -273,7 +266,7 @@ namespace Nemerle.Statechart
 
       static create_choice_tree_node(n : list[PseudoStateNode.JunctionNode], lev : int, st : FsmState, prevst : FsmState, els : DecisionNode, err : list[FsmError]) : DecisionNode * list[FsmError]
       {
-        
+
         def get_sub_node(t, lev, st, prevst, els, err)
         {
           match (t)
@@ -283,51 +276,51 @@ namespace Nemerle.Statechart
                 def prevst = st ?? prevst;
                 //def st = nst ?? j.state =. st;
                 create_junc_tree_node(n, [], lev + 1, st, prevst, els, err)
-                             
+
             | PseudoState(Choice(nodes = n, state = st)) => 
                 def prevst = st ?? prevst;
                 //def st = nst ?? c.state =. st;
                 create_choice_tree_node(n, lev + 1, st, prevst, els, err)
-                
+
             | PseudoState(Merge(node = JunctionNode(g, a, t, _), state = st)) => 
                 def prevst = st ?? prevst;
                 //def st = nst ?? m.state =. st;
                 def (n, err) = get_sub_node(t, lev + 1, st, prevst, els, err);
                 (DecisionNode.Action(lev, st, a %:: [], prevst, PathNode.Empty(), PathNode.Empty(), g, n), err)
-                
+
             | _ => (Target(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), t, null), err)
           }
         }
-        
-        
+
+
         match (n)
         {
           | JunctionNode(guard = Some(Else), parent = Choice as p) :: (_ :: _) => 
               (null, FsmError.ChoiceElseMustBeLast(p) :: err)
-              
+
           | [JunctionNode(Some(Else), a, t, Choice as p) as j] => 
 
               def n = p.nodes.Exclude([j]);
               // if same node not contains other previous decision node
               if (!n.Exists(contains_decision)) 
-              {
-                (null, FsmError.ChoiceElseMustAfterAnotherGuard(p) :: err)
-              } else
-              {
-                def a = a %:: [];
-                def (node, err) = get_sub_node(t, lev, st, prevst, els, err);
+                            {
+                              (null, FsmError.ChoiceElseMustAfterAnotherGuard(p) :: err)
+                            } else
+                            {
+                              def a = a %:: [];
+                              def (node, err) = get_sub_node(t, lev, st, prevst, els, err);
                 // if new node is in another state
-                def (st, prevst, (node, err)) = if (st != node.state)
-                                         {
-                                           // cache it, process path before, traverse it with new values of state
-                                           def prevst = st;
-                                           def st = node.state;
-                                           (st, prevst, get_sub_node(t, lev, st, prevst, els, err))
-                                         } else (st, prevst, (node, err));
-                def st = if (st != prevst) st else null;
-                def prevst = prevst ?? (t.transition?.From ?? st);
-                (Else(lev, st, a, prevst, PathNode.Empty(), PathNode.Empty(), node), err)
-              }
+                              def (st, prevst, (node, err)) = if (st != node.state)
+                                                                                                                            {
+                                          // cache it, process path before, traverse it with new values of state
+                                                                                                                              def prevst = st;
+                                                                                                                              def st = node.state;
+                                                                                                                              (st, prevst, get_sub_node(t, lev, st, prevst, els, err))
+                                                                                                                            } else (st, prevst, (node, err));
+                              def st = if (st != prevst) st else null;
+                              def prevst = prevst ?? (t.transition?.From ?? st);
+                              (Else(lev, st, a, prevst, PathNode.Empty(), PathNode.Empty(), node), err)
+                            }
 
           | JunctionNode(Some(g), a, t, _) :: tail => 
               def a = a %:: [];
@@ -340,45 +333,45 @@ namespace Nemerle.Statechart
             // if no guards or actions there is error
           | JunctionNode(None(), None(), _, Choice as p) :: _ => 
               (null, FsmError.EmptyChoice(p) :: err)
-          
+
           | [JunctionNode(None(), None(), t, _)] => 
               get_sub_node(t, lev, st, prevst, els, err)
-             // if single action node and not decision, taking sub node collecting action
+            // if single action node and not decision, taking sub node collecting action
           | [JunctionNode(None(), Some(), t, Choice(nodes = [_]))] => 
               get_sub_node(t, lev, st, prevst, els, err)
             // if last action node it is else
           | [JunctionNode(None(), Some(a), t, _)] =>
               def (node, err) = get_sub_node(t, lev, st, prevst, els, err);
-                                       // if another pseudostate state 
+                                      // if another pseudostate state 
               def (st, prevst, (node, err)) = if (st != node.state)
-                                       {
-                                         def prevst = st;
-                                         def st = node.state;
-                                         // cache it, process path before, traverse it with new values of state
-                                         (st, prevst, get_sub_node(t, lev, st, prevst, els, err))
-                                       } else (st, prevst, (node, err));
+                                                                                            {
+                                                                                              def prevst = st;
+                                                                                              def st = node.state;
+                                        // cache it, process path before, traverse it with new values of state
+                                                                                              (st, prevst, get_sub_node(t, lev, st, prevst, els, err))
+                                                                                            } else (st, prevst, (node, err));
               def st = if (st != prevst) st else null;
               def prevst = prevst ?? (t.transition?.From ?? st);
               (Else(lev, st, [a], prevst, PathNode.Empty(), PathNode.Empty(), node), err)
-              
+
             // if action have other nodes after it
           | JunctionNode(None(), Some(a), _, Choice as p) :: _ => (null, FsmError.ChoiceActionMaybeLast(p, a) :: err)
           | JunctionNode(None(), _, _, _) :: _ => (null, err)
           | [] => (null, err)
         }
       }
-      
+
     public static Create(node : PseudoStateNode.Choice, analyser : FsmAnalyser) : DecisionNode * FsmAnalyser
     {
       def (n, e) = create_choice_tree_node(node.nodes, 0, node.state, null, null, []);
       (n, analyser.AddErrors(e))    
-   }  
+    }  
 
     public static Create(node : PseudoStateNode.Junction, analyser : FsmAnalyser) : DecisionNode * FsmAnalyser
     {
       def (n, e) = create_junc_tree_node(node.nodes, [], 0, node.state, null, null, []);
-     (n, analyser.AddErrors(e))
-   }
+      (n, analyser.AddErrors(e))
+    }
   }
-  
+
 }

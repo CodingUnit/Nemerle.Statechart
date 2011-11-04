@@ -19,7 +19,7 @@ namespace Nemerle.Statechart
     InitStateMap() : FsmAnalyser
     {
       def CheckAddFinalState(st, an)
-      {   
+      {
         def is_top(st)
         {
           def super = st.super_state; 
@@ -32,14 +32,14 @@ namespace Nemerle.Statechart
           match (t, tran)
           {
           | (TransitionTarget.Final as t, _) when (is_top(st))=> 
-              def term = PseudoStateNode.Terminate(TopState, 0);
+              def term = PseudoStateNode.Terminate(TopState.Num, 0, an.statemap);
               //TopState.pseudo_states ::= term;
-              (TransitionTarget.PseudoState(t.transition, term), an)
+              (TransitionTarget.PseudoState(t.transition, an.statemap, term), an)
           | (Final as t, Initial) with super = st
           | (Final as t, _) with super = st.super_state =>
               def fst = FsmState.Final(super, true);
               def super = super.AddSubState(fst);
-              def an = an.ChangeStatemap(an.statemap.CheckNew(super));
+              def an = an.ChangeStatemap(an.statemap.Add(super));
               //st.ChangeSuper();
               //def fst = fst.ChangeSuperState(super);
               (t.ChangeState(fst), an)
@@ -57,20 +57,18 @@ namespace Nemerle.Statechart
       def an = an.UpdateStateMap(); // second update state map
       an.CreateHistoryStates();
       when (an.Error) throw FsmErrorException();
-      an.RenameDuplicates();
-      an
+      an.RenameDuplicates()
     }
 
     UpdateReference() : FsmAnalyser
     {
-      def (st, map) = States.FoldLeft(([], statemap), (s, (ss, m)) => {def (ns, m) = s.UpdateReference(m); (ns :: ss, m)});
-      def map = map.ChangeStates(st);
+      def map = States.FoldLeft(statemap, (s, m) => s.UpdateReference(m));
       ChangeStatemap(map)
     }
     
     public UpdateStateMap() : FsmAnalyser
     {
-      def map =  statemap.Init(TopState); // initialize the state map
+      def map =  statemap.Init(); // initialize the state map
       def an = ChangeStatemap(map);
       InitStates();
       def an = an.UpdateReference();
@@ -89,25 +87,25 @@ namespace Nemerle.Statechart
       //states = statemap.States.NToList();
     }
     
-    RenameDuplicates() : void
+    RenameDuplicates() : FsmAnalyser
     {
-      def do_rename(st, n)
+      def do_rename(st, n, map)
       {
         def st = st.ChangeCopyNum(n);
-        st.UpdateReference(statemap)
+        (st.UpdateReference(map), n + 1)
       }
       
-      def rename_group(st)
+      def rename_group(st, map)
       {
         def (head :: _) = st;
-        statemap.Rem(head);
-        st.MapIndex(do_rename)
+        def map = map.Rem(head);
+        st.FoldLeft((map, 0), (x, (m, i)) => do_rename(x, i, m))
       }
       
-      def (dups, st) = States.DuplicatesPartition(FsmState.NameComparer);
+      def dups = States.Duplicates(FsmState.NameComparer);
       def dups = dups.Group(FsmState.NameComparer);
-      def dups = dups |>< rename_group(_);
-      
+      def (map, _) = dups.FoldLeft((statemap, 0), (x, (m, _)) => rename_group(x, m));
+      ChangeStatemap(map)
     }
     
     CreateHistoryStates() : void

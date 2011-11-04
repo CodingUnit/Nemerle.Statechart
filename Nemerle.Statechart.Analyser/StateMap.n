@@ -16,13 +16,13 @@ namespace Nemerle.Statechart
   public class StateMap
   {
     [NeedChange]
-    public states : list[FsmState] = [];
-        
+    public states : RList[FsmState];
+    
+    [NeedChange]
+    build_states : list[FsmState];
     //[Accessor]
     //errors : list[FsmError] = [];
 
-    [Accessor] analyser : FsmAnalyser;
-    
     //public HaveErrors : bool
     //{
     //  get
@@ -49,28 +49,33 @@ namespace Nemerle.Statechart
       string.Join(".", st |> NativeName)
     }
     
-    public Get(state : list[string]) : FsmState
+    public Get(state : list[string], an : FsmAnalyser) : FsmState * FsmAnalyser
     {
       def merge_name(n)
       {
         string.Join(".", n)
       }
       
-      def get_loop(st, lst, path)
+      def get_loop(st, lst, path, err)
       {
+        match (st, lst, path)
+        {
         | (st, head :: tail, p) => 
            def path = head :: p;
            match (get_all_state(st, head), tail)
            {
-             | ([], _) => analyser.AddError(FsmError.StateNotFound(State(merge_name(path.Rev()))));null
-             | ([st], []) => st
-             | ([st], _) => get_loop(st.sub_states, tail, path)
-             | (lst, _) => analyser.AddError(FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev()))));null
+             | ([], _)    => (null, FsmError.StateNotFound(State(merge_name(path.Rev()))) :: err)
+             | ([st], []) => (st, err)
+             | ([st], _)  => get_loop(st.sub_states, tail, path, err)
+             | (lst, _)   => (null, FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev()))) :: err)
            }
-        | _ => null   
+        | _ => (null, err)
+      }
       }
       
-      get_loop(states, state, [])
+      def (st, err) = get_loop(states.NToList(), state, [], []);
+      def an = an.AddErrors(err);
+      (st, an)
     }
 
     get_all_state(map : list[FsmState], state : string) : list[FsmState]
@@ -85,49 +90,65 @@ namespace Nemerle.Statechart
       map.FindAll(x => x.NativeName == name)
     }
     
-    public Get(state : string) : FsmState
+    public Get(state : string, an : FsmAnalyser) : FsmState * FsmAnalyser
     {
       def st = state.SplitToList('.');
-      Get(st)
+      Get(st, an)
     }
 
     public Get(num : int) : FsmState
     {
-      states.ElementAt(num)
+      states[num]
     }
     
     public CheckNew(st : FsmState) : StateMap
     {
-      if (states.Contains(st)) this else Add(st)
+      Add(st)
+      //if (states.Contains(st)) this else Add(st)
+    }
+
+    public BuildAdd(st : FsmState) : StateMap
+    {      
+      def states = st :: build_states;
+      ChangeBuildStates(states)
+      //st.FormatName();
+    }
+    
+    public InitAdd(st : FsmState) : FsmState * StateMap
+    {
+      def st = st.ChangeNum(CurrentNum);
+      def map = Add(st);
+      (st, map)
+    }
+    
+    public InitAdd(st : list[FsmState]) : list[FsmState] * StateMap
+    {
+      def st = st.MapIndex((x, i) => x.ChangeNum(CurrentNum + i));
+      def nst = states.Append(RList.FromList(st));
+      def map = ChangeStates(nst);
+      (st, map)
     }
     
     public Add(st : FsmState) : StateMap
     {
-      def states = st :: states;
-      ChangeStates(states)
+      def states = states.Filter(x => x.Num != st.Num);
+      def states = states + [st];
+      ChangeStates(RList.FromList(states))
       //st.FormatName();
     }
     
     public Rem(st : FsmState) : StateMap
     {
-      def st = get_all_state(states, st.NativeName);
-      def st = states.Exclude(x => st.Contains(x));
-      ChangeStates(st)
+      def st = get_all_state(states.NToList(), st.NativeName);
+      def st = states.Filter(x => st.Exists(y => y.Num == x.Num));
+      ChangeStates(RList.FromList(st))
     }
     
-    public IndexOf(st : FsmState) : int
-    {
-      states.FindIndex(_ == st : object)
-    }
+    //public IndexOf(st : FsmState) : int
+    //{
+    //  states.FindIndex(_ == st : object)
+    //}
     
-    public Item[index : string] : FsmState
-    {
-      get
-      {
-        Get(index)
-      }
-    }
-
     public Item[index : int] : FsmState
     {
       get
@@ -136,21 +157,30 @@ namespace Nemerle.Statechart
       }
     }
     
-    public this(analyser : FsmAnalyser)
-    {
-      this.analyser = analyser;
-    }    
-    
-    public Init(topstate : FsmState) : StateMap
-    {
-      ChangeStates(topstate :: topstate.AllSubStates)
-    }
-
-    public Names : list[string]
+    public CurrentNum : int
     {
       get
       {
-        states |> Name
+        states.Length
+      }
+    }
+    
+    public this(analyser : FsmAnalyser)
+    {
+      this.analyser = analyser;
+    }
+    
+    public Init() : StateMap
+    {
+      def states = build_states.Rev();
+      ChangeStates(RList.FromList(states))
+    }
+
+    public Names : IEnumerable[string]
+    {
+      get
+      {
+        states.Map(x => x.Name)
       }
     }
 

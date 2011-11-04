@@ -25,6 +25,15 @@ namespace Nemerle.Statechart
           {
             this(StateNode.State(name), null, true)
           }
+          
+          static Init(st : FsmState, state : StateNode.State, an : FsmAnalyser, map : StateMap) : FsmState * StateMap
+          {
+            def (subst, map) = Init(state, map);
+            def st = FsmState.State(state, st, subst, false);
+            def (st, map) = map.InitAdd(st);
+            (st, map)
+          }
+          
         }
         
     | Final
@@ -44,8 +53,16 @@ namespace Nemerle.Statechart
     | ConcurrentSubRegion
         {
           index : int;
-          contained_in : ConcurrentRegion;
-                
+          region_num : int;
+          
+          contained_in : ConcurrentRegion
+          {
+            get
+            {
+              statemap.Get(region_num) :> ConcurrentRegion
+            }
+          }
+          
           this(region : ConcurrentRegion, st : StateNode.State, idx : int)
           {
             base(st, region, false);
@@ -83,8 +100,22 @@ namespace Nemerle.Statechart
     
     | ConcurrentRegion
         {
-          sub_regions : list[ConcurrentSubRegion] = [];
+ //         sub_regions_num : list[int] = [];
+          
+          sub_regions : list[ConcurrentSubRegion];
+          //{
+          //  get
+          //  {
+          //    sub_regions_num |> statemap[_] :> ConcurrentSubRegion
+          //  }
+          //}
+          this(st : FsmState, state : StateNode.State, node : StateNode.Region)
+          {
+            base(state, st, false);
+            sub_regions = node.regions.MapIndex((x, i) => ConcurrentSubRegion(this, x, i));
+          }
     
+          
           /// <summary>
 	        /// Indicates that maybe external transitions from some points of orthogonal state out of region not only completion
 	        /// </summary>
@@ -125,12 +156,6 @@ namespace Nemerle.Statechart
             }
           }
           
-          this(st : FsmState, state : StateNode.State, node : StateNode.Region)
-          {
-            base(state, st, false);
-            sub_regions = node.regions.MapIndex((x, i) => ConcurrentSubRegion(this, x, i));
-          }
-
           static get_pattern(reg : list[ConcurrentSubRegion]) : string
           {
             def idx = (reg |> index).Sort(_ - _);
@@ -166,7 +191,7 @@ namespace Nemerle.Statechart
               {
                 match (t)
                 {
-                  | StateTransition where (To = TransitionTarget.PseudoState(Join() as j)) => j :: lst
+                  | StateTransition where (To = TransitionTarget.PseudoState(Join as j)) => j :: lst
                   | _ => lst
                 }
               }
@@ -219,6 +244,7 @@ namespace Nemerle.Statechart
             //  }
             //}
 
+            
             def st = instance_of.ChangeCopyNum(instance_of.ncopy + 1); // clone the inline sub machine instance
             def do_act = st.do_activity; // take data from it except transitions to outer world
             def inter_tran = st.internal_tran;
@@ -229,9 +255,10 @@ namespace Nemerle.Statechart
             def sub_st = st.sub_states;
             def tran = st.all_transitions_nested;
             def tran = tran %+ st.AllHistory.FilterValues(_.Default);
-            def ren_st = (instance_of, this) :: (st.AllSubStates |> (cloneFor, _)); // take old and new copy
+            def old = instance_of.AllSubStates;
+            def ren_st = (instance_of, this) :: st.AllSubStates.Zip(old); // take old and new copy
             //def pst = st.AllPseudoStates |> (CloneFor, _);
-            sub_states.Iter(x => x.super_state = this); // change super state to this
+            sub_states.Map(x => x.ChangeSuperState_num(Num)); // change super state to this
             //pst.Iter((ost, nst) => tran.Iter(x => x.TargetTraverse(update_pseudo(_, ost, nst)))); // update pseudo states in this sub machine
             ren_st.Iter((ost, nst) => tran.Iter(x => x.UpdateTargets(ost, nst))); // change targets according to rename in new location
             st.AllSubStates.Iter(x => x.history.Iter(x => x.reference = true)); // history must point to real state history
@@ -250,7 +277,7 @@ namespace Nemerle.Statechart
           proc_events : array[string] = array[];
           scanned : bool;
           
-          this(st : SubMachine, ncopy : int = 0) 
+         this(st : SubMachine, ncopy : int = 0) 
           {
             base(st, false, ncopy);
             type = st.type;
@@ -267,7 +294,7 @@ namespace Nemerle.Statechart
             super_state = super;//State(st.SuperState, true);
             transitions = Transition.Create(this, st.transitions);
           }
-      
+          
           SetScan(ref_sub : array[string], evts : array[string]) : SubMachine
           {
             SubMachine ^& (ref_sub_states = ref_sub, proc_events = evts, scanned = true)
@@ -287,14 +314,15 @@ namespace Nemerle.Statechart
           }
           
           
-          override UpdateReference(map : StateMap) : FsmState * StateMap
+          override UpdateReference(map : StateMap) : StateMap
           {
-            def (st, map) = base.UpdateReference(map);
+            def map = base.UpdateReference(map);
             def fsm = analyser.States.FilterType();
             match (fsm.Find(x => x.type == type))
             {
-              | Some(InlinedSubMachine as f) => (InlinedSubMachineInstance ^& (instance_of = f), map)
-              | _ => (st, map)
+              | Some(InlinedSubMachine as f) => def st = InlinedSubMachineInstance ^& (instance_of = f);
+                                                map.Add(st)
+              | _ => map
             }
           }
 
@@ -304,7 +332,7 @@ namespace Nemerle.Statechart
         {
           type : string;
           ncopy : int;
-      
+
           this(st : InlinedSubMachine, copy : int = 0) 
           {
             base(st, false, copy);
@@ -319,7 +347,6 @@ namespace Nemerle.Statechart
             def (StateNode.State(type = StateType.InlinedSubMachine(type = t))) = st;
             this.type = t;
           }
-        
         }  
   }
 

@@ -37,24 +37,24 @@ namespace Nemerle.Statechart
           check_auto_initial(TopState) // initial is first substate
         else TopState.DefineInitial(TopState); // else initial transition is top state
         else TopState;
-        // !!! super state is abandone reference in sub states
-        def map = an.statemap.ChangeStates(states);
-        ChangeTopStateStatemap(st, map)
+        def map = an.statemap.Add(st);
+        def map = map.ChangeStates(states.ToArray());
+        ChangeStatemap(map)
     }
 
     is_crossed_orthogonal(tr : StateTransition, st : FsmState) : bool
     {
-      | (StateTransition where (To = TransitionTarget.State(FsmState where (PartOfRegion = Some(r), PartOfSubRegion = Some(sr)))),
+      | (StateTransition where (To = TransitionTarget.State(state = FsmState where (PartOfRegion = Some(r), PartOfSubRegion = Some(sr)))),
                          FsmState where (PartOfRegion = Some(r2), PartOfSubRegion = Some(sr2))) when r == r2 =>
           sr2 != sr
       | _ => false
     }
     
-    CreateSuperStateTransitions() : void
+    CreateSuperStateTransitions() : FsmAnalyser
     {
       def create_trans(st)
       {
-        | FsmState.State(super_state = null) => ()
+        | FsmState.State(super_state = null) => st
         | FsmState where (super_state = super, PartOfSubRegion = r) =>
             single_func
             {
@@ -64,7 +64,8 @@ namespace Nemerle.Statechart
             }
       }
 
-      States.Iter(create_trans)
+      def states = States.Map(create_trans);
+      ChangeStatemap(statemap.ChangeStates(states.ToArray()))
     }
     
     CheckCrossTransitions() : FsmAnalyser
@@ -102,7 +103,7 @@ namespace Nemerle.Statechart
       }
 
       def states = States.Map(check_cross); // check from the top state
-      ChangeStatemap(statemap.ChangeStates(states))
+      ChangeStatemap(statemap.ChangeStates(states.ToArray()))
     }
 
     check_duplicates(tr : list[StateTransition]) : FsmAnalyser
@@ -166,7 +167,7 @@ namespace Nemerle.Statechart
       an.States.FoldLeft(an, (x, a) => a.check_duplicates(x.initial))
     }
     
-    get_named(an : FsmAnalyser, tar : TransitionTarget.Named) : FsmAnalyser * TransitionTarget 
+    get_named(tar : TransitionTarget.Named, an : FsmAnalyser) : TransitionTarget * FsmAnalyser
     {
       match (tar)
       {
@@ -175,8 +176,8 @@ namespace Nemerle.Statechart
           def states = pseudo_states.Filter(x => x.NativeName.HasValue);
           match (states.Find(x => x.NativeName.Value == n))
           {
-            | Some(t) => (this, TransitionTarget.PseudoState(tr, t))
-            | _ => (an.ChangeErrors(GetErrors(FsmError.UnknownNode(tr))), tar)
+            | Some(t) => (TransitionTarget.PseudoState(tr, an.statemap, t), an)
+            | _ => (tar, an.AddErrors(FsmError.UnknownNode(tr)))
           }
         }   
     }
@@ -187,7 +188,7 @@ namespace Nemerle.Statechart
       {
         | PseudoState(node = Junction as j, transition = tr) as node
         | PseudoState(node = Choice as j, transition = tr) as node => def (n, an) = CheckJunctionChoice(j, an);
-          if (j != n : object) (TransitionTarget.PseudoState(tr, n), an) else (node, an)
+            if (j != n : object) (TransitionTarget.PseudoState(tr, an.statemap, n), an) else (node, an)
         | _  => (tr, an)
       }
       
@@ -211,10 +212,10 @@ namespace Nemerle.Statechart
         | PseudoState(node = Terminate(state = null) as node) as t =>
             match (pseudo_states.Filter(_ is PseudoStateNode.Terminate))
             {
-              | [] => (TransitionTarget.PseudoState(tran, node.ChangeState(TopState)), an)
-              | [term] => (TransitionTarget.PseudoState(tran, term), an)
+              | [] => (TransitionTarget.PseudoState(tran, an.statemap, node), an)
+              | [term] => (TransitionTarget.PseudoState(tran, an.statemap, term), an)
               | _ => def an = an.AddErrors(FsmError.UnknownTerminateTransition(tran));
-                (t, an)
+                  (t, an)
             }
             
         | PseudoState(node = Join(state = null, name = n)) as t =>
@@ -225,22 +226,23 @@ namespace Nemerle.Statechart
               | joins =>
                   match (joins.Find(x : PseudoStateNode.Join => x.name == n))
                   {
-                    | Some(j) => (TransitionTarget.PseudoState(tran, j), an)
+                    | Some(j) => (TransitionTarget.PseudoState(tran, an.statemap, j), an)
                     | _ => def an = an.AddErrors(FsmError.UnknownNode(tran));
                            (t, an)
                   }
             }
             
-        | Named as t => def (an, t) = get_named(this, t);
+        | Named as t => def (t, an) = get_named(t, this);
                         an.resolve_targets(st, t, an)
         | Qualified(parent = st, target = t) => 
-            match (statemap.Get(st), t)
+            def (st, an) = an.statemap.Get(st, an);
+            match (st, t)
             {
-              | (FsmState.SubMachine as m, TransitionTarget.State(FsmState where (Name = n))) =>
+              | (FsmState.SubMachine as m, TransitionTarget.State(state = FsmState where (Name = n))) =>
                   m.Scan(); // scan external sub machine for states
                   def an = if (m.ref_sub_states.Contains(n)) an else an.AddErrors(FsmError.SubMachineStateNotFound(m, n));
-                  (TransitionTarget.SubMachine(tran, m, n), an)
-              | (null, _) => def an = an.AddErrors(FsmError.UnknownState(t.transition.From, FsmState.State(st), t.transition));
+                  (TransitionTarget.SubMachine(tran, an.statemap, m.Num, n), an)
+              | (null, _) => def an = an.AddErrors(FsmError.UnknownState(t.transition.From, FsmState.State(st.Name), t.transition));
                             (t, an)
               | (st, t) => resolve_targets(st, t, an)
             }
@@ -248,7 +250,7 @@ namespace Nemerle.Statechart
       }
     }
     
-    create_join_transitions() : void
+    create_join_transitions() : FsmAnalyser
     {
         
       def check_join(j, tr)
@@ -268,15 +270,15 @@ namespace Nemerle.Statechart
                   //j.joined_tran = tr;
                   //j.region = reg;
                   
-                  def j = j.ChangeRegionData(reg, tr, tran);
+                  def j = j.ChangeRegionJoinedTranTransition(reg, tr, tran);
                   //j.transition = tran;
                   /// !!! mutable
-                  tr.Iter(x => x.To = TransitionTarget.PseudoState(x, j))
-                } else AddError(FsmError.JoinTransitionMustLeaveRegion(j, tr))
+                  tr.Iter(x => x.To = TransitionTarget.PseudoState(x, statemap, j));
+                  []
+                } else [FsmError.JoinTransitionMustLeaveRegion(j, tr)]
               } else
               {
-                AddError(FsmError.JoinTransitionMustHaveSameTrigger(j, tr));
-                throw FsmErrorException()
+                [FsmError.JoinTransitionMustHaveSameTrigger(j, tr)]
               }
         }
       }
@@ -292,12 +294,11 @@ namespace Nemerle.Statechart
       
       def join_tran = States.Map(x => x.all_transitions_with_init.FoldLeft([], get_join)).Flatten();
       def jtrans = join_tran.Group((x, y) => x[0].name.CompareTo(y[0].name)).Map(x => (x.Head[0], x.Split()[1]));
-      jtrans.Iter(check_join);
-      
-        
+      def err = jtrans |>< check_join(_);
+      AddErrors(err)
     }
 
-    create_fork_transitions() : void
+    create_fork_transitions() : FsmAnalyser
     {
       def check_fork(tr, f)
       {
@@ -311,15 +312,18 @@ namespace Nemerle.Statechart
               {
                 def sreg = reg |> Last();
                 def dups = sreg.Duplicates((x, y) => x.index - y.index);
-                when (dups.Length != 0) AddError(FsmError.ForkMustGoToSeparateRegion(f));
+                if (dups.Length != 0) [FsmError.ForkMustGoToSeparateRegion(f)] else
+                {
                 def reg = sreg.Head.contained_in;
                 def sub_trans = t |> StateTransition.Transition(reg, null, _, f) : StateTransition;
                 sub_trans.Iter(x => x.Local = true);
                 /// !!! mutable
-                tr.To = TransitionTarget.PseudoState(tr, f.ChangeForkTran(sub_trans));
+                tr.To = TransitionTarget.PseudoState(tr, statemap, f.ChangeForkTran(sub_trans));
+                []
+               }
               } else
               {
-                AddError(FsmError.ForkMustGoToRegion(f));
+                [FsmError.ForkMustGoToRegion(f)]
               }
         }
       }
@@ -334,7 +338,8 @@ namespace Nemerle.Statechart
       }
       
       def tran = States |>< all_transitions_with_init.FoldLeft([], get_fork);
-      tran.Iter(check_fork)
+      def err = tran |>< check_fork(_);
+      AddErrors(err)
     }
     /// <summary>
 	  /// Creating Transitions
@@ -347,9 +352,9 @@ namespace Nemerle.Statechart
       }
             
       def an = States.FoldLeft(this, check_tran);
-      an.create_join_transitions(); // creating join transitions
-      an.create_fork_transitions(); // creating fork transitions
-      an.CreateSuperStateTransitions(); // create parent transitions
+      def an = an.create_join_transitions(); // creating join transitions
+      def an = an.create_fork_transitions(); // creating fork transitions
+      def an = an.CreateSuperStateTransitions(); // create parent transitions
       def an = an.CheckDuplicates(); // check duplicates
       an.CheckCrossTransitions(); // look for cross transitions
     }
@@ -360,7 +365,7 @@ namespace Nemerle.Statechart
       {
         match (tran.To)
         {
-          | TransitionTarget.State(to) when (!statemap.Contains(st.Name)) => [FsmError.UnknownState(st, to, tran)]
+          | TransitionTarget.State(state = to) when (!statemap.Contains(st.Name)) => [FsmError.UnknownState(st, to, tran)]
           | _  => []
         }
 
@@ -386,9 +391,9 @@ namespace Nemerle.Statechart
       def err = States |>< init(_);
       def err2 = States.Map(x => x.all_transitions |>< check_cross_orthogonal(_)).Flatten();
       def an = States.FoldLeft(this, check_tran);
-      def trans = States |>< all_transitions_with_init;
-      def states = States.Map(x => trans.FoldLeft(x, (y, s) => s.UpdateFromTarget(y.To))); // updating states to new transition analyse info
-      an.ChangeStatemapErrors(statemap.ChangeStates(states), GetErrors(err + err2))
+      //def trans = States |>< all_transitions_with_init;
+      //def states = States.Map(x => trans.FoldLeft(x, (y, s) => s.UpdateFromTarget(y.To))); // updating states to new transition analyse info
+      an.AddErrors(err + err2)
     }
 
     RenameTransition(tran : list[StateTransition], an : FsmAnalyser) : list[string * StateTransition] * FsmAnalyser
