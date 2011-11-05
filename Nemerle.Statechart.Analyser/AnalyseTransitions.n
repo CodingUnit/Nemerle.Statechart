@@ -176,7 +176,7 @@ namespace Nemerle.Statechart
           def states = pseudo_states.Filter(x => x.NativeName.HasValue);
           match (states.Find(x => x.NativeName.Value == n))
           {
-            | Some(t) => (TransitionTarget.PseudoState(tr, an.statemap, t), an)
+            | Some(t) => (TransitionTarget.PseudoState(tr, t), an)
             | _ => (tar, an.AddErrors(FsmError.UnknownNode(tr)))
           }
         }   
@@ -188,7 +188,7 @@ namespace Nemerle.Statechart
       {
         | PseudoState(node = Junction as j, transition = tr) as node
         | PseudoState(node = Choice as j, transition = tr) as node => def (n, an) = CheckJunctionChoice(j, an);
-            if (j != n : object) (TransitionTarget.PseudoState(tr, an.statemap, n), an) else (node, an)
+            if (j != n : object) (TransitionTarget.PseudoState(tr, n), an) else (node, an)
         | _  => (tr, an)
       }
       
@@ -212,8 +212,8 @@ namespace Nemerle.Statechart
         | PseudoState(node = Terminate(state = null) as node) as t =>
             match (pseudo_states.Filter(_ is PseudoStateNode.Terminate))
             {
-              | [] => (TransitionTarget.PseudoState(tran, an.statemap, node), an)
-              | [term] => (TransitionTarget.PseudoState(tran, an.statemap, term), an)
+              | [] => (TransitionTarget.PseudoState(tran, node), an)
+              | [term] => (TransitionTarget.PseudoState(tran, term), an)
               | _ => def an = an.AddErrors(FsmError.UnknownTerminateTransition(tran));
                   (t, an)
             }
@@ -226,7 +226,7 @@ namespace Nemerle.Statechart
               | joins =>
                   match (joins.Find(x : PseudoStateNode.Join => x.name == n))
                   {
-                    | Some(j) => (TransitionTarget.PseudoState(tran, an.statemap, j), an)
+                    | Some(j) => (TransitionTarget.PseudoState(tran, j), an)
                     | _ => def an = an.AddErrors(FsmError.UnknownNode(tran));
                            (t, an)
                   }
@@ -241,7 +241,7 @@ namespace Nemerle.Statechart
               | (FsmState.SubMachine as m, TransitionTarget.State(state = FsmState where (Name = n))) =>
                   m.Scan(); // scan external sub machine for states
                   def an = if (m.ref_sub_states.Contains(n)) an else an.AddErrors(FsmError.SubMachineStateNotFound(m, n));
-                  (TransitionTarget.SubMachine(tran, an.statemap, m.Num, n), an)
+                  (TransitionTarget.SubMachine(tran, m, n), an)
               | (null, _) => def an = an.AddErrors(FsmError.UnknownState(t.transition.From, FsmState.State(st.Name), t.transition));
                             (t, an)
               | (st, t) => resolve_targets(st, t, an)
@@ -273,7 +273,7 @@ namespace Nemerle.Statechart
                   def j = j.ChangeRegionJoinedTranTransition(reg, tr, tran);
                   //j.transition = tran;
                   /// !!! mutable
-                  tr.Iter(x => x.To = TransitionTarget.PseudoState(x, statemap, j));
+                  tr.Iter(x => x.To = TransitionTarget.PseudoState(x, j));
                   []
                 } else [FsmError.JoinTransitionMustLeaveRegion(j, tr)]
               } else
@@ -318,7 +318,7 @@ namespace Nemerle.Statechart
                 def sub_trans = t |> StateTransition.Transition(reg, null, _, f) : StateTransition;
                 sub_trans.Iter(x => x.Local = true);
                 /// !!! mutable
-                tr.To = TransitionTarget.PseudoState(tr, statemap, f.ChangeForkTran(sub_trans));
+                tr.To = TransitionTarget.PseudoState(tr, f.ChangeForkTran(sub_trans));
                 []
                }
               } else
