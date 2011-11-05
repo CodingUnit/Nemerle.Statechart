@@ -18,21 +18,21 @@ namespace Nemerle.Statechart
   {
     public override ToString() : string {Name}
 
-    public virtual UpdateReference(map : StateMap) : StateMap
+    public virtual UpdateReference(map : StateMap, an : FsmAnalyser) : FsmState * StateMap
     {
-      def map = map.CheckNew(this);
-      //def super = if (super_state != null && super_state.reference)
-      //  {
-      //    def name = if (super_state.AstName == null) TopStateName else super_state.name;
-      //    map.Get(name)
-      //  } else super_state;
+      def super = if (super_state != null && super_state.reference)
+                                    {
+                                      def name = if (super_state.AstName == null) TopStateName else super_state.name;
+                                      map[super_state.Num]
+                                    } else super_state;
+      //super_state = ;
       initial.Iter(_.UpdateReference(map));
       transitions.Iter(_.UpdateReference(map));
       history.Iter(_.UpdateReference(map));
-      // !!! mutable
+      sub_states.Map(x => map);
       def pseudo = pseudo_states.Map(_.UpdateReference(map));
       def st = ChangePseudoStates(pseudo);
-      map.Add(st)
+      def map = map.Add(st);
     }
 
     //public FormatName() : void
@@ -40,23 +40,24 @@ namespace Nemerle.Statechart
     //  def name = name.SplitToList('.');
     //  this.name = name.Last();
     //}
-    
+
     public DefineInitial(st : FsmState) : FsmState
     {
       def init = match (this)
-      {
-        | ConcurrentSubRegion(contained_in = r) => Initial(r, st)//initial ::= Initial(r, st)
-        | _ => Initial(this, st)//initial ::= Initial(this, st)
-      }
+                                  {
+                                    | ConcurrentSubRegion(contained_in = r) => Initial(r, st)//initial ::= Initial(r, st)
+                                    | _ => Initial(this, st)//initial ::= Initial(this, st)
+                                  }
       ChangeInitial(init :: initial)
     }
 
     public AddSubState(st : FsmState) : FsmState
     {
       //st.analyser = Analyser;
+      def a = if (1) 2; else 3;
       if (sub_states.Exists(x => x.Name == st.Name)) this else ChangeSubStates(sub_states + [st])//sub_states = sub_states + [st];
     }
-    
+
     //public DefineTransition(tr : StateTransition) : void
     //{
     //  | Transition as tr => transitions ::= Transition(this, tr)
@@ -76,14 +77,14 @@ namespace Nemerle.Statechart
     //             | SubMachine          as st => SubMachine(st, ncopy)
     //             | Final               as st => Final(st, false, ncopy)
     //           }
-               
+
     //  //clones ::= st;
     //  st.ChangeCopyNumCloneFor(ncopy);
     //  //st.FindCopyName();
     //}
-    
+
     //public clones : list[FsmState] = [];
-    
+
     public DefineTransitions(tr : list[StateTransition]) : FsmState
     {
       def (tran, other)   = tr.PartitionType();
@@ -125,63 +126,63 @@ namespace Nemerle.Statechart
     //  DeleteTransitions(tr);
     //  AllSubStates.Iter(x => x.DeleteTransitionsNested(tr));
     //}
-    
+
     public TraverseTransitions() : FsmState
     {
       def paths = TransitionPaths(this);
       paths.TraverseTransitions(true);
       ChangePaths(paths)
     }
-    
+
     public this()
     {
     }
 
     public this(super : FsmState, name : string, reference : bool = false)
     {
-     this();
-     this.analyser = analyser;
-     this.name = name;
-     this.super_state = super;
-     this.reference = reference
-   }
-   
-   public this(st : StateNode.State, super : FsmState, analyser : FsmAnalyser, reference : bool = false)
-   {
-     this(st, super, reference);
-     this.analyser = analyser;
+      this();
+      this.analyser = analyser;
+      this.name = name;
+      this.super_state = super;
+      this.reference = reference
+    }
+
+    public this(st : StateNode.State, super : FsmState, analyser : FsmAnalyser, reference : bool = false)
+    {
+      this(st, super, reference);
+      this.analyser = analyser;
     }
 
     public this(st : StateNode.State, super : FsmState, reference : bool = false)
     {
-     this();
+      this();
       state = st;
       name = st.name;
       this.reference = reference || state.reference;
-      
+
       def st_from_node(n)
       {
         | StateNode.State(type = SubMachine) => SubMachine(n, this)
         | State(type = InlinedSubMachine)    => InlinedSubMachine(n, this)
         | _                                  => FsmState.State(n, this, false)
       }
-      
+
       when (!reference)
-      {
-        do_activity = st.do_activity |> StateAction.Do(_.action.ActionList, this, _.flags);
-        internal_tran = Internal.Create(this, st.internal_tran);
-        entry = st.entry |> StateAction.Entry(_.action.ActionList, this, _.attrib);
-        exit = st.exit |> StateAction.Exit(_.action.ActionList, this, _.attrib);
-        history = StateHistory.Create(this, st.history);
-        transitions = Transition.Create(this, st.transitions);
-        initial = st.initial |> Initial(this, _);
-        def (regs, subst) = st.sub_states.Partition(x => x.regions.HasValue);
-        def regs = regs |> ConcurrentRegion(this, _, _.regions.Value); // TODO: сделать с помощью st_from_node
-        super_state = super;
-        def subst = (subst |> st_from_node(_)) + regs;
-        sub_states = subst.Sort((x, y) => x.source_pos - y.source_pos);
-        pseudo_states = st.pseudo_states |> PseudoStateNode.Create(_.node, this, null)
-      }
+            {
+              do_activity = st.do_activity |> StateAction.Do(_.action.ActionList, this, _.flags);
+              internal_tran = Internal.Create(this, st.internal_tran);
+              entry = st.entry |> StateAction.Entry(_.action.ActionList, this, _.attrib);
+              exit = st.exit |> StateAction.Exit(_.action.ActionList, this, _.attrib);
+              history = StateHistory.Create(this, st.history);
+              transitions = Transition.Create(this, st.transitions);
+              initial = st.initial |> Initial(this, _);
+              def (regs, subst) = st.sub_states.Partition(x => x.regions.HasValue);
+              def regs = regs |> ConcurrentRegion(this, _, _.regions.Value); // TODO: сделать с помощью st_from_node
+              super_state = super;
+              def subst = (subst |> st_from_node(_)) + regs;
+              sub_states = subst.Sort((x, y) => x.source_pos - y.source_pos);
+              pseudo_states = st.pseudo_states |> PseudoStateNode.Create(_.node, this, null)
+            }
     }    
     //public this(st : FsmState, reference : bool = false, ncopy : int = 0)
     //{
@@ -202,9 +203,9 @@ namespace Nemerle.Statechart
     //  sub_states.Iter(x => x.super_state = this);
     //  pseudo_states = if (ncopy != 0) st.pseudo_states |> SetCopy(ncopy) else st.pseudo_states
     //}
-    
+
     public do_activity : option[StateAction.Do];
-    
+
     [NeedChange] public sub_states : list[FsmState];
     //{
     //  get
@@ -212,12 +213,12 @@ namespace Nemerle.Statechart
     //    sub_states_num |> statemap[_]
     //  }
     //}
-    
+
     //public sub_states_num : list[int] = [];
     [NeedChange] public history : TwoOption[StateHistory] = TwoOption.None();
     [NeedChange] public pseudo_states : list[PseudoStateNode] = [];
     [NeedChange] public statemap : StateMap;
-    
+
     public history_paths : list[string * HistoryPath] // paths from outer history
     {
       get
@@ -232,7 +233,7 @@ namespace Nemerle.Statechart
         paths + spaths
       }
     }
-    
+
     public PathFromOut : StateTransition.Initial
     {
       get
@@ -242,9 +243,9 @@ namespace Nemerle.Statechart
         path
       }
     }
-    
+
     public state : StateNode.State;
-    
+
     [NeedChange]
     public initial : list[StateTransition] = [];
     public entry : list[StateAction.Entry] = [];
@@ -252,10 +253,10 @@ namespace Nemerle.Statechart
     [NeedChange(transitions, initial)]
     public internal_tran : list[StateTransition] = [];
     public transitions : list[StateTransition] = [];
-    
+
     //[NeedChange]
     //public super_state_num : int;
-    
+
     [NeedChange] public super_state  : FsmState;
     //{
     //  get
@@ -263,14 +264,14 @@ namespace Nemerle.Statechart
     //    statemap[super_state_num]
     //  }
     //}
-    
+
     [NeedChange] public copy_num : int;
     [NeedChange] public paths : TransitionPaths;
     public lived : bool;
-    
+
     [NeedChange]
     public Num : int;
-    
+
     ///// <summary>
     ///// Indicates what fsm lived in this state and it not only composite for others
     ///// </summary>
@@ -281,7 +282,7 @@ namespace Nemerle.Statechart
     //    lived || clones.Exists(_.Lived)
     //  }
     //}
-    
+
     public UsedInGenerate : bool
     {
       get
@@ -289,7 +290,7 @@ namespace Nemerle.Statechart
         lived || AllLivedSubStates is _ :: _
       }
     }
-    
+
     /// <summary>
     /// Hierarchy position
     /// </summary>
@@ -300,7 +301,7 @@ namespace Nemerle.Statechart
         SuperStates.Length
       }
     }
-    
+
     public source_pos : int
     {
       get
@@ -308,7 +309,7 @@ namespace Nemerle.Statechart
         state.pos
       }
     }
-    
+
     public IsTopState : bool
     {
       get
@@ -316,7 +317,7 @@ namespace Nemerle.Statechart
         Name == TopStateName
       }
     }
-    
+
     public static TopStateName  =  "[Top]";
 
     public reference : bool;
@@ -334,7 +335,7 @@ namespace Nemerle.Statechart
         if (copy_num == 0) "" else $"$copy_num"
       }
     }
-    
+
     public Name : string
     {
       get
@@ -363,7 +364,7 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
+
     public NativeName : string
     {
       get
@@ -371,7 +372,7 @@ namespace Nemerle.Statechart
         $"$OriginalName$CopyName"
       }
     }
-    
+
     public join_completion_transitions : list[StateTransition]
     {
       get
@@ -379,7 +380,7 @@ namespace Nemerle.Statechart
         completion_transitions.Filter(x => x.To is TransitionTarget.PseudoState(Join()))
       }
     }
-    
+
     public AstName : string
     {
       get
@@ -389,8 +390,8 @@ namespace Nemerle.Statechart
     }
 
     /// <summary>
-	  /// Events for which reacts state
-	  /// </summary>
+    /// Events for which reacts state
+    /// </summary>
     public events : list[StateEvent]
     {
       get
@@ -401,8 +402,8 @@ namespace Nemerle.Statechart
     }
 
     /// <summary>
-	  /// Events for which reacts state or nested states
-	  /// </summary>    
+    /// Events for which reacts state or nested states
+    /// </summary>    
     public events_nested : list[StateEvent]
     {
       get
@@ -411,7 +412,7 @@ namespace Nemerle.Statechart
         evts.RemoveDuplicatesSort(_.CompareTo(_));
       }
     }
-        
+
     public SuperStatesInclude : list[FsmState]
     {
       get
@@ -424,10 +425,10 @@ namespace Nemerle.Statechart
     {
       get
       {
-        SuperStatesInclude.Exists(x => x is InlinedSubMachineInstance)
+        SuperStatesInclude.Exists(_ is InlinedSubMachineInstance)
       }
     }
-    
+
     public AllHistory : list[StateHistory]
     {
       get
@@ -435,7 +436,7 @@ namespace Nemerle.Statechart
         AllSubStates |>< history.Value
       }
     }
-    
+
     public PartOfSubRegion : option[ConcurrentSubRegion]
     {
       get
@@ -463,7 +464,7 @@ namespace Nemerle.Statechart
         }
       }
     }
-   
+
     public PartOfRegion : option[ConcurrentRegion]
     {
       get
@@ -471,7 +472,7 @@ namespace Nemerle.Statechart
         SuperStatesInclude.FindType()[0]
       }
     }
-    
+
     public PartOfRegions : list[ConcurrentRegion]
     {
       get
@@ -485,7 +486,7 @@ namespace Nemerle.Statechart
       def super = SuperStatesInclude.FirstElems(x => x.Name == st.Name);
       st :: super.Rev()
     }
-    
+
     public PathName : list[FsmState]
     {
       get
@@ -493,21 +494,21 @@ namespace Nemerle.Statechart
         (this :: SuperStates.SplitLast()[1]).Rev()
       }
     }
-    
+
     public static NameComparer : FsmState * FsmState -> int = (x, y) => string.Compare(x.Name, y.Name);
-    
+
     public PartOfRegionsOf(st : FsmState) : list[ConcurrentRegion]
     {
       SuperStatesInclude.FirstElems(_ == st).FilterType();
     }
-    
+
     public RenameState() : void
     {
       entry.Iter(x => x.state = this);
       exit.Iter(x => x.state = this);
       //history.Map(x => x.state = this)
     }
-    
+
     //public UpdateFromTarget(target : TransitionTarget) : FsmState
     //{
     //  def update_pseudo(op, p)
@@ -519,7 +520,7 @@ namespace Nemerle.Statechart
     //    | (Terminate(state = on), Terminate(state = n)) when (on.Name == n.Name) => p
     //    | _                                                                      => op
     //  }
-      
+
     //  match (target)
     //  {
     //    | History(h)       => ChangeHistory(history.Map(x => if (x == h) h else x))

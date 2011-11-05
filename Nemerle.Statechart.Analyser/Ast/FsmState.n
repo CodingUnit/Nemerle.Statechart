@@ -45,15 +45,8 @@ namespace Nemerle.Statechart
     | ConcurrentSubRegion
         {
           index : int;
-          region_num : int;
           
-          contained_in : ConcurrentRegion
-          {
-            get
-            {
-              statemap.Get(region_num) :> ConcurrentRegion
-            }
-          }
+          contained_in : ConcurrentRegion;
           
           this(region : ConcurrentRegion, st : StateNode.State, idx : int)
           {
@@ -225,7 +218,7 @@ namespace Nemerle.Statechart
       {
         instance_of : InlinedSubMachine;
 
-          InitInline(an : FsmAnalyser) : InlinedSubMachineInstance
+          InitInline(an : FsmAnalyser) : InlinedSubMachineInstance * FsmAnalyser
           {
             //def update_pseudo(tar, _, new_st)
             //{
@@ -250,7 +243,7 @@ namespace Nemerle.Statechart
             def old = instance_of.AllSubStates;
             def ren_st = (instance_of, this) :: st.AllSubStates.Zip(old); // take old and new copy
             //def pst = st.AllPseudoStates |> (CloneFor, _);
-            sub_states.Map(x => x.ChangeSuperState(this)); // change super state to this
+            def sub_st = sub_st.Map(x => x.ChangeSuperState(this)); // change super state to this
             //pst.Iter((ost, nst) => tran.Iter(x => x.TargetTraverse(update_pseudo(_, ost, nst)))); // update pseudo states in this sub machine
             ren_st.Iter((ost, nst) => tran.Iter(x => x.UpdateTargets(ost, nst))); // change targets according to rename in new location
             st.AllSubStates.Iter(x => x.history.Iter(x => x.reference = true)); // history must point to real state history
@@ -260,7 +253,7 @@ namespace Nemerle.Statechart
                    tran, super_state, copy_num, paths, lived, Num, reference, name, an, Id, instance_of);
                    
             //UpdateReference(Analyser.Statemap, true);
-            analyser.UpdateStateMap(); // updates state map
+            (st, analyser.UpdateStateMap()) // updates state map
           }
 
       }
@@ -268,31 +261,22 @@ namespace Nemerle.Statechart
         {
           type : string;
       
-          ref_sub_states : array[string] = array[];
+          [NeedChange(proc_events)] ref_sub_states : array[string] = array[];
           proc_events : array[string] = array[];
-          scanned : bool;
-          
-         this(st : SubMachine, ncopy : int = 0) 
-          {
-            base(st, false, ncopy);
-            type = st.type;
-            ref_sub_states = st.ref_sub_states;
-            proc_events = st.proc_events;
-            scanned = st.scanned;
-          }
           
           this(st : StateNode.State, super : FsmState)
           {
+            base(st, super, false);
             def (StateNode.State(type = StateType.SubMachine(type = t))) = st;
-            name = st.name;
             this.type = t;
-            super_state = super;//State(st.SuperState, true);
-            transitions = Transition.Create(this, st.transitions);
           }
           
-          SetScan(ref_sub : array[string], evts : array[string]) : SubMachine
+          scanned : bool
           {
-            SubMachine ^& (ref_sub_states = ref_sub, proc_events = evts, scanned = true)
+            get
+            {
+              !ref_sub_states.IsEmpty() || !proc_events.IsEmpty()
+            }
           }
           
           Scan() : SubMachine
@@ -304,7 +288,7 @@ namespace Nemerle.Statechart
               def ref_sub_states = st.GetValue(null) :> array[string];
               def evt = type.GetField("ProcessEvents");
               def proc_events = evt.GetValue(null) :> array[string];
-              SetScan(ref_sub_states, proc_events)
+              ChangeRefSubStatesProcEvents(ref_sub_states, proc_events)
             } else this
           }
           
@@ -328,14 +312,6 @@ namespace Nemerle.Statechart
           type : string;
           ncopy : int;
 
-          this(st : InlinedSubMachine, copy : int = 0) 
-          {
-            base(st, false, copy);
-            st.ncopy = copy;
-            this.ncopy = copy;
-            type = st.type;
-          }
-          
           this(st : StateNode.State, super : FsmState, reference : bool = false)
           {
             base(st, super, reference);
