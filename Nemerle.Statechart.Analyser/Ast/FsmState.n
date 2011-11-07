@@ -241,19 +241,22 @@ namespace Nemerle.Statechart
             def tran = st.all_transitions_nested;
             def tran = tran %+ st.AllHistory.FilterValues(_.Default);
             def old = instance_of.AllSubStates;
-            def ren_st = (instance_of, this) :: st.AllSubStates.Zip(old); // take old and new copy
+            def ren_st = (st, this) :: st.AllSubStates.Zip(old); // take old and new copy
             //def pst = st.AllPseudoStates |> (CloneFor, _);
             def sub_st = sub_st.Map(x => x.ChangeSuperState(this)); // change super state to this
             //pst.Iter((ost, nst) => tran.Iter(x => x.TargetTraverse(update_pseudo(_, ost, nst)))); // update pseudo states in this sub machine
-            ren_st.Iter((ost, nst) => tran.Iter(x => x.UpdateTargets(ost, nst))); // change targets according to rename in new location
+            ren_st.Iter((ost, nst) => tran.Iter(x => x.UpdateTargets(an, ost, nst))); // change targets according to rename in new location
             st.AllSubStates.Iter(x => x.history.Iter(x => x.reference = true)); // history must point to real state history
             st.AllSubStates.Iter(_.RenameState()); // actions renaming state
+            def nst = ren_st.Map((x, y) => y.ChangeCloneFor(x));
             def pseudo = st.pseudo_states;
-            def st = InlinedSubMachineInstance(do_act, sub_st, history, pseudo, an.statemap, null, init, entry, exit, inter_tran, 
-                   tran, super_state, copy_num, paths, lived, Num, reference, name, an, Id, instance_of);
-                   
+            def st = InlinedSubMachineInstance ^& (do_activity = do_act, sub_states = sub_st, history = history, 
+                   pseudo_states = pseudo, initial = init, entry = entry, exit = exit, internal_tran = inter_tran, 
+                   analyser = an);
+            def map = an.statemap.CheckNew(nst);
+            def an = an.ChangeStatemap(map);
             //UpdateReference(Analyser.Statemap, true);
-            (st, analyser.UpdateStateMap()) // updates state map
+            (st, an.UpdateStateMap()) // updates state map
           }
 
       }
@@ -293,15 +296,15 @@ namespace Nemerle.Statechart
           }
           
           
-          override UpdateReference(map : StateMap) : StateMap
+          override UpdateReference(an : FsmAnalyser) : FsmState * FsmAnalyser
           {
-            def map = base.UpdateReference(map);
+            def (st, an) = base.UpdateReference(an);
             def fsm = analyser.States.FilterType();
             match (fsm.Find(x => x.type == type))
             {
               | Some(InlinedSubMachine as f) => def st = InlinedSubMachineInstance ^& (instance_of = f);
-                                                map.Add(st)
-              | _ => map
+                                                (st, an)
+              | _ => (st, an)
             }
           }
 

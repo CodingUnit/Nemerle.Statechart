@@ -16,6 +16,14 @@ namespace Nemerle.Statechart
   public partial class FsmAnalyser
   {
 
+    InitStatechart() : FsmAnalyser
+    {
+      def topState = FsmState.State(fsm.state, null, this, false); // create statemachine from top state
+      def topState = topState.ChangeName(FsmState.TopStateName);
+      def map = statemap.Init(topState);
+      ChangeStatemap(map)
+    }
+    
     InitStateMap() : FsmAnalyser
     {
       def CheckAddFinalState(st, an)
@@ -62,8 +70,9 @@ namespace Nemerle.Statechart
 
     UpdateReference() : FsmAnalyser
     {
-      def map = States.FoldLeft(statemap, (s, m) => s.UpdateReference(m));
-      ChangeStatemap(map)
+      def (st, an) = States.MapThrough(this, _.UpdateReference(_));
+      def map = an.statemap.ChangeStates(st.ToArray());
+      an.ChangeStatemap(map)
     }
     
     public UpdateStateMap() : FsmAnalyser
@@ -90,7 +99,7 @@ namespace Nemerle.Statechart
       def do_rename(st, n, map)
       {
         def st = st.ChangeCopyNum(n);
-        (st.UpdateReference(map), n + 1)
+        (map.Add(st), n + 1)
       }
       
       def rename_group(st, map)
@@ -154,7 +163,7 @@ namespace Nemerle.Statechart
     static nodes_eq : ((string * PathNode) * (string * PathNode)) -> bool = (x, y) => PathNode.Equals(x[1], y[1]);
     static nodes_cmp : ((string * PathNode) * (string * PathNode)) -> int = (x, y) => PathNode.Compare(x[1], y[1]);
 
-    CreateHistory() : void
+    CreateHistory() : void    
     {
       //def sub =  history_states |> (_, state, SubStatesParticipateInHistory);  // get all substates participate in history
       //def paths =  $[HistoryPath(par, st, h, this), (h, par, s) in sub, st in s, !(st is FsmState.Final)]; // create history paths

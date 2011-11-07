@@ -18,21 +18,22 @@ namespace Nemerle.Statechart
   {
     public override ToString() : string {Name}
 
-    public virtual UpdateReference(map : StateMap, an : FsmAnalyser) : FsmState * StateMap
+    public virtual UpdateReference(an : FsmAnalyser) : FsmState * FsmAnalyser
     {
-      def super = if (super_state != null && super_state.reference)
-                                    {
-                                      def name = if (super_state.AstName == null) TopStateName else super_state.name;
-                                      map[super_state.Num]
-                                    } else super_state;
-      //super_state = ;
-      initial.Iter(_.UpdateReference(map));
-      transitions.Iter(_.UpdateReference(map));
-      history.Iter(_.UpdateReference(map));
-      sub_states.Map(x => map);
-      def pseudo = pseudo_states.Map(_.UpdateReference(map));
-      def st = ChangePseudoStates(pseudo);
-      def map = map.Add(st);
+      def map = an.statemap;
+      def (super, an) = if (super_state != null && super_state.reference) 
+                         {
+                           map.Get(super_state.Name, an)
+                         } else (super_state, an);
+      //def super = if (super.AstName == null) super.ChangeName(TopStateName) else super;
+      def an = initial.FoldLeft(an, _.UpdateReference(_));
+      def an = transitions.FoldLeft(an, _.UpdateReference(_));
+      def an = history.Value.FoldLeft(an, _.UpdateReference(_));
+      def sub_states = map.Get(sub_states);
+      def (pseudo, an) = pseudo_states.MapThrough(an, _.UpdateReference(_));
+      def (sub_states, an) = sub_states.MapThrough(an, _.UpdateReference(_));
+      def st = ChangePseudoStatesSubStatesSuperStateAnalyser(pseudo, sub_states, super, an);
+      (st, an)
     }
 
     //public FormatName() : void
@@ -44,17 +45,16 @@ namespace Nemerle.Statechart
     public DefineInitial(st : FsmState) : FsmState
     {
       def init = match (this)
-                                  {
-                                    | ConcurrentSubRegion(contained_in = r) => Initial(r, st)//initial ::= Initial(r, st)
-                                    | _ => Initial(this, st)//initial ::= Initial(this, st)
-                                  }
+                  {
+                    | ConcurrentSubRegion(contained_in = r) => Initial(r, st)//initial ::= Initial(r, st)
+                    | _ => Initial(this, st)//initial ::= Initial(this, st)
+                  }
       ChangeInitial(init :: initial)
     }
 
     public AddSubState(st : FsmState) : FsmState
     {
       //st.analyser = Analyser;
-      def a = if (1) 2; else 3;
       if (sub_states.Exists(x => x.Name == st.Name)) this else ChangeSubStates(sub_states + [st])//sub_states = sub_states + [st];
     }
 
@@ -127,10 +127,10 @@ namespace Nemerle.Statechart
     //  AllSubStates.Iter(x => x.DeleteTransitionsNested(tr));
     //}
 
-    public TraverseTransitions() : FsmState
+    public TraverseTransitions(an : FsmAnalyser) : FsmState
     {
       def paths = TransitionPaths(this);
-      paths.TraverseTransitions(true);
+      paths.TraverseTransitions(an, true);
       ChangePaths(paths)
     }
 
@@ -168,21 +168,21 @@ namespace Nemerle.Statechart
       }
 
       when (!reference)
-            {
-              do_activity = st.do_activity |> StateAction.Do(_.action.ActionList, this, _.flags);
-              internal_tran = Internal.Create(this, st.internal_tran);
-              entry = st.entry |> StateAction.Entry(_.action.ActionList, this, _.attrib);
-              exit = st.exit |> StateAction.Exit(_.action.ActionList, this, _.attrib);
-              history = StateHistory.Create(this, st.history);
-              transitions = Transition.Create(this, st.transitions);
-              initial = st.initial |> Initial(this, _);
-              def (regs, subst) = st.sub_states.Partition(x => x.regions.HasValue);
-              def regs = regs |> ConcurrentRegion(this, _, _.regions.Value); // TODO: сделать с помощью st_from_node
-              super_state = super;
-              def subst = (subst |> st_from_node(_)) + regs;
-              sub_states = subst.Sort((x, y) => x.source_pos - y.source_pos);
-              pseudo_states = st.pseudo_states |> PseudoStateNode.Create(_.node, this, null)
-            }
+      {
+        do_activity = st.do_activity |> StateAction.Do(_.action.ActionList, this, _.flags);
+        internal_tran = Internal.Create(this, st.internal_tran);
+        entry = st.entry |> StateAction.Entry(_.action.ActionList, this, _.attrib);
+        exit = st.exit |> StateAction.Exit(_.action.ActionList, this, _.attrib);
+        history = StateHistory.Create(this, st.history);
+        transitions = Transition.Create(this, st.transitions);
+        initial = st.initial |> Initial(this, _);
+        def (regs, subst) = st.sub_states.Partition(x => x.regions.HasValue);
+        def regs = regs |> ConcurrentRegion(this, _, _.regions.Value); // TODO: сделать с помощью st_from_node
+        super_state = super;
+        def subst = (subst |> st_from_node(_)) + regs;
+        sub_states = subst.Sort((x, y) => x.source_pos - y.source_pos);
+        pseudo_states = st.pseudo_states |> PseudoStateNode.Create(_.node, this, null)
+      }
     }    
     //public this(st : FsmState, reference : bool = false, ncopy : int = 0)
     //{
@@ -216,9 +216,11 @@ namespace Nemerle.Statechart
 
     //public sub_states_num : list[int] = [];
     [NeedChange] public history : TwoOption[StateHistory] = TwoOption.None();
+    [NeedChange(sub_states, super_state, analyser)]
     [NeedChange] public pseudo_states : list[PseudoStateNode] = [];
     [NeedChange] public statemap : StateMap;
-
+    [NeedChange] public cloneFor : FsmState;
+    
     public history_paths : list[string * HistoryPath] // paths from outer history
     {
       get
@@ -228,8 +230,8 @@ namespace Nemerle.Statechart
         //when (!reg) sub_states.Iter(x  => x.DefineHistoryPathRecurse(st, nodes))
         def shist = SuperStates.Filter(x => x.ParticipateInHistory.Exists(x => x.Type == HistoryType.Shallow));
         def spaths = shist |>< history_paths;
-        def paths = ParticipateInHistory.Map(x => (x.state.name, HistoryPath(x.state, this, x, analyser)));
-        paths.Iter((_, x) => x.CreatePath());
+        def paths = ParticipateInHistory.Map(x => (x.state.name, HistoryPath(x.state, this, x)));
+        paths.Iter((_, x) => x.CreatePath(analyser));
         paths + spaths
       }
     }
@@ -239,7 +241,7 @@ namespace Nemerle.Statechart
       get
       {
         def path = StateTransition.Initial(analyser.TopState, this);
-        path.TraversePath();
+        path.TraversePath(analyser);
         path
       }
     }

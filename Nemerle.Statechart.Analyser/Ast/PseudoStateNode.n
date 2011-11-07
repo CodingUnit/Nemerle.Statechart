@@ -36,7 +36,7 @@ namespace Nemerle.Statechart
             }
           }
           
-          [NeedChange] DecisionTree : DecisionNode;
+          [NeedChange] decisionTree : DecisionNode;
           
           IsTop : bool 
           {
@@ -50,7 +50,7 @@ namespace Nemerle.Statechart
           {
             get
             {
-              DecisionTree.Actions
+              decisionTree.Actions
             }
           }
           
@@ -63,16 +63,16 @@ namespace Nemerle.Statechart
             }
           }
           
-          override UpdateReference(map : StateMap) : PseudoStateNode
+          override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
           {
-            match (base.UpdateReference(map))
+            def (st, an) = base.UpdateReference(an);
+            match (st)
             {
               | Junction(n, nodes, p, t) as j => def st = j.state;
-                  def nodes = nodes |> UpdateRef(map);
-                  Junction(st, copy, n, nodes, p, t)
-              | _ => this
+                  def (nodes, an) = nodes.MapThrough(an, _.UpdateRef(_));
+                  (Junction(st, copy, n, nodes, p, t), an)
+              | _ => (this, an)
             }
-            
           }
           
           override ToString() : string
@@ -94,7 +94,7 @@ namespace Nemerle.Statechart
             name = n;
           }
           
-          [NeedChange] DecisionTree : DecisionNode;
+          [NeedChange] decisionTree : DecisionNode;
           
           IsTop : bool 
           {
@@ -108,7 +108,7 @@ namespace Nemerle.Statechart
           {
             get
             {
-              DecisionTree.Actions
+              decisionTree.Actions
             }
           }
           
@@ -121,14 +121,15 @@ namespace Nemerle.Statechart
             }
           }
           
-          public override UpdateReference(map : StateMap) : PseudoStateNode
+          public override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
           {
-            match (base.UpdateReference(map))
+            def (st, an) = base.UpdateReference(an);
+            match (st)
             {
               | Choice(n, nodes, p, t) as j => def st = j.state;
-                  def nodes = nodes |> UpdateRef(map);
-                  Choice(st, copy, n, nodes, p, t)
-              | _ => this
+                  def (nodes, an) = nodes.MapThrough(an, _.UpdateRef(_));
+                  (Choice(st, copy, n, nodes, p, t), an)
+              | _ => (this, an)
             }
           }
           
@@ -159,16 +160,16 @@ namespace Nemerle.Statechart
             name = n;
           }
           
-          public override UpdateReference(map : StateMap) : PseudoStateNode
+          public override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
           {
-            def nnode = node.UpdateReference(map);
-            match (base.UpdateReference(map))
+            def (nnode, an) = node.UpdateReference(an);
+            def (st, an) = base.UpdateReference(an);
+            def st = match (st)
             {
               | x when (x : object != this || node : object != nnode) => Merge(x.state, copy, name, nnode :> JunctionNode)
               | _                           => this
             }
-            
-            
+            (st, an)
           }
        
           Name : string
@@ -190,14 +191,15 @@ namespace Nemerle.Statechart
                  
           [NeedChange] fork_tran : list[StateTransition] = [];
           
-          override UpdateReference(map : StateMap) : PseudoStateNode
+          override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
           { 
            // TODO: сделать через Lazy создание нового списк только в случае если есть новые элементы
-            match (base.UpdateReference(map))
+            def (st, an) = base.UpdateReference(an);
+            match (st)
             {
-              | Fork(state = st) => def target = target.Map(_.UpdateReference(map));
-                  Fork(st, copy, target, fork_tran)
-              | _                => this
+              | Fork(state = st) => def (target, an) = target.MapThrough(an, _.UpdateReference(_));
+                  (Fork(st, copy, target, fork_tran), an)
+              | _                => (this, an)
             }
           }
           
@@ -248,14 +250,16 @@ namespace Nemerle.Statechart
             Name
           }
 
-          override UpdateReference(map : StateMap) : PseudoStateNode
+          override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
           {
-            def tar = target?.UpdateReference(map);
-            match (base.UpdateReference(map))
+            def (tar, an) = target?.UpdateReference(an);
+            def (st, an) = base.UpdateReference(an);
+            def st = match (st)
             {
               | Join as j when (tar : object != target || j : object != this) => Join(state, copy, name, tar, region, joined_tran, transition)
               | _                                                             => this
             }
+            (st, an)
           }
           
         }
@@ -336,19 +340,22 @@ namespace Nemerle.Statechart
             }
           }
 
-          public UpdateRef(map : StateMap) : JunctionNode
+          public UpdateRef(an : FsmAnalyser) : JunctionNode * FsmAnalyser
           {   
-            def nto = to.UpdateReference(map);
-            match (base.UpdateReference(map))
+            def (nto, an) = to.UpdateReference(an);
+            def (st, an) = base.UpdateReference(an);
+            def st = match (st)
             {
               | JunctionNode(state = st) as j when (j : object != this || nto : object != to) => JunctionNode(st, copy, guard, action, nto, parent)
               | _                                                                             => this
             }
+            (st, an)
           }
           
-          public override UpdateReference(map : StateMap) : PseudoStateNode
+          public override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
           {   
-            UpdateRef(map)
+            def (st, an) = UpdateRef(an);
+            (st : PseudoStateNode, an)
           }
           
         }
@@ -382,25 +389,26 @@ namespace Nemerle.Statechart
       
     }
         
-    public SetCopy(ncopy : int, an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
+    public SetCopy(ncopy : int) : PseudoStateNode
     {
       
       match (this)
       {
-        | Junction(state = st, name = n, nodes = lst, parent = p, DecisionTree = t) => 
-            def (lst, an) = lst.MapThrough(an, (x, y) => x.SetCopy(ncopy, y).Map((x, y) => (x :> JunctionNode, y)));
-            def (t, an) = t?.SetCopy(ncopy, an);
-            (Junction(st, ncopy, n, lst, p, t), an)
-        | Choice(state = st, name = n, nodes = lst, parent = p, DecisionTree = t) => 
-            def (lst, an) = lst.MapThrough(an, (x, y) => x.SetCopy(ncopy, y).Map((x, y) => (x :> JunctionNode, y)));
-            def (t, an) = t?.SetCopy(ncopy, an);
-            (Choice(st, ncopy, n, lst, p, t), an)
+        | Junction(state = st, name = n, nodes = lst, parent = p, decisionTree = t) => 
+            def lst = lst.Map(x => x.SetCopy(ncopy) :> JunctionNode);
+            def t = t?.SetCopy(ncopy);
+            Junction(st, ncopy, n, lst, p, t)
+        | Choice(state = st, name = n, nodes = lst, parent = p, decisionTree = t) => 
+            def lst = lst.Map(x => x.SetCopy(ncopy) :>  JunctionNode);
+            def t = t?.SetCopy(ncopy);
+            Choice(st, ncopy, n, lst, p, t)
         | Merge(state = st, name = n, node = node) => 
-            def (node, an) = node.SetCopy(ncopy, an).Map((x, y) => (x :> JunctionNode, y));
-            (Merge(st, ncopy, n, node), an)
+            def node = node.SetCopy(ncopy) :> JunctionNode;
+            Merge(st, ncopy, n, node)
         | JunctionNode(state = st, guard = g, action = a, to = t, parent = p) => 
-            (JunctionNode(st, ncopy, g, a, t.SetCopy(ncopy), p), an)
-        | _ => (this, an)
+            def (t, an) = t.SetCopy(ncopy);
+            JunctionNode(st, ncopy, g, a, t, p)
+        | _ => this
       }
     }
     
@@ -412,23 +420,9 @@ namespace Nemerle.Statechart
       }
     }
     
+    [NeedChange]
     public state : FsmState;
 
-    public ChangeState(st : FsmState) : PseudoStateNode
-    {
-      match (this)
-      {
-        | Choice(nm, n, p, t)                  => Choice(st, copy, nm, n, p, t)  
-        | Junction(nm, n, p, t)                => Junction(st, copy, nm, n, p, t)
-        | JunctionNode(guard, action, to, par) => JunctionNode(state, copy, guard, action, to, par)
-        | Merge(name = n, node = node)         => Merge(st, copy, n, node)
-        | Fork(lst, ftran)                     => Fork(st, copy, lst, ftran)
-        | Join(n, t, r, jtran, tran)           => Join(state, copy, n, t, r, jtran, tran)
-        | EntryPoint                           => EntryPoint(st, copy)
-        | ExitPoint                            => ExitPoint(st, copy)
-        | Terminate                            => Terminate(st, copy)
-      }
-    }
     //[RecordIgnore] [Accessor] cloneFor : PseudoStateNode;
     public copy : int;
     
@@ -461,9 +455,14 @@ namespace Nemerle.Statechart
       | _ => false
     }
     
-    public virtual UpdateReference(map : StateMap) : PseudoStateNode
+    public virtual UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
     {
-      if (state !=null && state.reference) ChangeState(map[state.Num]) else this
+      if (state !=null && state.reference) 
+      {
+       def (st, an) = an.statemap.Get(state.Name, an);
+       def st = if (st != null) ChangeState(st) else this;
+       (st, an)
+     } else (this, an)
     }
     
   }
