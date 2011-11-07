@@ -19,16 +19,16 @@ namespace Nemerle.Statechart
         {
           history : StateHistory;
          
-          override UpdateReference(map : StateMap) : TransitionTarget
+          override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
           {
-            if (history.reference) ChangeHistory(map[history.state.Name].GetHistory(history)) else this
+            if (history.reference) 
+             {
+               def (st, an) = an.statemap.Get(history.state.Name, an);
+               def tar = if (st != null) ChangeHistory(st.GetHistory(history)) else this;
+               (tar, an)
+             } else (this, an)
           }
 
-          ChangeHistory(h : StateHistory) : History
-          {
-            History(transition, h)
-          }
-          
           override ToString() : string
           {
             $"$(history.state)History"
@@ -54,25 +54,20 @@ namespace Nemerle.Statechart
             base(tran)
           }
           
-          ChangeState(st : FsmState.Final) : TransitionTarget.Final
+          public override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
           {
-            Final(transition, st)
-          }
-          
-          public override UpdateReference(map : StateMap) : TransitionTarget
-          {
-            if (state != null && state.reference) ChangeState(map[state.NativeName] :> FsmState.Final) else this
+            if (state != null && state.reference) 
+            {
+              def (st, an) = an.statemap.Get(state.NativeName, an);
+              def tar = if (st != null) ChangeState(st :> FsmState.Final) else this;
+              (tar, an)
+            } else (this, an)
           }
         }
     | PseudoState
         {
           node : PseudoStateNode;
 
-          ChangeNode(n : PseudoStateNode) : PseudoState
-          {
-            PseudoState(transition, n)
-          }
-          
           this(tran : StateTransition, st : FsmState, node : TargetType.PseudoState)
           {
             //def init_target(t)
@@ -85,10 +80,11 @@ namespace Nemerle.Statechart
             //Traverse(init_target)
           }
 
-          override UpdateReference(map : StateMap) : TransitionTarget
+          override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
           {
-            def n = node.UpdateReference(map);
-            if (n != node : object) PseudoState(transition, n) else this
+            def (n, an) = node.UpdateReference(an);
+            def tar = if (n != node : object) PseudoState(transition, n) else this;
+            (tar, an)
           }
           
           override ToString() : string
@@ -100,14 +96,16 @@ namespace Nemerle.Statechart
         {
           state : FsmState;
           
-          ChangeState(st : FsmState) : TransitionTarget.State
+          override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
           {
-            State(transition, st)
-          }
-          
-          override UpdateReference(map : StateMap) : TransitionTarget
-          {
-            if (state.reference) ChangeState(map[state.NativeName]) else this
+            
+            if (state.reference) 
+            {
+              def map = an.statemap;
+              def (st, an) = map.Get(state.Name, an);
+              def tar =  if (st != null) ChangeState(st) else this;
+              (tar, an)
+            } else (this, an)
           }
 
           Name : string
@@ -136,15 +134,16 @@ namespace Nemerle.Statechart
           state : FsmState;
           name : string;
 
-          ChangeState(st : FsmState) : Named
-          {
-            Named(transition, st, name)
-          }
-          
           // TODO: вообще могут быть ссылки null если все immutable
-          override UpdateReference(map : StateMap) : TransitionTarget
+          override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
           {
-            if (state != null && state.reference) ChangeState(map[state.NativeName]) else this
+            if (state != null && state.reference) 
+            {
+              def map = an.statemap;
+              def (st, an) = map.Get(state.Name, an);
+              def tar = if (st != null) ChangeState(st) else this;
+              (tar, an)
+           } else (this, an)
           }
 
           Name : string
@@ -174,12 +173,16 @@ namespace Nemerle.Statechart
           parent : string;
           target : TransitionTarget;
       
-          override UpdateReference(map : StateMap) : TransitionTarget
+          override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
           {
+            def map = an.statemap;
             match (target)
             {
-              | State(st) as t when (st.reference) => t.ChangeState(map[$"$parent.$(st.NativeName)"])
-              | _ => target.UpdateReference(map)
+              | State(st) as t when (st.reference) => 
+                 def (st, an) = map.Get($"$parent.$(st.NativeName)", an);
+                 def tar = if (st != null) t.ChangeState(st) else this;
+                 (tar, an)
+              | _ => target.UpdateReference(an)
             }
           }
       
@@ -191,21 +194,18 @@ namespace Nemerle.Statechart
         }
     | SubMachine 
         {
-          machine : FsmState.SubMachine;
+          [NeedChange] machine : FsmState.SubMachine;
           state : string;
-
-          ChangeMachine(st : FsmState.SubMachine) : TransitionTarget.SubMachine
-          {
-            SubMachine(transition, st, state) 
-           //SubMachine(transition, st, state) 
-          }
           
-          override UpdateReference(map : StateMap) : TransitionTarget
+          override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
           {
             match (machine)
             {
-              | FsmState where (reference = true, Name = n) => ChangeMachine(map[n] :> FsmState.SubMachine)
-              | _ => this
+              | FsmState where (reference = true, Name = n) => 
+                 def (st, an) = an.statemap.Get(n, an);
+                 def tar = if (st != null) ChangeMachine(st :> FsmState.SubMachine) else this;
+                 (tar, an)
+              | _ => (this, an)
             }
           }
       
@@ -359,21 +359,73 @@ namespace Nemerle.Statechart
    
     public SetCopy(ncopy : int) : TransitionTarget
     {
-      def inc(t)
+      def inc(t, an)
       {
-          | PseudoState(n)    as p => p.ChangeNode(n.SetCopy(ncopy))
+        match (t)
+        {
+          | PseudoState(n)    as p => def t = n.SetCopy(ncopy);
+                                      p.ChangeNode(t)
           | x                      => x
+        }
       }
       
-      Traverse(inc)
+      //Traverse(an, inc)
     }
     //[RecordIgnore] 
     //[Accessor]
     //clone_for : TransitionTarget;
     
-    public virtual UpdateReference(_ : StateMap) : TransitionTarget
+    public FoldThis(pseudo : StateTransition * PseudoStateNode * TransitionTarget.PseudoState -> TransitionTarget, 
+                    hist : StateHistory * TransitionTarget.History -> TransitionTarget, 
+                    final : FsmState.Final * TransitionTarget.Final -> TransitionTarget, 
+                    state : FsmState * TransitionTarget.State -> TransitionTarget,
+                    named : FsmState * string * TransitionTarget.History -> TransitionTarget,
+                    machine : FsmState.SubMachine * string * TransitionTarget.SubMachine -> TransitionTarget,
+                    qual : string * TransitionTarget * TransitionTarget.Qualified -> TransitionTarget) : TransitionTarget
     {
-      this
+        //| PseudoState as t                  => PseudoState(tran, state, t)
+        //| History     as t                  => History(tran, state, t)
+        //| Final                             => Final(tran)
+        //| State       as t                  => State(tran, t)
+        //| Named       as t                  => Named(tran, state, t)
+        //| SubMachine(m, s)                  => SubMachine(tran, SubMachine(m, null), s)
+        //| Qualified(parent = p, target = t) => Qualified(tran, p, Create(state, tran, t))
+      
+      def xnode(n, b, e, ot)
+      {
+        match (n)
+        {
+          | null 
+          | x when (x : object == ot)                                              => ot
+          //| PseudoState(tran, st, n) as j when (nb : object != b || ne : object != e) => Condition(j.level, j.state, j.actions, j.PrevState, j.node_path, j.out_path, nc, nb, ne)
+          //| DecisionNode.Action(c, nb) as j when (nb : object != b)                => Action(j.level, j.state, actions,  j.PrevState, j.node_path, j.out_path, c, nb)
+          //| Else(nb) as j when (nb : object != b)                                  => Else(j.level, j.state, actions,  j.PrevState, j.node_path, j.out_path, nb)
+          | x                                                                      => x
+        }
+      }
+      
+      def loop(e, cont)
+      {
+        match (e)
+        {
+          //| Target(x, d) as t     => cont(xnode(targ(x, d, t), null, null, t))
+          
+          //| PseudoState(tran, st, n) as t => cont(xnode(pseudo(tran, n, t), bacc, eacc, t))
+                                                  
+          //| Else(b) as t       => loop(b, bacc => 
+           //                         cont(xnode(els(bacc, t), bacc, null, t)))
+                                    
+          //| Action(c, b) as t  => loop(b, bacc => 
+            //                        cont(xnode(act(c, bacc, t), bacc, null, t)))
+        }
+      }
+
+      loop(this, x => x)
+    }
+    
+    public virtual UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
+    {
+      (this, an)
     }
      
   }
