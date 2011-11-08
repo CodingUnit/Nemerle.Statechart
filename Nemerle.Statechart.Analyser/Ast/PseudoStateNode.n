@@ -464,45 +464,20 @@ namespace Nemerle.Statechart
                     junction : string * list[JunctionNode] * Junction * DecisionNode * Junction -> PseudoStateNode, 
                     merge : string * JunctionNode * Merge -> PseudoStateNode, 
                     fork : list[TransitionTarget] * list[StateTransition] * Fork -> PseudoStateNode,
-                    join : string * TransitionTarget * ConcurrentRegion * list[StateTransition] * StateTransition -> PseudoStateNode,
+                    join : string * TransitionTarget * ConcurrentRegion * list[StateTransition] * StateTransition * Join -> PseudoStateNode,
                     entry_point : EntryPoint -> PseudoStateNode,
                     exit_point : ExitPoint -> PseudoStateNode,
                     terminate : Terminate -> PseudoStateNode,
                     junc_node : option[GuardNode] * option[Actions] * TransitionTarget * PseudoStateNode * JunctionNode -> PseudoStateNode
                     ) : PseudoStateNode
     {
-      
-        //| PseudoStateAstNode.Choice(null, lst) =>
-        
-        //    def num = analyser.NextChoiceNum();
-        //    def name = $"Unnamed$num";
-        //    Choice(state, name, lst, tran)
-            
-        //| PseudoStateAstNode.Choice(n, lst) => Choice(state, n, lst, tran)  
-        
-        //| Junction(null, lst) => 
-        //    def num = analyser.NextJunctionNum();
-        //    def name = $"Unnamed$num";
-        //    Junction(state, name, lst, tran)
-            
-        //| Junction(name = n, nodes = lst) => Junction(state, n, lst, tran)
-        //| Merge(name = n, node = node)    => Merge(state, n, node)
-        //| Fork(target = lst)              => Fork(state, 0, lst |> TransitionTarget.Create(state, tran, _), null)
-        //| Join(name = n, target = t)      => Join(state, 0, n, TransitionTarget.Create(state, tran, t), null, null, null)
-        //| EntryPoint                      => EntryPoint(state, 0)
-        //| ExitPoint                       => ExitPoint(state, 0)
-        //| Terminate                       => Terminate(state, 0)
-      
-      def xnode(n, b, e, ot)
+      def xnode(n, ot)
       {
         match (n)
         {
           | null 
-          | x when (x : object == ot)                                              => ot
-          //| Condition(nc, nb, ne) as j when (nb : object != b || ne : object != e) => Condition(j.level, j.state, j.actions, j.PrevState, j.node_path, j.out_path, nc, nb, ne)
-          //| DecisionNode.Action(c, nb) as j when (nb : object != b)                => Action(j.level, j.state, actions, j.PrevState, j.node_path, j.out_path, c, nb)
-          //| Else(nb) as j when (nb : object != b)                                  => Else(j.level, j.state, actions, j.PrevState, j.node_path, j.out_path, nb)
-          | x                                                                      => x
+          | x when (x : object == ot) => ot
+          | x                         => x
         }
       }
             
@@ -510,26 +485,51 @@ namespace Nemerle.Statechart
       {
         match (e)
         {
-          //| Choice(n, nn, p, dn) as t => //cont(xnode(choice(n, nn, p, dn, t), ))
-                                   //loop(b, bacc => 
-                                   //       loop(e, eacc => 
-                                   //               cont(xnode(cond(c, bacc, eacc, t), bacc, eacc, t))))
-          //|  as t     => cont(xnode(targ(x, d, t), null, null, t))
-          
-          //| Condition(c, b, e) as t => loop(b, bacc => 
-          //                                loop(e, eacc => 
-          //                                        cont(xnode(cond(c, bacc, eacc, t), bacc, eacc, t))))
-                                                  
-          //| Else(b) as t       => loop(b, bacc => 
-          //                          cont(xnode(els(bacc, t), bacc, null, t)))
-                                    
-          //| Action(c, b) as t  => loop(b, bacc => 
-          //                          cont(xnode(act(c, bacc, t), bacc, null, t)))
+          | Choice(n, nn, p, dn)      as t => cont(xnode(choice(n, nn, p, dn, t), t))
+          | Junction(n, nn, p, dn)    as t => cont(xnode(junction(n, nn, p, dn, t), t))
+          | Merge(n, nn)              as t => cont(xnode(merge(n, nn, t), t))
+          | Fork(tt, ft)              as t => cont(xnode(fork(tt, ft, t), t))
+          | Join(n, tt, r, tr, d)     as t => cont(xnode(join(n, tt, r, tr, d, t), t))
+          | EntryPoint                as t => cont(xnode(entry_point(t), t))
+          | ExitPoint                 as t => cont(xnode(exit_point(t), t))
+          | Terminate                 as t => cont(xnode(terminate(t), t))
+          | JunctionNode(g, a, tt, p) as t => cont(xnode(junc_node(g, a, tt, p, t), t))
         }
       }
 
       loop(this, x => x)
     }
+
+    public Fold[T](choice : string * list[JunctionNode] * Choice * DecisionNode * Choice -> T,
+                   junction : string * list[JunctionNode] * Junction * DecisionNode * Junction -> T, 
+                   merge : string * JunctionNode * Merge -> T, 
+                   fork : list[TransitionTarget] * list[StateTransition] * Fork -> T,
+                   join : string * TransitionTarget * ConcurrentRegion * list[StateTransition] * StateTransition * Join -> T,
+                   entry_point : EntryPoint -> T,
+                   exit_point : ExitPoint -> T,
+                   terminate : Terminate -> T,
+                   junc_node : option[GuardNode] * option[Actions] * TransitionTarget * PseudoStateNode * JunctionNode -> T
+                   ) : T
+    {            
+      def loop(e, cont) : T
+      {
+        match (e)
+        {
+          | Choice(n, nn, p, dn)      as t => cont(choice(n, nn, p, dn, t))
+          | Junction(n, nn, p, dn)    as t => cont(junction(n, nn, p, dn, t))
+          | Merge(n, nn)              as t => cont(merge(n, nn, t))
+          | Fork(tt, ft)              as t => cont(fork(tt, ft, t))
+          | Join(n, tt, r, tr, d)     as t => cont(join(n, tt, r, tr, d, t))
+          | EntryPoint                as t => cont(entry_point(t))
+          | ExitPoint                 as t => cont(exit_point(t))
+          | Terminate                 as t => cont(terminate(t))
+          | JunctionNode(g, a, tt, p) as t => cont(junc_node(g, a, tt, p, t))
+        }
+      }
+
+      loop(this, x => x)
+    }
+    
     
   }
   
