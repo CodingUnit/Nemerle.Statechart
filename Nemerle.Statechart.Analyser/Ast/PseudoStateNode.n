@@ -286,14 +286,9 @@ namespace Nemerle.Statechart
         {
           guard : option[GuardNode];
           action : option[Actions];
-          to : TransitionTarget;
+          [NeedChange] to : TransitionTarget;
           parent : PseudoStateNode;
-          
-          ChangeTo(t : TransitionTarget) : JunctionNode
-          {
-            JunctionNode(state, copy, guard, action, t, parent)
-          }
-          
+                    
           this(st : FsmState, tran : StateTransition, node : TransitionNode.JunctionNode, par : PseudoStateNode)
           {
             match (node)
@@ -406,7 +401,7 @@ namespace Nemerle.Statechart
             def node = node.SetCopy(ncopy) :> JunctionNode;
             Merge(st, ncopy, n, node)
         | JunctionNode(state = st, guard = g, action = a, to = t, parent = p) => 
-            def (t, an) = t.SetCopy(ncopy);
+            def t = t.SetCopy(ncopy);
             JunctionNode(st, ncopy, g, a, t, p)
         | _ => this
       }
@@ -463,6 +458,77 @@ namespace Nemerle.Statechart
        def st = if (st != null) ChangeState(st) else this;
        (st, an)
      } else (this, an)
+    }
+    
+    public FoldThis(choice : string * list[JunctionNode] * Choice * DecisionNode * Choice -> PseudoStateNode,
+                    junction : string * list[JunctionNode] * Junction * DecisionNode * Junction -> PseudoStateNode, 
+                    merge : string * JunctionNode * Merge -> PseudoStateNode, 
+                    fork : list[TransitionTarget] * list[StateTransition] * Fork -> PseudoStateNode,
+                    join : string * TransitionTarget * ConcurrentRegion * list[StateTransition] * StateTransition -> PseudoStateNode,
+                    entry_point : EntryPoint -> PseudoStateNode,
+                    exit_point : ExitPoint -> PseudoStateNode,
+                    terminate : Terminate -> PseudoStateNode,
+                    junc_node : option[GuardNode] * option[Actions] * TransitionTarget * PseudoStateNode * JunctionNode -> PseudoStateNode
+                    ) : PseudoStateNode
+    {
+      
+        //| PseudoStateAstNode.Choice(null, lst) =>
+        
+        //    def num = analyser.NextChoiceNum();
+        //    def name = $"Unnamed$num";
+        //    Choice(state, name, lst, tran)
+            
+        //| PseudoStateAstNode.Choice(n, lst) => Choice(state, n, lst, tran)  
+        
+        //| Junction(null, lst) => 
+        //    def num = analyser.NextJunctionNum();
+        //    def name = $"Unnamed$num";
+        //    Junction(state, name, lst, tran)
+            
+        //| Junction(name = n, nodes = lst) => Junction(state, n, lst, tran)
+        //| Merge(name = n, node = node)    => Merge(state, n, node)
+        //| Fork(target = lst)              => Fork(state, 0, lst |> TransitionTarget.Create(state, tran, _), null)
+        //| Join(name = n, target = t)      => Join(state, 0, n, TransitionTarget.Create(state, tran, t), null, null, null)
+        //| EntryPoint                      => EntryPoint(state, 0)
+        //| ExitPoint                       => ExitPoint(state, 0)
+        //| Terminate                       => Terminate(state, 0)
+      
+      def xnode(n, b, e, ot)
+      {
+        match (n)
+        {
+          | null 
+          | x when (x : object == ot)                                              => ot
+          //| Condition(nc, nb, ne) as j when (nb : object != b || ne : object != e) => Condition(j.level, j.state, j.actions, j.PrevState, j.node_path, j.out_path, nc, nb, ne)
+          //| DecisionNode.Action(c, nb) as j when (nb : object != b)                => Action(j.level, j.state, actions, j.PrevState, j.node_path, j.out_path, c, nb)
+          //| Else(nb) as j when (nb : object != b)                                  => Else(j.level, j.state, actions, j.PrevState, j.node_path, j.out_path, nb)
+          | x                                                                      => x
+        }
+      }
+            
+      def loop(e, cont)
+      {
+        match (e)
+        {
+          //| Choice(n, nn, p, dn) as t => //cont(xnode(choice(n, nn, p, dn, t), ))
+                                   //loop(b, bacc => 
+                                   //       loop(e, eacc => 
+                                   //               cont(xnode(cond(c, bacc, eacc, t), bacc, eacc, t))))
+          //|  as t     => cont(xnode(targ(x, d, t), null, null, t))
+          
+          //| Condition(c, b, e) as t => loop(b, bacc => 
+          //                                loop(e, eacc => 
+          //                                        cont(xnode(cond(c, bacc, eacc, t), bacc, eacc, t))))
+                                                  
+          //| Else(b) as t       => loop(b, bacc => 
+          //                          cont(xnode(els(bacc, t), bacc, null, t)))
+                                    
+          //| Action(c, b) as t  => loop(b, bacc => 
+          //                          cont(xnode(act(c, bacc, t), bacc, null, t)))
+        }
+      }
+
+      loop(this, x => x)
     }
     
   }
