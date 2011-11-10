@@ -17,7 +17,7 @@ namespace Nemerle.Statechart
   {
     | History 
         {
-          history : StateHistory;
+          [NeedChange] history : StateHistory;
          
           override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
           {
@@ -42,7 +42,7 @@ namespace Nemerle.Statechart
         }
     | Final
         {
-          state : FsmState.Final;
+          [NeedChange] state : FsmState.Final;
 
           override ToString() : string
           {
@@ -66,7 +66,7 @@ namespace Nemerle.Statechart
         }
     | PseudoState
         {
-          node : PseudoStateNode;
+          [NeedChange] node : PseudoStateNode;
 
           this(tran : StateTransition, st : FsmState, node : TargetType.PseudoState)
           {
@@ -94,7 +94,7 @@ namespace Nemerle.Statechart
         }
     | State 
         {
-          state : FsmState;
+          [NeedChange] state : FsmState;
           
           override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
           {
@@ -131,7 +131,7 @@ namespace Nemerle.Statechart
     
     | Named
         {
-          state : FsmState;
+          [NeedChange] state : FsmState;
           name : string;
 
           // TODO: вообще могут быть ссылки null если все immutable
@@ -171,7 +171,7 @@ namespace Nemerle.Statechart
     | Qualified 
         {
           parent : string;
-          target : TransitionTarget;
+          [NeedChange] target : TransitionTarget;
       
           override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
           {
@@ -357,18 +357,56 @@ namespace Nemerle.Statechart
       check_target(this, null, null, this, analyser)
     }
    
+    //public Traverse(func : TransitionTarget -> TransitionTarget) : TransitionTarget
+    //{
+    //  //def check_pseudo(p, pt)
+    //  //{
+    //  //  //def check(t, on)
+    //  //  //{
+    //  //  //  match (t.Traverse(func))
+    //  //  //  {
+    //  //  //    //| x when (x : object != t) => 
+    //  //  //  }
+    //  //  //}
+        
+    //  //  match (p)
+    //  //  {
+    //  //    //| Merge as n => def nn = n.FoldThis((_, _, _, _, x) => x, 
+    //  //    //                                    (_, _, _, _, x) => x, 
+    //  //    //                                    (_, _, x) => x, 
+    //  //    //                                    (t, _, x) => x, 
+    //  //    //                                    (_, t, _, _, _, x) => check(t, x), 
+    //  //    //                                    x => x, 
+    //  //    //                                    x => x,
+    //  //    //                                    x => x, 
+    //  //    //                                    (_, _, _, t, x) => x);
+                           
+    //  //    //| oState(Junction(nodes = n) as j) as p, a) => 
+    //  //       //def (n, a) = traverse(p, n, a);
+    //  //       //(p.ChangeNode(j.ChangeNodes(n)), a)   // TODO: проверить как часто создается и зачем
+             
+    //  //    //| (PseudoState(Choice(nodes = n) as c) as p, a)   => 
+    //  //      // def (n, a) = traverse(p, n, a);
+    //  //      // (p.ChangeNode(c.ChangeNodes(n)), a)
+    //  //  }
+    //  //}
+      
+    //  FoldThis(check_pseudo, (_, x) => x, (_, x) => x, (_, x) => x, (_, _, x) => x, (_, _, x) => x, (_, _, x) => x)
+    //}
+    
     public SetCopy(ncopy : int) : TransitionTarget
     {
-      def inc(t, an)
-      {
-        match (t)
-        {
-          | PseudoState(n)    as p => def t = n.SetCopy(ncopy);
-                                      p.ChangeNode(t)
-          | x                      => x
-        }
-      }
+      //def inc(t, an)
+      //{
+      //  match (t)
+      //  {
+      //    | PseudoState(n)    as p => def t = n.SetCopy(ncopy);
+      //                                p.ChangeNode(t)
+      //    | x                      => x
+      //  }
+      //}
       
+      FoldThis((x, t) => t.ChangeNode(x.SetCopy(ncopy)), _ => null, _ => null, _ => null, _ => null, _ => null, _ => null)
       //Traverse(an, inc)
     }
     //[RecordIgnore] 
@@ -379,60 +417,88 @@ namespace Nemerle.Statechart
                     hist : StateHistory * TransitionTarget.History -> TransitionTarget, 
                     final : FsmState.Final * TransitionTarget.Final -> TransitionTarget, 
                     state : FsmState * TransitionTarget.State -> TransitionTarget,
-                    named : FsmState * string * TransitionTarget.History -> TransitionTarget,
+                    named : FsmState * string * TransitionTarget.Named -> TransitionTarget,
                     machine : FsmState.SubMachine * string * TransitionTarget.SubMachine -> TransitionTarget,
                     qual : string * TransitionTarget * TransitionTarget.Qualified -> TransitionTarget) : TransitionTarget
     {
-        //| PseudoState as t                  => PseudoState(tran, state, t)
-        //| History     as t                  => History(tran, state, t)
-        //| Final                             => Final(tran)
-        //| State       as t                  => State(tran, t)
-        //| Named       as t                  => Named(tran, state, t)
-        //| SubMachine(m, s)                  => SubMachine(tran, SubMachine(m, null), s)
-        //| Qualified(parent = p, target = t) => Qualified(tran, p, Create(state, tran, t))
-      
-      def xnode(n, b, e, ot)
+      def xnode(n, oot, ot)
       {
         match (n)
         {
           | null 
           | x when (x : object == ot)                                              => ot
-          //| PseudoState(tran, st, n) as j when (nb : object != b || ne : object != e) => Condition(j.level, j.state, j.actions, j.PrevState, j.node_path, j.out_path, nc, nb, ne)
-          //| DecisionNode.Action(c, nb) as j when (nb : object != b)                => Action(j.level, j.state, actions,  j.PrevState, j.node_path, j.out_path, c, nb)
-          //| Else(nb) as j when (nb : object != b)                                  => Else(j.level, j.state, actions,  j.PrevState, j.node_path, j.out_path, nb)
+          | Qualified(_, nt) as t when (nt : object != oot)                        => t.ChangeTarget(t)
           | x                                                                      => x
         }
       }
       
+      
       def loop(e, cont)
       {
-
-        def loop_pseudo(ee, econt)
+        
+        def check_targ(t, ot, on)
         {
-          
+          match (on, t)
+          {
+            | (JunctionNode as n, x) when (x : object != ot) => n.ChangeTo(x)
+            | (Join as n, x) when (x : object != ot)         => n.ChangeTarget(x)
+            | _                                              => on
+          }
+        }
+        
+        def check_pseudo(n, t)
+        {
+          // TODO: попробовать сделать CPS трансформацию
+          def t = match (n.FoldThis((_, _, _, _, x) => x, 
+                              (_, _, _, _, x) => x, 
+                              (_, _, x) => x, 
+                              (t, _, x) => x.ChangeTarget(t.Map(x => loop(x, cont))),
+                              (_, t, _, _, _, x) => check_targ(loop(t, cont), t, x), 
+                              x => x, 
+                              x => x,
+                              x => x, 
+                              (_, _, t, _, x) => check_targ(loop(t, cont), t, x)))
+          {
+            | x when (x : object != n) => t.ChangeNode(x)
+            | _                        => t
+          }
+          xnode(pseudo(t.node, t), null, t)
         }
         
         match (e)
         {
-          //| PseudoState(Junction(n, nn, p, t)) => cont(xnode()) //loop_pseudo(nn, )//cont(xnode(pseudo(n, t), null, null, t))
-          | PseudoState(n) as t                => cont(xnode(pseudo(n, t), null, null, t))
-        
-        //| History     as t                  => History(tran, state, t)
-        //| Final                             => Final(tran)
-        //| State       as t                  => State(tran, t)
-        //| Named       as t                  => Named(tran, state, t)
-        //| SubMachine(m, s)                  => SubMachine(tran, SubMachine(m, null), s)
-        //| Qualified(parent = p, target = t) => Qualified(tran, p, Create(state, tran, t))
-          
-          //| Target(x, d) as t     => cont(xnode(targ(x, d, t), null, null, t))
-          
-          //| PseudoState(tran, st, n) as t => cont(xnode(pseudo(tran, n, t), bacc, eacc, t))
-                                                  
-          //| Else(b) as t       => loop(b, bacc => 
-           //                         cont(xnode(els(bacc, t), bacc, null, t)))
-                                    
-          //| Action(c, b) as t  => loop(b, bacc => 
-            //                        cont(xnode(act(c, bacc, t), bacc, null, t)))
+          | PseudoState(n)   as t              => cont(check_pseudo(n, t))
+          | History(h)       as t              => cont(xnode(hist(h, t), null, t))
+          | Final(s)         as t              => cont(xnode(final(s, t), null, t))
+          | State(s)         as t              => cont(xnode(state(s, t), null, t))
+          | Named(s, n)      as t              => cont(xnode(named(s, n, t), null, t))
+          | SubMachine(m, s) as t              => cont(xnode(machine(m, s, t), null, t))
+          | Qualified(p, tt) as t              => loop(tt, tacc => cont(xnode(qual(p, tacc, t), tacc, t)))
+        }
+      }
+
+      loop(this, x => x)
+    }
+
+    public Fold[T](pseudo : PseudoStateNode * TransitionTarget.PseudoState -> T, 
+                hist : StateHistory * TransitionTarget.History -> T, 
+                final : FsmState.Final * TransitionTarget.Final -> T, 
+                state : FsmState * TransitionTarget.State -> T,
+                named : FsmState * string * TransitionTarget.Named -> T,
+                machine : FsmState.SubMachine * string * TransitionTarget.SubMachine -> T,
+                qual : string * T * TransitionTarget.Qualified -> T) : T
+    {      
+      def loop(e, cont)
+      {
+        match (e)
+        {
+          | PseudoState(n)   as t              => cont(pseudo(n, t))
+          | History(h)       as t              => cont(hist(h, t))
+          | Final(s)         as t              => cont(final(s, t))
+          | State(s)         as t              => cont(state(s, t))
+          | Named(s, n)      as t              => cont(named(s, n, t))
+          | SubMachine(m, s) as t              => cont(machine(m, s, t))
+          | Qualified(p, tt) as t              => loop(tt, tacc => cont(qual(p, tacc, t)))
         }
       }
 
