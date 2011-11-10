@@ -187,7 +187,7 @@ namespace Nemerle.Statechart
         }
     | Fork 
         {
-          target : list[TransitionTarget];
+          [NeedChange] target : list[TransitionTarget];
                  
           [NeedChange] fork_tran : list[StateTransition] = [];
           
@@ -219,7 +219,7 @@ namespace Nemerle.Statechart
     | Join 
         {
           name : string;
-          target : TransitionTarget;
+          [NeedChange] target : TransitionTarget;
           [NeedChange(joined_tran, transition)] region : ConcurrentRegion;
           
           joined_tran : list[StateTransition] = [];
@@ -386,25 +386,34 @@ namespace Nemerle.Statechart
         
     public SetCopy(ncopy : int) : PseudoStateNode
     {
-      
-      match (this)
-      {
-        | Junction(state = st, name = n, nodes = lst, parent = p, decisionTree = t) => 
-            def lst = lst.Map(x => x.SetCopy(ncopy) :> JunctionNode);
-            def t = t?.SetCopy(ncopy);
-            Junction(st, ncopy, n, lst, p, t)
-        | Choice(state = st, name = n, nodes = lst, parent = p, decisionTree = t) => 
-            def lst = lst.Map(x => x.SetCopy(ncopy) :>  JunctionNode);
-            def t = t?.SetCopy(ncopy);
-            Choice(st, ncopy, n, lst, p, t)
-        | Merge(state = st, name = n, node = node) => 
-            def node = node.SetCopy(ncopy) :> JunctionNode;
-            Merge(st, ncopy, n, node)
-        | JunctionNode(state = st, guard = g, action = a, to = t, parent = p) => 
-            def t = t.SetCopy(ncopy);
-            JunctionNode(st, ncopy, g, a, t, p)
-        | _ => this
-      }
+
+      FoldThis((_, _, _, _, x) => x.SetCopy(ncopy), 
+               (_, _, _, _, x) => x.SetCopy(ncopy), 
+               (_, _, x) => x.SetCopy(ncopy), 
+               (_, _, x) => x.SetCopy(ncopy),
+               (_, _, _, _, _, x) => x.SetCopy(ncopy), 
+               x => x.SetCopy(ncopy), 
+               x => x.SetCopy(ncopy),
+               x => x.SetCopy(ncopy), 
+               (_, _, _, _, x) => x.SetCopy(ncopy))
+      //match (this)
+      //{
+      //  | Junction(state = st, name = n, nodes = lst, parent = p, decisionTree = t) => 
+      //      def lst = lst.Map(x => x.SetCopy(ncopy) :> JunctionNode);
+      //      def t = t?.SetCopy(ncopy);
+      //      Junction(st, ncopy, n, lst, p, t)
+      //  | Choice(state = st, name = n, nodes = lst, parent = p, decisionTree = t) => 
+      //      def lst = lst.Map(x => x.SetCopy(ncopy) :>  JunctionNode);
+      //      def t = t?.SetCopy(ncopy);
+      //      Choice(st, ncopy, n, lst, p, t)
+      //  | Merge(state = st, name = n, node = node) => 
+      //      def node = node.SetCopy(ncopy) :> JunctionNode;
+      //      Merge(st, ncopy, n, node)
+      //  | JunctionNode(state = st, guard = g, action = a, to = t, parent = p) => 
+      //      def t = t.SetCopy(ncopy);
+      //      JunctionNode(st, ncopy, g, a, t, p)
+      //  | _ => this
+      //}
     }
     
     copy_name : string
@@ -460,9 +469,9 @@ namespace Nemerle.Statechart
      } else (this, an)
     }
     
-    public FoldThis(choice : string * list[JunctionNode] * Choice * DecisionNode * Choice -> PseudoStateNode,
-                    junction : string * list[JunctionNode] * Junction * DecisionNode * Junction -> PseudoStateNode, 
-                    merge : string * JunctionNode * Merge -> PseudoStateNode, 
+    public FoldThis(choice : string * list[PseudoStateNode] * Choice * DecisionNode * Choice -> PseudoStateNode,
+                    junction : string * list[PseudoStateNode] * Junction * DecisionNode * Junction -> PseudoStateNode, 
+                    merge : string * PseudoStateNode * Merge -> PseudoStateNode, 
                     fork : list[TransitionTarget] * list[StateTransition] * Fork -> PseudoStateNode,
                     join : string * TransitionTarget * ConcurrentRegion * list[StateTransition] * StateTransition * Join -> PseudoStateNode,
                     entry_point : EntryPoint -> PseudoStateNode,
@@ -485,9 +494,9 @@ namespace Nemerle.Statechart
       {
         match (e)
         {
-          | Choice(n, nn, p, dn)      as t => cont(xnode(choice(n, nn, p, dn, t), t))
-          | Junction(n, nn, p, dn)    as t => cont(xnode(junction(n, nn, p, dn, t), t))
-          | Merge(n, nn)              as t => cont(xnode(merge(n, nn, t), t))
+          | Choice(n, nn, p, dn)      as t => cont(xnode(choice(n, nn.Map(x => loop(x, cont)), p, dn, t), t)) // f x (fun x' -> loop (x'::acc) xs cont)
+          | Junction(n, nn, p, dn)    as t => cont(xnode(junction(n, nn.Map(x => loop(x, cont)), p, dn, t), t))
+          | Merge(n, nn)              as t => loop(nn, nnacc => cont(xnode(merge(n, nnacc, t), t)))
           | Fork(tt, ft)              as t => cont(xnode(fork(tt, ft, t), t))
           | Join(n, tt, r, tr, d)     as t => cont(xnode(join(n, tt, r, tr, d, t), t))
           | EntryPoint                as t => cont(xnode(entry_point(t), t))
@@ -500,9 +509,9 @@ namespace Nemerle.Statechart
       loop(this, x => x)
     }
 
-    public Fold[T](choice : string * list[JunctionNode] * Choice * DecisionNode * Choice -> T,
-                   junction : string * list[JunctionNode] * Junction * DecisionNode * Junction -> T, 
-                   merge : string * JunctionNode * Merge -> T, 
+    public Fold[T](choice : string * list[T] * Choice * DecisionNode * Choice -> T,
+                   junction : string * list[T] * Junction * DecisionNode * Junction -> T, 
+                   merge : string * T * Merge -> T, 
                    fork : list[TransitionTarget] * list[StateTransition] * Fork -> T,
                    join : string * TransitionTarget * ConcurrentRegion * list[StateTransition] * StateTransition * Join -> T,
                    entry_point : EntryPoint -> T,
@@ -511,13 +520,13 @@ namespace Nemerle.Statechart
                    junc_node : option[GuardNode] * option[Actions] * TransitionTarget * PseudoStateNode * JunctionNode -> T
                    ) : T
     {            
-      def loop(e, cont) : T
+      def loop(e, cont)
       {
         match (e)
         {
-          | Choice(n, nn, p, dn)      as t => cont(choice(n, nn, p, dn, t))
-          | Junction(n, nn, p, dn)    as t => cont(junction(n, nn, p, dn, t))
-          | Merge(n, nn)              as t => cont(merge(n, nn, t))
+          | Choice(n, nn, p, dn)      as t => cont(choice(n, nn.Map(x => loop(x, cont)), p, dn, t))
+          | Junction(n, nn, p, dn)    as t => cont(junction(n, nn.Map(x => loop(x, cont)), p, dn, t))
+          | Merge(n, nn)              as t => loop(nn, nnacc => cont(merge(n, nnacc, t)))
           | Fork(tt, ft)              as t => cont(fork(tt, ft, t))
           | Join(n, tt, r, tr, d)     as t => cont(join(n, tt, r, tr, d, t))
           | EntryPoint                as t => cont(entry_point(t))

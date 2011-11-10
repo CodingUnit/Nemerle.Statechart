@@ -17,19 +17,19 @@ namespace Nemerle.Statechart
   {
     | Condition 
       {
-        condition : GuardNode;
+        [NeedChange(body, else_node)] condition : GuardNode;
         body : DecisionNode;
         else_node : DecisionNode;
 
       }
     | Action
       {
-        condition : option[GuardNode];
+        [NeedChange(body)] condition : option[GuardNode];
         body : DecisionNode;
       }
     | Else
       {
-        body : DecisionNode;
+        [NeedChange] body : DecisionNode;
       }
     | Target 
       {
@@ -74,8 +74,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def act = Iterator |> ActionNode;
-        PathNode.Sequence(act)
+        //def act = Iterator |> ActionNode;
+        Fold((_, a, b, x) => x.ActionNode + a + b, (a, x) => x.ActionNode + a, (_, _, x) => x.ActionNode, (_, a, x) => x.ActionNode + a);
       }
     }
 
@@ -127,9 +127,9 @@ namespace Nemerle.Statechart
         {
           | null 
           | x when (x : object == ot)                                              => ot
-          | Condition(nc, nb, ne) as j when (nb : object != b || ne : object != e) => Condition(j.level, j.state, j.actions, j.PrevState, j.node_path, j.out_path, nc, nb, ne)
-          | DecisionNode.Action(c, nb) as j when (nb : object != b)                => Action(j.level, j.state, actions, j.PrevState, j.node_path, j.out_path, c, nb)
-          | Else(nb) as j when (nb : object != b)                                  => Else(j.level, j.state, actions, j.PrevState, j.node_path, j.out_path, nb)
+          | Condition(nc, nb, ne) as j when (nb : object != b || ne : object != e) => j.ChangeConditionBodyElseNode(nc, nb, ne)
+          | DecisionNode.Action(c, nb) as j when (nb : object != b)                => j.ChangeConditionBody(c, nb)
+          | Else(nb) as j when (nb : object != b)                                  => j.ChangeBody(nb)
           | x                                                                      => x
         }
       }
@@ -155,54 +155,57 @@ namespace Nemerle.Statechart
       loop(this, x => x)
     }
     
-    public Fold[T](cond : GuardNode * T * T -> T, els : T -> T, targ : TransitionTarget * TransitionDestination -> T, act : option[GuardNode] * T -> T) : T
+    public Fold[T](cond : GuardNode * T * T * Condition -> T, 
+                   els : T * Else -> T, 
+                   targ : TransitionTarget * TransitionDestination * Target -> T, 
+                   act : option[GuardNode] * T * DecisionNode.Action -> T) : T
     {
       def loop(e, cont)
       {
         match (e)
         {
-          | Target(x, d)       => cont(targ(x, d))
-          | Condition(c, b, e) => loop(b, bacc => 
+          | Target(x, d)       as t => cont(targ(x, d, t))
+          | Condition(c, b, e) as t => loop(b, bacc => 
                                           loop(e, eacc => 
-                                                  cont(cond(c, bacc, eacc))))
+                                                  cont(cond(c, bacc, eacc, t))))
 
-          | Else(b)            => loop(b, bacc => cont(els(bacc)))
-          | Action(c, b)       => loop(b, bacc => cont(act(c, bacc)))
+          | Else(b)            as t => loop(b, bacc => cont(els(bacc, t)))
+          | Action(c, b)       as t => loop(b, bacc => cont(act(c, bacc, t)))
         }
       }
 
       loop(this, x => x)
     }
 
-    public Iterator : IEnumerable[DecisionNode]
-    {
-      get
-      {
-        yield this;
-        match (this)
-        {
-          | Condition(body = b, else_node = null)
-          | Action(body = b)
-          | Else(body = b)                        => foreach (i in b.Iterator) yield i
-          | Condition(body = b, else_node = els)  => foreach (i in b.Iterator) yield i;
-              foreach (i in els.Iterator) yield i
-          | Target => ()
-        }
-      }
-    }
+    //public Iterator : IEnumerable[DecisionNode]
+    //{
+    //  get
+    //  {
+    //    yield this;
+    //    match (this)
+    //    {
+    //      | Condition(body = b, else_node = null)
+    //      | Action(body = b)
+    //      | Else(body = b)                        => foreach (i in b.Iterator) yield i
+    //      | Condition(body = b, else_node = els)  => foreach (i in b.Iterator) yield i;
+    //          foreach (i in els.Iterator) yield i
+    //      | Target => ()
+    //    }
+    //  }
+    //}
 
     public Guards : list[GuardNode]
     {
       get
       {
-        def get_guard(n)
-        {
-          | Condition(c, _, _)
-          | Action(Some(c), _) => Some(c)
-          | _ => None()
-        }
+        //def get_guard(n)
+        //{
+        //  | Condition(c, _, _)
+        //  | Action(Some(c), _) => Some(c)
+        //  | _ => None()
+        //}
 
-        Fold((g, x, y) => g :: (x + y), x => x, _ => [], (g, x) => g %:: x)
+        Fold((g, x, y, _) => g :: (x + y), (x, _) => x, _ => [], (g, x, _) => g %:: x)
         //Iterator.FilterValues(get_guard)
       }
     }
@@ -220,7 +223,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        PathNode.Sequence(Iterator |> Path)
+        Fold((_, a, b, x) => x.Path + a + b, (a, x) => x.Path + a, (_, _, x) => x.Path, (_, a, x) => x.Path + a)
+        //PathNode.Sequence(Iterator |> Path)
       }
     }
 
@@ -244,10 +248,10 @@ namespace Nemerle.Statechart
       }
     }
 
-    public Traverse(func : DecisionNode -> void) : void
-    {
-      Iterator.Iter(func)
-    }
+    //public Traverse(func : DecisionNode -> void) : void
+    //{
+    //  Iterator.Iter(func)
+    //}
 
     static contains_decision(n : PseudoStateNode.JunctionNode) : bool
     {
