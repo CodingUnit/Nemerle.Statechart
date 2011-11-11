@@ -11,369 +11,260 @@ namespace Nemerle.Statechart
 {
   using FsmState;
   using ListUtils;
-  
+
+  public enum JunctionType
+  {
+    | Junction
+    | Choice
+  }
+
   [Record]
   public variant PseudoStateNode
   {
     | Junction
-        {
-          name : string;
-          [NeedChange] node : JunctionNode;
-          parent : Junction;
+      {
+        name : string;
+        [NeedChange] to : TransitionTarget.JunctionNode;
+        parent : Junction;
+        type : JunctionType;
 
-          this(st : FsmState, n : string, node : JunctionAstNode, tran : StateTransition)
-          {
-            base(st, 0);
-            nodes = lst |> JunctionNode(st, tran, _, this);
-            name = n;
-          }
-          
-          Name : string
-          {
-            get
-            {
-              $"Junction$name$copy_name"
-            }
-          }
-          
-          [NeedChange] decisionTree : DecisionNode;
-          
-          IsTop : bool 
-          {
-            get
-            {
-              parent == null
-            }
-          }
-          
-          Actions : PathNode
-          {
-            get
-            {
-              decisionTree.Actions
-            }
-          }
-          
-          Guards : list[GuardNode]
-          {
-            get
-            {
-              def g = nodes.FoldLeft([], (x, a) => a + x.Guards).Rev();
-              g.Exclude(_ is GuardNode.Else)
-            }
-          }
-          
-          override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
-          {
-            def (st, an) = base.UpdateReference(an);
-            match (st)
-            {
-              | Junction(n, nodes, p, t) as j => def st = j.state;
-                  def (nodes, an) = nodes.MapThrough(an, _.UpdateRef(_));
-                  (Junction(st, copy, n, nodes, p, t), an)
-              | _ => (this, an)
-            }
-          }
-          
-          override ToString() : string
-          {
-            Name
-          }
-          
-        }
-    | Choice
+        this(st : FsmState, n : string, node : JunctionAstNode, tran : StateTransition)
         {
-          name : string;
-          [NeedChange] node : JunctionNode;
-          parent : Choice;
-          
-          this(st : FsmState, n : string, node : JunctionAstNode, tran : StateTransition)
-          {
-            base(st, 0);
-            nodes = lst |> JunctionNode(st, tran, _, this);
-            name = n;
-          }
-          
-          [NeedChange] decisionTree : DecisionNode;
-          
-          IsTop : bool 
-          {
-            get
-            {
-              parent == null
-            }
-          }
+          base(st, 0);
+          this.node = JunctionNode.Create(st, tran, node, this);//lst |> JunctionNode(st, tran, _, this);
+          name = n;
+        }
 
-          Actions : PathNode
-          {
-            get
-            {
-              decisionTree.Actions
-            }
-          }
-          
-          Guards : list[GuardNode]
-          {
-            get
-            {
-              def g = nodes.FoldLeft([], (x, a) => a + x.Guards).Rev();
-              g.Exclude(_ is GuardNode.Else)
-            }
-          }
-          
-          public override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
-          {
-            def (st, an) = base.UpdateReference(an);
-            match (st)
-            {
-              | Choice(n, nodes, p, t) as j => def st = j.state;
-                  def (nodes, an) = nodes.MapThrough(an, _.UpdateRef(_));
-                  (Choice(st, copy, n, nodes, p, t), an)
-              | _ => (this, an)
-            }
-          }
-          
-          Name : string
-          {
-            get
-            {
-              $"Choice$name$copy_name"
-            }
-          }
-          
-          override ToString() : string
-          {
-            Name
-          }
-      
-        }
-    
-    | Merge
+        Nodes : IEnumerable[TransitionTarget.JunctionNode]
         {
-          name : string;
-          node : JunctionNode;
-
-          this(st : FsmState, n : string, node : JunctionAstNode)
+          get
           {
-            base(st, 0);
-            this.node = JunctionNode(st, null, node,  this);
-            name = n;
-          }
-          
-          public override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
-          {
-            def (nnode, an) = node.UpdateReference(an);
-            def (st, an) = base.UpdateReference(an);
-            def st = match (st)
-            {
-              | x when (x : object != this || node : object != nnode) => Merge(x.state, copy, name, nnode :> JunctionNode)
-              | _                           => this
-            }
-            (st, an)
-          }
-       
-          Name : string
-          {
-            get
-            {
-              $"Merge$name$copy_name"
-            }
-          }
-          
-          override ToString() : string
-          {
-            Name
-          }
-        }
-    | Fork 
-        {
-          [NeedChange] target : list[TransitionTarget];
-          [NeedChange] fork_tran : list[StateTransition] = [];
-          
-          override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
-          { 
-           // TODO: сделать через Lazy создание нового списк только в случае если есть новые элементы
-            def (st, an) = base.UpdateReference(an);
-            match (st)
-            {
-              | Fork(state = st) => def (target, an) = target.MapThrough(an, _.UpdateReference(_));
-                  (Fork(st, copy, target, fork_tran), an)
-              | _                => (this, an)
-            }
-          }
-          
-          Name : string
-          {
-            get
-            {
-              $<#Fork$(state)To..$(target;"_")#>
-            }
-          }
-          
-          override ToString() : string
-          {
-            Name
-          }
-        }
-    | Join 
-        {
-          name : string;
-          [NeedChange] target : TransitionTarget;
-          [NeedChange(joined_tran, transition)] region : ConcurrentRegion;
-          
-          joined_tran : list[StateTransition] = [];
-          transition : StateTransition;
-          
-          trigger : StateEvent
-          {
-            get
-            {
-              match (joined_tran)
+            def loop(t)
+            {                
+              yield t;
+              match (t.next)
               {
-                | [] => null
-                | StateTransition where (Trigger = t) :: _ => t
+                | Some(t) => loop(t)
+                | _       => ()
               }
             }
-          }
-          
-          Name : string
-          {
-            get
-            {
-              $"Join$name$copy_name"
-            }
-          }
-          
-          override ToString() : string
-          {
-            Name
-          }
 
-          override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
-          {
-            def (tar, an) = target?.UpdateReference(an);
-            def (st, an) = base.UpdateReference(an);
-            def st = match (st)
-            {
-              | Join as j when (tar : object != target || j : object != this) => Join(state, copy, name, tar, region, joined_tran, transition)
-              | _                                                             => this
-            }
-            (st, an)
+            loop(to)
+
           }
-          
+        } 
+
+        Name : string
+        {
+          get
+          {
+            match (type)
+            {
+              | Junction => $"Junction$name$copy_name"
+              | Choice   => $"Choice$name$copy_name"
+            }
+          }
         }
+
+        [NeedChange] decisionTree : DecisionNode;
+
+        IsTop : bool 
+        {
+          get
+          {
+            parent == null
+          }
+        }
+
+        Actions : PathNode
+        {
+          get
+          {
+            decisionTree.Actions
+          }
+        }
+
+        Guards : list[GuardNode]
+        {
+          get
+          {
+            def g = node.FoldLeft([], (x, a) => a + x.Guards).Rev();
+            g.Exclude(_ is GuardNode.Else)
+          }
+        }
+
+        override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
+        {
+          def (st, an) = base.UpdateReference(an);
+          match (st)
+          {
+            | Junction(n, nodes, p, t) as j => def st = j.state;
+                def (nodes, an) = node.MapThrough(an, _.UpdateRef(_));
+                (Junction(st, copy, n, nodes, p, t), an)
+            | _ => (this, an)
+          }
+        }
+
+        override ToString() : string
+        {
+          Name
+        }
+
+      }
+
+    | Merge
+      {
+        name : string;
+        [NeedChange] to : TransitionTarget.JunctionNode;
+
+        this(st : FsmState, n : string, node : JunctionAstNode)
+        {
+          base(st, 0);
+          this.node = JunctionNode(st, null, node,  this);
+          name = n;
+        }
+
+        public override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
+        {
+          def (nnode, an) = to.UpdateReference(an);
+          def (st, an) = base.UpdateReference(an);
+          def st = match (st)
+                    {
+                      | x when (x : object != this || to : object != nnode) => Merge(x.state, copy, name, nnode :> TransitionTarget.JunctionNode)
+                      | _                           => this
+                    }
+          (st, an)
+        }
+
+        Name : string
+        {
+          get
+          {
+            $"Merge$name$copy_name"
+          }
+        }
+
+        override ToString() : string
+        {
+          Name
+        }
+      }
+    | Fork 
+      {
+        [NeedChange] target : list[TransitionTarget];
+        [NeedChange] fork_tran : list[StateTransition] = [];
+
+        override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
+        { 
+          // TODO: сделать через Lazy создание нового списк только в случае если есть новые элементы
+          def (st, an) = base.UpdateReference(an);
+          match (st)
+          {
+            | Fork(state = st) => def (target, an) = target.MapThrough(an, _.UpdateReference(_));
+                (Fork(st, copy, target, fork_tran), an)
+            | _                => (this, an)
+          }
+        }
+
+        Name : string
+        {
+          get
+          {
+            $<#Fork$(state)To..$(target;"_")#>
+          }
+        }
+
+        override ToString() : string
+        {
+          Name
+        }
+      }
+    | Join 
+      {
+        name : string;
+        [NeedChange] target : TransitionTarget;
+        [NeedChange(joined_tran, transition)] region : ConcurrentRegion;
+
+        joined_tran : list[StateTransition] = [];
+        transition : StateTransition;
+
+        trigger : StateEvent
+        {
+          get
+          {
+            match (joined_tran)
+            {
+              | [] => null
+              | StateTransition where (Trigger = t) :: _ => t
+            }
+          }
+        }
+
+        Name : string
+        {
+          get
+          {
+            $"Join$name$copy_name"
+          }
+        }
+
+        override ToString() : string
+        {
+          Name
+        }
+
+        override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
+        {
+          def (tar, an) = target?.UpdateReference(an);
+          def (st, an) = base.UpdateReference(an);
+          def st = match (st)
+                    {
+                      | Join as j when (tar : object != target || j : object != this) => Join(state, copy, name, tar, region, joined_tran, transition)
+                      | _                                                             => this
+                    }
+          (st, an)
+        }
+
+      }
     | EntryPoint
     | ExitPoint
     | Terminate
+      {
+        Name : string
         {
-          Name : string
+          get
           {
-            get
-            {
-              $"$(state)Terminate"
-            }
-          }
-          
-          
-          override ToString() : string
-          {
-            Name
+            $"$(state)Terminate"
           }
         }
-    
-    | JunctionNode
-        {
-          guard : option[GuardNode];
-          action : option[Actions];
-          [NeedChange] to : TransitionTarget;
-          parent : PseudoStateNode;
-          next : option[JunctionNode];
-          
-          this(st : FsmState, tran : StateTransition, node : JunctionAstNode, par : PseudoStateNode)
-          {
-            match (node)
-            {
-              | TransitionNode.JunctionNode(g, a, t) =>
-        
-                  base(st, 0);
-                  guard = g;
-                  action = a;
-                  parent = par;
-                  to = TransitionTarget.Create(st, tran, t)
-            }
-          }
-          
-          Top : PseudoStateNode
-          {
-            get
-            {
-              def find_top(j)
-              {
-                | Junction(parent = null)
-                | Choice(parent = null) => j
-                | Junction(parent = p)
-                | Choice(parent = p) => find_top(p)
-                | _ => null
-              }
-              
-              find_top(parent)
-            }
-          }
-          
-          Guards : list[GuardNode]
-          {
-            get
-            {
-              def g = match (to)
-                      {
-                        | TransitionTarget.PseudoState(Choice(Guards = g))
-                        | TransitionTarget.PseudoState(Merge(node = JunctionNode(Guards = g)))
-                        | TransitionTarget.PseudoState(Junction(Guards = g)) => g
-                        | _ => []
-                      }
-              guard %:: g
-            }
-          }
 
-          public UpdateRef(an : FsmAnalyser) : JunctionNode * FsmAnalyser
-          {   
-            def (nto, an) = to.UpdateReference(an);
-            def (st, an) = base.UpdateReference(an);
-            def st = match (st)
-            {
-              | JunctionNode(state = st) as j when (j : object != this || nto : object != to) => JunctionNode(st, copy, guard, action, nto, parent)
-              | _                                                                             => this
-            }
-            (st, an)
-          }
-          
-          public override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
-          {   
-            def (st, an) = UpdateRef(an);
-            (st : PseudoStateNode, an)
-          }
-          
+
+        override ToString() : string
+        {
+          Name
         }
-        
+      }
+
+
     public static Create(st : PseudoStateAstNode, state : FsmState, tran : StateTransition) : PseudoStateNode
     {
       def analyser = state.analyser;
       match (st)
       {
         | PseudoStateAstNode.Choice(null, lst) =>
-        
+
             def num = analyser.NextChoiceNum();
             def name = $"Unnamed$num";
             Choice(state, name, lst, tran)
-            
+
         | PseudoStateAstNode.Choice(n, lst) => Choice(state, n, lst, tran)  
-        
+
         | Junction(null, lst) => 
             def num = analyser.NextJunctionNum();
             def name = $"Unnamed$num";
             Junction(state, name, lst, tran)
-            
-        | Junction(name = n, nodes = lst) => Junction(state, n, lst, tran)
+
+        | Junction(name = n, node = nn)   => Junction(state, n, nn, tran)
         | Merge(name = n, node = node)    => Merge(state, n, node)
         | Fork(target = lst)              => Fork(state, 0, lst |> TransitionTarget.Create(state, tran, _), null)
         | Join(name = n, target = t)      => Join(state, 0, n, TransitionTarget.Create(state, tran, t), null, null, null)
@@ -381,9 +272,9 @@ namespace Nemerle.Statechart
         | ExitPoint                       => ExitPoint(state, 0)
         | Terminate                       => Terminate(state, 0)
       }
-      
+
     }
-        
+
     public SetCopy(ncopy : int) : PseudoStateNode
     {
 
@@ -415,7 +306,7 @@ namespace Nemerle.Statechart
       //  | _ => this
       //}
     }
-    
+
     copy_name : string
     {
       get
@@ -423,13 +314,13 @@ namespace Nemerle.Statechart
         if (copy == 0) "" else $"$copy"
       }
     }
-    
+
     [NeedChange]
     public state : FsmState;
 
     //[RecordIgnore] [Accessor] cloneFor : PseudoStateNode;
     public copy : int;
-    
+
     public NativeName : option[string]
     {
       get
@@ -444,7 +335,7 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
+
     public static @==(a : PseudoStateNode, b : PseudoStateNode) : bool
     {
       | (Join(state = st, name = null, target = t), Join(state = st2, name = null, target = t2)) => st == st2 && t == t2
@@ -458,17 +349,17 @@ namespace Nemerle.Statechart
       | (Terminate(state = st), Terminate(state = st2)) => st == st2
       | _ => false
     }
-    
+
     public virtual UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
     {
       if (state !=null && state.reference) 
       {
-       def (st, an) = an.statemap.Get(state.Name, an);
-       def st = if (st != null) ChangeState(st) else this;
-       (st, an)
-     } else (this, an)
+        def (st, an) = an.statemap.Get(state.Name, an);
+        def st = if (st != null) ChangeState(st) else this;
+        (st, an)
+      } else (this, an)
     }
-    
+
     public FoldThis(choice : string * list[PseudoStateNode] * Choice * DecisionNode * Choice -> PseudoStateNode,
                     junction : string * list[PseudoStateNode] * Junction * DecisionNode * Junction -> PseudoStateNode, 
                     merge : string * PseudoStateNode * Merge -> PseudoStateNode, 
@@ -489,7 +380,7 @@ namespace Nemerle.Statechart
           | x                         => x
         }
       }
-            
+
       def loop(e, cont)
       {
         match (e)
@@ -510,15 +401,15 @@ namespace Nemerle.Statechart
     }
 
     public Fold[T](choice : string * list[T] * Choice * DecisionNode * Choice -> T,
-                   junction : string * list[T] * Junction * DecisionNode * Junction -> T, 
-                   merge : string * T * Merge -> T, 
-                   fork : list[TransitionTarget] * list[StateTransition] * Fork -> T,
-                   join : string * TransitionTarget * ConcurrentRegion * list[StateTransition] * StateTransition * Join -> T,
-                   entry_point : EntryPoint -> T,
-                   exit_point : ExitPoint -> T,
-                   terminate : Terminate -> T,
-                   junc_node : option[GuardNode] * option[Actions] * TransitionTarget * PseudoStateNode * JunctionNode -> T
-                   ) : T
+                  junction : string * list[T] * Junction * DecisionNode * Junction -> T, 
+                  merge : string * T * Merge -> T, 
+                  fork : list[TransitionTarget] * list[StateTransition] * Fork -> T,
+                  join : string * TransitionTarget * ConcurrentRegion * list[StateTransition] * StateTransition * Join -> T,
+                  entry_point : EntryPoint -> T,
+                  exit_point : ExitPoint -> T,
+                  terminate : Terminate -> T,
+                  junc_node : option[GuardNode] * option[Actions] * TransitionTarget * PseudoStateNode * JunctionNode -> T
+                  ) : T
     {            
       def loop(e, cont)
       {
@@ -532,15 +423,15 @@ namespace Nemerle.Statechart
           | EntryPoint                as t => cont(entry_point(t))
           | ExitPoint                 as t => cont(exit_point(t))
           | Terminate                 as t => cont(terminate(t))
-          | JunctionNode(g, a, tt, p) as t => cont(junc_node(g, a, tt, p, t))
+          | JunctionNode(g, a, tt, p, n) as t => cont(junc_node(g, a, tt, p, t))
         }
       }
 
       loop(this, x => x)
     }
-    
-    
+
+
   }
-  
+
 
 }
