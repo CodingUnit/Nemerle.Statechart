@@ -18,10 +18,10 @@ namespace Nemerle.Statechart
     | Junction
         {
           name : string;
-          [NeedChange] nodes : list[JunctionNode];
+          [NeedChange] node : JunctionNode;
           parent : Junction;
 
-          this(st : FsmState, n : string, lst : list[TransitionNode.JunctionNode], tran : StateTransition)
+          this(st : FsmState, n : string, node : JunctionAstNode, tran : StateTransition)
           {
             base(st, 0);
             nodes = lst |> JunctionNode(st, tran, _, this);
@@ -84,10 +84,10 @@ namespace Nemerle.Statechart
     | Choice
         {
           name : string;
-          [NeedChange] nodes : list[JunctionNode];
+          [NeedChange] node : JunctionNode;
           parent : Choice;
           
-          this(st : FsmState, n : string, lst : list[TransitionNode.JunctionNode], tran : StateTransition)
+          this(st : FsmState, n : string, node : JunctionAstNode, tran : StateTransition)
           {
             base(st, 0);
             nodes = lst |> JunctionNode(st, tran, _, this);
@@ -153,7 +153,7 @@ namespace Nemerle.Statechart
           name : string;
           node : JunctionNode;
 
-          this(st : FsmState, n : string, node : TransitionNode.JunctionNode)
+          this(st : FsmState, n : string, node : JunctionAstNode)
           {
             base(st, 0);
             this.node = JunctionNode(st, null, node,  this);
@@ -188,7 +188,6 @@ namespace Nemerle.Statechart
     | Fork 
         {
           [NeedChange] target : list[TransitionTarget];
-                 
           [NeedChange] fork_tran : list[StateTransition] = [];
           
           override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
@@ -288,8 +287,9 @@ namespace Nemerle.Statechart
           action : option[Actions];
           [NeedChange] to : TransitionTarget;
           parent : PseudoStateNode;
-                    
-          this(st : FsmState, tran : StateTransition, node : TransitionNode.JunctionNode, par : PseudoStateNode)
+          next : option[JunctionNode];
+          
+          this(st : FsmState, tran : StateTransition, node : JunctionAstNode, par : PseudoStateNode)
           {
             match (node)
             {
@@ -494,7 +494,7 @@ namespace Nemerle.Statechart
       {
         match (e)
         {
-          | Choice(n, nn, p, dn)      as t => cont(xnode(choice(n, nn.Map(x => loop(x, cont)), p, dn, t), t)) // f x (fun x' -> loop (x'::acc) xs cont)
+          | Choice(n, nn, p, dn)      as t => cont(xnode(choice(n, nn.MapCont((x, c) => c(loop(x, cont)), x => x), p, dn, t), t))//cont(xnode(choice(n, nn.Map(x => loop(x, cont)), p, dn, t), t)) // f x (fun x' -> loop (x'::acc) xs cont)
           | Junction(n, nn, p, dn)    as t => cont(xnode(junction(n, nn.Map(x => loop(x, cont)), p, dn, t), t))
           | Merge(n, nn)              as t => loop(nn, nnacc => cont(xnode(merge(n, nnacc, t), t)))
           | Fork(tt, ft)              as t => cont(xnode(fork(tt, ft, t), t))

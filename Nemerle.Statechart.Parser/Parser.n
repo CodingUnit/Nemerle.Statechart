@@ -259,43 +259,44 @@ namespace Nemerle.Statechart
       StateNode.PseudoState(tok.StartPos, PseudoStateAstNode.Join(tok.StartPos, GetText(name), target))
     }
     
-    junction_target(nodes : List[JunctionNode]) : TargetType
+    junction_target(node : JunctionAstNode) : TargetType
     {
-      TargetType.PseudoState(0, Junction(0, nodes.NToList()))
+      TargetType.PseudoState(0, Junction(0, null, node))
     }
     
-    junction(tok : NToken, name : NToken, nodes : List[JunctionNode]) : PseudoState
+    junction(tok : NToken, name : NToken, node : JunctionAstNode) : PseudoState
     {
       def pos = tok.StartPos;
-      PseudoState(pos, Junction(pos, GetText(name), nodes.NToList()))
+      PseudoState(pos, Junction(pos, GetText(name), node))
     }
 
-    create_junc_node(g : option[GuardNode], a: option[Actions], t : TargetType) : JunctionNode
+    create_junc_node(g : option[GuardNode], a: option[Actions], t : TargetType, next : JunctionAstNode) : JunctionAstNode
     {
-      JunctionNode(0, g, a, t)
+      JunctionAstNode.Node(0, g, a, t, next)
     }
     
-    junction_body(body : List[option[GuardNode] * option[Actions] * TargetType]) : List[JunctionNode]
-    {
-      (body |> create_junc_node(_)).ToList();
+    junction_body(body : List[option[GuardNode] * option[Actions] * TargetType]) : JunctionAstNode
+    {      
+      body.FoldRight(JunctionAstNode.Leaf(0), ((g, a, t), n) => create_junc_node(g, a, t, n))
+      //(body |> create_junc_node(_)).ToList();
     }
     
-    choice_target(tok : NToken, nodes : List[JunctionNode]) : TargetType
+    choice_target(tok : NToken, node : JunctionAstNode) : TargetType
     {
       def pos = tok.StartPos;
-      TargetType.PseudoState(pos, Choice(pos, null, nodes.NToList()))
+      TargetType.PseudoState(pos, Choice(pos, null, node))
     }
     
-    choice(tok : NToken, name : NToken, _ : NToken, nodes : List[JunctionNode]) : StateNode.PseudoState
+    choice(tok : NToken, name : NToken, _ : NToken, node : JunctionAstNode) : StateNode.PseudoState
     {
       def pos = tok.StartPos;
-      PseudoState(pos, Choice(pos, GetText(name), nodes.NToList()))
+      PseudoState(pos, Choice(pos, GetText(name), node))
     }
     
     merge(tok : NToken, name : NToken, GuardNode : option[GuardNode], act : option[Actions], target : TargetType) : StateNode.PseudoState
     {
       def pos = tok.StartPos;
-      PseudoState(pos, Merge(pos, GetText(name), JunctionNode(pos, GuardNode, act, target)))
+      PseudoState(pos, Merge(pos, GetText(name), JunctionAstNode.Node(pos, GuardNode, act, target, JunctionAstNode.Leaf(0))))
     }
 
     trans_target(tar : TargetType, targets : List[TargetType]) : TargetType
