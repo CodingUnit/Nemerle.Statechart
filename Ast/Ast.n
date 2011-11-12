@@ -162,22 +162,12 @@ namespace Nemerle.Statechart
                             // prevents long activity in the planner see TaskCreationOptions.LongRunning (this is default for activities)
   }
 
-  [Record]
-  public variant JunctionAstNode
+  public enum JunctionType
   {
-    | Node
-      {
-        GuardNode : option[GuardNode];
-        action : option[Actions];
-        to : TargetType;
-        next : JunctionAstNode;
-      }
-
-    | Leaf
-    
-    public pos : int;
+    | Junction
+    | Choice
   }
-
+  
   [Record]
   public variant PseudoStateAstNode
   {      
@@ -186,28 +176,18 @@ namespace Nemerle.Statechart
     | Junction
       {
         name : string;
-        node : JunctionAstNode;
-
+        node : TargetType.JunctionNode;
+        type : JunctionType;
+        
         Name : string
         {
           get
           {
-            if (name !=null) $"Junction$name" else "UnnamedJunction"
-          }
-        }
-
-        override ToString() : string {Name}
-      }
-    | Choice
-      {
-        name : string;
-        node : JunctionAstNode;
-
-        Name : string
-        {
-          get
-          {
-            if (name !=null) $"Choice$name" else "UnnamedChoice"
+            match (type)
+            {
+             | JunctionType.Junction => if (name !=null) $"Junction$name" else "UnnamedJunction"
+             | JunctionType.Choice   => if (name !=null) $"Choice$name"   else "UnnamedChoice"
+            }
           }
         }
 
@@ -216,7 +196,7 @@ namespace Nemerle.Statechart
     | Merge
       {
         name : string;
-        node : JunctionAstNode;
+        node : TargetType.JunctionNode;
       }
     | EntryPoint
     | ExitPoint
@@ -246,40 +226,27 @@ namespace Nemerle.Statechart
       }
     | PseudoState 
       {
-        [NeedChange]
-        node : PseudoStateAstNode;
-
-          //Change(n : PseudoStateAstNode) : TargetType.PseudoState
-          //{
-          //  PseudoState(pos, n)
-          //}
-
+        [NeedChange] node : PseudoStateAstNode;
       }
     | Final 
       {
-        [NeedChange]
-        node : StateNode.Final;
-
-          //Change(f : StateNode.Final) : TargetType.Final
-          //{
-          //  Final(pos, f)
-          //}
+        [NeedChange] node : StateNode.Final;
       }
     | State 
       {
-        [NeedChange]
-        state : StateNode.State;
-
-      //Change(st : StateNode.State) : TargetType.State
-      //{
-      //  State ^& (state = st)
-      //  //State(pos, st)
-      //}
+        [NeedChange] state : StateNode.State;
       }
     | Named {parent : StateNode.State;name : string;}
     | SubMachine {machine : StateNode.State;state : string;}
     | Qualified {parent : string;target : TargetType;}
-
+    | JunctionNode 
+    {
+        guard : option[GuardNode];
+        action : option[Actions];
+        to : TargetType;
+        next : option[JunctionNode];
+    }
+    
     public pos : int;
   }
 

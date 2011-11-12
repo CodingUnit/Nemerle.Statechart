@@ -179,9 +179,9 @@ namespace Nemerle.Statechart
         def flag = match (GetText(at))
         {
           | "Concurrently" => ActivityFlag.Concurrently
-          | "NoWait" => ActivityFlag.NoWaitCancel
-          | "NotLong" => ActivityFlag.NotLong
-          | _ => ActivityFlag.None
+          | "NoWait"       => ActivityFlag.NoWaitCancel
+          | "NotLong"      => ActivityFlag.NotLong
+          | _              => ActivityFlag.None
         }
         res | flag
       }
@@ -259,44 +259,44 @@ namespace Nemerle.Statechart
       StateNode.PseudoState(tok.StartPos, PseudoStateAstNode.Join(tok.StartPos, GetText(name), target))
     }
     
-    junction_target(node : JunctionAstNode) : TargetType
+    junction_target(node : TargetType.JunctionNode) : TargetType
     {
-      TargetType.PseudoState(0, Junction(0, null, node))
+      node
+      //TargetType.PseudoState(0, Junction(0, null, node))
     }
     
-    junction(tok : NToken, name : NToken, node : JunctionAstNode) : PseudoState
+    junction(tok : NToken, name : NToken, node : TargetType.JunctionNode) : PseudoState
     {
       def pos = tok.StartPos;
-      PseudoState(pos, Junction(pos, GetText(name), node))
+      PseudoState(pos, Junction(pos, GetText(name), node, JunctionType.Junction))
     }
 
-    create_junc_node(g : option[GuardNode], a: option[Actions], t : TargetType, next : JunctionAstNode) : JunctionAstNode
+    create_junc_node(g : option[GuardNode], a: option[Actions], t : TargetType, next : TargetType.JunctionNode) : TargetType.JunctionNode
     {
-      JunctionAstNode.Node(0, g, a, t, next)
+      TargetType.JunctionNode(0, g, a, t, if (next != null) Some(next) else None())
     }
     
-    junction_body(body : List[option[GuardNode] * option[Actions] * TargetType]) : JunctionAstNode
+    junction_body(body : List[option[GuardNode] * option[Actions] * TargetType]) : TargetType.JunctionNode
     {      
-      body.FoldRight(JunctionAstNode.Leaf(0), ((g, a, t), n) => create_junc_node(g, a, t, n))
-      //(body |> create_junc_node(_)).ToList();
+      body.FoldRight(null, ((g, a, t), n) => create_junc_node(g, a, t, n))
     }
     
-    choice_target(tok : NToken, node : JunctionAstNode) : TargetType
+    choice_target(tok : NToken, node : TargetType.JunctionNode) : TargetType
     {
       def pos = tok.StartPos;
-      TargetType.PseudoState(pos, Choice(pos, null, node))
+      TargetType.PseudoState(pos, Junction(pos, null, node, JunctionType.Choice))
     }
     
-    choice(tok : NToken, name : NToken, _ : NToken, node : JunctionAstNode) : StateNode.PseudoState
+    choice(tok : NToken, name : NToken, _ : NToken, node : TargetType.JunctionNode) : StateNode.PseudoState
     {
       def pos = tok.StartPos;
-      PseudoState(pos, Choice(pos, GetText(name), node))
+      PseudoState(pos, Junction(pos, GetText(name), node, JunctionType.Choice))
     }
     
-    merge(tok : NToken, name : NToken, GuardNode : option[GuardNode], act : option[Actions], target : TargetType) : StateNode.PseudoState
+    merge(tok : NToken, name : NToken, guard : option[GuardNode], act : option[Actions], target : TargetType) : StateNode.PseudoState
     {
       def pos = tok.StartPos;
-      PseudoState(pos, Merge(pos, GetText(name), JunctionAstNode.Node(pos, GuardNode, act, target, JunctionAstNode.Leaf(0))))
+      PseudoState(pos, Merge(pos, GetText(name), TargetType.JunctionNode(0, guard, act, target, None())))
     }
 
     trans_target(tar : TargetType, targets : List[TargetType]) : TargetType
