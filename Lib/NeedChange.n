@@ -18,29 +18,27 @@ namespace Nemerle.Statechart
   {
     NeedChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, field, pars)
   }
-  
+
   module NeedChangeImpl
   {
     public DoTransform(typer : Typer, typeBuilder : TypeBuilder, field : FieldBuilder, aliases : list[PExpr]) : void
     {
       Macros.DefineCTX(typer);
       //assert2(false);
-      
-      //def constr = typeBuilder.GetConstructors();
-      
+
       def get_short_name(name)
       {
         def len = name.Length;
         def end = match (len)
-        {
-          | 1 => 1
-          | 2 => 1
-          | x when x > 4 => 4
-          | _ => 2
-        }
+                   {
+                     | 1 => 1
+                     | 2 => 1
+                     | x when x > 4 => 4
+                     | _ => 2
+                   }
         name.Substring(0, end)
       }
-      
+
       def to_camel(s)
       {
         def str = Char.ToUpper(s[0]).ToString() + s.Substring(1);
@@ -52,11 +50,11 @@ namespace Nemerle.Statechart
         } else str
       }
 
-      
-      
+
+
       def create_cons(t, f : IField)
       {
-        
+
         def fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic).Rev();
         def fields = f :: fields.Filter(x => aliases.Exists(y => y.ToString() == x.Name));
         def names = fields.Map(_.Name);
@@ -65,35 +63,28 @@ namespace Nemerle.Statechart
         def name = $"Change$fname";
         def sname = fields.Map(x => (get_short_name(x.Name), x.GetMemType()));
         def sname = sname.Map((x, t) => <[ parameter: $(x : usesite) : $(t : typed) ]>);
-        def clist = names.Map(x => (x, get_short_name(x)));
+        def chlist = names.Map(x => (x, get_short_name(x)));
         def type = t.GetMemType();
-        def clist = clist.Map((x, y) => <[ $(x : usesite) = $(y : usesite) ]>);
+
+        def clist = chlist.Map((x, y) => <[ $(x : usesite) = $(y : usesite) ]>);
         def body = Utils.CreateNewInst(t, null, clist);
-                  t.Define(<[ decl: public $(name : usesite)(..$sname) : $(type : typed)
-                      {
-                        $body
-                      }]>);
-        
+        def check_list = chlist.Map((x, y) => <[ $(x : usesite) != $(y : usesite) ]>);
+        def check = check_list.FoldLeft(<[ true ]>, (x, a) => <[ $x || $a ]>);
+        t.Define(<[ decl: public $(name : usesite)(..$sname) : $(type : typed)
+            {
+              if ($check) $body else this
+            }]>);
+
       }
-      //match (constr.Find(x => x.GetParameters().Map(x => x.Name).Equals(fields, (x, y) => string.Compare(x, y.Name, StringComparison.CurrentCultureIgnoreCase) == 0)))
-      //{
-        //| Some => 
-                  
-                  
-                  //def pars = c.GetParameters().Map(_.Name);
-                  def opt = typeBuilder.GetVariantOptions();
-                  
-                  match (opt)
-                  {
-                    | [] => create_cons(typeBuilder, field)
-                    | lst => 
-                      create_cons(typeBuilder, field);
-                      lst.Iter(create_cons(_, field))
-                  }
-                  
-        //| _ => Message.Error("Cannot find right constructor for NeedChange")
-      //}
       
+      match (typeBuilder.GetVariantOptions())
+      {
+        | [] => create_cons(typeBuilder, field)
+        | lst => 
+            create_cons(typeBuilder, field);
+            lst.Iter(create_cons(_, field))
+      }
+
       // TODO: Add implementation here.
       _ = typeBuilder; _ = field;
     }
