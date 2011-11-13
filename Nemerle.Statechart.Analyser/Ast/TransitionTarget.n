@@ -483,17 +483,15 @@ namespace Nemerle.Statechart
                     junc_node : TransitionTarget * option[TransitionTarget] * JunctionNode -> TransitionTarget
                     ) : TransitionTarget
     {
-      def xnode(n, oot, nx, ot)
+      def xnode(n, ot)
       {
         match (n)
         {
           | null 
-          | x when (x : object == ot)                                              => ot
-          | Qualified(_, nt)            as t when nt : object != oot             => t.ChangeTarget(t)
-          | PseudoState(Merge(to = nt) as p) as t when nt : object != oot        => t.ChangeNode(p.ChangeTo(nt))
-          | PseudoState(Junction(to = nt) as p) as t when nt : object != oot     => t.ChangeNode(p.ChangeTo(nt))
-          | JunctionNode(to = nt, next = nn) as t 
-                   when nt : object != oot || nx : object != nn                  => t.ChangeNextTo(nn, nt)
+          | Qualified(_, nt)            as t                                     => t.ChangeTarget(nt)
+          | PseudoState(Merge(to = nt) as p) as t                                => t.ChangeNode(p.ChangeTo(nt))
+          | PseudoState(Junction(to = nt) as p) as t                             => t.ChangeNode(p.ChangeTo(nt))
+          | JunctionNode(to = nt, next = nn) as t                                => t.ChangeNextTo(nn, nt)
           | x                                                                    => x
         }
       }
@@ -504,20 +502,20 @@ namespace Nemerle.Statechart
 
         match (e)
         {
-          | PseudoState(Merge(to = n) as p) as t    => loop(n, tacc => cont(xnode(merge(tacc, t), tacc, null, t)))
-          | PseudoState(Junction(to = n) as p) as t => loop(n, tacc => cont(xnode(junction(tacc, t), tacc, null, t)))
-          | PseudoState      as t                   => cont(xnode(pseudo(t), null, null, t))
-          | History          as t                   => cont(xnode(hist(t), null, null, t))
-          | Final            as t                   => cont(xnode(final(t), null, null, t))
-          | State            as t                   => cont(xnode(state(t), null, null, t))
-          | Named            as t                   => cont(xnode(named(t), null, null, t))
-          | SubMachine       as t                   => cont(xnode(machine(t), null, null, t))
-          | Qualified(_, tt) as t                   => loop(tt, tacc => cont(xnode(qual(tacc, t), tacc, null, t)))
+          | PseudoState(Merge(to = n) as p) as t    => loop(n, tacc => cont(xnode(merge(tacc, t), t)))
+          | PseudoState(Junction(to = n) as p) as t => loop(n, tacc => cont(xnode(junction(tacc, t), t)))
+          | PseudoState      as t                   => cont(xnode(pseudo(t), t))
+          | History          as t                   => cont(xnode(hist(t), t))
+          | Final            as t                   => cont(xnode(final(t), t))
+          | State            as t                   => cont(xnode(state(t), t))
+          | Named            as t                   => cont(xnode(named(t), t))
+          | SubMachine       as t                   => cont(xnode(machine(t), t))
+          | Qualified(_, tt) as t                   => loop(tt, tacc => cont(xnode(qual(tacc, t), t)))
           | JunctionNode(to = to, next = Some(n)) as t => loop(to, 
                                                                 toacc => loop(n, 
-                                                                              nacc => cont(xnode(junc_node(toacc, Some(nacc), t), toacc, nacc, t))))
+                                                                              nacc => cont(xnode(junc_node(toacc, Some(nacc), t), t))))
           | JunctionNode(to = to)       as t           => loop(to, 
-                                                               toacc => cont(xnode(junc_node(toacc, None(), t), toacc, null, t)))
+                                                               toacc => cont(xnode(junc_node(toacc, None(), t), t)))
         }
       }
 
@@ -612,17 +610,15 @@ namespace Nemerle.Statechart
                     junc_node : TransitionTarget * option[TransitionTarget] * JunctionNode * FsmAnalyser -> TransitionTarget * FsmAnalyser
                     ) : TransitionTarget * FsmAnalyser
     {
-      def xnode((n, an), oot, nx, ot)
+      def xnode((n, an), ot)
       {
         def n = match (n)
         {
           | null 
-          | x when (x : object == ot)                                              => ot
-          | Qualified(_, nt)            as t when nt : object != oot             => t.ChangeTarget(t)
-          | PseudoState(Merge(to = nt) as p) as t when nt : object != oot        => t.ChangeNode(p.ChangeTo(nt))
-          | PseudoState(Junction(to = nt) as p) as t when nt : object != oot     => t.ChangeNode(p.ChangeTo(nt))
-          | JunctionNode(to = nt, next = nn) as t 
-                   when nt : object != oot || nx : object != nn                  => t.ChangeNextTo(nn, nt)
+          | Qualified(_, nt) as t                                                => t.ChangeTarget(nt)
+          | PseudoState(Merge(to = nt) as p) as t                                => t.ChangeNode(p.ChangeTo(nt))
+          | PseudoState(Junction(to = nt) as p) as t                             => t.ChangeNode(p.ChangeTo(nt))
+          | JunctionNode(to = nt, next = nn) as t                                => t.ChangeNextTo(nn, nt)
           | x                                                                    => x
         }
         (n, an)
@@ -634,20 +630,20 @@ namespace Nemerle.Statechart
 
         match (e)
         {
-          | PseudoState(Merge(to = n) as t          => loop(n, an, (tacc, an) => cont(xnode(merge(tacc, t, an), tacc, null, t)))
-          | PseudoState(Junction(to = n)) as t      => loop(n, an, (tacc, an) => cont(xnode(junction(tacc, t, an), tacc, null, t)))
-          | PseudoState      as t                   => cont(xnode(pseudo(t, an), null, null, t))
-          | History          as t                   => cont(xnode(hist(t, an), null, null, t))
-          | Final            as t                   => cont(xnode(final(t, an), null, null, t))
-          | State            as t                   => cont(xnode(state(t, an), null, null, t))
-          | Named            as t                   => cont(xnode(named(t, an), null, null, t))
-          | SubMachine       as t                   => cont(xnode(machine(t, an), null, null, t))
-          | Qualified(_, tt) as t                   => loop(tt, an, (tacc, an) => cont(xnode(qual(tacc, t, an), tacc, null, t)))
+          | PseudoState(Merge(to = n)) as t         => loop(n, an, (tacc, an) => cont(xnode(merge(tacc, t, an), t)))
+          | PseudoState(Junction(to = n)) as t      => loop(n, an, (tacc, an) => cont(xnode(junction(tacc, t, an), t)))
+          | PseudoState      as t                   => cont(xnode(pseudo(t, an), t))
+          | History          as t                   => cont(xnode(hist(t, an), t))
+          | Final            as t                   => cont(xnode(final(t, an), t))
+          | State            as t                   => cont(xnode(state(t, an), t))
+          | Named            as t                   => cont(xnode(named(t, an), t))
+          | SubMachine       as t                   => cont(xnode(machine(t, an), t))
+          | Qualified(_, tt) as t                   => loop(tt, an, (tacc, an) => cont(xnode(qual(tacc, t, an), t)))
           | JunctionNode(to = to, next = Some(n)) as t => loop(to, an,
                                                                 (toacc, an) => loop(n, an,
-                                                                               (nacc, an) => cont(xnode(junc_node(toacc, Some(nacc), t, an), toacc, nacc, t))))
+                                                                               (nacc, an) => cont(xnode(junc_node(toacc, Some(nacc), t, an), t))))
           | JunctionNode(to =  to)                as t => loop(to, an,
-                                                               (toacc, an) => cont(xnode(junc_node(toacc, None(), t, an), toacc, null, t)))
+                                                               (toacc, an) => cont(xnode(junc_node(toacc, None(), t, an), t)))
         }
       }
 
