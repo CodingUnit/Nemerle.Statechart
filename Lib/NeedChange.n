@@ -57,18 +57,18 @@ namespace Nemerle.Statechart
 
         def fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic).Rev();
         def fields = f :: fields.Filter(x => aliases.Exists(y => y.ToString() == x.Name));
-        def names = fields.Map(_.Name);
-        def cnames = names.Map(to_camel);
+        def names = fields.Map(x => (x.Name, x.GetMemType()));
+        def cnames = names.Map((x, _) => to_camel(x));
         def fname = string.Join("", cnames);
         def name = $"Change$fname";
-        def sname = fields.Map(x => (get_short_name(x.Name), x.GetMemType()));
+        def sname = names.Map((x, y) => (get_short_name(x), y));
         def sname = sname.Map((x, t) => <[ parameter: $(x : usesite) : $(t : typed) ]>);
-        def chlist = names.Map(x => (x, get_short_name(x)));
+        def chlist = names.Map((x, y) => (x, get_short_name(x), y));
         def type = t.GetMemType();
 
-        def clist = chlist.Map((x, y) => <[ $(x : usesite) = $(y : usesite) ]>);
+        def clist = chlist.Map((x, y, _) => <[ $(x : usesite) = $(y : usesite) ]>);
         def body = Utils.CreateNewInst(t, null, clist);
-        def check_list = chlist.Map((x, y) => <[ $(x : usesite) != $(y : usesite) ]>);
+        def check_list = chlist.Map((x, y, t) => if (t.IsValueType) <[ $(x : usesite) != $(y : usesite) ]> else <[ $(x : usesite) : object != $(y : usesite) ]>);
         def check = check_list.FoldLeft(<[ true ]>, (x, a) => <[ $x || $a ]>);
         t.Define(<[ decl: public $(name : usesite)(..$sname) : $(type : typed)
             {
