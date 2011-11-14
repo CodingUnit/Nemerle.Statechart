@@ -18,14 +18,14 @@ namespace Nemerle.Statechart
     | Condition 
       {
         [NeedChange(body, else_node)] condition : GuardNode;
-        body : DecisionNode;
+        [NeedChange(else_node)] body : DecisionNode;
         else_node : DecisionNode;
 
       }
     | Action
       {
         [NeedChange(body)] condition : option[GuardNode];
-        body : DecisionNode;
+        [NeedChange] body : DecisionNode;
       }
     | Else
       {
@@ -66,7 +66,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        PathNode.Sequence(actions |> PathNode.Action(_))
+        PathNode.Sequence(actions.MapLazy(PathNode.Action))
       }
     }
 
@@ -75,7 +75,9 @@ namespace Nemerle.Statechart
       get
       {
         //def act = Iterator |> ActionNode;
-        Fold((_, a, b, x) => x.ActionNode + a + b, (a, x) => x.ActionNode + a, (_, _, x) => x.ActionNode, (_, a, x) => x.ActionNode + a);
+        //Fold((_, a, b, x) => x.ActionNode + a + b, (a, x) => x.ActionNode + a, (_, _, x) => x.ActionNode, (_, a, x) => x.ActionNode + a);
+        //Fold(PathNode.Empty(), (a, _, c) => a + c.ActionNode, (a, e) => a + e.ActionNode, (a, _, _, x) => a + x.ActionNode, (a, _, x) => a + x.ActionNode)
+        PathNode.Sequence(Iterator.MapLazy(_.ActionNode))
       }
     }
 
@@ -121,15 +123,15 @@ namespace Nemerle.Statechart
                     targ : TransitionTarget * TransitionDestination * DecisionNode.Target -> DecisionNode, 
                     act : option[GuardNode] * DecisionNode * DecisionNode.Action -> DecisionNode) : DecisionNode
     {
-      def xnode(n, b, e, ot)
+      def xnode(n, nb, ne, ot)
       {
         match (n)
         {
-          | null 
-          | Condition(nc, nb, ne) as j                                             => j.ChangeConditionBodyElseNode(nc, nb, ne)
-          | DecisionNode.Action(c, nb) as j                                        => j.ChangeConditionBody(c, nb)
-          | Else(nb) as j                                                          => j.ChangeBody(nb)
-          | x                                                                      => x
+          | null                            => ot
+          | Condition as j                  => j.ChangeBodyElseNode(nb, ne)
+          | DecisionNode.Action as j        => j.ChangeBody(nb)
+          | Else as j                       => j.ChangeBody(nb)
+          | x                               => x
         }
       }
 
@@ -176,6 +178,29 @@ namespace Nemerle.Statechart
       loop(this, x => x)
     }
 
+    public Fold[T](init : T, 
+                  cond : T * GuardNode * Condition -> T, 
+                  els : T * Else -> T, 
+                  targ : T * TransitionTarget * TransitionDestination * Target -> T, 
+                  act : T * option[GuardNode] * DecisionNode.Action -> T) : T
+    {
+      def loop(e, acc, cont)
+      {
+        match (e)
+        {
+          | Target(x, d)       as t => cont(targ(acc, x, d, t))
+          | Condition(c, b, e) as t => loop(b, acc, bacc => 
+                                               loop(e, bacc, eacc => 
+                                                       cont(cond(eacc, c, t))))
+
+          | Else(b)            as t => loop(b, acc, bacc => cont(els(bacc, t)))
+          | Action(c, b)       as t => loop(b, acc, bacc => cont(act(bacc, c, t)))
+        }
+      }
+
+      loop(this, init, x => x)
+    }
+    
     public Iterator : IEnumerable[DecisionNode]
     {
       get
@@ -204,7 +229,7 @@ namespace Nemerle.Statechart
         //  | _ => None()
         //}
 
-        Fold((g, x, y, _) => g :: (x + y), (x, _) => x, _ => [], (g, x, _) => g %:: x)
+        Fold([], (a, g, _) => g :: a, (a, _) => a, (a, _, _, _) => a, (a, g, _) => g %:: a)
         //Iterator.FilterValues(get_guard)
       }
     }
@@ -214,7 +239,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        PathNode.Sequence(actions |> PathNode.Action(_))
+        ActionNode
+        //PathNode.Sequence(actions |> PathNode.Action(_))
       }
     }
 
