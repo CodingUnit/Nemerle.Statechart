@@ -66,7 +66,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        PathNode.Sequence(actions.MapLazy(PathNode.Action))
+        PathNode.Sequence(actions.Map(PathNode.Action(_)))
       }
     }
 
@@ -77,7 +77,7 @@ namespace Nemerle.Statechart
         //def act = Iterator |> ActionNode;
         //Fold((_, a, b, x) => x.ActionNode + a + b, (a, x) => x.ActionNode + a, (_, _, x) => x.ActionNode, (_, a, x) => x.ActionNode + a);
         //Fold(PathNode.Empty(), (a, _, c) => a + c.ActionNode, (a, e) => a + e.ActionNode, (a, _, _, x) => a + x.ActionNode, (a, _, x) => a + x.ActionNode)
-        PathNode.Sequence(Iterator.MapLazy(_.ActionNode))
+        PathNode.Sequence(Iterator.Map(_.ActionNode))
       }
     }
 
@@ -190,8 +190,8 @@ namespace Nemerle.Statechart
         {
           | Target(x, d)       as t => cont(targ(acc, x, d, t))
           | Condition(c, b, e) as t => loop(b, acc, bacc => 
-                                               loop(e, bacc, eacc => 
-                                                       cont(cond(eacc, c, t))))
+                                                    loop(e, bacc, eacc => 
+                                                                  cont(cond(eacc, c, t))))
 
           | Else(b)            as t => loop(b, acc, bacc => cont(els(bacc, t)))
           | Action(c, b)       as t => loop(b, acc, bacc => cont(act(bacc, c, t)))
@@ -200,21 +200,40 @@ namespace Nemerle.Statechart
 
       loop(this, init, x => x)
     }
-    
+
     public Iterator : IEnumerable[DecisionNode]
     {
       get
       {
-        yield this;
-        match (this)
+//var stack = new Stack<Tree<T>>();
+  //if (tree != null)
+  //  stack.Push(tree);
+  //while (stack.Count > 0)
+  //{
+  //  for (var current = stack.Pop(); current != null; current = current.FirstChild)
+  //  {
+  //    yield return current.Value;
+  //    if (current.NextSibling != null)
+  //      stack.Push(current.NextSibling);
+  //  }
+  //}        
+        def loop(lst)
         {
-          | Condition(body = b, else_node = null)
-          | Action(body = b)
-          | Else(body = b)                        => foreach (i in b.Iterator) yield i
-          | Condition(body = b, else_node = els)  => foreach (i in b.Iterator) yield i;
-              foreach (i in els.Iterator) yield i
-          | Target => ()
+          | [] => ()
+          | head :: tail => 
+
+              yield head;
+              match (head)
+              {
+                | Condition(body = b, else_node = null)
+                | Action(body = b)
+                | Else(body = b)                        => loop(b :: tail)//foreach (i in b.Iterator) yield i
+                | Condition(body = b, else_node = els)  => loop(b :: els :: tail)//foreach (i in b.Iterator) yield i;
+                | Target => loop(tail)
+              }
         }
+
+        loop([this])
       }
     }
 
