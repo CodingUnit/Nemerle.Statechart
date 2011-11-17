@@ -12,7 +12,7 @@ namespace Nemerle.Statechart
 {
 
   using FsmState;
-
+  using BitUtils;
 
   [Record]
   public class IdType
@@ -100,7 +100,7 @@ namespace Nemerle.Statechart
         def id = BitArray(count);
         def num = t.Num;
         when (num != 0) id.Set(num, true);
-        def id = if (parent != null) id.Or(parent.val) else id;
+        def id = if (parent != null) id | parent.val else id;
         def id = IdType(id);
         t.ChangeId(id)
       }
@@ -110,8 +110,8 @@ namespace Nemerle.Statechart
         | FsmState where (cloneFor = FsmState where (Id = clone_id, PartOfStateMachine = Some(FsmState where (super_state = FsmState where (Id = inlined_super_id))))) =>
 
             def id = t.Id;
-            def id = id.val.Or(clone_id.val);
-            def id = id.And(inlined_super_id.val.Not());
+            def id = (id.val | clone_id.val);
+            def id = id & ~inlined_super_id.val;
             def id = IdType(id);
             t.ChangeId(id)
       }
@@ -124,7 +124,7 @@ namespace Nemerle.Statechart
                                 (s, _, _, t) => create_num_id(s, t), 
                                 t => t, 
                                 (s, _, _, t) => create_num_id(s, t), 
-                          );
+                              );
       // second pass                    
       st.FoldThis((_, _, t) => mark_inlined_inst(t), 
                   (_, t) => mark_inlined_inst(t), 
