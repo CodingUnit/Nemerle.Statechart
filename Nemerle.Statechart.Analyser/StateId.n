@@ -10,162 +10,131 @@ using System.Collections;
 
 namespace Nemerle.Statechart
 {
-  
+
   using FsmState;
-  
+
 
   [Record]
-  public variant IdType
+  public class IdType
   {
-    | Int {val : uint;}
-    | Long {val : ulong;}
-    | Struct {val : BitArray;}
-    | Class {val : BitArray;}
-    
-    public Id : ulong
+    public val : BitArray;
+
+    //public Id : ulong
+    //{
+    //  get
+    //  {
+    //    match (this)
+    //    {
+    //      | Int(val) => val
+    //      | Long(val) => val
+    //      | _ => 0 : ulong
+    //    }
+    //  }
+    //}
+
+    //public IsSimple : bool
+    //{
+    //  get
+    //  {
+    //    match (this)
+    //    {
+    //      | Int
+    //      | Long => true
+    //      | _ => false
+    //    }
+    //  }
+    //}
+
+    //engine : StateId;
+    public Count : int
     {
       get
       {
-        match (this)
-        {
-          | Int(val) => val
-          | Long(val) => val
-          | _ => 0 : ulong
-        }
+        val.Count
       }
     }
 
-    public IsSimple : bool
+    public Length : int 
     {
       get
       {
-        match (this)
-        {
-          | Int
-          | Long => true
-          | _ => false
-        }
+        MathUtils.UpperDiv(Count, 32)
       }
     }
-    
-    engine : StateId;
-    
-    public Result : list[int]
+
+    public Result : array[int]
     {
       get
       {
-        match (this)
-        {
-          | IdType.Class(val)
-          | Struct(val) => 
-              def res = array(engine.Length);
-              val.CopyTo(res, 0);
-              res.NToList()
-          | _ => []    
-        }
-        
+        def res = array(Length);
+        val.CopyTo(res, 0);
+        res
       }
     }
-    
-    public Or(id : IdType) : IdType
-    {
-      match (this, id)
-      {
-        | (Int(i1), Int(i2)) => Int(engine, i1 | i2)
-        | (Long(i1), Long(i2)) => Long(engine, i1 | i2)
-        | (Class(i1), Class(i2)) => Class(engine, i1.Or(i2))
-        | (Struct(i1), Struct(i2)) => Struct(engine, i1.Or(i2))
-        | _ => this
-      }
-    }
+
   }
 
-  using IdType;
   /// <summary>
   /// State identifier
   /// </summary>
   [Record]
   public class StateId
   {
-    mutable analyser : FsmAnalyser;
-    
-    public this()
+    analyser : FsmAnalyser;
+
+    count : int
     {
-    }
-    
-    [Accessor]
-    mutable length : int;
-    
-    mutable count : int;
-    
-    [Accessor]
-    mutable mask_type : IdType;
-    
-    mutable defered : list[FsmState] = [];
-    
-    CreateMask(parent : IdType, state : FsmState, analyser : FsmAnalyser) : void
-    {
-      this.analyser = analyser;
-      def num = state.Num;
-      
-      def create_id(id1, id2 : BitArray)
+      get
       {
-        def arr = BitArray(count);
-        arr.Set(id1, true);
-        if (id2 != null) arr.Or(id2) else arr
-      }
-      
-      def (parent, defr) = match (state)
-                           {
-                             | FsmState where (cloneFor = null) => (parent, false)
-                             | FsmState where (cloneFor = FsmState where (Id = null)) => 
-                                defered ::= state;
-                                (parent, true)
-                             | FsmState where (cloneFor = st) => (parent.Or(st.Id), false)
-                           }
-      when (!defr)
-      {
-        state.Id = match (mask_type, parent)
-                   {
-                     | (Int, null) => Int(this, 1U << num)
-                     | (_, Int) when (num == 0) => Int(this, 0)
-                     | (Int, Int(v)) => Int(this, (1U << num) | v)
-                     | (Long, null) => Long(this, 1 : ulong << num)
-                     | (_, Long) when (num == 0) => Long(this, 0)
-                     | (Long, Long(v)) => Long(this, ((1 : ulong << num) | (v)))
-                     | (Class, Class(v)) => Class(this, create_id(num, v))
-                     | (Struct, Struct(v)) => Struct(this, create_id(num, v))
-                     | _ => throw InvalidOperationException("Invalid StateId used")
-                   }
-      def st = state.SubStates;
-      st.Iter(CreateMask(state.Id, _, analyser))
+        analyser.statemap.Count
       }
     }
-    
-    CreateMasks(st : FsmState) : void
+
+    public CreateMasks() : FsmState 
     {
-        CreateMask(st?.SuperState?.Id, st, analyser);
-        def defr = defered;
-        defered = [];
-        defr.Iter(CreateMasks)
+      def st = analyser.TopState;
+
+      def create_num_id(s, t)
+      {
+        def parent = if (s != null) s.Id else null;
+        def id = BitArray(count);
+        def num = t.Num;
+        when (num != 0) id.Set(num, true);
+        def id = if (parent != null) id.Or(parent.val) else id;
+        def id = IdType(id);
+        t.ChangeId(id)
+      }
+
+      def mark_inlined_inst(t)
+      {
+        | FsmState where (cloneFor = FsmState where (Id = clone_id, PartOfStateMachine = Some(FsmState where (super_state = FsmState where (Id = inlined_super_id))))) =>
+
+            def id = t.Id;
+            def id = id.val.Or(clone_id.val);
+            def id = id.And(inlined_super_id.val.Not());
+            def id = IdType(id);
+            t.ChangeId(id)
+      }
+
+      // first pass
+      def st = st.FoldThisSuper((s, _, _, t) => create_num_id(s, t), 
+                                (s, _, t) => create_num_id(s, t), 
+                                (s, _, _, t) => create_num_id(s, t), 
+                                (s, _, _, t) => create_num_id(s, t), 
+                                (s, _, _, t) => create_num_id(s, t), 
+                                t => t, 
+                                (s, _, _, t) => create_num_id(s, t), 
+                          );
+      // second pass                    
+      st.FoldThis((_, _, t) => mark_inlined_inst(t), 
+                  (_, t) => mark_inlined_inst(t), 
+                  (_, _, t) => mark_inlined_inst(t), 
+                  (_, _, t) => mark_inlined_inst(t), 
+                  (_, _, t) => mark_inlined_inst(t), 
+                  t => t, 
+                  (_, _, t) => mark_inlined_inst(t), 
+                  );
     }
-    
-    public static CreateMasks(analyser : FsmAnalyser) : void
-    {
-      def st = analyser.Statemap.States;
-      
-      def count = st.Length;
-      def length = MathUtils.UpperDiv(count, 32);
-      def mask_type = match (length)
-                      {
-                        | x when x <= 1 => Int(null, 0)
-                        | x when x <= 2 => Long(null, 0)
-                        | x when x <= 4 => Struct(null, null)
-                        | _ => Class(null, null)
-                      }
-      def stid = StateId(analyser, length, count, mask_type, []);
-      stid.CreateMasks(analyser.topState)
-    }
-    
+
   }
 }
