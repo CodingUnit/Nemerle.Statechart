@@ -22,9 +22,9 @@ namespace Nemerle.Statechart
     {
       def map = an.statemap;
       def (super, an) = if (super_state != null && super_state.reference) 
-                         {
-                           map.Get(super_state.Name, an)
-                         } else (super_state, an);
+                        {
+                          map.Get(super_state.Name, an)
+                        } else (super_state, an);
       //def super = if (super.AstName == null) super.ChangeName(TopStateName) else super;
       def an = initial.FoldLeft(an, _.UpdateReference(_));
       def an = transitions.FoldLeft(an, _.UpdateReference(_));
@@ -204,23 +204,6 @@ namespace Nemerle.Statechart
     //  pseudo_states = if (ncopy != 0) st.pseudo_states |> SetCopy(ncopy) else st.pseudo_states
     //}
 
-    public do_activity : option[StateAction.Do];
-
-    [NeedChange] public sub_states : list[FsmState];
-    //{
-    //  get
-    //  {
-    //    sub_states_num |> statemap[_]
-    //  }
-    //}
-
-    //public sub_states_num : list[int] = [];
-    [NeedChange] public history : TwoOption[StateHistory] = TwoOption.None();
-    [NeedChange(sub_states, super_state, analyser)]
-    [NeedChange] public pseudo_states : list[PseudoStateNode] = [];
-    [NeedChange] public statemap : StateMap;
-    [NeedChange] public cloneFor : FsmState;
-    
     public history_paths : list[string * HistoryPath] // paths from outer history
     {
       get
@@ -245,34 +228,6 @@ namespace Nemerle.Statechart
         path
       }
     }
-
-    public state : StateNode.State;
-
-    [NeedChange]
-    public initial : list[StateTransition] = [];
-    public entry : list[StateAction.Entry] = [];
-    public exit  : list[StateAction.Exit] = [];
-    [NeedChange(transitions, initial)]
-    public internal_tran : list[StateTransition] = [];
-    public transitions : list[StateTransition] = [];
-
-    //[NeedChange]
-    //public super_state_num : int;
-
-    [NeedChange] public super_state  : FsmState;
-    //{
-    //  get
-    //  {
-    //    statemap[super_state_num]
-    //  }
-    //}
-
-    [NeedChange] public copy_num : int;
-    [NeedChange] public paths : TransitionPaths;
-    public lived : bool;
-
-    [NeedChange]
-    public Num : int;
 
     ///// <summary>
     ///// Indicates what fsm lived in this state and it not only composite for others
@@ -320,17 +275,8 @@ namespace Nemerle.Statechart
       }
     }
 
-    public static TopStateName  =  "[Top]";
 
-    public reference : bool;
-    [NeedChange] public name : string;
 
-    //public is_new : bool;
-    public analyser : FsmAnalyser;
-
-    [NeedChange] public Id : IdType;
-    
-    
 
     CopyName : string
     {
@@ -407,7 +353,7 @@ namespace Nemerle.Statechart
 
     /// <summary>
     /// Events for which reacts state or nested states
-    /// </summary>    
+    /// </summary>
     public events_nested : list[StateEvent]
     {
       get
@@ -511,6 +457,172 @@ namespace Nemerle.Statechart
       entry.Iter(x => x.state = this);
       exit.Iter(x => x.state = this);
       //history.Map(x => x.state = this)
+    }
+
+    public FoldThis(
+                state   : FsmState * FsmState * State -> FsmState,
+                final   : FsmState * Final            -> FsmState,
+                sub_reg : FsmState * FsmState * ConcurrentSubRegion -> FsmState,
+                region  : FsmState * FsmState * ConcurrentRegion -> FsmState,
+                inlined_subm_inst : FsmState * FsmState * InlinedSubMachineInstance -> FsmState,
+                sub_mach : SubMachine -> FsmState,
+                inlined_fsm : FsmState * FsmState * InlinedSubMachine -> FsmState
+              ) : FsmState
+    {
+
+      def xnode(n, sub, nt, nsr, sr, ot)
+      {
+        match (n)
+        {
+          | null                            => ot
+          | State          as t                                                   
+          | InlinedSubMachineInstance as t  
+          | InlinedSubMachine as t
+          | Final as t                      => t.ChangeSubStateNext(sub, nt)
+          | ConcurrentSubRegion as t        => t.ChangeNextSubRegionSubState(nsr, sub)
+          | ConcurrentRegion as t           => t.ChangeSubRegionNext(sr, nt)
+          | x                               => x
+        }
+      }
+
+      def loop(st, cont)
+      {
+        match (st)
+        {
+          | State(sub_state = sub, next = null) as t                             => loop(sub, subacc => cont(xnode(state(subacc, null, t), subacc, null, null, null, t)))
+          | State(sub_state = sub, next = n) as t                                => loop(sub, subacc => 
+                                                                                              loop(n, nacc => cont(xnode(state(subacc, nacc, t), subacc, nacc, null, null, t))))
+          | Final(next = null) as t                                              => cont(xnode(final(null, t), null, null, null, null, t))
+          | Final(next = n) as t                                                 => loop(n, nacc => cont(xnode(final(nacc, t), null, nacc, null, null, t)))
+
+          | ConcurrentSubRegion(sub_state = sub, next_sub_region = null) as t    => loop(sub, subacc => cont(xnode(sub_reg(subacc, null, t), subacc, null, null, null, t)))
+          | ConcurrentSubRegion(sub_state = sub, next_sub_region = n) as t       => loop(sub, subacc => 
+                                                                                              loop(n, nacc => cont(xnode(sub_reg(subacc, nacc, t), subacc, nacc, null, null, t))))
+          | ConcurrentRegion(sub_region = reg, next = null)  as t                => loop(reg, regacc => cont(xnode(region(regacc, null, t), null, null, null, regacc :> ConcurrentSubRegion, t)))
+          | ConcurrentRegion(sub_region = reg, next = n)  as t                   => loop(reg, regacc => 
+                                                                                              loop(n, nacc => cont(xnode(region(regacc, nacc, t), null, nacc, null, regacc :> ConcurrentSubRegion, t))))
+          | InlinedSubMachineInstance(sub_state = sub, next = null) as t         => loop(sub, subacc => cont(xnode(inlined_subm_inst(subacc, null, t), subacc, null, null, null, t)))
+          | InlinedSubMachineInstance(sub_state = sub, next = n) as t            => loop(sub, subacc => 
+                                                                                              loop(n, nacc => cont(xnode(inlined_subm_inst(subacc, nacc, t), subacc, nacc, null, null, t))))
+
+          | SubMachine as t                                                      => cont(sub_mach(t))
+          | InlinedSubMachine(sub_state = sub, next = null) as t                 => loop(sub, subacc => cont(inlined_fsm(subacc, null, t)))
+          | InlinedSubMachine(sub_state = sub, next = n) as t                    => loop(sub, subacc => 
+                                                                                              loop(n, nacc => cont(inlined_fsm(subacc, nacc, t))))
+
+        }
+      }
+
+      loop(this, x => x)
+    }
+
+    public FoldThisSuper(
+                state   : FsmState * FsmState * FsmState * State -> FsmState,
+                final   : FsmState * FsmState * Final            -> FsmState,
+                sub_reg : FsmState * FsmState * FsmState * ConcurrentSubRegion -> FsmState,
+                region  : FsmState * FsmState * FsmState * ConcurrentRegion -> FsmState,
+                inlined_subm_inst : FsmState * FsmState * FsmState * InlinedSubMachineInstance -> FsmState,
+                sub_mach : SubMachine -> FsmState,
+                inlined_fsm : FsmState * FsmState * FsmState * InlinedSubMachine -> FsmState
+              ) : FsmState
+    {
+
+      def xnode(n, sub, nt, nsr, sr, ot)
+      {
+        match (n)
+        {
+          | null                            => ot
+          | State          as t                                                   
+          | InlinedSubMachineInstance as t  
+          | InlinedSubMachine as t
+          | Final as t                      => t.ChangeSubStateNext(sub, nt)
+          | ConcurrentSubRegion as t        => t.ChangeNextSubRegionSubState(nsr, sub)
+          | ConcurrentRegion as t           => t.ChangeSubRegionNext(sr, nt)
+          | x                               => x
+        }
+      }
+
+      def loop(st, super, cont)
+      {
+        match (st)
+        {
+          | State(sub_state = sub, next = null) as t                             => def super = state(super, null, null, t);
+                                                                                    loop(sub, super, subacc => cont(xnode(state(super, subacc, null, t), subacc, null, null, null, t)))
+          | State(sub_state = sub, next = n) as t                                => def super = state(null, null, null, t);
+                                                                                    loop(sub, super, subacc => 
+                                                                                              loop(n, super, nacc => cont(xnode(state(super, subacc, nacc, t), subacc, nacc, null, null, t))))
+          | Final(next = null) as t                                              => def super = final(super, null, t);
+                                                                                    cont(xnode(final(super, null, t), null, null, null, null, t))
+          | Final(next = n) as t                                                 => def super = final(super, null, t);
+                                                                                    loop(n, super, nacc => cont(xnode(final(super, nacc, t), null, nacc, null, null, t)))
+
+          | ConcurrentSubRegion(sub_state = sub, next_sub_region = null) as t    => def super = sub_reg(super, null, null, t);
+                                                                                    loop(sub, super, subacc => cont(xnode(sub_reg(super, subacc, null, t), subacc, null, null, null, t)))
+          | ConcurrentSubRegion(sub_state = sub, next_sub_region = n) as t       => def super = sub_reg(super, null, null, t);
+                                                                                    loop(sub, super, subacc => 
+                                                                                              loop(n, super, nacc => cont(xnode(sub_reg(super, subacc, nacc, t), subacc, nacc, null, null, t))))
+          | ConcurrentRegion(sub_region = reg, next = null)  as t                => def super = region(super, null, null, t);
+                                                                                    loop(reg, super, regacc => cont(xnode(region(super, regacc, null, t), null, null, null, regacc :> ConcurrentSubRegion, t)))
+          | ConcurrentRegion(sub_region = reg, next = n)  as t                   => def super = region(super, null, null, t);
+                                                                                    loop(reg, super, regacc => 
+                                                                                              loop(n, super, nacc => cont(xnode(region(super, regacc, nacc, t), null, nacc, null, regacc :> ConcurrentSubRegion, t))))
+          | InlinedSubMachineInstance(sub_state = sub, next = null) as t         => def super = inlined_subm_inst(super, null, null, t);
+                                                                                    loop(sub, super, subacc => cont(xnode(inlined_subm_inst(super, subacc, null, t), subacc, null, null, null, t)))
+          | InlinedSubMachineInstance(sub_state = sub, next = n) as t            => def super = inlined_subm_inst(super, null, null, t);
+                                                                                    loop(sub, super, subacc => 
+                                                                                              loop(n, super, nacc => cont(xnode(inlined_subm_inst(super, subacc, nacc, t), subacc, nacc, null, null, t))))
+
+          | SubMachine as t                                                      => cont(sub_mach(t))
+          | InlinedSubMachine(sub_state = sub, next = null) as t                 => def super = inlined_fsm(super, null, null, t);
+                                                                                    loop(sub, super, subacc => cont(inlined_fsm(super, subacc, null, t)))
+          | InlinedSubMachine(sub_state = sub, next = n) as t                    => def super = inlined_fsm(super, null, null, t);
+                                                                                    loop(sub, super, subacc => 
+                                                                                              loop(n, super, nacc => cont(inlined_fsm(super, subacc, nacc, t))))
+
+        }
+      }
+
+      loop(this, super_state, x => x)
+    }
+    
+    public Fold[T](
+                  state   : T * option[T] * State -> T,
+                  final   : option[T] * Final     -> T,
+                  sub_reg : T * option[T] * ConcurrentSubRegion -> T,
+                  region  : T * option[T] * ConcurrentRegion -> T,
+                  inlined_subm_inst : T * option[T] * InlinedSubMachineInstance -> T,
+                  sub_mach : SubMachine -> T,
+                  inlined_fsm : T * option[T] * InlinedSubMachine -> T
+                  ) : T
+    {
+
+      def loop(st, cont)
+      {
+        match (st)
+        {
+          | State(sub_state = sub, next = null)                 as t             => loop(sub, subacc => cont(state(subacc, None(), t)))
+          | State(sub_state = sub, next = n) as t                                => loop(sub, subacc => 
+                                                                                                 loop(n, nacc => cont(state(subacc, Some(nacc), t))))
+          | Final(next = null) as t                                              => cont(final(None(), t))
+          | Final(next = n)    as t                                              => loop(n, nacc => cont(final(Some(nacc), t)))
+          | ConcurrentSubRegion(sub_state = sub, next_sub_region = null) as t    => loop(sub, subacc => cont(sub_reg(subacc, None(), t)))
+          | ConcurrentSubRegion(sub_state = sub, next_sub_region = n)    as t    => loop(sub, subacc => 
+                                                                                                 loop(n, nacc => cont(sub_reg(subacc, Some(nacc), t))))
+          | ConcurrentRegion(sub_region = reg, next = null)  as t                => loop(reg, regacc => cont(region(regacc, None(), t)))
+          | ConcurrentRegion(sub_region = reg, next = n)  as t                   => loop(reg, regacc => 
+                                                                                                 loop(n, nacc => cont(region(regacc, Some(nacc), t))))
+          | InlinedSubMachineInstance(sub_state = sub, next = null) as t         => loop(sub, subacc => cont(inlined_subm_inst(subacc, None(), t)))
+          | InlinedSubMachineInstance(sub_state = sub, next = n) as t            => loop(sub, subacc => 
+                                                                                                 loop(n, nacc => cont(inlined_subm_inst(subacc, Some(nacc), t))))
+
+          | SubMachine as t                                                      => cont(sub_mach(t))
+          | InlinedSubMachine(sub_state = sub, next = null) as t                 => loop(sub, subacc => cont(inlined_fsm(subacc, None(), t)))
+          | InlinedSubMachine(sub_state = sub, next = n) as t                    => loop(sub, subacc => 
+                                                                                                 loop(n, nacc => cont(inlined_fsm(subacc, Some(nacc), t))))
+        }
+      }
+
+      loop(this, x => x)
     }
 
     //public UpdateFromTarget(target : TransitionTarget) : FsmState

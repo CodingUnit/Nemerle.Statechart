@@ -14,44 +14,77 @@ namespace Nemerle.Statechart
 
   using StateTransition;
   using ListUtils;
-  
+
   [Record]
   [DebuggerDisplay("State  =  {Name}")]
   public partial variant FsmState
   {
     | State  
+      {
+        this(name : string)
         {
-          this(name : string)
-          {
-            this(StateNode.State(name), null, true)
-          }
-          
+          this(StateNode.State(name), null, true)
         }
-        
+
+      }
+
     | Final
-        {
+      {
           //this(st : Final, reference : bool = false, ncopy : bool = false)
           //{
           //  base(st, reference, clone);
           //}
-          
-          this(super : FsmState, reference : bool =  false)
-          {
-            base(super, $"$(super)Final", reference);
-          }
 
+        this(super : FsmState, reference : bool =  false)
+        {
+          base(super, $"$(super)Final", reference);
         }
 
+      }
+
     | ConcurrentSubRegion
+      {
+        index : int;
+
+        contained_in : ConcurrentRegion;
+        [NeedChange(sub_state)] [NeedChange] next_sub_region : ConcurrentSubRegion;
+
+        SiblingSubRegions : IEnumerable[ConcurrentSubRegion]
         {
-          index : int;
-          
-          contained_in : ConcurrentRegion;
-          
-          this(region : ConcurrentRegion, st : StateNode.State, idx : int)
+          get
           {
-            base(st, region, false);
-            contained_in = region;
+            def loop(s)
+            {
+              | Some(s) => yield s;loop(s.next_sub_region)
+              | _       => ()
+            }
+
+            loop(next_sub_region)
+          }
+        }
+
+        AllSiblingSubRegions : IEnumerable[ConcurrentSubRegion]
+        {
+          get
+          {
+            def loop(s)
+            {
+              yield s;
+              match (s.next_sub_region)
+              {
+                | Some(s) => loop(s)
+                | _       => ()
+              }
+            }
+
+            loop(this)
+          }
+        }
+
+        this(region : ConcurrentRegion, st : StateNode.State, idx : int)
+        {
+          base(st, region, false);
+          contained_in = region;
             //do_activity = st.do_activity |> StateAction.Do(_.action.ActionList, this, _.flags);
             //internal_tran = Internal.Create(this, st.internal_tran);
             //entry = st.entry |> StateAction.Entry(_.action.ActionList, this, _.attrib);
@@ -62,164 +95,172 @@ namespace Nemerle.Statechart
             //pseudo_states = st.pseudo_states |> PseudoStateNode.Create(_.node, this, null);
             //sub_states = st.sub_states |> State(_, this, false);
             //sub_states.Iter(x => x.super_state = this);
-            index = idx;
+          index = idx;
             //super_state = region;
-          }
-    
-          transitions_to_final : list[StateTransition]
+        }
+
+        transitions_to_final : list[StateTransition]
+        {
+          get
           {
-            get
-            {
               (LivedSubStatesNested |>< transitions).Filter(x => x.ActualTo is Final)
-            }
-          }
-          
-          FinalState : option[FsmState]
-          {
-            get
-            {
-              sub_states.Find(_ is Final)
-            }
           }
         }
-    
-    | ConcurrentRegion
+
+        FinalState : option[FsmState]
         {
- //         sub_regions_num : list[int] = [];
-          
-          sub_regions : list[ConcurrentSubRegion];
+          get
+          {
+            sub_states.Find(_ is Final)
+          }
+        }
+      }
+
+    | ConcurrentRegion
+      {
+//         sub_regions_num : list[int] = [];
+
+        sub_regions : IEnumerable[ConcurrentSubRegion]
+        {
+          get
+          {
+            sub_region.AllSiblingSubRegions
+          }
+        }
+
+        [NeedChange(next)] [NeedChange] sub_region : ConcurrentSubRegion;
           //{
           //  get
           //  {
           //    sub_regions_num |> statemap[_] :> ConcurrentSubRegion
           //  }
           //}
-          this(st : FsmState, state : StateNode.State, node : StateNode.Region)
-          {
-            base(state, st, false);
-            sub_regions = node.regions.MapIndex((x, i) => ConcurrentSubRegion(this, x, i));
-          }
-    
-          
+        this(st : FsmState, state : StateNode.State, node : StateNode.Region)
+        {
+          base(state, st, false);
+          sub_regions = node.regions.MapIndex((x, i) => ConcurrentSubRegion(this, x, i));
+        }
+
+
           /// <summary>
-	        /// Indicates that maybe external transitions from some points of orthogonal state out of region not only completion
-	        /// </summary>
-          MayTakePlaceForcedTransitions : bool 
+          /// Indicates that maybe external transitions from some points of orthogonal state out of region not only completion
+          /// </summary>
+        MayTakePlaceForcedTransitions : bool 
+        {
+          get
           {
-            get
-            {
-              all_transitions_nested.Exists(_.OutOfRegion)
-            }
+            all_transitions_nested.Exists(_.OutOfRegion)
           }
-          
-          NeedHistorySave : bool
+        }
+
+        NeedHistorySave : bool
+        {
+          get
           {
-            get
-            {
               !ParticipateInHistory.IsEmpty()
-            }
           }
-          
+        }
+
           /// <summary>
-		      /// Indicates that maybe transitions from outer states forking control to this orthogonal region
-		      /// </summary>
-          MayForkingFromOut : bool 
+          /// Indicates that maybe transitions from outer states forking control to this orthogonal region
+          /// </summary>
+        MayForkingFromOut : bool 
+        {
+          get
           {
-            get
+            def is_this(r)
             {
-              def is_this(r)
-              {
-                | null => false
-                | _ => match (r.PartOfRegion)
+              | null => false
+              | _ => match (r.PartOfRegion)
                   {
                     | Some(r) when (r == this) => true
                     | _ => false
                   }
-              }
-              
-              analyser.forks.Exists(x => x.target.Exists(x => is_this(x.ToState)))
             }
-          }
-          
-          static get_pattern(reg : list[ConcurrentSubRegion]) : string
-          {
-            def idx = (reg |> index).Sort(_ - _);
-            $<#..$(idx;"")#>; 
-          }
-          
 
-          RegionExcept(st : list[ConcurrentSubRegion]) : ConcurrentSubRegion
-          {
-            match (sub_regions.Exclude(st, _ == _))
-            {
-              | [sub] => sub
-              | head :: _ => head
-              | _ => null
-            }
+            analyser.forks.Exists(x => x.target.Exists(x => is_this(x.ToState)))
           }
-
-          RegionsExcept(st : list[FsmState]) : list[ConcurrentSubRegion]
-          {
-            sub_regions.Filter(x => !x.AllSubStates.Exists(y => st.Exists(y == _)) && !st.Exists(_ == x))
-          }
-          
-          RegionsExcept(st : FsmState) : list[ConcurrentSubRegion]
-          {
-            sub_regions.Filter(x => !x.AllSubStates.Contains(st) && x != st)
-          }
-
-          Joins : list[PseudoStateNode.Join]
-          {
-            get
-            {
-              def get_join(t, lst)
-              {
-                match (t)
-                {
-                  | StateTransition where (To = TransitionTarget.PseudoState(Join as j)) => j :: lst
-                  | _ => lst
-                }
-              }
-      
-              def tran = AllLivedSubStatesNested.Map(x => x.all_transitions.FoldLeft([], get_join)).Flatten();
-              tran.RemoveDuplicatesSort((x, y) => x.name.CompareTo(y.name));
-            }
-          }
-          
-          HaveJoinTransitions : bool
-          {
-            get
-            {
-              !Joins.IsEmpty()
-            }
-          }
-          
-          HaveFinalCompletion : bool
-          {
-            get
-            {
-              def st = this :: SuperStates;
-              HaveFinal && st.Exists(x => !x.completion_transitions.IsEmpty())
-            }
-          }
-          
-          
-          FinalStates : list[FsmState]
-          {
-            get
-            {
-              if (HaveFinal) sub_regions |> FinalState.Value else []
-            }
-          }
-          
         }
-   
+
+        static get_pattern(reg : list[ConcurrentSubRegion]) : string
+        {
+          def idx = (reg |> index).Sort(_ - _);
+          $<#..$(idx;"")#>; 
+        }
+
+
+        RegionExcept(st : list[ConcurrentSubRegion]) : ConcurrentSubRegion
+        {
+          match (sub_regions.Exclude(st, _ == _))
+          {
+            | [sub] => sub
+            | head :: _ => head
+            | _ => null
+          }
+        }
+
+        RegionsExcept(st : list[FsmState]) : list[ConcurrentSubRegion]
+        {
+          sub_regions.Filter(x => !x.AllSubStates.Exists(y => st.Exists(y == _)) && !st.Exists(_ == x))
+        }
+
+        RegionsExcept(st : FsmState) : list[ConcurrentSubRegion]
+        {
+          sub_regions.Filter(x => !x.AllSubStates.Contains(st) && x != st)
+        }
+
+        Joins : list[PseudoStateNode.Join]
+        {
+          get
+          {
+            def get_join(t, lst)
+            {
+              match (t)
+              {
+                | StateTransition where (To = TransitionTarget.PseudoState(Join as j)) => j :: lst
+                | _ => lst
+              }
+            }
+
+            def tran = AllLivedSubStatesNested.Map(x => x.all_transitions.FoldLeft([], get_join)).Flatten();
+            tran.RemoveDuplicatesSort((x, y) => x.name.CompareTo(y.name));
+          }
+        }
+
+        HaveJoinTransitions : bool
+        {
+          get
+          {
+              !Joins.IsEmpty()
+          }
+        }
+
+        HaveFinalCompletion : bool
+        {
+          get
+          {
+            def st = this :: SuperStates;
+            HaveFinal && st.Exists(x => !x.completion_transitions.IsEmpty())
+          }
+        }
+
+
+        FinalStates : list[FsmState]
+        {
+          get
+          {
+            if (HaveFinal) sub_regions |> FinalState.Value else []
+          }
+        }
+
+      }
+
     | InlinedSubMachineInstance
       {
         instance_of : InlinedSubMachine;
 
-          InitInline(an : FsmAnalyser) : InlinedSubMachineInstance * FsmAnalyser
-          {
+        InitInline(an : FsmAnalyser) : InlinedSubMachineInstance * FsmAnalyser
+        {
             //def update_pseudo(tar, _, new_st)
             //{
             //  match (tar)
@@ -229,99 +270,99 @@ namespace Nemerle.Statechart
             //  }
             //}
 
-            
-            def st = instance_of.ChangeCopyNum(instance_of.ncopy + 1); // clone the inline sub machine instance
-            def do_act = st.do_activity; // take data from it except transitions to outer world
-            def inter_tran = st.internal_tran;
-            def entry = st.entry;
-            def exit = st.exit;
-            def history = st.history;
-            def init = st.initial;
-            def sub_st = st.sub_states;
-            def tran = st.all_transitions_nested;
-            def tran = tran %+ st.AllHistory.FilterValues(_.Default);
-            def old = instance_of.AllSubStates;
-            def ren_st = (st, this) :: st.AllSubStates.Zip(old); // take old and new copy
+
+          def st = instance_of.ChangeCopyNum(instance_of.ncopy + 1); // clone the inline sub machine instance
+          def do_act = st.do_activity; // take data from it except transitions to outer world
+          def inter_tran = st.internal_tran;
+          def entry = st.entry;
+          def exit = st.exit;
+          def history = st.history;
+          def init = st.initial;
+          def sub_st = st.sub_states;
+          def tran = st.all_transitions_nested;
+          def tran = tran %+ st.AllHistory.FilterValues(_.Default);
+          def old = instance_of.AllSubStates;
+          def ren_st = (st, this) :: st.AllSubStates.Zip(old); // take old and new copy
             //def pst = st.AllPseudoStates |> (CloneFor, _);
-            def sub_st = sub_st.Map(x => x.ChangeSuperState(this)); // change super state to this
+          def sub_st = sub_st.Map(x => x.ChangeSuperState(this)); // change super state to this
             //pst.Iter((ost, nst) => tran.Iter(x => x.TargetTraverse(update_pseudo(_, ost, nst)))); // update pseudo states in this sub machine
-            def an = ren_st.FoldLeft(an, ((ost, nst), a) => tran.FoldLeft(a, (x, a) => x.UpdateTargets(a, ost, nst))); // change targets according to rename in new location
-            st.AllSubStates.Iter(x => x.history.Iter(x => x.reference = true)); // history must point to real state history
-            st.AllSubStates.Iter(_.RenameState()); // actions renaming state
-            def nst = ren_st.Map((x, y) => y.ChangeCloneFor(x));
-            def pseudo = st.pseudo_states;
-            def st = InlinedSubMachineInstance ^& (do_activity = do_act, sub_states = sub_st, history = history, 
-                   pseudo_states = pseudo, initial = init, entry = entry, exit = exit, internal_tran = inter_tran, 
-                   analyser = an);
-            def map = an.statemap.CheckNew(nst);
-            def an = an.ChangeStatemap(map);
+          def an = ren_st.FoldLeft(an, ((ost, nst), a) => tran.FoldLeft(a, (x, a) => x.UpdateTargets(a, ost, nst))); // change targets according to rename in new location
+          st.AllSubStates.Iter(x => x.history.Iter(x => x.reference = true)); // history must point to real state history
+          st.AllSubStates.Iter(_.RenameState()); // actions renaming state
+          def nst = ren_st.Map((x, y) => y.ChangeCloneFor(x));
+          def pseudo = st.pseudo_states;
+          def st = InlinedSubMachineInstance ^& (do_activity = do_act, sub_states = sub_st, history = history, 
+                  pseudo_states = pseudo, initial = init, entry = entry, exit = exit, internal_tran = inter_tran, 
+                  analyser = an);
+          def map = an.statemap.CheckNew(nst);
+          def an = an.ChangeStatemap(map);
             //UpdateReference(Analyser.Statemap, true);
-            (st, an.UpdateStateMap()) // updates state map
-          }
+          (st, an.UpdateStateMap()) // updates state map
+        }
 
       }
     | SubMachine
-        {
-          type : string;
-      
-          [NeedChange(proc_events)] ref_sub_states : array[string] = array[];
-          proc_events : array[string] = array[];
-          
-          this(st : StateNode.State, super : FsmState)
-          {
-            base(st, super, false);
-            def (StateNode.State(type = StateType.SubMachine(type = t))) = st;
-            this.type = t;
-          }
-          
-          scanned : bool
-          {
-            get
-            {
-              !ref_sub_states.IsEmpty() || !proc_events.IsEmpty()
-            }
-          }
-          
-          Scan() : SubMachine
-          {
-            if (!scanned)
-            {
-              def type = Type.GetType(type);
-              def st = type.GetField("ContainsStates");
-              def ref_sub_states = st.GetValue(null) :> array[string];
-              def evt = type.GetField("ProcessEvents");
-              def proc_events = evt.GetValue(null) :> array[string];
-              ChangeRefSubStatesProcEvents(ref_sub_states, proc_events)
-            } else this
-          }
-          
-          
-          override UpdateReference(an : FsmAnalyser) : FsmState * FsmAnalyser
-          {
-            def (st, an) = base.UpdateReference(an);
-            def fsm = analyser.States.FilterType();
-            match (fsm.Find(x => x.type == type))
-            {
-              | Some(InlinedSubMachine as f) => def st = InlinedSubMachineInstance ^& (instance_of = f);
-                                                (st, an)
-              | _ => (st, an)
-            }
-          }
+      {
+        type : string;
 
+        [NeedChange(proc_events)] ref_sub_states : array[string] = array[];
+        proc_events : array[string] = array[];
+
+        this(st : StateNode.State, super : FsmState)
+        {
+          base(st, super, false);
+          def (StateNode.State(type = StateType.SubMachine(type = t))) = st;
+          this.type = t;
         }
-    
-    | InlinedSubMachine
-        {
-          type : string;
-          ncopy : int;
 
-          this(st : StateNode.State, super : FsmState, reference : bool = false)
+        scanned : bool
+        {
+          get
           {
-            base(st, super, reference);
-            def (StateNode.State(type = StateType.InlinedSubMachine(type = t))) = st;
-            this.type = t;
+              !ref_sub_states.IsEmpty() || !proc_events.IsEmpty()
           }
-        }  
+        }
+
+        Scan() : SubMachine
+        {
+          if (!scanned)
+          {
+            def type = Type.GetType(type);
+            def st = type.GetField("ContainsStates");
+            def ref_sub_states = st.GetValue(null) :> array[string];
+            def evt = type.GetField("ProcessEvents");
+            def proc_events = evt.GetValue(null) :> array[string];
+            ChangeRefSubStatesProcEvents(ref_sub_states, proc_events)
+          } else this
+        }
+
+
+        override UpdateReference(an : FsmAnalyser) : FsmState * FsmAnalyser
+        {
+          def (st, an) = base.UpdateReference(an);
+          def fsm = analyser.States.FilterType();
+          match (fsm.Find(x => x.type == type))
+          {
+            | Some(InlinedSubMachine as f) => def st = InlinedSubMachineInstance ^& (instance_of = f);
+                (st, an)
+            | _ => (st, an)
+          }
+        }
+
+      }
+
+    | InlinedSubMachine
+      {
+        type : string;
+        ncopy : int;
+
+        this(st : StateNode.State, super : FsmState, reference : bool = false)
+        {
+          base(st, super, reference);
+          def (StateNode.State(type = StateType.InlinedSubMachine(type = t))) = st;
+          this.type = t;
+        }
+      }  
   }
 
 }
