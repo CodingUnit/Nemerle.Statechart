@@ -6,6 +6,7 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using SCG = System.Collections.Generic;
 
 namespace Nemerle.Statechart
 {
@@ -25,10 +26,6 @@ namespace Nemerle.Statechart
     | Action
       {
         [NeedChange(body)] condition : option[GuardNode];
-        [NeedChange] body : DecisionNode;
-      }
-    | Else
-      {
         [NeedChange] body : DecisionNode;
       }
     | Target 
@@ -119,7 +116,6 @@ namespace Nemerle.Statechart
     //XFoldTree (fun x l r _ -> nodeF x l r) (fun _ -> leafV) tree         
 
     public FoldThis(cond : GuardNode * DecisionNode * DecisionNode * DecisionNode.Condition -> DecisionNode, 
-                    els : DecisionNode * DecisionNode.Else -> DecisionNode, 
                     targ : TransitionTarget * TransitionDestination * DecisionNode.Target -> DecisionNode, 
                     act : option[GuardNode] * DecisionNode * DecisionNode.Action -> DecisionNode) : DecisionNode
     {
@@ -130,110 +126,92 @@ namespace Nemerle.Statechart
           | null                            => ot
           | Condition as j                  => j.ChangeBodyElseNode(nb, ne)
           | DecisionNode.Action as j        => j.ChangeBody(nb)
-          | Else as j                       => j.ChangeBody(nb)
           | x                               => x
         }
       }
 
-      def loop(e, cont)
+      def loop(e)
       {
         match (e)
         {
-          | Target(x, d) as t     => cont(xnode(targ(x, d, t), null, null, t))
+          | Target(x, d) as t       => xnode(targ(x, d, t), null, null, t)
 
-          | Condition(c, b, e) as t => loop(b, bacc => 
-                                               loop(e, eacc => 
-                                                       cont(xnode(cond(c, bacc, eacc, t), bacc, eacc, t))))
+          | Condition(c, b, e) as t => def nb = loop(b);
+              def ne = loop(e);
+              xnode(cond(c, nb, ne, t), nb, ne, t)
 
-          | Else(b) as t       => loop(b, bacc => 
-                                          cont(xnode(els(bacc, t), bacc, null, t)))
-
-          | Action(c, b) as t  => loop(b, bacc => 
-                                          cont(xnode(act(c, bacc, t), bacc, null, t)))
+          | Action(c, b) as t       => def nb = loop(b);
+              xnode(act(c, nb, t), nb, null, t)
         }
       }
 
-      loop(this, x => x)
+      loop(this)
     }
 
     public Fold[T](cond : GuardNode * T * T * Condition -> T, 
-                  els : T * Else -> T, 
                   targ : TransitionTarget * TransitionDestination * Target -> T, 
                   act : option[GuardNode] * T * DecisionNode.Action -> T) : T
     {
-      def loop(e, cont)
+      def loop(e)
       {
         match (e)
         {
-          | Target(x, d)       as t => cont(targ(x, d, t))
-          | Condition(c, b, e) as t => loop(b, bacc => 
-                                               loop(e, eacc => 
-                                                       cont(cond(c, bacc, eacc, t))))
-
-          | Else(b)            as t => loop(b, bacc => cont(els(bacc, t)))
-          | Action(c, b)       as t => loop(b, bacc => cont(act(c, bacc, t)))
+          | Target(x, d)       as t => targ(x, d, t)
+          | Condition(c, b, e) as t => cond(c, loop(b), loop(e), t)
+          | Action(c, b)       as t => act(c, loop(b), t)
         }
       }
 
-      loop(this, x => x)
+      loop(this)
     }
 
     public Fold[T](init : T, 
                   cond : T * GuardNode * Condition -> T, 
-                  els : T * Else -> T, 
                   targ : T * TransitionTarget * TransitionDestination * Target -> T, 
                   act : T * option[GuardNode] * DecisionNode.Action -> T) : T
     {
-      def loop(e, acc, cont)
+      def loop(e, acc)
       {
         match (e)
         {
-          | Target(x, d)       as t => cont(targ(acc, x, d, t))
-          | Condition(c, b, e) as t => loop(b, acc, bacc => 
-                                                    loop(e, bacc, eacc => 
-                                                                  cont(cond(eacc, c, t))))
+          | Target(x, d)       as t => targ(acc, x, d, t)
 
-          | Else(b)            as t => loop(b, acc, bacc => cont(els(bacc, t)))
-          | Action(c, b)       as t => loop(b, acc, bacc => cont(act(bacc, c, t)))
+          | Condition(c, b, e) as t => def acc = loop(b, acc);
+              def acc = loop(e, acc);
+              cond(acc, c, t)
+
+          | Action(c, b)       as t => act(loop(b, acc), c, t)
         }
       }
 
-      loop(this, init, x => x)
+      loop(this, init)
     }
 
     public Iterator : IEnumerable[DecisionNode]
     {
       get
       {
-//var stack = new Stack<Tree<T>>();
-  //if (tree != null)
-  //  stack.Push(tree);
-  //while (stack.Count > 0)
-  //{
-  //  for (var current = stack.Pop(); current != null; current = current.FirstChild)
-  //  {
-  //    yield return current.Value;
-  //    if (current.NextSibling != null)
-  //      stack.Push(current.NextSibling);
-  //  }
-  //}        
-        def loop(lst)
-        {
-          | [] => ()
-          | head :: tail => 
+        def child = SCG.Stack(); 
+        def parent = SCG.Stack(); 
 
-              yield head;
-              match (head)
-              {
-                | Condition(body = b, else_node = null)
-                | Action(body = b)
-                | Else(body = b)                        => loop(b :: tail)//foreach (i in b.Iterator) yield i
-                | Condition(body = b, else_node = els)  => loop(b :: els :: tail)//foreach (i in b.Iterator) yield i;
-                | Target => loop(tail)
-              }
+        def loop_init()
+        {
+          if (child.IsEmpty()) () else 
+          {
+            def curr = child.Pop();
+            parent.Push(curr);
+            match (curr)
+            {
+              | Condition(body = b, else_node = null)
+              | Action(body = b)
+              | Condition(body = b, else_node = els)  => child.Push(b);child.Push(els);
+              | Target => ()
+            }
+          }
         }
 
-        loop([this])
+        loop_init();
+        parent
       }
     }
 
@@ -248,7 +226,7 @@ namespace Nemerle.Statechart
         //  | _ => None()
         //}
 
-        Fold([], (a, g, _) => g :: a, (a, _) => a, (a, _, _, _) => a, (a, g, _) => g %:: a)
+        Fold([], (a, g, _) => g :: a, (a, _, _, _) => a, (a, g, _) => g %:: a)
         //Iterator.FilterValues(get_guard)
       }
     }
@@ -267,7 +245,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        Fold((_, a, b, x) => x.Path + a + b, (a, x) => x.Path + a, (_, _, x) => x.Path, (_, a, x) => x.Path + a)
+        Fold((_, a, b, x) => x.Path + a + b, (_, _, x) => x.Path, (_, a, x) => x.Path + a)
         //PathNode.Sequence(Iterator |> Path)
       }
     }
@@ -354,8 +332,8 @@ namespace Nemerle.Statechart
               (null, FsmError.JunctionElseMustAfterAnotherGuard(p) :: err)
             } else
             {
-              def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
-              (Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), n), err)
+              get_sub_node(t, a %:: aa, lev, st, els, err);
+              //(n, err)//(Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), n), err)
             }
 
         | JunctionNode(Some(g), a, t, _, None(), _) => 
@@ -375,8 +353,8 @@ namespace Nemerle.Statechart
             get_sub_node(t, a :: aa, lev, st, els, err)
             // if last action node it is else
         | JunctionNode(None(), Some(a), t, _, None(), _) => 
-            def (n, err) = get_sub_node(t, a :: aa , lev, st, els, err);
-            (Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), n), err)
+            get_sub_node(t, a :: aa , lev, st, els, err);
+            //(Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), n), err)
             // if action have other nodes after it
         | JunctionNode(None(), Some(a), _, Junction(type = JunctionType.Junction) as p, _, _) => (null, FsmError.JunctionActionMaybeLast(p, a) :: err);
         | JunctionNode(None(), Some(), _, _, _, _) => (null, err)
@@ -427,19 +405,19 @@ namespace Nemerle.Statechart
               (null, FsmError.ChoiceElseMustAfterAnotherGuard(p) :: err)
             } else
             {
-              def a = a %:: [];
+              //def a = a %:: [];
               def (node, err) = get_sub_node(t, lev, st, prevst, els, err);
                 // if new node is in another state
-              def (st, prevst, (node, err)) = if (st != node.state)
-                                              {
+              if (st != node.state)
+              {
                                           // cache it, process path before, traverse it with new values of state
-                                                def prevst = st;
-                                                def st = node.state;
-                                                (st, prevst, get_sub_node(t, lev, st, prevst, els, err))
-                                              } else (st, prevst, (node, err));
-              def st = if (st != prevst) st else null;
-              def prevst = prevst ?? (t.transition?.From ?? st);
-              (Else(lev, st, a, prevst, PathNode.Empty(), PathNode.Empty(), node), err)
+                def prevst = st;
+                def st = node.state;
+                get_sub_node(t, lev, st, prevst, els, err)
+              } else (node, err);
+              //def st = if (st != prevst) st else null;
+              //def prevst = prevst ?? (t.transition?.From ?? st);
+              //(node, err)//(Else(lev, st, a, prevst, PathNode.Empty(), PathNode.Empty(), node), err)
             }
 
         | JunctionNode(Some(g), a, t, _, Some(n), _) => 
@@ -460,19 +438,19 @@ namespace Nemerle.Statechart
         | JunctionNode(None(), Some(), t, Junction(type = JunctionType.Choice), None(), _)  => 
             get_sub_node(t, lev, st, prevst, els, err)
             // if last action node it is else
-        | JunctionNode(None(), Some(a), t, _, None(), _) =>
+        | JunctionNode(None(), Some, t, _, None(), _) =>
             def (node, err) = get_sub_node(t, lev, st, prevst, els, err);
                                       // if another pseudostate state 
-            def (st, prevst, (node, err)) = if (st != node.state)
-                                            {
-                                              def prevst = st;
-                                              def st = node.state;
+            if (st != node.state)
+            {
+              def prevst = st;
+              def st = node.state;
                                         // cache it, process path before, traverse it with new values of state
-                                              (st, prevst, get_sub_node(t, lev, st, prevst, els, err))
-                                            } else (st, prevst, (node, err));
-            def st = if (st != prevst) st else null;
-            def prevst = prevst ?? (t.transition?.From ?? st);
-            (Else(lev, st, [a], prevst, PathNode.Empty(), PathNode.Empty(), node), err)
+              get_sub_node(t, lev, st, prevst, els, err)
+            } else (node, err);
+            //def st = if (st != prevst) st else null;
+            //def prevst = prevst ?? (t.transition?.From ?? st);
+            //(Else(lev, st, [a], prevst, PathNode.Empty(), PathNode.Empty(), node), err)
 
             // if action have other nodes after it
         | JunctionNode(None(), Some(a), _, Junction(type = JunctionType.Choice) as p, _ ,_) => (null, FsmError.ChoiceActionMaybeLast(p, a) :: err)
