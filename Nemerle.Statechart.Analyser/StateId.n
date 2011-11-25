@@ -100,7 +100,7 @@ namespace Nemerle.Statechart
         def id = IdType(id);
         s.ChangeId(id)
       }
-      
+
       def create_num_id(s, t)
       {
         def id = BitArray(count);
@@ -111,35 +111,24 @@ namespace Nemerle.Statechart
         t.ChangeIdSubStates(id, sub)
       }
 
-      def mark_inlined_inst(t)
+      def mark_inlined_inst(_, t)
       {
-        | FsmState where (cloneFor = FsmState where (Id = clone_id, PartOfStateMachine = Some(FsmState where (super_state = FsmState where (Id = inlined_super_id))))) =>
+        match (t)
+        {
+          | FsmState where (cloneFor = FsmState where (Id = clone_id, PartOfStateMachine = Some(FsmState where (super_state = FsmState where (Id = inlined_super_id))))) =>
 
-            def id = t.Id;
-            def id = (id.val | clone_id.val);
-            def id = id & ~inlined_super_id.val;
-            def id = IdType(id);
-            t.ChangeId(id)
+              def id = t.Id;
+              def id = (id.val | clone_id.val);
+              def id = id & ~inlined_super_id.val;
+              def id = IdType(id);
+              t.ChangeId(id)
+        }
       }
 
       // first pass
-      def st = st.FoldThis((s, t) => create_num_id(s, t), 
-                           t => create_num_id([], t), 
-                           (s, t) => create_num_id(s, t), 
-                           (s, t) => create_num_id(s, t), 
-                           (s, t) => create_num_id(s, t), 
-                           t => t, 
-                           (s, t) => create_num_id(s, t), 
-                           );
+      def st = st.FoldThis(create_num_id);
       // second pass                    
-      st.FoldThis((_, t) => mark_inlined_inst(t), 
-                  t      => mark_inlined_inst(t), 
-                  (_, t) => mark_inlined_inst(t), 
-                  (_, t) => mark_inlined_inst(t), 
-                  (_, t) => mark_inlined_inst(t), 
-                  t => t, 
-                  (_, t) => mark_inlined_inst(t), 
-                  );
+      st.FoldThis(mark_inlined_inst);
     }
 
   }
