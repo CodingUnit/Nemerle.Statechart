@@ -20,25 +20,25 @@ namespace Nemerle.Statechart
 
     CheckInitialTransitions() : FsmAnalyser
     {
-      def check_auto_initial(st)
+      def check_auto_initial(sub, st)
       {
-        | FsmState.Final 
-        | ConcurrentRegion => st
-        | (FsmState where (initial = [], sub_state = head)) when (!(head is FsmState.Final)) =>
-            st.DefineInitial(head);
-        | x=> x
+          | (_, FsmState.Final) 
+          | (_, ConcurrentRegion) => st
+          | (head :: _, FsmState where (initial = [])) when (!(head is FsmState.Final)) =>
+              st.DefineInitial(head);
+          | (_, x) => x
       }
 
       def an = States.FoldLeft(this, (x, a) => a.check_duplicates(x.initial));  // check duplicates
-      def states = if (fsm.flags.AutoInitial) States.Map(check_auto_initial) else States;
+      def top = if (fsm.flags.AutoInitial) TopState.FoldThis(check_auto_initial) else TopState;
 
-      def st = if (TopState.initial is []) // if not have initial transition in top state
-                 if (TopState.transitions is []) // if not have other transitions
-                   check_auto_initial(TopState) // initial is first substate
-                 else TopState.DefineInitial(TopState); // else initial transition is top state
-                else TopState;
-      def map = an.statemap.Add(st);
-      def map = map.ChangeStates(states.ToArray());
+      def top = if (top.initial is []) // if not have initial transition in top state
+                 if (top.transitions is []) // if not have other transitions
+                   check_auto_initial(top.sub_states, top) // initial is first substate
+                 else top; // else initial transition is top state
+                else top;
+      def map = an.statemap.Init(top);
+      //def map = map.ChangeStates(states.ToArray());
       ChangeStatemap(map)
     }
 
