@@ -94,15 +94,21 @@ namespace Nemerle.Statechart
     {
       def st = analyser.TopState;
 
+      def create_num_id_super(s, t)
+      {
+        def id = s.Id.val | t.val;
+        def id = IdType(id);
+        s.ChangeId(id)
+      }
+      
       def create_num_id(s, t)
       {
-        def parent = if (s != null) s.Id else null;
         def id = BitArray(count);
         def num = t.Num;
         when (num != 0) id.Set(num, true);
-        def id = if (parent != null) id | parent.val else id;
         def id = IdType(id);
-        t.ChangeId(id)
+        def sub = s |> create_num_id_super(_, id);
+        t.ChangeIdSubStates(id, sub)
       }
 
       def mark_inlined_inst(t)
@@ -117,22 +123,22 @@ namespace Nemerle.Statechart
       }
 
       // first pass
-      def st = st.FoldThisSuper((s, _, _, t) => create_num_id(s, t), 
-                                (s, _, t) => create_num_id(s, t), 
-                                (s, _, _, t) => create_num_id(s, t), 
-                                (s, _, _, t) => create_num_id(s, t), 
-                                (s, _, _, t) => create_num_id(s, t), 
-                                t => t, 
-                                (s, _, _, t) => create_num_id(s, t), 
-                              );
+      def st = st.FoldThis((s, t) => create_num_id(s, t), 
+                           t => create_num_id([], t), 
+                           (s, t) => create_num_id(s, t), 
+                           (s, t) => create_num_id(s, t), 
+                           (s, t) => create_num_id(s, t), 
+                           t => t, 
+                           (s, t) => create_num_id(s, t), 
+                           );
       // second pass                    
-      st.FoldThis((_, _, t) => mark_inlined_inst(t), 
+      st.FoldThis((_, t) => mark_inlined_inst(t), 
+                  t      => mark_inlined_inst(t), 
                   (_, t) => mark_inlined_inst(t), 
-                  (_, _, t) => mark_inlined_inst(t), 
-                  (_, _, t) => mark_inlined_inst(t), 
-                  (_, _, t) => mark_inlined_inst(t), 
+                  (_, t) => mark_inlined_inst(t), 
+                  (_, t) => mark_inlined_inst(t), 
                   t => t, 
-                  (_, _, t) => mark_inlined_inst(t), 
+                  (_, t) => mark_inlined_inst(t), 
                   );
     }
 
