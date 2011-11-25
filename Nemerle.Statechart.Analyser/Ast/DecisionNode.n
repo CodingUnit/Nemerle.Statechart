@@ -54,7 +54,7 @@ namespace Nemerle.Statechart
       //  }
       //}
 
-      FoldThis(_ => null, _ => null, (t, _, o) => o.ChangeTarget(t.SetCopy(n)), _ => null)
+      FoldThis(_ => null, (t, _, o) => o.ChangeTarget(t.SetCopy(n)), _ => null)
       //Fold((c, b, e) => Condition(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb, ne), an) else node, )
       //Map(an, inc)
     }
@@ -67,16 +67,17 @@ namespace Nemerle.Statechart
       }
     }
 
-    public Actions : PathNode
-    {
-      get
-      {
-        //def act = Iterator |> ActionNode;
-        //Fold((_, a, b, x) => x.ActionNode + a + b, (a, x) => x.ActionNode + a, (_, _, x) => x.ActionNode, (_, a, x) => x.ActionNode + a);
-        //Fold(PathNode.Empty(), (a, _, c) => a + c.ActionNode, (a, e) => a + e.ActionNode, (a, _, _, x) => a + x.ActionNode, (a, _, x) => a + x.ActionNode)
-        PathNode.Sequence(Iterator.Map(_.ActionNode))
-      }
-    }
+    //public Actions : PathNode
+    //{
+    //  get
+    //  {
+    //    //def act = Iterator |> ActionNode;
+    //    //Fold((_, a, b, x) => x.ActionNode + a + b, (a, x) => x.ActionNode + a, (_, _, x) => x.ActionNode, (_, a, x) => x.ActionNode + a);
+    //    //Fold(PathNode.Empty(), (a, _, c) => a + c.ActionNode, (a, e) => a + e.ActionNode, (a, _, _, x) => a + x.ActionNode, (a, _, x) => a + x.ActionNode)
+    //    //PathNode.Sequence(Iterator.Map(_.ActionNode))
+        
+    //  }
+    //}
 
     //public Map(an : FsmAnalyser, func : DecisionNode * FsmAnalyser -> DecisionNode * FsmAnalyser) : DecisionNode * FsmAnalyser
     //{
@@ -115,8 +116,8 @@ namespace Nemerle.Statechart
 //let FoldTree nodeF leafV tree = 
     //XFoldTree (fun x l r _ -> nodeF x l r) (fun _ -> leafV) tree         
 
-    public FoldThis(cond : GuardNode * DecisionNode * DecisionNode * DecisionNode.Condition -> DecisionNode, 
-                    targ : TransitionTarget * TransitionDestination * DecisionNode.Target -> DecisionNode, 
+    public FoldThis(cond : GuardNode * DecisionNode * DecisionNode * DecisionNode.Condition -> DecisionNode,
+                    targ : TransitionTarget * TransitionDestination * DecisionNode.Target -> DecisionNode,
                     act : option[GuardNode] * DecisionNode * DecisionNode.Action -> DecisionNode) : DecisionNode
     {
       def xnode(n, nb, ne, ot)
@@ -130,42 +131,65 @@ namespace Nemerle.Statechart
         }
       }
 
-      def loop(e)
+      def stack = SCG.Stack();
+
+      def loop(e, _)
       {
         match (e)
         {
-          | Target(x, d) as t       => xnode(targ(x, d, t), null, null, t)
-
-          | Condition(c, b, e) as t => def nb = loop(b);
-              def ne = loop(e);
-              xnode(cond(c, nb, ne, t), nb, ne, t)
-
-          | Action(c, b) as t       => def nb = loop(b);
-              xnode(act(c, nb, t), nb, null, t)
+          | Target(x, d) as t       => def acc = xnode(targ(x, d, t), null, null, t);
+              stack.Push(acc);
+              acc
+          | Condition(c, _, _) as t => 
+              def bacc = stack.Pop();
+              def eacc = stack.Pop();
+              def acc = xnode(cond(c, bacc, eacc, t), bacc, eacc, t);
+              stack.Push(acc);
+              acc
+          | Action(c, _) as t => 
+              def bacc = stack.Pop();
+              def acc = xnode(act(c, bacc, t), bacc, null, t);
+              stack.Push(acc);
+              acc
         }
       }
 
-      loop(this)
+      Iterator.FoldLeft(null, loop)
     }
 
-    public Fold[T](cond : GuardNode * T * T * Condition -> T, 
+
+    public Fold[T](init : T,
+                  cond : GuardNode * T * T * Condition -> T, 
                   targ : TransitionTarget * TransitionDestination * Target -> T, 
                   act : option[GuardNode] * T * DecisionNode.Action -> T) : T
     {
-      def loop(e)
+      def stack = SCG.Stack();
+
+      def loop(e, _)
       {
         match (e)
         {
-          | Target(x, d)       as t => targ(x, d, t)
-          | Condition(c, b, e) as t => cond(c, loop(b), loop(e), t)
-          | Action(c, b)       as t => act(c, loop(b), t)
+          | Target(x, d) as t       => def acc = targ(x, d, t);
+                                       stack.Push(acc);
+                                       acc
+          | Condition(c, _, _) as t => 
+              def bacc = stack.Pop();
+              def eacc = stack.Pop();
+              def acc = cond(c, bacc, eacc, t);
+              stack.Push(acc);
+              acc
+          | Action(c, _) as t       => 
+              def bacc = stack.Pop();
+              def acc = act(c, bacc, t);
+              stack.Push(acc);
+              acc
         }
       }
 
-      loop(this)
+      Iterator.FoldLeft(init, loop)
     }
 
-    public Fold[T](init : T, 
+    public Fold[T](init : T,
                   cond : T * GuardNode * Condition -> T, 
                   targ : T * TransitionTarget * TransitionDestination * Target -> T, 
                   act : T * option[GuardNode] * DecisionNode.Action -> T) : T
@@ -174,25 +198,21 @@ namespace Nemerle.Statechart
       {
         match (e)
         {
-          | Target(x, d)       as t => targ(acc, x, d, t)
-
-          | Condition(c, b, e) as t => def acc = loop(b, acc);
-              def acc = loop(e, acc);
-              cond(acc, c, t)
-
-          | Action(c, b)       as t => act(loop(b, acc), c, t)
+          | Target(x, d) as t       => targ(acc, x, d, t)
+          | Condition(c, _, _) as t => cond(acc, c, t)
+          | Action(c, _) as t       => act(acc, c, t)
         }
       }
 
-      loop(this, init)
+      Iterator.FoldLeft(init, loop)
     }
-
+    
     public Iterator : IEnumerable[DecisionNode]
     {
       get
       {
-        def child = SCG.Stack(); 
-        def parent = SCG.Stack(); 
+        def child = SCG.Stack();
+        def parent = SCG.Stack();
 
         def loop_init()
         {
@@ -203,13 +223,14 @@ namespace Nemerle.Statechart
             match (curr)
             {
               | Condition(body = b, else_node = null)
-              | Action(body = b)
-              | Condition(body = b, else_node = els)  => child.Push(b);child.Push(els);
-              | Target => ()
+              | Action(body = b)                      => child.Push(b);loop_init()
+              | Condition(body = b, else_node = els)  => child.Push(b);child.Push(els);loop_init()
+              | Target                                => loop_init()
             }
           }
         }
 
+        child.Push(this);
         loop_init();
         parent
       }
@@ -219,25 +240,17 @@ namespace Nemerle.Statechart
     {
       get
       {
-        //def get_guard(n)
-        //{
-        //  | Condition(c, _, _)
-        //  | Action(Some(c), _) => Some(c)
-        //  | _ => None()
-        //}
-
         Fold([], (a, g, _) => g :: a, (a, _, _, _) => a, (a, g, _) => g %:: a)
-        //Iterator.FilterValues(get_guard)
+        //Iterator.FoldLeft([], )
+        //Fold([], (g, a1, a2, _) => g :: a, (a, _, _, _) => a, (a, g, _) => g %:: a)
       }
     }
-
 
     public ThisPath : PathNode
     {
       get
       {
         ActionNode
-        //PathNode.Sequence(actions |> PathNode.Action(_))
       }
     }
 
@@ -245,7 +258,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        Fold((_, a, b, x) => x.Path + a + b, (_, _, x) => x.Path, (_, a, x) => x.Path + a)
+        Fold(PathNode.Empty(), (a, _, t) => a + t.Path, (a, _, _, t) => a + t.Path, (a, _, t) => a + t.Path)
         //PathNode.Sequence(Iterator |> Path)
       }
     }

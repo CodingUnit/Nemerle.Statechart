@@ -7,6 +7,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using SCG = System.Collections.Generic;
+
 namespace Nemerle.Statechart
 {
   using StateTransition;
@@ -460,171 +462,149 @@ namespace Nemerle.Statechart
     }
 
     public FoldThis(
-                state   : FsmState * FsmState * State -> FsmState,
-                final   : FsmState * Final            -> FsmState,
-                sub_reg : FsmState * FsmState * ConcurrentSubRegion -> FsmState,
-                region  : FsmState * FsmState * ConcurrentRegion -> FsmState,
-                inlined_subm_inst : FsmState * FsmState * InlinedSubMachineInstance -> FsmState,
+                state   : list[FsmState] * State -> FsmState,
+                final   : Final            -> FsmState,
+                sub_reg : list[FsmState] * ConcurrentSubRegion -> FsmState,
+                region  : list[FsmState] * ConcurrentRegion -> FsmState,
+                inlined_subm_inst : list[FsmState] * InlinedSubMachineInstance -> FsmState,
                 sub_mach : SubMachine -> FsmState,
-                inlined_fsm : FsmState * FsmState * InlinedSubMachine -> FsmState
+                inlined_fsm : list[FsmState] * InlinedSubMachine -> FsmState
               ) : FsmState
     {
 
-      def xnode(n, sub, nt, nsr, sr, ot)
+      def xnode(n, sub : list[FsmState], ot)
       {
         match (n)
         {
           | null                            => ot
-          | State          as t                                                   
-          | InlinedSubMachineInstance as t  
-          | InlinedSubMachine as t
-          | Final as t                      => t.ChangeSubStateNext(sub, nt)
-          | ConcurrentSubRegion as t        => t.ChangeNextSubRegionSubState(nsr, sub)
-          | ConcurrentRegion as t           => t.ChangeSubRegionNext(sr, nt)
+          | t when (sub != null)            => t.ChangeSubStatesT(sub)
           | x                               => x
         }
       }
 
-      def loop(st, cont)
+      def stack = SCG.Stack();
+      
+      def pop(sub)
+      {
+        stack.Take(sub.Length)
+      }
+      
+      def loop(st, _)
       {
         match (st)
         {
-          | State(sub_state = sub, next = null) as t                             => loop(sub, subacc => cont(xnode(state(subacc, null, t), subacc, null, null, null, t)))
-          | State(sub_state = sub, next = n) as t                                => loop(sub, subacc => 
-                                                                                              loop(n, nacc => cont(xnode(state(subacc, nacc, t), subacc, nacc, null, null, t))))
-          | Final(next = null) as t                                              => cont(xnode(final(null, t), null, null, null, null, t))
-          | Final(next = n) as t                                                 => loop(n, nacc => cont(xnode(final(nacc, t), null, nacc, null, null, t)))
+          | State(sub_states_t = sub) as t                        => def sub_acc = pop(sub); 
+                                                                     def acc = xnode(state(sub_acc, t), sub_acc, t);
+                                                                     stack.Push(acc);
+                                                                     acc
+          | Final as t                                            => def acc = xnode(final(t), null, t);
+                                                                     stack.Push(acc);
+                                                                     acc
 
-          | ConcurrentSubRegion(sub_state = sub, next_sub_region = null) as t    => loop(sub, subacc => cont(xnode(sub_reg(subacc, null, t), subacc, null, null, null, t)))
-          | ConcurrentSubRegion(sub_state = sub, next_sub_region = n) as t       => loop(sub, subacc => 
-                                                                                              loop(n, nacc => cont(xnode(sub_reg(subacc, nacc, t), subacc, nacc, null, null, t))))
-          | ConcurrentRegion(sub_region = reg, next = null)  as t                => loop(reg, regacc => cont(xnode(region(regacc, null, t), null, null, null, regacc :> ConcurrentSubRegion, t)))
-          | ConcurrentRegion(sub_region = reg, next = n)  as t                   => loop(reg, regacc => 
-                                                                                              loop(n, nacc => cont(xnode(region(regacc, nacc, t), null, nacc, null, regacc :> ConcurrentSubRegion, t))))
-          | InlinedSubMachineInstance(sub_state = sub, next = null) as t         => loop(sub, subacc => cont(xnode(inlined_subm_inst(subacc, null, t), subacc, null, null, null, t)))
-          | InlinedSubMachineInstance(sub_state = sub, next = n) as t            => loop(sub, subacc => 
-                                                                                              loop(n, nacc => cont(xnode(inlined_subm_inst(subacc, nacc, t), subacc, nacc, null, null, t))))
-
-          | SubMachine as t                                                      => cont(sub_mach(t))
-          | InlinedSubMachine(sub_state = sub, next = null) as t                 => loop(sub, subacc => cont(inlined_fsm(subacc, null, t)))
-          | InlinedSubMachine(sub_state = sub, next = n) as t                    => loop(sub, subacc => 
-                                                                                              loop(n, nacc => cont(inlined_fsm(subacc, nacc, t))))
-
-        }
-      }
-
-      loop(this, x => x)
-    }
-
-    public FoldThisSuper(
-                state   : FsmState * FsmState * FsmState * State -> FsmState,
-                final   : FsmState * FsmState * Final            -> FsmState,
-                sub_reg : FsmState * FsmState * FsmState * ConcurrentSubRegion -> FsmState,
-                region  : FsmState * FsmState * FsmState * ConcurrentRegion -> FsmState,
-                inlined_subm_inst : FsmState * FsmState * FsmState * InlinedSubMachineInstance -> FsmState,
-                sub_mach : SubMachine -> FsmState,
-                inlined_fsm : FsmState * FsmState * FsmState * InlinedSubMachine -> FsmState
-              ) : FsmState
-    {
-
-      def xnode(n, sub, nt, nsr, sr, ot)
-      {
-        match (n)
-        {
-          | null                            => ot
-          | State          as t                                                   
-          | InlinedSubMachineInstance as t  
-          | InlinedSubMachine as t
-          | Final as t                      => t.ChangeSubStateNext(sub, nt)
-          | ConcurrentSubRegion as t        => t.ChangeNextSubRegionSubState(nsr, sub)
-          | ConcurrentRegion as t           => t.ChangeSubRegionNext(sr, nt)
-          | x                               => x
-        }
-      }
-
-      def loop(st, super, cont)
-      {
-        match (st)
-        {
-          | State(sub_state = sub, next = null) as t                             => def super = state(super, null, null, t);
-                                                                                    loop(sub, super, subacc => cont(xnode(state(super, subacc, null, t), subacc, null, null, null, t)))
-          | State(sub_state = sub, next = n) as t                                => def super = state(null, null, null, t);
-                                                                                    loop(sub, super, subacc => 
-                                                                                              loop(n, super, nacc => cont(xnode(state(super, subacc, nacc, t), subacc, nacc, null, null, t))))
-          | Final(next = null) as t                                              => def super = final(super, null, t);
-                                                                                    cont(xnode(final(super, null, t), null, null, null, null, t))
-          | Final(next = n) as t                                                 => def super = final(super, null, t);
-                                                                                    loop(n, super, nacc => cont(xnode(final(super, nacc, t), null, nacc, null, null, t)))
-
-          | ConcurrentSubRegion(sub_state = sub, next_sub_region = null) as t    => def super = sub_reg(super, null, null, t);
-                                                                                    loop(sub, super, subacc => cont(xnode(sub_reg(super, subacc, null, t), subacc, null, null, null, t)))
-          | ConcurrentSubRegion(sub_state = sub, next_sub_region = n) as t       => def super = sub_reg(super, null, null, t);
-                                                                                    loop(sub, super, subacc => 
-                                                                                              loop(n, super, nacc => cont(xnode(sub_reg(super, subacc, nacc, t), subacc, nacc, null, null, t))))
-          | ConcurrentRegion(sub_region = reg, next = null)  as t                => def super = region(super, null, null, t);
-                                                                                    loop(reg, super, regacc => cont(xnode(region(super, regacc, null, t), null, null, null, regacc :> ConcurrentSubRegion, t)))
-          | ConcurrentRegion(sub_region = reg, next = n)  as t                   => def super = region(super, null, null, t);
-                                                                                    loop(reg, super, regacc => 
-                                                                                              loop(n, super, nacc => cont(xnode(region(super, regacc, nacc, t), null, nacc, null, regacc :> ConcurrentSubRegion, t))))
-          | InlinedSubMachineInstance(sub_state = sub, next = null) as t         => def super = inlined_subm_inst(super, null, null, t);
-                                                                                    loop(sub, super, subacc => cont(xnode(inlined_subm_inst(super, subacc, null, t), subacc, null, null, null, t)))
-          | InlinedSubMachineInstance(sub_state = sub, next = n) as t            => def super = inlined_subm_inst(super, null, null, t);
-                                                                                    loop(sub, super, subacc => 
-                                                                                              loop(n, super, nacc => cont(xnode(inlined_subm_inst(super, subacc, nacc, t), subacc, nacc, null, null, t))))
-
-          | SubMachine as t                                                      => cont(sub_mach(t))
-          | InlinedSubMachine(sub_state = sub, next = null) as t                 => def super = inlined_fsm(super, null, null, t);
-                                                                                    loop(sub, super, subacc => cont(inlined_fsm(super, subacc, null, t)))
-          | InlinedSubMachine(sub_state = sub, next = n) as t                    => def super = inlined_fsm(super, null, null, t);
-                                                                                    loop(sub, super, subacc => 
-                                                                                              loop(n, super, nacc => cont(inlined_fsm(super, subacc, nacc, t))))
+          | ConcurrentSubRegion(sub_states_t = sub) as t          => def sub_acc = pop(sub); 
+                                                                     def acc = xnode(sub_reg(sub_acc, t), sub_acc, t);
+                                                                     stack.Push(acc);
+                                                                     acc
+                                                                                    
+          | ConcurrentRegion(sub_regions_t = reg)  as t           => def regacc = pop(reg |> _ : FsmState);
+                                                                     def acc = xnode(region(regacc, t), regacc, t);
+                                                                     stack.Push(acc);
+                                                                     acc
+          | InlinedSubMachineInstance(sub_states_t = sub) as t    => def sub_acc = pop(sub); 
+                                                                     def acc = xnode(inlined_subm_inst(sub_acc, t), sub_acc, t);
+                                                                     stack.Push(acc);
+                                                                     acc 
+          | SubMachine as t                                       => sub_mach(t)
+          | InlinedSubMachine(sub_states_t = sub) as t            => def sub_acc = pop(sub); 
+                                                                     def acc = xnode(inlined_fsm(sub_acc, t), sub_acc, t);
+                                                                     stack.Push(acc);
+                                                                     acc
 
         }
       }
 
-      loop(this, super_state, x => x)
+      Iterator.FoldLeft(null, loop)
     }
     
     public Fold[T](
-                  state   : T * option[T] * State -> T,
-                  final   : option[T] * Final     -> T,
-                  sub_reg : T * option[T] * ConcurrentSubRegion -> T,
-                  region  : T * option[T] * ConcurrentRegion -> T,
-                  inlined_subm_inst : T * option[T] * InlinedSubMachineInstance -> T,
-                  sub_mach : SubMachine -> T,
-                  inlined_fsm : T * option[T] * InlinedSubMachine -> T
+                  init : T,
+                  state   : T * State -> T,
+                  final   : T * Final     -> T,
+                  sub_reg : T * ConcurrentSubRegion -> T,
+                  region  : T * ConcurrentRegion -> T,
+                  inlined_subm_inst : T * InlinedSubMachineInstance -> T,
+                  sub_mach : T * SubMachine -> T,
+                  inlined_fsm : T * InlinedSubMachine -> T
                   ) : T
     {
-
-      def loop(st, cont)
+      def loop(st, acc)
       {
         match (st)
         {
-          | State(sub_state = sub, next = null)                 as t             => loop(sub, subacc => cont(state(subacc, None(), t)))
-          | State(sub_state = sub, next = n) as t                                => loop(sub, subacc => 
-                                                                                                 loop(n, nacc => cont(state(subacc, Some(nacc), t))))
-          | Final(next = null) as t                                              => cont(final(None(), t))
-          | Final(next = n)    as t                                              => loop(n, nacc => cont(final(Some(nacc), t)))
-          | ConcurrentSubRegion(sub_state = sub, next_sub_region = null) as t    => loop(sub, subacc => cont(sub_reg(subacc, None(), t)))
-          | ConcurrentSubRegion(sub_state = sub, next_sub_region = n)    as t    => loop(sub, subacc => 
-                                                                                                 loop(n, nacc => cont(sub_reg(subacc, Some(nacc), t))))
-          | ConcurrentRegion(sub_region = reg, next = null)  as t                => loop(reg, regacc => cont(region(regacc, None(), t)))
-          | ConcurrentRegion(sub_region = reg, next = n)  as t                   => loop(reg, regacc => 
-                                                                                                 loop(n, nacc => cont(region(regacc, Some(nacc), t))))
-          | InlinedSubMachineInstance(sub_state = sub, next = null) as t         => loop(sub, subacc => cont(inlined_subm_inst(subacc, None(), t)))
-          | InlinedSubMachineInstance(sub_state = sub, next = n) as t            => loop(sub, subacc => 
-                                                                                                 loop(n, nacc => cont(inlined_subm_inst(subacc, Some(nacc), t))))
-
-          | SubMachine as t                                                      => cont(sub_mach(t))
-          | InlinedSubMachine(sub_state = sub, next = null) as t                 => loop(sub, subacc => cont(inlined_fsm(subacc, None(), t)))
-          | InlinedSubMachine(sub_state = sub, next = n) as t                    => loop(sub, subacc => 
-                                                                                                 loop(n, nacc => cont(inlined_fsm(subacc, Some(nacc), t))))
+          | State as t                        => state(acc, t)
+          | Final as t                        => final(acc, t)
+          | ConcurrentSubRegion as t          => sub_reg(acc, t)
+          | ConcurrentRegion  as t            => region(acc, t)
+          | InlinedSubMachineInstance as t    => inlined_subm_inst(acc, t)
+          | SubMachine as t                   => sub_mach(acc, t)
+          | InlinedSubMachine as t            => inlined_fsm(acc, t)
         }
       }
 
-      loop(this, x => x)
+      Iterator.FoldLeft(init, loop)
     }
 
+    public LevelOrderIterator : IEnumerable[FsmState]
+    {
+      get
+      {
+       def queue = SCG.Queue();
+       queue.Enqueue(this);
+       
+       def loop()
+       {
+         if (queue.IsEmpty()) () else
+         {
+           def node = queue.Dequeue();
+           yield node;
+           foreach (s in node.sub_states_t)
+           {
+             queue.Enqueue(s);
+           }
+           loop()
+         }
+       }
+       
+       loop()
+      }
+    }
+    
+    public Iterator : IEnumerable[FsmState]
+    {
+      get
+      {
+        def child = SCG.Stack();
+        def parent = SCG.Stack();
+
+        def loop_init()
+        {
+          if (child.IsEmpty()) () else 
+          {
+            def curr = child.Pop();
+            parent.Push(curr);
+            match (curr)
+            {
+              | FsmState where (sub_states_t = sub) => foreach (s in sub) child.Push(s);loop_init()
+              | _                                   => loop_init()
+            }
+          }
+        }
+
+        child.Push(this);
+        loop_init();
+        parent
+      }
+    }
     //public UpdateFromTarget(target : TransitionTarget) : FsmState
     //{
     //  def update_pseudo(op, p)
