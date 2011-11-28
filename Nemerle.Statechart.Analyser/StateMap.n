@@ -18,6 +18,8 @@ namespace Nemerle.Statechart
     [NeedChange]
     public states : array[FsmState];
     
+    public this() {}
+    
     public Count : int
     {
       get
@@ -88,14 +90,27 @@ namespace Nemerle.Statechart
       states[num]
     }
     
-    public CheckNew(st : FsmState) : StateMap
-    {
-      if (states.Contains(st)) this else Add(st)
-    }
+    //public CheckNew(st : FsmState) : StateMap
+    //{
+    //  if (states.Contains(st)) this else Add(st)
+    //}
 
-    public CheckNew(st : list[FsmState]) : StateMap
+    public CheckNew(st : IEnumerable[FsmState]) : StateMap
     {
-      if (states.Exists(x => st.Exists(y => x : object != y))) this else Add(st)
+      // replace state if we have new copy
+      def check_name(s, n)
+      {
+        match (st.Find(x => x.Name == n.Name))
+        {
+          | Some(n) => n.ChangeSubStates(s)
+          // if no new state use old
+          | _       => null
+        }
+      }
+      
+      def top = Top.FoldThis(check_name);
+      Update(top)
+      //if (states.Exists(x => st.Exists(y => x : object != y))) this else Add(st)
     }
     
     //public InitAdd(st : FsmState) : FsmState * StateMap
@@ -113,23 +128,23 @@ namespace Nemerle.Statechart
     //  (st, map)
     //}
     
-    public Add(st : FsmState) : StateMap
-    {
-      def states = states.Filter(x => x.Num != st.Num);
-      def states = states + [st];
-      def states = states.Sort((x, y) => x.Num - y.Num);
-      ChangeStates(states.ToArray())
-      //st.FormatName();
-    }
+    //public Add(st : FsmState) : StateMap
+    //{
+    //  def states = states.Filter(x => x.Num != st.Num);
+    //  def states = states + [st];
+    //  def states = states.Sort((x, y) => x.Num - y.Num);
+    //  ChangeStates(states.ToArray())
+    //  //st.FormatName();
+    //}
 
-    public Add(st : list[FsmState]) : StateMap
-    {
-      def states = states.Exclude(st, (x, y) => x.Num == y.Num);
-      def states = states.Append(st.ToArray());
-      def states = states.Sort(_.Num);
-      ChangeStates(states)
-      //st.FormatName();
-    }
+    //public Add(st : list[FsmState]) : StateMap
+    //{
+    //  def states = states.Exclude(st, (x, y) => x.Num == y.Num);
+    //  def states = states.Append(st.ToArray());
+    //  def states = states.Sort(_.Num);
+    //  ChangeStates(states)
+    //  //st.FormatName();
+    //}
     
     public Get(st : list[FsmState]) : list[FsmState]
     {
@@ -137,13 +152,13 @@ namespace Nemerle.Statechart
         st.Map(x => Get(x.Num)) else st
     }
     
-    public Rem(st : FsmState) : StateMap
-    {
-      def st = get_all_state(states.NToList(), st.NativeName);
-      def st = states.Filter(x => st.Exists(y => y.Num == x.Num));
-      def st = st.Sort((x, y) => x.Num - y.Num);
-      ChangeStates(st.ToArray())
-    }
+    //public Rem(st : FsmState) : StateMap
+    //{
+    //  def st = get_all_state(states.NToList(), st.NativeName);
+    //  def st = states.Filter(x => st.Exists(y => y.Num == x.Num));
+    //  def st = st.Sort((x, y) => x.Num - y.Num);
+    //  ChangeStates(st.ToArray())
+    //}
     
     //public IndexOf(st : FsmState) : int
     //{
@@ -166,21 +181,21 @@ namespace Nemerle.Statechart
       }
     }
     
-    public this(analyser : FsmAnalyser)
-    {
-      this.analyser = analyser;
-    }
+    //public this(analyser : FsmAnalyser)
+    //{
+    //  this.analyser = analyser;
+    //}
     
     public Init(top : FsmState) : StateMap
     {
-      def states = top :: top.AllSubStates;
+      def states = top.AllStates;
       def states = states.MapIndex((x, i) => x.ChangeNum(i));
       ChangeStates(states.ToArray())
     }
 
     public Update(top : FsmState) : StateMap
     {
-      def states = top :: top.AllSubStates;
+      def states = top.AllStates;
       ChangeStates(states.ToArray())
     }
     
@@ -192,5 +207,12 @@ namespace Nemerle.Statechart
       }
     }
 
+    public Top : FsmState
+    {
+      get
+      {
+        states[0]
+      }
+    }
   }
 }

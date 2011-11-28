@@ -221,13 +221,25 @@ namespace Nemerle.Statechart
       }
     }
 
-    public AllPseudoStates : list[PseudoStateNode]
+    /// <summary>
+	  /// All sub states include this at all nesting levels
+	  /// </summary>
+    public AllStates : IEnumerable[FsmState]
     {
       get
       {
-        pseudo_states + (sub_states |>< AllPseudoStates)
+        LevelOrderIterator
+        //sub_states + (sub_states |>< AllSubStates)
       }
     }
+    
+    //public AllPseudoStates : list[PseudoStateNode]
+    //{
+    //  get
+    //  {
+    //    pseudo_states + (sub_states |>< AllPseudoStates)
+    //  }
+    //}
     
     /// <summary>
 	  /// All lived sub states
@@ -240,20 +252,21 @@ namespace Nemerle.Statechart
       }
     }
 
-    /// <summary>
-	  /// All lived sub states
-	  /// </summary>
-    public AllLivedSubStatesNotRegions : list[FsmState]
-    {
-      get
-      {
-        def lived = LivedSubStates;
-        def (reg, not_reg) = sub_states.Partition(_ is ConcurrentRegion);
-        def reg = reg.Filter(_.LivedNested);
-        def not_reg = not_reg |>< AllLivedSubStatesNotRegions;
-        lived + reg + not_reg
-      }
-    }
+   // /// <summary>
+	  ///// All lived sub states
+	  ///// </summary>
+   // public AllLivedSubStatesNotRegions : list[FsmState]
+   // {
+   //   get
+   //   {
+   //     AllLivedSubStates.Exclude(_ is ConcurrentRegion)
+   //     //def lived = LivedSubStates;
+   //     //def (reg, not_reg) = sub_states.Partition(_ is ConcurrentRegion);
+   //     //def reg = reg.Filter(_.LivedNested);
+   //     //def not_reg = not_reg |>< AllLivedSubStatesNotRegions;
+   //     //lived + reg + not_reg
+   //   }
+   // }
 
     /// <summary>
 	  /// Direct lived sub states without consider of living nesting states of this substates
@@ -269,11 +282,12 @@ namespace Nemerle.Statechart
     /// <summary>
 	  /// All Lived substates with consider of nesting state life on all nesting levels
 	  /// </summary>
-    public AllLivedSubStatesNested : list[FsmState]
+    public AllLivedSubStatesNested : IEnumerable[FsmState]
     {
       get
       {
-        sub_states.Filter(_.LivedNested) + (sub_states |>< AllLivedSubStatesNested)
+        AllSubStates.Filter(_.LivedNested)
+        //sub_states.Filter(_.LivedNested) + (sub_states |>< AllLivedSubStatesNested)
       }
     }
 
@@ -291,7 +305,7 @@ namespace Nemerle.Statechart
     /// <summary>
 	  /// Direct lived substates with consider of nesting state life
 	  /// </summary>
-    public LivedSubStatesNested : list[FsmState]
+    public LivedSubStatesNested : IEnumerable[FsmState]
     {
       get
       {
@@ -302,7 +316,7 @@ namespace Nemerle.Statechart
     /// <summary>
 	  /// Sub states included in the history of this state
 	  /// </summary>
-    public SubStatesParticipateInHistory : list[FsmState]
+    public SubStatesParticipateInHistory : IEnumerable[FsmState]
     {
       get
       {
@@ -310,11 +324,11 @@ namespace Nemerle.Statechart
       }
     }
 
-    public SubStatesParticipateIn(hist : StateHistory) : list[FsmState]
+    public SubStatesParticipateIn(hist : StateHistory) : IEnumerable[FsmState]
     {
-      | StateHistory.Deep     => AllLivedSubStatesNotRegions
+      | StateHistory.Deep     => AllLivedSubStates//AllLivedSubStatesNotRegions
       | StateHistory.Shallow  => LivedSubStatesNested
-      | _  => []
+      | _                     => []
     }
 
     /// <summary>
