@@ -20,7 +20,7 @@ namespace Nemerle.Statechart
   {
     public override ToString() : string {Name}
 
-    public virtual UpdateReference(an : FsmAnalyser) : FsmState * FsmAnalyser
+    public virtual UpdateReference(sub : list[FsmState],an : FsmAnalyser) : FsmState * FsmAnalyser
     {
       def map = an.statemap;
       def (super, an) = if (super_state != null && super_state.reference) 
@@ -31,10 +31,10 @@ namespace Nemerle.Statechart
       def an = initial.FoldLeft(an, _.UpdateReference(_));
       def an = transitions.FoldLeft(an, _.UpdateReference(_));
       def an = history.Value.FoldLeft(an, _.UpdateReference(_));
-      def sub_states = map.Get(sub_states);
-      def (pseudo, an) = pseudo_states.MapThrough(an, _.UpdateReference(_));
-      def (sub_states, an) = sub_states.MapThrough(an, _.UpdateReference(_));
-      def st = ChangePseudoStatesSubStatesSuperStateAnalyser(pseudo, sub_states, super, an);
+      //def sub = map.Get(sub);
+      def (pseudo, an) = pseudo_states.MapThrough(an, _.UpdateReference(_));//MapThrough(an, _.UpdateReference(_));
+      //def (sub_states, an) = sub_states.MapThrough(an, _.UpdateReference(_));
+      def st = ChangePseudoStatesSubStatesSuperStateAnalyser(pseudo, sub, super, an);
       (st, an)
     }
 
@@ -48,8 +48,8 @@ namespace Nemerle.Statechart
     {
       def init = match (this)
                   {
-                    | ConcurrentSubRegion(contained_in = r) => Initial(r, st)//initial ::= Initial(r, st)
-                    | _ => Initial(this, st)//initial ::= Initial(this, st)
+                    | ConcurrentSubRegion(contained_in = r) => Initial(r, st)
+                    | _                                     => Initial(this, st)
                   }
       ChangeInitial(init :: initial)
     }
@@ -476,9 +476,8 @@ namespace Nemerle.Statechart
       {
         match (n)
         {
-          | null                            => ot
-          | t when (sub != null)            => t.ChangeSubStatesT(sub)
-          | x                               => x
+          | null when (sub != null) => ot.ChangeSubStates(sub)
+          | t    => t
         }
       }
 
@@ -486,55 +485,125 @@ namespace Nemerle.Statechart
       
       def pop(sub)
       {
-        stack.Take(sub.Length)
+        stack.Pop(sub.Length)
       }
       
       def loop(st, _)
       {
         match (st)
         {
-          | State(sub_states_t = sub) as t                        => def sub_acc = pop(sub); 
-                                                                     def acc = xnode(state(sub_acc, t), sub_acc, t);
-                                                                     stack.Push(acc);
-                                                                     acc
-          | Final as t                                            => def acc = xnode(final(t), null, t);
-                                                                     stack.Push(acc);
-                                                                     acc
+          | State(sub_states = sub) as t                        => def sub_acc = pop(sub); 
+                                                                   def acc = if (state != null) xnode(state(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
+                                                                   stack.Push(acc);
+                                                                   acc
+          | Final as t                                          => def acc = if (final != null) xnode(final(t), null, t) else t;
+                                                                   stack.Push(acc);
+                                                                   acc
 
-          | ConcurrentSubRegion(sub_states_t = sub) as t          => def sub_acc = pop(sub); 
-                                                                     def acc = xnode(sub_reg(sub_acc, t), sub_acc, t);
-                                                                     stack.Push(acc);
-                                                                     acc
+          | ConcurrentSubRegion(sub_states = sub) as t          => def sub_acc = pop(sub); 
+                                                                   def acc = if (sub_reg != null) xnode(sub_reg(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
+                                                                   stack.Push(acc);
+                                                                   acc
                                                                                     
-          | ConcurrentRegion(sub_regions_t = reg)  as t           => def regacc = pop(reg |> _ : FsmState);
-                                                                     def acc = xnode(region(regacc, t), regacc, t);
-                                                                     stack.Push(acc);
-                                                                     acc
-          | InlinedSubMachineInstance(sub_states_t = sub) as t    => def sub_acc = pop(sub); 
-                                                                     def acc = xnode(inlined_subm_inst(sub_acc, t), sub_acc, t);
-                                                                     stack.Push(acc);
-                                                                     acc 
-          | SubMachine as t                                       => sub_mach(t)
-          | InlinedSubMachine(sub_states_t = sub) as t            => def sub_acc = pop(sub); 
-                                                                     def acc = xnode(inlined_fsm(sub_acc, t), sub_acc, t);
-                                                                     stack.Push(acc);
-                                                                     acc
-
+          | ConcurrentRegion(sub_regions = reg)  as t           => def regacc = pop(reg |> _ : FsmState);
+                                                                   def acc = if (regacc != null) xnode(region(regacc, t), regacc, t) else t.ChangeSubStates(regacc);
+                                                                   stack.Push(acc);
+                                                                   acc
+          | InlinedSubMachineInstance(sub_states = sub) as t    => def sub_acc = pop(sub); 
+                                                                   def acc = if (inlined_subm_inst != null) xnode(inlined_subm_inst(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
+                                                                   stack.Push(acc);
+                                                                   acc 
+          | SubMachine as t                                     => if (sub_mach != null) sub_mach(t) else t;
+          | InlinedSubMachine(sub_states = sub) as t            => def sub_acc = pop(sub); 
+                                                                   def acc = if (inlined_fsm != null) xnode(inlined_fsm(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
+                                                                   stack.Push(acc);
+                                                                   acc
         }
       }
 
       Iterator.FoldLeft(null, loop)
     }
 
+    public FoldThis(an : FsmAnalyser,
+                state   : list[FsmState] * State * FsmAnalyser -> FsmState * FsmAnalyser,
+                final   : Final * FsmAnalyser-> FsmState * FsmAnalyser,
+                sub_reg : list[FsmState] * ConcurrentSubRegion * FsmAnalyser -> FsmState * FsmAnalyser,
+                region  : list[FsmState] * ConcurrentRegion * FsmAnalyser -> FsmState * FsmAnalyser,
+                inlined_subm_inst : list[FsmState] * InlinedSubMachineInstance * FsmAnalyser -> FsmState * FsmAnalyser,
+                sub_mach : SubMachine * FsmAnalyser -> FsmState * FsmAnalyser,
+                inlined_fsm : list[FsmState] * InlinedSubMachine * FsmAnalyser -> FsmState * FsmAnalyser
+              ) : FsmState * FsmAnalyser
+    {
+
+      def xnode((n, an), sub : list[FsmState], ot)
+      {
+        match (n)
+        {
+          | null when (sub != null)                    => (ot.ChangeSubStates(sub), an)
+          | t                                          => (t.ChangeAnalyser(an), an)
+        }
+      }
+
+      def stack = SCG.Stack();
+      
+      def pop(sub)
+      {
+        stack.Pop(sub.Length)
+      }
+      
+      def loop(st, _)
+      {
+        match (st)
+        {
+          | State(sub_states = sub) as t                        => def sub_acc = pop(sub); 
+                                                                   def (acc, an) = if (state != null) xnode(state(sub_acc, t, an), sub_acc, t) else (t.ChangeSubStatesAnalyser(sub_acc, an), an);
+                                                                   stack.Push(acc);
+                                                                   an
+                                                                   
+          | Final as t                                          => def (acc, an) = if (final != null) xnode(final(t, an), null, t) else (t.ChangeAnalyser(an), an);
+                                                                   stack.Push(acc);
+                                                                   an
+
+          | ConcurrentSubRegion(sub_states = sub) as t          => def sub_acc = pop(sub); 
+                                                                   def (acc, an) = if (sub_reg != null) xnode(sub_reg(sub_acc, t, an), sub_acc, t) else (t.ChangeSubStatesAnalyser(sub_acc, an), an);
+                                                                   stack.Push(acc);
+                                                                   an
+                                                                                    
+          | ConcurrentRegion(sub_regions = reg)  as t           => def regacc = pop(reg |> _ : FsmState);
+                                                                   def (acc, an) = if (region != null) xnode(region(regacc, t, an), regacc, t) else (t.ChangeSubStatesAnalyser(regacc, an), an);
+                                                                   stack.Push(acc);
+                                                                   an
+                                                                   
+          | InlinedSubMachineInstance(sub_states = sub) as t    => def sub_acc = pop(sub); 
+                                                                   def (acc, an) = if (inlined_subm_inst != null) xnode(inlined_subm_inst(sub_acc, t, an), sub_acc, t) else (t.ChangeSubStatesAnalyser(sub_acc, an), an);
+                                                                   stack.Push(acc);
+                                                                   an 
+                                                                   
+          | SubMachine as t                                     => def (acc, an) = if (sub_mach != null) sub_mach(t, an) else (t, an);
+                                                                   stack.Push(acc);
+                                                                   an
+                                                                   
+          | InlinedSubMachine(sub_states = sub) as t            => def sub_acc = pop(sub); 
+                                                                   def (acc, an) = if (inlined_fsm != null) xnode(inlined_fsm(sub_acc, t, an), sub_acc, t) else (t.ChangeSubStatesAnalyser(sub_acc, an), an);
+                                                                   stack.Push(acc);
+                                                                   an
+        }
+      }
+
+      def an = Iterator.FoldLeft(an, loop);
+      def st = stack.Pop();
+      (st, an)
+    }
+    
     public FoldThis(state   : list[FsmState] * FsmState -> FsmState) : FsmState
     {
 
-      def xnode(n, sub : list[FsmState], ot)
+      def xnode(n, ot)
       {
         match (n)
         {
           | null => ot
-          | t    => t.ChangeSubStates(sub)
+          | t    => t
         }
       }
 
@@ -550,7 +619,7 @@ namespace Nemerle.Statechart
         match (st)
         {
           | FsmState where (sub_states = sub) as t => def sub_acc = pop(sub); 
-                                                      def acc = xnode(state(sub_acc, t), sub_acc, t);
+                                                      def acc = xnode(state(sub_acc, t), t);
                                                       stack.Push(acc);
                                                       acc
         }
@@ -558,11 +627,46 @@ namespace Nemerle.Statechart
 
       Iterator.FoldLeft(null, loop)
     }
+
+    public FoldThis(an : FsmAnalyser,state   : list[FsmState] * FsmState * FsmAnalyser -> FsmState * FsmAnalyser) : FsmState * FsmAnalyser
+    {
+
+      def xnode((n, an), sub, ot)
+      {
+        match (n)
+        {
+          | null => (ot.ChangeSubStates(sub), an)
+          | t    => (t.ChangeAnalyser(an), an)
+        }
+      }
+
+      def stack = SCG.Stack();
+      
+      def pop(sub)
+      {
+        stack.Pop(sub.Length)
+      }
+      
+      def loop(st, _)
+      {
+        match (st)
+        {
+          | FsmState where (sub_states = sub) as t => def sub_acc = pop(sub); 
+                                                      def (acc, an) = xnode(state(sub_acc, t, an), sub_acc, t);
+                                                      stack.Push(acc);
+                                                      an
+        }
+      }
+
+      def an = Iterator.FoldLeft(an, loop);
+      def st = stack.Pop();
+      (st, an)
+    }
     
     public Fold[T](
                   init : T,
                   state   : T * State -> T,
-                  final   : T * Final     -> T,
+                  final   : T * Final -> T,
                   sub_reg : T * ConcurrentSubRegion -> T,
                   region  : T * ConcurrentRegion -> T,
                   inlined_subm_inst : T * InlinedSubMachineInstance -> T,
@@ -600,7 +704,7 @@ namespace Nemerle.Statechart
          {
            def node = queue.Dequeue();
            yield node;
-           foreach (s in node.sub_states_t)
+           foreach (s in node.sub_states)
            {
              queue.Enqueue(s);
            }
@@ -627,8 +731,8 @@ namespace Nemerle.Statechart
             parent.Push(curr);
             match (curr)
             {
-              | FsmState where (sub_states_t = sub) => foreach (s in sub) child.Push(s);loop_init()
-              | _                                   => loop_init()
+              | FsmState where (sub_states = sub) => foreach (s in sub) child.Push(s);loop_init()
+              | _                                 => loop_init()
             }
           }
         }

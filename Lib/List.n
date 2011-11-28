@@ -130,7 +130,7 @@ namespace Nemerle.Statechart
       loop(lst, [])
     }
 
-    public FilterType[T,TRes](this lst : list[T]) : list[TRes]
+    public FilterType[T, TRes](this lst : list[T]) : list[TRes]
     {
       def loop(val : T, res)
       {
@@ -142,6 +142,26 @@ namespace Nemerle.Statechart
       }
 
       lst.FoldLeft([], loop).Rev()
+    }
+
+    public FilterType[T, TRes](this lst : IEnumerable[T]) : IEnumerable[TRes]
+    {
+      def lst = lst.GetEnumerator();
+
+      def loop()
+      {
+        if (lst.MoveNext())
+        {
+          match (lst.Current)
+          {
+            | val is TRes => yield val;
+            | _           => ()
+          }
+          loop()
+        } else ()
+      }
+
+      loop()
     }
 
     /// <summary>
@@ -177,15 +197,15 @@ namespace Nemerle.Statechart
         {
           match (lst.Current)
           {
-           | cur is TRes => Some(cur)
-           | _ => loop(lst)
-         }
+            | cur is TRes => Some(cur)
+            | _ => loop(lst)
+          }
         } else None()
       }
 
       loop(lst.GetEnumerator())
     }
-    
+
     public FilterValues[T, TRes](this lst : list[T], pred : T -> option[TRes]) : list[TRes]
     {
       def loop(head, res)
@@ -213,6 +233,7 @@ namespace Nemerle.Statechart
 
       lst.FoldLeft([], loop).Rev()
     } 
+
 
     /// <summary>
     /// Excludes elements from list that not exist in second list
@@ -522,7 +543,7 @@ namespace Nemerle.Statechart
 
       loop(start)
     }
-    
+
     public Pop[T](this lst : SCG.Stack[T], len : int) : list[T]
     {
       def loop(acc, len)
@@ -532,10 +553,10 @@ namespace Nemerle.Statechart
           loop(lst.Pop() :: acc, len - 1)
         } else acc.Rev()
       }
-      
+
       loop([], len)
     }
-    
+
     public FoldBack[T, TOut](this l : IEnumerable[T], acc : TOut, f : T * TOut -> TOut) : TOut 
     {
       def buffer = SCG.Stack();
@@ -544,42 +565,28 @@ namespace Nemerle.Statechart
       foreach (x in buffer) result = f(x, result);
       result
     }
-    
-    public MapCont[T, TRes, TOut](this lst : list[T], map : T -> TRes) : list[TRes]
-    {
-      def loop(l, cont)
-      {
-        match (l)
-        {
-          | []      => cont([])
-          | x :: xs => loop(xs, ys => cont(map(x) :: ys))
-        }
-      }
-//: /// Create a list containing results of calling 
-// 2: /// the function 'f' on all elements of the input 'list'
-// 3: let map f list =
-// 4:   /// Inner recursive function that uses
-// 5:   /// continuation argument to construct list
-// 6:   let rec mapAux cont list =
-// 7:     match list with
-// 8:     | x :: xs -> mapAux (fun ys -> (f x)::ys |> cont) xs
-// 9:     | [] -> cont []
-//10:   mapAux id list   
-      
-//let contMap f l cont = 
-  //let rec loop acc l cont =
-  //  match l with
-  //  | [] -> cont acc |> List.rev
-  //  | x::xs -> f x (fun x' -> loop (x'::acc) xs cont)
-  //loop [] l cont      
-  //let r = List.map (fun x -> x*2) [ 1 .. 3 ]
 
-// Continuation-based version
-//contMap (fun x c -> c(x*2)) [ 1 .. 3 ] (fun r -> ... )
-      
-      loop(lst, x => x)
+    public Exclude[T](this lst : IEnumerable[T], pred : T -> bool) : IEnumerable[T]
+    {
+      lst.FilterLazy(x => !pred(x))
     }
-    
+
+    public MapIndex[T, TRes](this lst : IEnumerable[T], conv : (T * int) -> TRes) : IEnumerable[TRes]
+    {
+      def lst = lst.GetEnumerator();
+
+      def loop(idx)
+      {
+        if (lst.MoveNext())
+        {
+          yield conv(lst.Current, idx);
+          loop(idx + 1)
+        } else ()
+      }
+
+      loop(0)
+    }
+
   }
 
 }
