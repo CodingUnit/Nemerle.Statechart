@@ -54,7 +54,7 @@ namespace Nemerle.Statechart
       //  }
       //}
 
-      FoldThis(_ => null, (t, _, o) => o.ChangeTarget(t.SetCopy(n)), _ => null)
+      FoldThis(null, (t, _, o) => o.ChangeTarget(t.SetCopy(n)), null)
       //Fold((c, b, e) => Condition(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb, ne), an) else node, )
       //Map(an, inc)
     }
@@ -79,42 +79,6 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    //public Map(an : FsmAnalyser, func : DecisionNode * FsmAnalyser -> DecisionNode * FsmAnalyser) : DecisionNode * FsmAnalyser
-    //{
-    //  def (node, an) = func(this, an);
-    //  def node = node ?? this;
-    //  match (node)
-    //  {
-    //    | Condition(c, b, e) as j => 
-    //        def (nb, an) = b.Map(an, func);
-    //        def (ne, an) = e.Map(an, func);
-    //        if (nb != b : object || ne != e : object) 
-    //          (Condition(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb, ne), an) else (node, an)
-    //    | Else(b) as j => 
-    //        def (nb, an) = b.Map(an, func);
-    //        if (nb != b : object) (Else(level, state, actions,  j.PrevState, j.node_path, j.out_path,nb), an) else (node, an)
-
-    //    | Action(c, b) as j => 
-    //        def (nb, an) = b.Map(an, func);
-    //        if (nb != b : object) (Action(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb), an) else (node, an)
-
-    //    | Target => (node, an)
-
-    //  }
-    //}
-
-//let XFoldTree nodeF leafV tree = 
-    //let rec Loop t cont = 
-    //    match t with 
-    //    | Node(x,left,right) -> Loop left  (fun lacc ->  
-    //                            Loop right (fun racc -> 
-    //                            cont (nodeF x lacc racc t))) // note ‘t’
-    //    | Leaf -> cont (leafV t) // note ‘t’
-    //Loop tree (fun x -> x)
-// Can express the usual Fold in terms of XFold:
-// FoldTree : (‘a -> ‘r -> ‘r -> ‘r) -> ‘r -> Tree<’a> -> ‘r
-//let FoldTree nodeF leafV tree = 
-    //XFoldTree (fun x l r _ -> nodeF x l r) (fun _ -> leafV) tree         
 
     public FoldThis(cond : GuardNode * DecisionNode * DecisionNode * DecisionNode.Condition -> DecisionNode,
                     targ : TransitionTarget * TransitionDestination * DecisionNode.Target -> DecisionNode,
@@ -122,9 +86,9 @@ namespace Nemerle.Statechart
     {
       def xnode(n, nb, ne, ot)
       {
+        def n = n ?? ot;
         match (n)
         {
-          | null                            => ot
           | Condition as j                  => j.ChangeBodyElseNode(nb, ne)
           | DecisionNode.Action as j        => j.ChangeBody(nb)
           | x                               => x
@@ -137,18 +101,18 @@ namespace Nemerle.Statechart
       {
         match (e)
         {
-          | Target(x, d) as t       => def acc = xnode(targ(x, d, t), null, null, t);
+          | Target(x, d) as t       => def acc = if (targ != null) xnode(targ(x, d, t), null, null, t) else t;
               stack.Push(acc);
               acc
           | Condition(c, _, _) as t => 
               def bacc = stack.Pop();
               def eacc = stack.Pop();
-              def acc = xnode(cond(c, bacc, eacc, t), bacc, eacc, t);
+              def acc = if (cond != null) xnode(cond(c, bacc, eacc, t), bacc, eacc, t) else t.ChangeBodyElseNode(bacc, eacc);
               stack.Push(acc);
               acc
           | Action(c, _) as t => 
               def bacc = stack.Pop();
-              def acc = xnode(act(c, bacc, t), bacc, null, t);
+              def acc = if (act != null) xnode(act(c, bacc, t), bacc, null, t) else t.ChangeBody(bacc);
               stack.Push(acc);
               acc
         }
