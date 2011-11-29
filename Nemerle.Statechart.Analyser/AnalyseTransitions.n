@@ -415,18 +415,30 @@ namespace Nemerle.Statechart
       {
         traverser.Add(TopState.initial);
         traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
-        $[x.paths, x in States, x.paths != null]
+        //$[x.paths, x in States, x.paths != null]
       }
 
+      def update_states()
+      {
+        def dest = trans_paths.Map(x => x.Paths.Map((_, y) => y.Transition.Destination)).Flatten();
+        def st = dest.Map(_.ToState).Filter(_ != null);
+        statemap.CheckNew(st)
+      }
+
+      traverse(); // traverse paths
+      def st = update_states();
+      ChangeStatemap(st).CreateTransitionsWithPaths();
+    }
+
+    CreateTransitionsWithPaths() : FsmAnalyser
+    {
       def determine_used()
       {
         def empty = empty_states.Map(x => FsmWarning.StateNotUsed(x) : FsmWarning); // warning about all without substates and not lived that is not used
         def not_used = not_used_transitions.Map(x => FsmWarning.TransitionNotUsed(x) : FsmWarning);
         empty + not_used
       }
-
-
-      def paths = traverse(); // traverse paths
+      
       def warnings = determine_used(); // determine used elements
 
       //def (used_hstates, not_used) = history_states.Partition(_.Used);
@@ -443,9 +455,9 @@ namespace Nemerle.Statechart
       def an = an.ChangeInternalTransitionsTransitionsInitialTransitions(int_tran, trans, init);
       def hist = not_used_history.Map(x => FsmWarning.HistoryNotUsed(x) : FsmWarning);
       def warnings = warnings + hist;
-      an.ChangeTransPathsWarnings(paths, GetWarnings(warnings))
+      an.ChangeWarnings(GetWarnings(warnings))
     }
-
+    
     UpdateInitial() : FsmAnalyser
     {
       def warn = not_used_states_initial_tran |> FsmWarning.TransitionNotUsed(_);

@@ -40,26 +40,29 @@ namespace Nemerle.Statechart
           def init_path = path;
           //path = Empty();
           
-          def create_tree(t)
+          def create_tree_node(t)
           {
-            | DecisionNode.Action(state = st, PrevState = pst)
-            | Else(state = st, PrevState = pst)
-            | Condition(state = st, PrevState = pst) =>
+              | DecisionNode.Action(state = st, PrevState = pst)
+              | Condition(state = st, PrevState = pst) =>
                 def node_path = GetPath(pst, st, true, jst);
-                t.SetPath(node_path, Empty())
-
-            | Target(target = tar, state = st, PrevState = pst) as t =>
+                t.ChangeNodePathOutPath(node_path, Empty())
+          }
+          
+          def create_targ_tree(t)
+          {
+            | DecisionNode.Target(target = tar, state = st, PrevState = pst) as t =>
                 path = Empty();
                 def node_path = GetPath(pst, st, true, jst);
                 DefPath(st, tar.ToState, true, jst);
                 def dest = TraverseTargetReg(tar, tran);
-                def out_path = path.Clone();
-                t.SetDestination(dest, node_path, out_path)
-                
-            | _ => null
+                def out_path = path;//.Clone();
+                t.ChangeDestinationOutPathNodePath(dest, out_path, node_path)
+            //| _ => null
           }
 
-          def dest_tree = t.Map(create_tree);
+          def dest_tree = t.FoldThis((_, b, e, t) => create_tree_node(t.ChangeBodyElseNode(b, e)), 
+                                     (_, _, t) => create_targ_tree(t), 
+                                     (_, b, t) => create_tree_node(t.ChangeBody(b)));
           path = init_path;
           //j.DecisionTree = dest_tree;
           ChoiceNode(dest_tree)
@@ -74,30 +77,28 @@ namespace Nemerle.Statechart
             AddNode(exit);
 
             def init_path = path;
-            
-            def check_tree(t)
-            {
-              | DecisionNode.Target(target = tar, state = st) as t =>
-                
+                      
+          def create_targ_tree(t)
+          {
+            | DecisionNode.Target(target = tar, state = st) as t =>
                   path = Empty();
                   def node_path = init_path + GetPath(jst, st, true, jst);
                   DefPath(st, tar.ToState, true, jst);
                   def dest = TraverseTargetReg(tar, tran);
-                  def out_path = path.Clone();
-                  t.SetDestination(dest, node_path, out_path)
-                  
-              | _ => null
-            }
+                  def out_path = path;//.Clone();
+                  t.ChangeDestinationOutPathNodePath(dest, out_path, node_path)
+            //| _ => null
+          }
 
-            def dest_tree = t.Map(check_tree);
-            path = Empty();
+          def dest_tree = t.FoldThis(null, (_, _, t) => create_targ_tree(t), null);
+          path = Empty();
             //j.DecisionTree = dest_tree;
-            JunctionNode(dest_tree)
+          JunctionNode(dest_tree)
     }
 
     TraverseMerge(j : PseudoStateNode.Merge, tr : StateTransition) : TransitionDestination
     {
-      | (PseudoStateNode.Merge(node = PseudoStateNode.JunctionNode(guard = g, action = a, to = t)), _) =>
+      | (PseudoStateNode.Merge(to = TransitionTarget.JunctionNode(guard = g, action = a, to = t)), _) =>
 
           match (g)
           {
@@ -118,12 +119,12 @@ namespace Nemerle.Statechart
     {
       match (st)
       {
-        | Terminate  as n       => Terminate(n)
-        | Fork(target = t) as f => TraverseFork(f, t)
-        | Choice()   as j       => TraverseChoice(j, tr)
-        | Junction() as j       => TraverseJunction(j, tr)
-        | Merge()    as m       => TraverseMerge(m, tr)
-        | _                     => Unknown()
+        | Terminate  as n                             => Terminate(n)
+        | Fork(target = t) as f                       => TraverseFork(f, t)
+        | Junction(type = JunctionType.Choice)   as j => TraverseChoice(j, tr)
+        | Junction as j                               => TraverseJunction(j, tr)
+        | Merge    as m                               => TraverseMerge(m, tr)
+        | _                                           => Unknown()
       }
     }
 	  /// <summary>
@@ -136,14 +137,14 @@ namespace Nemerle.Statechart
           {
             | [] => State(st)
             | tran =>
-                st.Lived = true;
+                def st = st.ChangeLived(true);
                 //st.Completion = tran;
                 traverser.Add(tran);
                 when (recursive && st.paths == null) traverser.Add(st);
                 Final(st, sr, r, tran)
           }
 
-      | Final(SuperState = parent, completion_transitions = tran) =>
+      | Final(super_state = parent, completion_transitions = tran) =>
 
           def history = st.ParticipateInHistory;
           def hist_clear = ClearHistory(history); // create clear history node
@@ -154,7 +155,7 @@ namespace Nemerle.Statechart
                   // if have completion transition without GuardNode
             | [Transition(Guard = None()) as tran]  =>
                   // if not defined transition path create it
-                when (tran.Path == null) tran.TraversePath();
+                when (tran.Path == null) tran.TraversePath(analyser);
                 AddNode(hist_clear); // get nodes and add to path
                 TransitionExecute(tran)
                   // if we have transition list
@@ -179,7 +180,7 @@ namespace Nemerle.Statechart
 
     TraverseSubMachine(fsm : FsmState.SubMachine, state : string) : TransitionDestination
     {
-      fsm.Lived = true;
+      def fsm = fsm.ChangeLived(true);
       TransitionDestination.SubMachine(fsm, state)
     }
     
@@ -239,17 +240,17 @@ namespace Nemerle.Statechart
       | ConcurrentRegion as r => TraverseOrthogonalRegion(r)
       | Final as st => TraverseFinal(st)
          // if simple state and no initial transition
-      | FsmState where (Initial = []) as st  =>
+      | FsmState where (initial = []) as st  =>
           when (recursive && st.paths == null) traverser.Add(st);
-          st.Lived = true;
+          def st = st.ChangeLived(true);
           State(st) // end state
           // if state with one initial transition without Guard
-      | FsmState where (Initial = [Initial(Guard = None()) as init])  => 
+      | FsmState where (initial = [Initial(Guard = None()) as init])  => 
           // check initial transition path, and traverse it if it null
-          when (init.Path == null) init.TraversePath(true);
+          when (init.Path == null) init.TraversePath(analyser, true);
           TransitionExecute(init)
           
-      | FsmState where (Initial = init) as st  => traverser.Add(init);
+      | FsmState where (initial = init) as st  => traverser.Add(init);
           init.Iter(x => {x.UsedInChoice = true;x.IsCrossed = false});
           Choice(st, init, None()); // creating dynamic choice node
     }
@@ -307,8 +308,8 @@ namespace Nemerle.Statechart
         | Final(state = st)
         | Terminate(PseudoStateNode where (state = st))
         | State(st) =>
+            def st = st.ChangeLived(true);
             when (recursive && st.paths == null) traverser.Add(st);
-            st.Lived = true;
             st
         | Region(st)
         | Choice(st, _, _) => st
