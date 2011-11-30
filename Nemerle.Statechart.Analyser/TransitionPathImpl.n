@@ -52,9 +52,9 @@ namespace Nemerle.Statechart
                  //* Case 5: Traverses the hiearchy until a common superstate is met.
     FindLCA(st : FsmState, dest_st : FsmState) : list[FsmState] * list[FsmState]
     {
-      def super = dest_st.SuperState;
+      def super = dest_st.super_state;
       def dest = if (super != null) super else dest_st;
-      FindPath(st.SuperState, dest, st :: [], dest_st :: []);
+      FindPath(st.super_state, dest, st :: [], dest_st :: []);
     }
 
     AddAction(nodes : PathNode, act : option[Actions]) : PathNode
@@ -79,7 +79,7 @@ namespace Nemerle.Statechart
       Sequence(entry)
     }
 
-    public static ExitNodeCreate(nodes : list[FsmState]) : PathNode
+    public ExitNodeCreate(nodes : list[FsmState]) : PathNode
     {
       def get_exit(st)
       {
@@ -107,7 +107,7 @@ namespace Nemerle.Statechart
             }
             
             def (reg, src, last) = get_source();
-            def src = if (r.SubStates.Exists(x => src.Contains(x))) src else [nodes.Head];
+            def src = if (r.sub_states.Exists(x => src.Contains(x))) src else [nodes.Head];
             def regs = r.RegionsExcept(src);
             
             def node = if (last || r != reg) if (regs.Equals(r.sub_regions)) RegionExit([], r) else RegionExit(regs, r); else Empty();
@@ -125,6 +125,40 @@ namespace Nemerle.Statechart
       Sequence(nodes)
     }
 
+    public static ExitNodeCreate(src : FsmState, nodes : list[FsmState]) : PathNode
+    {
+      def get_exit(st)
+      {
+        | StateAction.Exit(state = FsmState where (do_activity = Some(act), history = TwoOption where (HasValue = true) as h)) =>
+            Exit(st, [(SaveHistory(h.Value), false), (StopDoActivity(act), false)]);
+        | Exit(state = FsmState where (do_activity = Some(act))) =>
+            Exit(st, [(StopDoActivity(act), false)]);
+        | Exit(state = FsmState where (history = TwoOption where (HasValue = true) as h)) =>  
+            Exit(st, [(SaveHistory(h.Value), false)]);
+        | Exit => Exit(st)
+          
+      }
+      
+      def exiting_state(st)
+      {
+        | FsmState.ConcurrentRegion(exit = e) as r => 
+            //def (reg, src, last) = get_source();
+            def regs = r.RegionsExcept(src);
+            def node = RegionExit(regs, r);
+            match (e) 
+            {
+              | [] => node
+              | ex => Sequence(ex |> get_exit(_)) + node
+            }
+            
+        | FsmState where (exit = (_ :: _) as ex) => Sequence(ex |> get_exit(_))
+        | _ => Empty()
+      }
+      
+      def nodes = nodes |> exiting_state(_);
+      Sequence(nodes)
+    }
+    
     NodesCreate(ex : list[FsmState], tran : StateTransition) : PathNode
     {
       def (exit, en) = TraverseTransitionPath(tran);

@@ -238,7 +238,7 @@ namespace Nemerle.Statechart
             match (st, t)
             {
               | (FsmState.SubMachine as m, TransitionTarget.State(state = FsmState where (Name = n))) =>
-                  m.Scan(); // scan external sub machine for states
+                  def m = m.Scan(); // scan external sub machine for states
                   def an = if (m.ref_sub_states.Contains(n)) an else an.AddErrors(FsmError.SubMachineStateNotFound(m, n));
                   (TransitionTarget.SubMachine(tran, m, n), an)
               | (null, _) => def an = an.AddErrors(FsmError.UnknownState(t.transition.From, FsmState.State(st.Name), t.transition));
@@ -390,6 +390,15 @@ namespace Nemerle.Statechart
       def err = States |>< init(_);
       def err2 = States.Map(x => x.all_transitions |>< check_cross_orthogonal(_)).Flatten();
       def an = States.FoldLeft(this, check_tran);
+      
+      def update_states(an)
+      {
+        def dest = States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, (x, a) => x.To.Fold(null,  (a, b) => resolve_targets(st, a, b))));
+        def st = dest.Map(_.ToState).Filter(_ != null);
+        an.statemap.CheckNew(st)
+      }
+      
+      update_states(an);
       //def trans = States |>< all_transitions_with_init;
       //def states = States.Map(x => trans.FoldLeft(x, (y, s) => s.UpdateFromTarget(y.To))); // updating states to new transition analyse info
       an.AddErrors(err + err2)
@@ -414,20 +423,23 @@ namespace Nemerle.Statechart
       def traverse()
       {
         traverser.Add(TopState.initial);
-        traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
+        def res = traverser.Traverse(this); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
+        def map = statemap.CheckNew(res);
+        ChangeStatemap(map)
         //$[x.paths, x in States, x.paths != null]
       }
 
-      def update_states()
+      def update_states(an)
       {
-        def dest = trans_paths.Map(x => x.Paths.Map((_, y) => y.Transition.Destination)).Flatten();
+        def dest = an.trans_paths.Map(x => x.Paths.Map((_, y) => y.Transition.Destination)).Flatten();
         def st = dest.Map(_.ToState).Filter(_ != null);
-        statemap.CheckNew(st)
+        an.statemap.CheckNew(st)
       }
 
-      traverse(); // traverse paths
-      def st = update_states();
-      ChangeStatemap(st).CreateTransitionsWithPaths();
+      def an = traverse(); // traverse paths
+      def st = update_states(an);
+      def an = an.ChangeStatemap(st);
+      an.CreateTransitionsWithPaths()
     }
 
     CreateTransitionsWithPaths() : FsmAnalyser

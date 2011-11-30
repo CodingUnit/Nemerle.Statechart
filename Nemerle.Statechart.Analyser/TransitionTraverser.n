@@ -30,21 +30,28 @@ namespace Nemerle.Statechart
     {
       defered_st ::= st;
     }    
-    
-    public Traverse() : void
+
+    public Traverse(an : FsmAnalyser) : list[FsmState]
     {
-      def (fsm, st) = defered_st.Partition(x => x.PartOfStateMachine);
+      Traverse(an, List())
+    }
+    
+    Traverse(an : FsmAnalyser, state_res : List[FsmState]) : list[FsmState]
+    {
+      def (fsm, st) = defered_st.Partition(x => x.PartOfStateMachine.HasValue);
       def state_queue = st.RemoveDuplicatesSort((x, y) => x.CompareTo(y)) + fsm;
       def tran_queue = defered.RemoveDuplicatesSort((x, y) => x.Name.CompareTo(y.Name));
+      def state_queue = state_queue.Exclude(x => state_res.Exists(y => y.Num == x.Num));
       defered_st = [];
       defered = [];
-      state_queue.Iter(x => x.TraverseTransitions());
-      tran_queue.Iter(x => x.TraversePath(true));
+      def st_res = state_queue.Map(x => x.TraverseTransitions(an));
+      state_res.AddRange(st_res);
+      tran_queue.Iter(x => x.TraversePath(an, true));
       match (defered, defered_st)
       {
         // empty queue
-        | ([], []) => () // finish traverse
-        | (_, _) => Traverse() // else recursive call self and traverse again
+        | ([], []) => state_res.NToList() // finish traverse
+        | (_, _) => Traverse(an, state_res) // else recursive call self and traverse again
       }
     }
   }

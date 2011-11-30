@@ -70,7 +70,7 @@ namespace Nemerle.Statechart
       def map = an.statemap.Init(top);
       def an = an.ChangeStatemap(map);
       def an = an.UpdateStateMap(); // second update state map
-      an.CreateHistoryStates();
+      def an = an.CreateHistoryStates();
       when (an.Error) throw FsmErrorException();
       an.RenameDuplicates()
     }
@@ -120,55 +120,49 @@ namespace Nemerle.Statechart
 
       def dups = States.NToList().Duplicates(FsmState.NameComparer);
       def dups = dups.Group(FsmState.NameComparer);
-      
+
       def dups = dups |>< rename_group(_);
       def map = statemap.CheckNew(dups);
       ChangeStatemap(map)
     }
 
-    CreateHistoryStates() : void
+    CreateHistoryStates() : FsmAnalyser
     {
       // check history duplicates in state
-      def check_dup_history(st)
+      def check_dup_history(st, a)
       {
         match (st.history)
         {
           // duplicate variants
           | TwoOption.Two(StateHistory.Deep, StateHistory.Deep)
           | Two(StateHistory.Shallow, StateHistory.Shallow)  =>
-              AddError(FsmError.DuplicateHistory(st, st.history.Value.First()));
-          | _  => ()
+              FsmError.DuplicateHistory(st, st.history.Value.First()) :: a
+          | _  => a
         }
       }
 
-      def check_exit_actions(st)
+      def check_exit_actions(st, acc)
       {
-        | StateHistory where (state = FsmState where (exit = []) as st) =>
-            //st.exit = [StateAction.Exit([], st)]
-            1;
-        | _ => ()
+        match (st)
+        {
+          | StateHistory where (state = FsmState where (exit = []) as st) =>
+              st.ChangeExit([StateAction.Exit([], st)]) :: acc
+          | _ => acc
+        }
       }
 
       def history = States.Filter(x => x.history.HasValue);
-      history.Iter(check_dup_history);
-      def history_states =  history |>< history.Value;
+      def err = history.FoldLeft([], check_dup_history);
+      def history_states : list[StateHistory] =  history |>< history.Value;
       def group = history_states.Group((x, y) => string.Compare(x.state.Name, y.state.Name));
       group.IterI((i, x) => x.Iter(x => x.Index = i));
-      history_states.Iter(check_exit_actions);
+      def st = history_states.FoldLeft([], check_exit_actions);
+      def map = statemap.CheckNew(st);
+      ChangeStatemapErrors(map, GetErrors(err))
     }
 
     InitEvents() : void
     {
-      def int_evts =  States |>< internal_tran |> Trigger;
-      def evts =  States |>< transitions |> Trigger;
-      def evts = evts.Filter(x  => x.Name != null);
-      def int_tran_evt = int_evts.RemoveDuplicatesSort(_.CompareTo(_));
-      def tran_evt = evts.RemoveDuplicatesSort(_.CompareTo(_));
-      def int_tran_evt =  int_tran_evt.Exclude(tran_evt, _  ==  _);
-      int_tran_evt.Iter(x  => x.InternalOnly = true);
-      def evts =  (int_tran_evt + tran_evt) |> (Name, _);
-      def events_map = Map(evts);
-      def events = events_map.Keys()
     }
 
     static nodes_eq : ((string * PathNode) * (string * PathNode)) -> bool = (x, y) => PathNode.Equals(x[1], y[1]);
@@ -184,23 +178,22 @@ namespace Nemerle.Statechart
       //history_paths = paths
     }
 
-    CreateActions() : void
+    CreateActions() : FsmAnalyser
     {
-      def check_do(act)
+      def check_do(act, acc)
       {
-        | StateAction.Do(actions = [_], Concurrently = true) => AddWarning(FsmWarning.NoConcurrentActivity(act));
-            act.Concurrently = false
-        | _ => ()
+        match (act)
+        {
+          | StateAction.Do(actions = [_], Concurrently = true) => def err = FsmWarning.NoConcurrentActivity(act);
+              act.Concurrently = false;
+              err :: acc
+          | _ => acc
+        }
       }
 
-      def acts =  trans_paths |>< Actions;
-      def int_acts =  internal_transitions.Values() |>< Actions;
-      def acts = acts + int_acts;
-      def actions = acts.RemoveDuplicatesSort((x, y) => x.CompareTo(y));
       def do_activities = States.FilterValues(_.do_activity);
-      do_activities.Iter(check_do);
-      def tr = all_transitions |> PathNodeRecursive;
-      def action_node = PathNode.Sequence(tr)
+      def err = do_activities.FoldLeft([], check_do);
+      AddWarnings(err);
     }
 
     CreateConcurrentRegion() : FsmAnalyser
@@ -211,14 +204,14 @@ namespace Nemerle.Statechart
 
     CreateSubMachines() : FsmAnalyser
     {
-      def (top, an) = TopState.FoldThis(this, null, null, null, null, (s, t, a) => t.InitInline(a).Map((x, y) => (x : FsmState, y)), null, null);
+      def (top, an) = TopState.FoldThis(this, null, null, null, null, (s, t, a) => t.ChangeSubStates(s).InitInline(a).Map((x, y) => (x : FsmState, y)), null, null);
       def map = an.statemap.Init(top);
-      
+
       //def fsm = States.FilterType();
       //def (st, an) = fsm.MapThrough(this, (x : FsmState.InlinedSubMachineInstance, a) => x.InitInline(a));
       //def st = st |> _ : FsmState;
       //def map = an.statemap.Add(st);
-      
+
       ChangeStatemap(map)
     }
   }
