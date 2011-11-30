@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nemerle.Statechart;
+using SCG = System.Collections.Generic;
 
 namespace Nemerle.Statechart
 {
@@ -19,96 +19,96 @@ namespace Nemerle.Statechart
     | Empty
     | Sequence {seq : list[PathNode];}
     | Entry
+      {
+        action : StateAction.Entry;
+        inline : list[PathNode * bool] = [];
+
+        this (action : StateAction.Entry)
         {
-          action : StateAction.Entry;
-          inline : list[PathNode * bool] = [];
-
-          this (action : StateAction.Entry)
-          {
-            this.action = action;
-          }
-
-          Name : string
-          {
-            get
-            {
-              $"$(action)"
-            }
-          }
-
-          override ToString() : string
-          {
-            Name
-          }
-
+          this.action = action;
         }
+
+        Name : string
+        {
+          get
+          {
+            $"$(action)"
+          }
+        }
+
+        override ToString() : string
+        {
+          Name
+        }
+
+      }
 
     | Exit
+      {
+        action : StateAction.Exit;
+        inline : list[PathNode * bool] = [];
+
+        this (action : StateAction.Exit)
         {
-          action : StateAction.Exit;
-          inline : list[PathNode * bool] = [];
-
-          this (action : StateAction.Exit)
-          {
-            this.action = action;
-          }
-
-          Name : string
-          {
-            get
-            {
-              $"$(action)"
-            }
-          }
-
-          override ToString() : string
-          {
-            Name
-          }
-
-
+          this.action = action;
         }
+
+        Name : string
+        {
+          get
+          {
+            $"$(action)"
+          }
+        }
+
+        override ToString() : string
+        {
+          Name
+        }
+
+
+      }
 
     | Action
-        {
-          actions : Actions;
+      {
+        actions : Actions;
 
-          override ToString() : string {$"PathNode+Action$(actions)"}
-        }
+        override ToString() : string {$"PathNode+Action$(actions)"}
+      }
     | ClearHistory
-        {
-          history : list[StateHistory];
+      {
+        history : list[StateHistory];
 
-          override ToString() : string {$"PathNode+ClearHistory$history"}
-        }
+        override ToString() : string {$"PathNode+ClearHistory$history"}
+      }
     | SaveHistory
-        {
-          history : list[StateHistory];
+      {
+        history : list[StateHistory];
 
-          override ToString() : string {$"PathNode+SaveHistory$history"}
-        }
+        override ToString() : string {$"PathNode+SaveHistory$history"}
+      }
 
     | RunDoActivity
-        {
-          activity : StateAction.Do;
+      {
+        activity : StateAction.Do;
 
-          override ToString() : string {$"$(activity)Run"}
-        }
+        override ToString() : string {$"$(activity)Run"}
+      }
 
     | StopDoActivity
-        {
-          activity : StateAction.Do;
+      {
+        activity : StateAction.Do;
 
-          override ToString() : string {$"$(activity)Stop"}
-        }
+        override ToString() : string {$"$(activity)Stop"}
+      }
     | RegionExit
-        {
-          states_in : list[ConcurrentSubRegion];
-          region : ConcurrentRegion;
+      {
+        states_in : list[ConcurrentSubRegion];
+        region : ConcurrentRegion;
 
-          override ToString() : string {$"RegionExit$(region)In$states_in"}
-        }
-    
+        override ToString() : string {$"RegionExit$(region)In$states_in"}
+      }
+
     public static Equals(a : PathNode, b : PathNode) : bool
     {
       | (Sequence(lst), Sequence(lst2)) => lst.Equals(lst2, Equals)
@@ -130,12 +130,13 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (this)
-        {
-          | Sequence(lst) => lst |>< Unsequenced
-          | Empty => []
-          | x => [x]
-        }
+        Fold([], (a, _) => a, (a, t) => if (t is Empty) a else t :: a)
+        //match (this)
+        //{
+        //  | Sequence(lst) => lst |>< Unsequenced
+        //  | Empty => []
+        //  | x => [x]
+        //}
       }
     }
 
@@ -144,18 +145,98 @@ namespace Nemerle.Statechart
     //  PathNode.Sequence(Unsequenced)
     //}
 
+    public Fold[T](init : T, 
+                  seq : list[T] * Sequence -> T,
+                  node : PathNode -> T) : T
+    {
+
+      def stack = SCG.Stack();
+
+      def loop(st, _)
+      {
+        match (st)
+        {
+          | Sequence(n) as t => def acc = stack.Pop(n.Length);
+              def acc = seq(acc, t);
+              stack.Push(acc);
+              acc
+          | n                => def acc = node(n);
+              stack.Push(acc);
+              acc
+        }
+      }
+
+      Iterator.FoldLeft(init, loop)
+    }
+
+    public Fold[T](init : T, 
+                  seq  : T * Sequence -> T,
+                  node : T * PathNode -> T) : T
+    {
+
+      def loop(st, acc)
+      {
+        match (st)
+        {
+          | Sequence as t => seq(acc, t)
+          | n             => node(acc, n)
+        }
+      }
+
+      Iterator.FoldLeft(init, loop)
+    }
+
+    public Iterator : IEnumerable[PathNode]
+    {
+      get
+      {
+        def child = SCG.Stack();
+        def parent = SCG.Stack();
+
+        def loop()
+        {
+          if (child.IsEmpty()) () else 
+          {
+            def curr = child.Pop();
+            parent.Push(curr);
+            match (curr)
+            {
+              | Sequence(n)            => foreach (s in n) child.Push(s);loop()
+              | n                      => child.Push(n);loop()
+            }
+          }
+        }
+
+        child.Push(this);
+        loop();
+        parent
+      }
+    }
+
     public Actions : list[string]
     {
       get
       {
-        match (this)
+        def get_act(a, n)
         {
-          | Entry(action = act)
-          | Exit(action = act)
-          | Action(actions = act) => act.ActionList
-          | Sequence(seq) => seq |>< Actions
-          | _  => []
+          match (n)
+          {
+            | Entry(action = act)
+            | Exit(action = act)
+            | Action(actions = act) => act.ActionList + a
+            | _                     => a
+          }
         }
+
+        Fold([], (a, _) => a, get_act)
+        //match (this)
+        //{
+        //  | Entry(action = act)
+        //  | Exit(action = act)
+        //  | Action(actions = act) => act.ActionList
+        //  | Sequence(seq)         => seq |>< Actions
+        //  | _                     => []
+        //}
       }
     }
 
@@ -176,7 +257,7 @@ namespace Nemerle.Statechart
 
   }
 
-  
+
   /// <summary>
   /// Description of TransitionPath.
   /// </summary>
