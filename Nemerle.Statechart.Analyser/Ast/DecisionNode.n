@@ -23,11 +23,6 @@ namespace Nemerle.Statechart
         else_node : DecisionNode;
 
       }
-    | Action
-      {
-        [NeedChange(body)] condition : option[GuardNode];
-        [NeedChange] body : DecisionNode;
-      }
     | Target 
       {
         [NeedChange] target : TransitionTarget;
@@ -81,8 +76,8 @@ namespace Nemerle.Statechart
 
 
     public FoldThis(cond : GuardNode * DecisionNode * DecisionNode * DecisionNode.Condition -> DecisionNode,
-                    targ : TransitionTarget * TransitionDestination * DecisionNode.Target -> DecisionNode,
-                    act : option[GuardNode] * DecisionNode * DecisionNode.Action -> DecisionNode) : DecisionNode
+                    targ : TransitionTarget * TransitionDestination * DecisionNode.Target -> DecisionNode
+                    ) : DecisionNode
     {
       def xnode(n, nb, ne, ot)
       {
@@ -90,7 +85,6 @@ namespace Nemerle.Statechart
         match (n)
         {
           | Condition as j                  => j.ChangeBodyElseNode(nb, ne)
-          | DecisionNode.Action as j        => j.ChangeBody(nb)
           | x                               => x
         }
       }
@@ -110,11 +104,6 @@ namespace Nemerle.Statechart
               def acc = if (cond != null) xnode(cond(c, bacc, eacc, t), bacc, eacc, t) else t.ChangeBodyElseNode(bacc, eacc);
               stack.Push(acc);
               acc
-          | Action(c, _) as t => 
-              def bacc = stack.Pop();
-              def acc = if (act != null) xnode(act(c, bacc, t), bacc, null, t) else t.ChangeBody(bacc);
-              stack.Push(acc);
-              acc
         }
       }
 
@@ -124,8 +113,7 @@ namespace Nemerle.Statechart
 
     public Fold[T](init : T,
                   cond : GuardNode * T * T * Condition -> T, 
-                  targ : TransitionTarget * TransitionDestination * Target -> T, 
-                  act : option[GuardNode] * T * DecisionNode.Action -> T) : T
+                  targ : TransitionTarget * TransitionDestination * Target -> T) : T
     {
       def stack = SCG.Stack();
 
@@ -141,10 +129,6 @@ namespace Nemerle.Statechart
                                        def acc = cond(c, bacc, eacc, t);
                                        stack.Push(acc);
                                        acc
-          | Action(c, _) as t       => def bacc = stack.Pop();
-                                       def acc = act(c, bacc, t);
-                                       stack.Push(acc);
-                                       acc
         }
       }
 
@@ -153,8 +137,8 @@ namespace Nemerle.Statechart
 
     public Fold[T](init : T,
                   cond : T * GuardNode * Condition -> T, 
-                  targ : T * TransitionTarget * TransitionDestination * Target -> T, 
-                  act : T * option[GuardNode] * DecisionNode.Action -> T) : T
+                  targ : T * TransitionTarget * TransitionDestination * Target -> T 
+                  ) : T
     {
       def loop(e, acc)
       {
@@ -162,7 +146,6 @@ namespace Nemerle.Statechart
         {
           | Target(x, d) as t       => targ(acc, x, d, t)
           | Condition(c, _, _) as t => cond(acc, c, t)
-          | Action(c, _) as t       => act(acc, c, t)
         }
       }
 
@@ -184,8 +167,7 @@ namespace Nemerle.Statechart
             parent.Push(curr);
             match (curr)
             {
-              | Condition(body = b, else_node = null)
-              | Action(body = b)                      => child.Push(b);loop_init()
+              | Condition(body = b, else_node = null) => child.Push(b);loop_init()
               | Condition(body = b, else_node = els)  => child.Push(b);child.Push(els);loop_init()
               | Target                                => loop_init()
             }
@@ -202,7 +184,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        Fold([], (a, g, _) => g :: a, (a, _, _, _) => a, (a, g, _) => g %:: a)
+        Fold([], (a, g, _) => g :: a, (a, _, _, _) => a)
         //Iterator.FoldLeft([], )
         //Fold([], (g, a1, a2, _) => g :: a, (a, _, _, _) => a, (a, g, _) => g %:: a)
       }
@@ -220,7 +202,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        Fold(PathNode.Empty(), (a, _, t) => a + t.Path, (a, _, _, t) => a + t.Path, (a, _, t) => a + t.Path)
+        Fold(PathNode.Empty(), (a, _, t) => a + t.Path, (a, _, _, t) => a + t.Path)
         //PathNode.Sequence(Iterator |> Path)
       }
     }
@@ -444,6 +426,34 @@ namespace Nemerle.Statechart
                     }
       (n, analyser.AddErrors(e))
     }
+    
+    public static Create2(node : PseudoStateNode.Junction, analyser : FsmAnalyser) : DecisionNode * FsmAnalyser
+    {
+      def check_merge(a, n, an)
+      {
+        (null, an)
+      }
+      
+      def check_junction(a, n, an)
+      {
+        (null, an)
+      }
+      
+      def check_junction_node(a, on, n, an)
+      {
+        (null, an)
+      }
+      
+      
+      node.to.Fold(analyser, null, check_merge, check_junction, null, null, null, null, null, null, null, check_junction_node)
+      //def (n, e) = match (node)
+      //              {
+      //                | PseudoStateNode.Junction(type = JunctionType.Junction) => create_junc_tree_node(node.to, [], 0, node.state, null, null, [])
+      //                | PseudoStateNode.Junction(type = JunctionType.Choice)   => create_choice_tree_node(node.to, 0, node.state, null, null, [])
+      //              }
+      //(n, analyser.AddErrors(e))
+    }
+    
   }
 
 }

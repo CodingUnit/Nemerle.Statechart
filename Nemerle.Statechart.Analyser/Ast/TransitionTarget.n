@@ -643,6 +643,71 @@ namespace Nemerle.Statechart
       Iterator.FoldLeft(init, loop)
     }
 
+    public Fold[T](an : FsmAnalyser, init : T,
+                    merge    : T * PseudoState * FsmAnalyser -> T * FsmAnalyser,
+                    junction : T * PseudoState * FsmAnalyser -> T * FsmAnalyser,
+                    pseudo   : PseudoState * FsmAnalyser -> T * FsmAnalyser, 
+                    hist     : History * FsmAnalyser -> T * FsmAnalyser, 
+                    final    : TransitionTarget.Final * FsmAnalyser -> T * FsmAnalyser, 
+                    state    : TransitionTarget.State * FsmAnalyser -> T * FsmAnalyser, 
+                    named    : Named * FsmAnalyser -> T * FsmAnalyser, 
+                    machine  : TransitionTarget.SubMachine * FsmAnalyser -> T * FsmAnalyser, 
+                    qual     : T * Qualified * FsmAnalyser -> T * FsmAnalyser, 
+                    junc_node : T * option[T] * JunctionNode * FsmAnalyser -> T * FsmAnalyser
+                    ) : T * FsmAnalyser
+    {
+
+      def stack = SCG.Stack();
+      
+      def loop(e, (acc, an))
+      {
+        match (e)
+        {
+          | PseudoState(Merge as p) as t            => def tacc = stack.Pop();
+                                                       def (acc, an) = if (merge != null)  merge(tacc, t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+          | PseudoState(Junction as p) as t         => def tacc = stack.Pop();
+                                                       def (acc, an) = if (merge != null) junction(tacc, t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+          | PseudoState      as t                   => def (acc, an) = if (pseudo != null) pseudo(t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+          | History          as t                   => def (acc, an) = if (hist != null) hist(t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+          | Final            as t                   => def (acc, an) = if (final != null) final(t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+          | State            as t                   => def (acc, an) = if (state != null) state(t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+          | Named            as t                   => def (acc, an) = if (named != null) named(t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+          | SubMachine       as t                   => def (acc, an) = if (machine != null) machine(t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+          | Qualified as t                          => def tacc = stack.Pop();
+                                                       def (acc, an) = if (qual != null) qual(tacc, t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+          | JunctionNode(next = Some()) as  t       => def toacc = stack.Pop();
+                                                       def nacc = stack.Pop();
+                                                       def (acc, an) = if (junc_node != null) junc_node(toacc, Some(nacc), t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+          | JunctionNode as t                       => def toacc = stack.Pop();
+                                                       def (acc, an) = if (junc_node != null) junc_node(toacc, None(), t, an) else (acc, an);
+                                                       stack.Push(acc);
+                                                       (acc, an)
+        }
+      }
+
+      Iterator.FoldLeft((init, an), loop);
+    }
+    
     public FoldThis(an : FsmAnalyser,
                     merge    : TransitionTarget * PseudoState * FsmAnalyser -> TransitionTarget * FsmAnalyser,
                     junction : TransitionTarget * PseudoState * FsmAnalyser -> TransitionTarget * FsmAnalyser,
