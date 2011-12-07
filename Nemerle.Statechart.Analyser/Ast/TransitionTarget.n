@@ -213,7 +213,7 @@ namespace Nemerle.Statechart
       }
     | JunctionNode
       {
-        guard : option[GuardNode];
+        guard : GuardNode;
         action : option[Actions];
         [NeedChange] to : TransitionTarget;
         parent : PseudoStateNode;
@@ -238,7 +238,7 @@ namespace Nemerle.Statechart
                        | TransitionTarget.PseudoState(Junction(Guards = g)) => g
                        | _ => []
                      }
-            guard %:: g
+            guard :: g
           }
         }
 
@@ -505,12 +505,12 @@ namespace Nemerle.Statechart
                                                        stack.Push(acc);
                                                        acc
           | PseudoState(Junction as p) as t         => def tacc = stack.Pop();
-                                                       def acc = if (merge != null) xnode(junction(tacc, t), tacc, null, null, t) else t.ChangeNode(p.ChangeTo(tacc :> JunctionNode));
+                                                       def acc = if (junction != null) xnode(junction(tacc, t), tacc, null, null, t) else t.ChangeNode(p.ChangeTo(tacc :> JunctionNode));
                                                        stack.Push(acc);
                                                        acc
           | PseudoState      as t                   => def acc = if (pseudo != null) xnode(pseudo(t), null, null, null, t) else t;
                                                        stack.Push(acc);
-                                                       acc 
+                                                       acc
           | History          as t                   => def acc = if (hist != null) xnode(hist(t), null, null, null, t) else t;
                                                        stack.Push(acc);
                                                        acc
@@ -548,19 +548,19 @@ namespace Nemerle.Statechart
     public Fold[T](init : T,
                    merge    : T * TransitionTarget.PseudoState -> T,
                    junction : T * TransitionTarget.PseudoState -> T,
-                   pseudo : PseudoState -> T, 
-                   hist : History -> T, 
-                   final : TransitionTarget.Final -> T, 
-                   state : TransitionTarget.State -> T,
-                   named : Named -> T,
-                   machine : TransitionTarget.SubMachine -> T,
+                   pseudo : T * PseudoState -> T, 
+                   hist : T * History -> T, 
+                   final : T * TransitionTarget.Final -> T, 
+                   state : T * TransitionTarget.State -> T,
+                   named : T * Named -> T,
+                   machine : T * TransitionTarget.SubMachine -> T,
                    qual : T * Qualified -> T,
                    junc_node : T * option[T] * JunctionNode -> T
                    ) : T
     {
       def stack : SCG.Stack[T] = SCG.Stack();
       
-      def loop(e, _) : T
+      def loop(e, acc) : T
       {
         match (e)
         {
@@ -572,22 +572,22 @@ namespace Nemerle.Statechart
                                                        def acc = junction(tacc, t);
                                                        stack.Push(acc);
                                                        acc
-          | PseudoState      as t                   => def acc = pseudo(t);
+          | PseudoState      as t                   => def acc = pseudo(acc, t);
                                                        stack.Push(acc);
                                                        acc 
-          | History          as t                   => def acc = hist(t);
+          | History          as t                   => def acc = hist(acc, t);
                                                        stack.Push(acc);
                                                        acc
-          | Final            as t                   => def acc = final(t);
+          | Final            as t                   => def acc = final(acc, t);
                                                        stack.Push(acc);
                                                        acc
-          | State            as t                   => def acc = state(t);
+          | State            as t                   => def acc = state(acc, t);
                                                        stack.Push(acc);
                                                        acc
-          | Named            as t                   => def acc = named(t);
+          | Named            as t                   => def acc = named(acc, t);
                                                        stack.Push(acc);
                                                        acc
-          | SubMachine       as t                   => def acc = machine(t);
+          | SubMachine       as t                   => def acc = machine(acc, t);
                                                        stack.Push(acc);
                                                        acc
           | Qualified as t                          => def tacc = stack.Pop();
@@ -605,7 +605,6 @@ namespace Nemerle.Statechart
                                                        acc
         }
       }
-
       Iterator.FoldLeft(init, loop)
     }
 
@@ -646,12 +645,12 @@ namespace Nemerle.Statechart
     public Fold[T](an : FsmAnalyser, init : T,
                     merge    : T * PseudoState * FsmAnalyser -> T * FsmAnalyser,
                     junction : T * PseudoState * FsmAnalyser -> T * FsmAnalyser,
-                    pseudo   : PseudoState * FsmAnalyser -> T * FsmAnalyser, 
-                    hist     : History * FsmAnalyser -> T * FsmAnalyser, 
-                    final    : TransitionTarget.Final * FsmAnalyser -> T * FsmAnalyser, 
-                    state    : TransitionTarget.State * FsmAnalyser -> T * FsmAnalyser, 
-                    named    : Named * FsmAnalyser -> T * FsmAnalyser, 
-                    machine  : TransitionTarget.SubMachine * FsmAnalyser -> T * FsmAnalyser, 
+                    pseudo   : T * PseudoState * FsmAnalyser -> T * FsmAnalyser, 
+                    hist     : T * History * FsmAnalyser -> T * FsmAnalyser, 
+                    final    : T * TransitionTarget.Final * FsmAnalyser -> T * FsmAnalyser, 
+                    state    : T * TransitionTarget.State * FsmAnalyser -> T * FsmAnalyser, 
+                    named    : T * Named * FsmAnalyser -> T * FsmAnalyser, 
+                    machine  : T * TransitionTarget.SubMachine * FsmAnalyser -> T * FsmAnalyser, 
                     qual     : T * Qualified * FsmAnalyser -> T * FsmAnalyser, 
                     junc_node : T * option[T] * JunctionNode * FsmAnalyser -> T * FsmAnalyser
                     ) : T * FsmAnalyser
@@ -663,30 +662,30 @@ namespace Nemerle.Statechart
       {
         match (e)
         {
-          | PseudoState(Merge as p) as t            => def tacc = stack.Pop();
+          | PseudoState(Merge) as t            => def tacc = stack.Pop();
                                                        def (acc, an) = if (merge != null)  merge(tacc, t, an) else (acc, an);
                                                        stack.Push(acc);
                                                        (acc, an)
-          | PseudoState(Junction as p) as t         => def tacc = stack.Pop();
-                                                       def (acc, an) = if (merge != null) junction(tacc, t, an) else (acc, an);
+          | PseudoState(Junction) as t         => def tacc = stack.Pop();
+                                                       def (acc, an) = if (junction != null) junction(tacc, t, an) else (acc, an);
                                                        stack.Push(acc);
                                                        (acc, an)
-          | PseudoState      as t                   => def (acc, an) = if (pseudo != null) pseudo(t, an) else (acc, an);
+          | PseudoState      as t                   => def (acc, an) = if (pseudo != null) pseudo(acc, t, an) else (acc, an);
                                                        stack.Push(acc);
                                                        (acc, an)
-          | History          as t                   => def (acc, an) = if (hist != null) hist(t, an) else (acc, an);
+          | History          as t                   => def (acc, an) = if (hist != null) hist(acc, t, an) else (acc, an);
                                                        stack.Push(acc);
                                                        (acc, an)
-          | Final            as t                   => def (acc, an) = if (final != null) final(t, an) else (acc, an);
+          | Final            as t                   => def (acc, an) = if (final != null) final(acc, t, an) else (acc, an);
                                                        stack.Push(acc);
                                                        (acc, an)
-          | State            as t                   => def (acc, an) = if (state != null) state(t, an) else (acc, an);
+          | State            as t                   => def (acc, an) = if (state != null) state(acc, t, an) else (acc, an);
                                                        stack.Push(acc);
                                                        (acc, an)
-          | Named            as t                   => def (acc, an) = if (named != null) named(t, an) else (acc, an);
+          | Named            as t                   => def (acc, an) = if (named != null) named(acc, t, an) else (acc, an);
                                                        stack.Push(acc);
                                                        (acc, an)
-          | SubMachine       as t                   => def (acc, an) = if (machine != null) machine(t, an) else (acc, an);
+          | SubMachine       as t                   => def (acc, an) = if (machine != null) machine(acc, t, an) else (acc, an);
                                                        stack.Push(acc);
                                                        (acc, an)
           | Qualified as t                          => def tacc = stack.Pop();
