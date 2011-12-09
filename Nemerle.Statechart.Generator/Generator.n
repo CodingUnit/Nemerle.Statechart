@@ -22,65 +22,56 @@ namespace Nemerle.Statechart
   /// </summary>
   public partial class StaticGenerator
   {
-    
-    DefineStates(builder : TypeBuilder, st : FsmState) : void
+
+    DefineState(ty : TypeBuilder, type : ClassMember.TypeDeclaration, st : FsmState) : TypeBuilder
     {
-      def (id_type, expr, default) = GetId(st.Id);
+      def type = DefineNested(ty, type);
+      DefineActions(type, st);
+      DefineTransitions(type, st); // define transitions in state
+      DefineHistoryPaths(type, st); // define history paths
+      match (st)
+      {
+        | SubMachine as st                   => DefineSubMachine(type, st);
+        | FsmState where (IsTopState = true) => DefineRegions(type);
+        | _                                  => ()
+      }
+      type
+    }
+
+    DefineState(builders : list[TypeBuilder], ty : TypeBuilder, st : FsmState) : list[TypeBuilder]
+    {
+      def (id_type, expr, _) = GetId(st.Id);
 
       def type = match (st)
-                 {
-                   | FsmState where (IsTopState = true) => 
-                   
-                <[ decl:
-                   public variant State
-                   {
-
-                       public virtual GetCopy(_ : int) : State {this}
-                       public virtual get_id() : $id_type {$default}
-
-                       public override ToString() : string
-                       {
-                         $(FsmState.TopStateName : string)
-                       }
-                   } ]>;
-                   
-                   | _ => 
-                  <[ variant_option: |  $(st.Name : usesite)
-                    {
-                        public override get_id() : $id_type {$expr}
-                        
-                        public static Id() : $id_type
+                  {
+                    | FsmState where (IsTopState = false) => 
+                      <[ variant_option: |  $(st.Name : usesite)
                         {
-                            $expr
-                        }
+                            public override get_id() : $id_type {$expr}
+
+                            public static Id() : $id_type
+                            {
+                                $expr
+                            }
+
+                            public override ToString() : string
+                            {
+                                $(st.Name)
+                            }
+                        } ]>
+                     | _ => null
                         
-                        public override ToString() : string
-                        {
-                            $(st.Name)
-                        }
-                    } ]>
-                 }
+                  }
       match (st)
       {
         | Final
         | State(UsedInGenerate = true)
-        | SubMachine(inlined = true)
+        | InlinedSubMachineInstance
         | InlinedSubMachine
-        | State(IsTopState = true) => 
-            def type = DefineNested(builder, type);
-            state_builders = state_builders.Add(st.Name, type);
-            compile_list ::= type;
-            DefineActions(type, st);
-            DefineTransitions(type, st); // define transitions in state
-            DefineHistoryPaths(type, st); // define history paths
-            def builder = match (st)
-                          {
-                            | SubMachine(inlined = false) as st  => DefineSubMachine(type, st);type
-                            | FsmState where (IsTopState = true) => DefineRegions(type);type 
-                            | _ => builder
-                          }
-            st.SubStates.Iter(DefineStates(builder, _));
-        | _ => st.SubStates.Iter(DefineStates(builder, _));
+        | State(IsTopState = false) => 
+            def type = DefineState(ty, type, st);
+            type :: builders
+        | _ => builders
       }
     }
 
@@ -94,7 +85,32 @@ namespace Nemerle.Statechart
 
     DefineStates() : void
     {
-      DefineStates(ty, analyser.TopState);
+      def st = TopState;
+      def (id_type, _, default) = GetId(st.Id);
+      def top = <[decl:
+                  public variant State
+                  {
+
+                      public virtual GetCopy(_ : int) : State {this}
+                      public virtual get_id() : $id_type {$default}
+
+                      public override ToString() : string
+                      {
+                        $(FsmState.TopStateName : string)
+                      }
+                  } ]>;
+      def ty = DefineState(ty, top, st);
+      def builders = TopState.Fold([ty], (a, s) => DefineState(a, ty, s), 
+                                   (a, s) => DefineState(a, ty, s), 
+                                   null, 
+                                   null, 
+                                   (a, s) => DefineState(a, ty, s), 
+                                   null, 
+                                   (a, s) => DefineState(a, ty, s));
+      compile_list = compile_list + builders;
+      def builders = builders.Map(x => (x.Name, x));
+      state_builders = Map(builders);
+      //DefineStates(ty, analyser.TopState);
     }
 
     DefineSubMachine(type : TypeBuilder, st : FsmState.SubMachine) : void
@@ -102,14 +118,14 @@ namespace Nemerle.Statechart
       def field = <[decl: machine : $(st.type : usesite);]>;
       type.Define(field);
     }
-    
+
     DefineEvents() : void
     {
       def get_body(e)
       {
         <[ _ = $(events_call.Get(e.name));]>
       }
-      
+
       def decl_events = events;
       def decl_events = decl_events |> <[decl: | $(_ : usesite) ]>;
       DefineNested(<[ decl:
@@ -123,7 +139,7 @@ namespace Nemerle.Statechart
       def hiden = hiden.Filter(x => !method_decls.Contains(x.name));
       def hiden = hiden |> <[decl: private $(_.name : usesite)() : void {$(get_body(_))} ]>;
       def defs = (defs |> <[decl: public $(_.name : usesite)() : void {$(get_body(_))} ]>) + hiden;
-      
+
       def evts = def_events.Map((x, y) => <[case: | Event.$(x.name : usesite) => this.$(y : usesite)();]>);
       Define(<[ decl:
             public RunEvent(evt : Event) : void
@@ -136,7 +152,7 @@ namespace Nemerle.Statechart
             ]>);
       Define(defs);
     }
-    
+
     DefineGuards() : void
     {
       def guards : list[Guard] = analyser.guards.FilterType();
@@ -152,7 +168,7 @@ namespace Nemerle.Statechart
       def defs = methods + props + cond_body;
       Define(defs);
     }    
-    
+
     DefineDoActivity() : void
     {
       def create_activity(act)
@@ -166,46 +182,46 @@ namespace Nemerle.Statechart
             gen_members ::= <[decl: mutable $(cancel_source : usesite) : CancellationTokenSource; ]>;
             def tok = <[def tok = $(cancel_source : usesite).Token; ]>;
             def (run_body, stop_body) = if (conc)
-                                        {
-                                          def act_run = act.Map(x => (x,$"$name$(x)Action"));
-                                          gen_members += act_run.Map((n,x) => <[decl: $(x : usesite) : Action = () => $($"On$n" : usesite)($(cancel_source : usesite).Token);]>);
-                                          def tasks = act.Map(x => $"$task$x");
-                                          def task_arr = <[decl: mutable $(task : usesite) : array[Task] = array($(tasks.Length));]>;
-                                          gen_members ::= task_arr;
-                                          def stop = if (no_wait) <[ () ]> else <[ Task.WaitAll($(task : usesite)); ]>;
-                                          def tasks = act_run.MapIndex(((_,y), i) => 
-                                                                         if (not_long) <[$(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok, TaskCreationOptions.None, TaskScheduler.Current);]> else
+                                         {
+                                           def act_run = act.Map(x => (x,$"$name$(x)Action"));
+                                           gen_members += act_run.Map((n,x) => <[decl: $(x : usesite) : Action = () => $($"On$n" : usesite)($(cancel_source : usesite).Token);]>);
+                                           def tasks = act.Map(x => $"$task$x");
+                                           def task_arr = <[decl: mutable $(task : usesite) : array[Task] = array($(tasks.Length));]>;
+                                           gen_members ::= task_arr;
+                                           def stop = if (no_wait) <[ () ]> else <[ Task.WaitAll($(task : usesite)); ]>;
+                                           def tasks = act_run.MapIndex(((_,y), i) => 
+                                                                        if (not_long) <[$(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok, TaskCreationOptions.None, TaskScheduler.Current);]> else
                                                <[$(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok);]>
-                                               );
-                                          (<[ $tok;{..$tasks}]>, <[ $stop ]>)
-                                        } else
-                                        {
-                                          def run_act = $"$(actions)Action";
-                                          gen_members ::= <[decl: mutable $(task : usesite) : Task;]>;
-                                          gen_members ::= <[decl: $(run_act : usesite) : Action; ]>;
-                                          init_exprs ::= <[ $(run_act : usesite) = Action($(actions : usesite));]>;;
-                                          def act_body = match (act_list)
-                                                         {
-                                                           | head :: [] => <[ $(head : usesite)($(cancel_source : usesite).Token); ]>
-                                                           | _ => 
-                                                               def run_acts = act_list |> <[ $(_ : usesite)(tok); ]>;
+                                              );
+                                           (<[ $tok;{..$tasks}]>, <[ $stop ]>)
+                                         } else
+                                         {
+                                           def run_act = $"$(actions)Action";
+                                           gen_members ::= <[decl: mutable $(task : usesite) : Task;]>;
+                                           gen_members ::= <[decl: $(run_act : usesite) : Action; ]>;
+                                           init_exprs ::= <[ $(run_act : usesite) = Action($(actions : usesite));]>;;
+                                           def act_body = match (act_list)
+                                                           {
+                                                             | head :: [] => <[ $(head : usesite)($(cancel_source : usesite).Token); ]>
+                                                             | _ => 
+                                                                 def run_acts = act_list |> <[ $(_ : usesite)(tok); ]>;
                                                             <[ 
-                                                               def tok = $(cancel_source : usesite).Token;
+                                                                 def tok = $(cancel_source : usesite).Token;
                                                             {..$run_acts}
                                                             ]>
-                                                         }
-                                          DefineMethod(actions, act_body);
-                                          def run = if (not_long) <[ $(task : usesite) = Task.Factory.StartNew($(run_act : usesite), $(cancel_source : usesite).Token, TaskCreationOptions.None, TaskScheduler.Current); ]> else
+                                                           }
+                                           DefineMethod(actions, act_body);
+                                           def run = if (not_long) <[ $(task : usesite) = Task.Factory.StartNew($(run_act : usesite), $(cancel_source : usesite).Token, TaskCreationOptions.None, TaskScheduler.Current); ]> else
                                                          <[ $(task : usesite) = Task.Factory.StartNew($(run_act : usesite), $(cancel_source : usesite).Token);]>;
-                                          def stop = if (no_wait) <[ () ]> else <[ $(task : usesite).Wait(); ]>;
-                                          (run, stop)
-                                        }
+                                           def stop = if (no_wait) <[ () ]> else <[ $(task : usesite).Wait(); ]>;
+                                           (run, stop)
+                                         }
             def stop_name = $"$(name)Stop";
             def run_name = $"$(name)Run";
             def run = <[decl: $(run_name : usesite)() : void
                               {
-                               $(cancel_source : usesite) = System.Threading.CancellationTokenSource();
-                               $run_body
+                              $(cancel_source : usesite) = System.Threading.CancellationTokenSource();
+                              $run_body
                               } ]>;
             def stop = if (no_wait) 
                                 <[decl: $(stop_name : usesite)() : void
@@ -228,26 +244,26 @@ namespace Nemerle.Statechart
                               } ]>;
             [run, stop]
       }
-        
+
       def act = analyser.DoActivities;
       def defs = act |>< create_activity(_);
       when (!act.IsEmpty())
       {
         Define(<[decl: task_factory : TaskFactory = TaskFactory(TaskCreationOptions.LongRunning, TaskContinuationOptions.None); ]>);
       }
-      
+
       Define(defs);
     }
 
     DefineActions() : void
     {
       def st = analyser.LivedStates.Filter(x => x.PartOfSubRegion.HasValue);
-      
+
       def st_exit = st.Map(x => ($"ExitFrom$(x.PartOfRegion.Value)In$(x.Name)", GetActions(x.region_exit_path, action_for)));
       def exit_acts = st |>< GenAction.CreateActions(_.region_exit_path, action_for);
       def actions = actions.Exclude(_.IsDeclared) + exit_acts;
       def actions = actions.RemoveDuplicatesSort((x, y) => x.end_name.CompareTo(y.end_name));
-      
+
       DefineActionEvent(actions);
       DefineMethods(st_exit)
     }
