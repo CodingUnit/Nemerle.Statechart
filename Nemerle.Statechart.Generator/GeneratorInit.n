@@ -30,53 +30,53 @@ namespace Nemerle.Statechart
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
       def trans_complete_expr =  if (analyser.Fsm.flags.TransitionCompleted) <[ OnTransitionCompleted(); ]> else <[ () ]>;
       def dummy =  <[decl:
-                   class Test
-                   {
-                     [Accessor] mutable cur_state : State;
+                  class Test
+                  {
+                    [Accessor] mutable cur_state : State;
 
-                     // define constructor
-                     public this()
-                     {
+                    // define constructor
+                    public this()
+                    {
                         // constructor body
                         {..$state_init_expr}
                         {..$init_exprs}
                         $cons_expr
-                     }
+                    }
 
-                     // define method for changing state
-                     Switch(st : State) : State
-                     {
-                         IsEventDeclined = if (st != null)
-                         {
-                             cur_state = st;
-                             $trans_complete_expr;
-                             false
-                         } else true;
-                         st
-                     }
+                    // define method for changing state
+                    Switch(st : State) : State
+                    {
+                        IsEventDeclined = if (st != null)
+                        {
+                            cur_state = st;
+                            $trans_complete_expr;
+                            false
+                        } else true;
+                        st
+                    }
 
-                     // define method for changing state
-                     SwitchConcrete(st : State) : State
-                     {
-                         IsEventDeclined = false;
-                         cur_state = st;
-                         $trans_complete_expr;
-                         st
-                     }
-                     
-                     public IsTerminated : bool
-                     {
-                         get
-                         {
+                    // define method for changing state
+                    SwitchConcrete(st : State) : State
+                    {
+                        IsEventDeclined = false;
+                        cur_state = st;
+                        $trans_complete_expr;
+                        st
+                    }
+
+                    public IsTerminated : bool
+                    {
+                        get
+                        {
                             cur_state == null
-                         }
-                     }
-                     
-                     public IsEventDeclined : bool {get;private set;}
-                     public Initiate() : void
-                     {
-                         _ = $initial
-                     }
+                        }
+                    }
+
+                    public IsEventDeclined : bool {get;private set;}
+                    public Initiate() : void
+                    {
+                        _ = $initial
+                    }
 
                     public override ToString() : string
                     {
@@ -85,7 +85,7 @@ namespace Nemerle.Statechart
 
                     public static ContainsStates : array[string] = array[..$states];
                     public static ProcessEvents : array[string] = array[..$events];
-                   }
+                  }
 
                   ]>;
 
@@ -127,66 +127,66 @@ namespace Nemerle.Statechart
       {
         | ([head], []) =>
             def r = match (head)
-                    {
-                      |  StateAction.Do(Concurrently = conc) as act =>
-                          def task = get_task_name(act);
-                          if (conc) <[ def tasks = $(task : usesite);]> else <[ def tasks = array[$(task : usesite)]; ]>
-                    }
+                     {
+                       |  StateAction.Do(Concurrently = conc) as act =>
+                           def task = get_task_name(act);
+                           if (conc) <[ def tasks = $(task : usesite);]> else <[ def tasks = array[$(task : usesite)]; ]>
+                     }
             r :: res
         | (head :: tail, []) =>
             def r = match (head)
-                    {
-                      |  StateAction.Do(Concurrently = conc) as act =>
-                          def task = get_task_name(act);
-                          if (conc) <[ def tasks = $(task : usesite).NToList();]> else <[ def tasks = $(task : usesite) :: []; ]>
-                    }
+                     {
+                       |  StateAction.Do(Concurrently = conc) as act =>
+                           def task = get_task_name(act);
+                           if (conc) <[ def tasks = $(task : usesite).NToList();]> else <[ def tasks = $(task : usesite) :: []; ]>
+                     }
             get_wait(tail, r :: res)
         | (head :: tail, _) =>
             def r = match (head)
-                    {
-                      | StateAction.Do(Concurrently = conc) as act=>
-                          def task = get_task_name(act);
-                          if (conc) <[ def tasks = tasks + $(task : usesite).NToList();]> else <[ def tasks = $(task : usesite) :: tasks; ]>
-                    }
+                     {
+                       | StateAction.Do(Concurrently = conc) as act=>
+                           def task = get_task_name(act);
+                           if (conc) <[ def tasks = tasks + $(task : usesite).NToList();]> else <[ def tasks = $(task : usesite) :: tasks; ]>
+                     }
             get_wait(tail, r :: res)
-            | (_, _) => res.Rev()
+        | (_, _) => res.Rev()
       }
 
       def tasks = analyser.DoActivities.Filter(x => !x.NoWaitCancel);
       def wait_tasks = get_wait(tasks, []);
       def stop_body = analyser.DoActivities |> stop_activity(_);
       def stop_body = match (wait_tasks)
-                      {
-                        | [] => stop_body
-                        | [task] =>
-                            [<[  $task;
-                                 try
-                                 {
+                       {
+                         | [] => stop_body
+                         | [task] =>
+                             [<[  $task;
+                                try
+                                {
                                     {..$stop_body}
                                     System.Threading.Tasks.Task.WaitAll(tasks.Filter(_ != null));
-                                 }
-                                 catch
-                                 {
-                                   | _ is AggregateException => ()
-                                 }
+                                }
+                                catch
+                                {
+                                  | _ is AggregateException => ()
+                                }
                               ]>]
-                        | lst => lst +
-                                   [<[ try
-                                       {
+                         | lst => lst +
+                                  [<[ try
+                                      {
                                           {..$stop_body}
                                           System.Threading.Tasks.Task.WaitAll(tasks.FilterToArray(_ != null));
-                                       }
-                                       catch
-                                       {
-                                         | _ is AggregateException => ()
-                                       }
+                                      }
+                                      catch
+                                      {
+                                        | _ is AggregateException => ()
+                                      }
                                     ]>];
-                      }
+                       }
       def terminate = <[ decl: public Terminate() : void
-                         {
-                           {..$stop_body}
-                           cur_state = null;
-                         }
+                        {
+                          {..$stop_body}
+                          cur_state = null;
+                        }
                       ]>;
       Define(terminate);
     }
@@ -198,77 +198,78 @@ namespace Nemerle.Statechart
         def comp = TopState.Id.Result;
         def comp = comp.MapIndex((_, i) =>
         <[
-            cur_id.$($"id$i" : usesite) & id.$($"id$i" : usesite) == id.$($"id$i" : usesite)
-        ]>);
-        def expr = MergeExpr(comp,(x,y) => <[ $x && $y ]> );
+                                 cur_id.$($"id$i" : usesite) & id.$($"id$i" : usesite) == id.$($"id$i" : usesite)
+        ]>).NToList();
+        def expr = MergeExpr(comp, (x,y) => <[ $x && $y ]> );
         <[
-           def id = $st_id;
-           def cur_id = cur_state.get_id();
-           $expr
+        def id = $st_id;
+          def cur_id = cur_state.get_id();
+          $expr
         ]>;
       }
 
       def id = TopState.Id;
-      
+
       def get_body(st_id)
       {
         if (id.IsSimple)
-                 {
-                   match (st_id)
-                   {
-                     | <[ $(_ : usesite) ]> => <[ cur_state.get_id() & id == id ]>
-                     | _ => <[
-                              def id = $st_id;
+        {
+          match (st_id)
+          {
+            | <[ $(_ : usesite) ]> => <[ cur_state.get_id() & id == id ]>
+            | _ => <[
+                def id = $st_id;
                               cur_state.get_id() & id  == id 
                             ]>
-                   }
-                 } else
-                 {
-                   def ids = id.Result;
-                   def names = ids.MapIndex((_, i) => $"id$i");
-                   def mem = match (id)
-                             {
-                               | Struct => def ids = names |> <[decl: public $(_ : usesite) : uint; ]>;
-                                   def vars = names.Map(x => <[parameter: $(x : usesite) : uint]>);
-                                   def assign = names |> <[ this.$(_ : usesite) = $(_ : usesite)]>;
-                                   def ctor = <[decl: public this(..$vars)
+          }
+        } else
+        {
+          def ids = id.Result;
+          def names = ids.MapIndex((_, i) => $"id$i");
+          def mem = if (id.IsStruct)
+                     {
+                       def ids = names |> <[decl: public $(_ : usesite) : uint; ]>;
+                       def vars = names.Map(x => <[parameter: $(x : usesite) : uint]>);
+                       def assign = names |> <[ this.$(_ : usesite) = $(_ : usesite)]>;
+                       def ctor = <[decl: public this(..$vars)
                                                       {
                                                         ..$assign
                                                       }]>;
-                                   def ids = ctor :: ids;
-                                 <[decl: struct LongId
-                                    {
-                                     ..$ids
-                                    } ]>;
-
-                               | _ => def ids = names |> <[decl: public mutable $(_ : usesite) : uint; ]>;
-                            <[decl: class LongId
-                              {
-                               ..$ids
-                              }
-                            ]>;
-                             }
-                   DefineNested(mem).Compile();
-                   create_comp_expr(st_id);
-                 }
-               }
+                       def ids = ctor :: ids;
+                        <[decl: struct LongId
+                          {
+                          ..$ids
+                          } ]>
+                     } else
+                     {
+                       def ids = names |> <[decl: public mutable $(_ : usesite) : uint; ]>;
+                        <[decl: class LongId
+                          {
+                          ..$ids
+                          }
+                        ]>
+                     }
+          DefineNested(mem).Compile();
+          create_comp_expr(st_id);
+        }
+      }
       def is_in_state = <[decl:
                 public IsInState(st : State) : bool
                 {
                     $(get_body(<[st.get_id()]>))
                 }
-             ]>;
+            ]>;
       def (id_type, _, _) = GetId(TopState.Id);
       def is_in_state2 = <[decl:
                 public IsInState(id : $id_type) : bool
                 {
                   $(get_body(<[ id ]>))
                 }
-             ]>;
+            ]>;
       def st_is_in_state = <[decl: static IsInState(cur_state : State, st : State) : bool
-                             {
-                               $(get_body(<[st.get_id()]>))
-                             }
+                            {
+                              $(get_body(<[st.get_id()]>))
+                            }
                             ]>;
       Define([is_in_state, is_in_state2, st_is_in_state]);
     }
@@ -319,10 +320,10 @@ namespace Nemerle.Statechart
       def guard = guard.RemoveDuplicatesSort(((k1, _), (k2, _))  => k1.CompareTo(k2));
       guard_for = Map(guard);
       def acts = analyser.ActionNodes.Filter(x => {
-                                                 | PathNode.ClearHistory
-                                                 | PathNode.RunDoActivity
-                                                 | PathNode.StopDoActivity => false
-                                                 | _ => true});
+                                               | PathNode.ClearHistory
+                                               | PathNode.RunDoActivity
+                                               | PathNode.StopDoActivity => false
+                                               | _ => true});
       def acts = acts |>< GenAction.GetActions(_, action_for);
       def acts = acts.RemoveDuplicatesSort((x, y) => x.action.CompareTo(y.action));
       actions = acts;
