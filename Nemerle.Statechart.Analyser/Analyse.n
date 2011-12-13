@@ -41,14 +41,14 @@ namespace Nemerle.Statechart
           super == null || (super.super_state == null && super.this_transitions is [])
         }
 
-        def check_target(t, tran)
+        def check_target(t, tran, a)
         {
           match (t, tran)
           {
             | (TransitionTarget.Final as t, _) when (is_top(st))=> 
                 def term = PseudoStateNode.Terminate(TopState, 0);
               //TopState.pseudo_states ::= term;
-                TransitionTarget.PseudoState(t.transition, term)
+                (TransitionTarget.PseudoState(t.transition, term), a)
             | (Final as t, Initial) with super = st
             | (Final as t, _) with super = st.super_state =>
                 def fst = FsmState.Final(super, this, true);
@@ -56,17 +56,16 @@ namespace Nemerle.Statechart
                 //def an = an.ChangeStatemap(an.statemap.Add(super));
               //st.ChangeSuper();
               //def fst = fst.ChangeSuperState(super);
-                t.ChangeState(fst)
-
-            | (t, _) => t
+                (t.ChangeState(fst), fst :: a)
           }
         }
 
-        st.all_transitions_with_init.Iter(x => x.TargetTraverse(check_target(_, x)));// FoldLeft(an, (x, a) => x.TargetTraverse(a, check_target(_, x, _)))
-        match (st.all_transitions_with_init.Find(x => x.To is TransitionTarget.Final))
+        
+        def final = st.all_transitions_with_init.FoldLeft([], (x, a) => x.To.FoldThis(a, null, null, null, null, check_target(_, x, _), null, null, null, null, null).Map((a, b) => {x.To = a;b}));
+        match (final)
         {
-          | Some(StateTransition where (To = Final(state = s))) => st.ChangeSubStates(sub + [s])
-          | _                                                   => null
+          | head :: _ => st.ChangeSubStates(sub + [head])
+          | _         => st
         }
       }
 
@@ -81,21 +80,11 @@ namespace Nemerle.Statechart
       an.RenameDuplicates()
     }
 
-    UpdateReference() : FsmAnalyser
-    {
-      def (top, an) = TopState.FoldThis(this, (s, t, an) => t.UpdateReference(s, an));
-      def map = an.statemap.Update(top);
-      an.ChangeStatemap(map)
-      //def (st, an) = States.MapThrough(this, _.UpdateReference(_));
-      //def map = an.statemap.ChangeStates(st.ToArray());
-      //an.ChangeStatemap(map)
-    }
-
     public UpdateStateMap() : FsmAnalyser
     {
       //InitStates();
-      def an = UpdateReference();
-      def map = statemap.Update(TopState);
+      def (top, an) = TopState.FoldThis(this, (s, t, an) => t.UpdateReference(s, an));
+      def map = an.statemap.Update(top);
       an.ChangeStatemap(map)
     }
 
