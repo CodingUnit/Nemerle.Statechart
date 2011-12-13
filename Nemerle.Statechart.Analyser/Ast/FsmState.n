@@ -23,7 +23,7 @@ namespace Nemerle.Statechart
       {
         this(name : string)
         {
-          this(StateNode.State(name), null, true)
+          this(StateNode.State(name), null, null, true)
         }
 
       }
@@ -35,9 +35,9 @@ namespace Nemerle.Statechart
           //  base(st, reference, clone);
           //}
 
-        this(super : FsmState, reference : bool =  false)
+        this(super : FsmState, an : FsmAnalyser, reference : bool =  false)
         {
-          base(super, $"$(super)Final", reference);
+          base(super, $"$(super)Final", an, reference);
         }
 
       }
@@ -45,12 +45,11 @@ namespace Nemerle.Statechart
     | ConcurrentSubRegion
       {
         index : int;
-        contained_in : ConcurrentRegion;
+        [NeedChange(index)] contained_in : ConcurrentRegion;
 
-        this(region : ConcurrentRegion, st : StateNode.State, idx : int)
+        this(st : StateNode.State, an : FsmAnalyser)
         {
-          base(st, region, false);
-          contained_in = region;
+          base(st, null, an, false);
             //do_activity = st.do_activity |> StateAction.Do(_.action.ActionList, this, _.flags);
             //internal_tran = Internal.Create(this, st.internal_tran);
             //entry = st.entry |> StateAction.Entry(_.action.ActionList, this, _.attrib);
@@ -61,7 +60,6 @@ namespace Nemerle.Statechart
             //pseudo_states = st.pseudo_states |> PseudoStateNode.Create(_.node, this, null);
             //sub_states = st.sub_states |> State(_, this, false);
             //sub_states.Iter(x => x.super_state = this);
-          index = idx;
             //super_state = region;
         }
 
@@ -94,10 +92,10 @@ namespace Nemerle.Statechart
           //    sub_regions_num |> statemap[_] :> ConcurrentSubRegion
           //  }
           //}
-        this(st : FsmState, state : StateNode.State, node : StateNode.Region)
+        this(state : StateNode.State, sr : list[FsmState.ConcurrentSubRegion], an : FsmAnalyser)
         {
-          base(state, st, false);
-          sub_regions = node.regions.MapIndex((x, i) => ConcurrentSubRegion(this, x, i));
+          base(state, [], an, false);
+          sub_regions = sr.MapIndex((x, i) => x.ChangeContainedInIndex(this, i));
         }
 
 
@@ -267,9 +265,9 @@ namespace Nemerle.Statechart
         [NeedChange(proc_events)] ref_sub_states : array[string] = array[];
         proc_events : array[string] = array[];
 
-        this(st : StateNode.State, super : FsmState)
+        this(st : StateNode.State, an : FsmAnalyser)
         {
-          base(st, super, false);
+          base(st, [], an, false);
           def (StateNode.State(type = StateType.SubMachine(type = t))) = st;
           this.type = t;
         }
@@ -315,12 +313,12 @@ namespace Nemerle.Statechart
         type : string;
         ncopy : int;
 
-        this(st : StateNode.State, super : FsmState, reference : bool = false)
-        {
-          base(st, super, reference);
-          def (StateNode.State(type = StateType.InlinedSubMachine(type = t))) = st;
-          this.type = t;
-        }
+        //this(st : StateNode.State, an : FsmAnalyser, reference : bool = false)
+        //{
+        //  base(st, [], an, reference);
+        //  def (StateNode.State(type = StateType.InlinedSubMachine(type = t))) = st;
+        //  this.type = t;
+        //}
       }  
   }
 

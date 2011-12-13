@@ -18,9 +18,15 @@ namespace Nemerle.Statechart
 
     InitStatechart() : FsmAnalyser
     {
-      def topState = FsmState.State(Fsm.state, null, this, false); // create statemachine from top state
-      def topState = topState.ChangeName(FsmState.TopStateName);
-      def map = statemap.Init(topState);
+      def top = Fsm.state.Fold(null, 
+                               (a, _)  => a,
+                               (sr, s) => FsmState.ConcurrentRegion(s, sr |> _ :> FsmState.ConcurrentSubRegion, this),
+                               (sb, s) => FsmState.CreateState(s, sb, this),
+                               (a, _)  => a
+                              );
+      //def topState = FsmState.State(Fsm.state, null, this, false); // create statemachine from top state
+      def top = top.ChangeName(FsmState.TopStateName);
+      def map = statemap.Init(top);
       ChangeStatemap(map)
     }
 
@@ -45,7 +51,7 @@ namespace Nemerle.Statechart
                 TransitionTarget.PseudoState(t.transition, term)
             | (Final as t, Initial) with super = st
             | (Final as t, _) with super = st.super_state =>
-                def fst = FsmState.Final(super, true);
+                def fst = FsmState.Final(super, this, true);
                 //def super = super.AddSubState(fst);
                 //def an = an.ChangeStatemap(an.statemap.Add(super));
               //st.ChangeSuper();
