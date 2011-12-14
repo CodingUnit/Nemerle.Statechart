@@ -13,6 +13,7 @@ namespace Nemerle.Statechart
 
   using ListUtils;
 
+  [Traversable]
   [Record]
   public variant DecisionNode
   {
@@ -107,7 +108,7 @@ namespace Nemerle.Statechart
         }
       }
 
-      Iterator.FoldLeft(null, loop)
+      Iterator().FoldLeft(null, loop)
     }
 
 
@@ -132,7 +133,7 @@ namespace Nemerle.Statechart
         }
       }
 
-      Iterator.FoldLeft(init, loop)
+      Iterator().FoldLeft(init, loop)
     }
 
     public Fold[T](init : T,
@@ -149,35 +150,18 @@ namespace Nemerle.Statechart
         }
       }
 
-      Iterator.FoldLeft(init, loop)
+      Iterator().FoldLeft(init, loop)
     }
 
-    public Iterator : IEnumerable[DecisionNode]
+    public GetChild() : IEnumerable[DecisionNode]
     {
-      get
+      match (this)
       {
-        def child = SCG.Stack();
-        def parent = SCG.Stack();
-
-        def loop_init()
-        {
-          if (child.IsEmpty()) () else 
-          {
-            def curr = child.Pop();
-            parent.Push(curr);
-            match (curr)
-            {
-              | Condition(body = b, else_node = null) => child.Push(b);loop_init()
-              | Condition(body = b, else_node = els)  => child.Push(b);child.Push(els);loop_init()
-              | Target                                => loop_init()
-            }
-          }
-        }
-
-        child.Push(this);
-        loop_init();
-        parent
+        | Condition(body = b, else_node = null) => TraverseUtils.SingleElement(b)
+        | Condition(body = b, else_node = els)  => TraverseUtils.DoubleElement(b, els)
+        | Target                                => Enumerable.Empty()
       }
+
     }
 
     public Guards : list[GuardNode]

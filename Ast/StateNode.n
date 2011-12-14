@@ -3,6 +3,7 @@ using Nemerle.Text;
 using Nemerle.Utility;
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Statechart;
@@ -19,10 +20,10 @@ namespace Nemerle.Statechart
     | Region
   }
 
+  [Traversable]
   [Record]
   public variant StateNode
   {
-
     | StateMachine 
       {
         flags : MachineFlags;
@@ -35,14 +36,14 @@ namespace Nemerle.Statechart
           base(st.pos);
         }
 
-        GetErrors() : list[Error]
+        GetErrors() : IEnumerable[Error]
         {
-          Fold([], null, null, (s, a) => a + s.errors, null)
+          Fold(Enumerable.Empty(), null, null, (s, a) => a.Concat(s.errors), null)
         }
       }
     | Region 
       {
-        regions : list[State];
+        regions : IEnumerable[State];
       }
     | Initial 
       {
@@ -105,27 +106,27 @@ namespace Nemerle.Statechart
           this.type = type;
         }
         name : string;
-        initial : list[Initial] = [];
-        attributes : list[StateAttribute];
-        entry : list[Entry] = [];
-        exit : list[Exit] = [];
-        internal_tran : list[InternalTransition] = [];
-        transitions : list[Transition] = [];
-        do_activity : option[DoActivity] = None();
+        initial : IEnumerable[Initial] = Enumerable.Empty();
+        attributes : IEnumerable[StateAttribute] = Enumerable.Empty();
+        entry : IEnumerable[Entry] = Enumerable.Empty();
+        exit : IEnumerable[Exit] = Enumerable.Empty();
+        internal_tran : IEnumerable[InternalTransition] = Enumerable.Empty();
+        transitions : IEnumerable[Transition] = Enumerable.Empty();
+        do_activity : IEnumerable[DoActivity] = Enumerable.Empty();
         history : TwoOption[History] = TwoOption.None();
-        sub_states : list[State] = [];
+        sub_states : IEnumerable[State] = Enumerable.Empty();
         regions : option[Region] = None();
         [RecordIgnore]
         reference : bool;
-        pseudo_states : list[PseudoState] = [];
+        pseudo_states : IEnumerable[PseudoState] = Enumerable.Empty();
         type : StateType;
-        errors : list[Error] = [];
+        errors : IEnumerable[Error] = Enumerable.Empty();
 
 
       }
     | Entry 
       {
-        this(pos : int) {action = Actions([]);base(pos);}
+        this(pos : int) {action = Actions(Enumerable.Empty());base(pos);}
         this(lst : list[string]) {action = Actions(lst);base(0);}
 
         attrib : ActionFlags;
@@ -133,8 +134,8 @@ namespace Nemerle.Statechart
       }
     | Exit 
       {
-        this(pos : int) {action = Actions([]);base(pos);}
-        this(lst : list[string]) {action = Actions(lst);base(0);}
+        this(pos : int) {action = Actions(Enumerable.Empty());base(pos);}
+        this(lst : IEnumerable[string]) {action = Actions(lst);base(0);}
 
         attrib : ActionFlags;
         action : Actions;
@@ -147,7 +148,7 @@ namespace Nemerle.Statechart
         guard : option[GuardNode];
         action : Actions;
 
-        Actions : list[string]
+        Actions : IEnumerable[string]
         {
           get
           {
@@ -158,7 +159,7 @@ namespace Nemerle.Statechart
       }
     | Transition 
       {
-        evt : list[TransitionNode.Event];
+        evt : IEnumerable[TransitionNode.Event];
         guard : option[GuardNode];
         action : option[Actions];
         [NeedChange] to : TargetType;
@@ -225,16 +226,16 @@ namespace Nemerle.Statechart
     public pos : int;
 
     public Fold[T](init          : T,
-                   state_machine : T * StateMachine -> T,
-                   region        : list[T] * State -> T,
-                   state         : list[T] * State -> T,
-                   final         : T * Final -> T) : T
+                  state_machine : T * StateMachine -> T,
+                  region        : IEnumerable[T] * State -> T,
+                  state         : IEnumerable[T] * State -> T,
+                  final         : T * Final -> T) : T
     {
       def stack = SCG.Stack();
 
       def pop(sub)
       {
-        stack.Pop(sub.Length)
+        stack.Pop(sub).ToArray()
       }
 
       def loop(n, acc)
@@ -242,33 +243,33 @@ namespace Nemerle.Statechart
         match (n)
         {
           | State(regions = Some(Region(sr))) as t => def sub_acc = pop(sr); 
-                                                      def acc = if (region != null) region(sub_acc, t) else acc;
-                                                      stack.Push(acc);
-                                                      acc
+              def acc = if (region != null) region(sub_acc, t) else acc;
+              stack.Push(acc);
+              acc
           | State(sub_states = sub) as t           => def sub_acc = pop(sub); 
-                                                      def acc = if (state != null) state(sub_acc, t) else acc;
-                                                      stack.Push(acc);
-                                                      acc
+              def acc = if (state != null) state(sub_acc, t) else acc;
+              stack.Push(acc);
+              acc
           | StateMachine as t                      => def stacc = stack.Pop();
-                                                      def acc = if (state_machine != null) state_machine(stacc, t) else acc;
-                                                      stack.Push(acc);
-                                                      acc
+              def acc = if (state_machine != null) state_machine(stacc, t) else acc;
+              stack.Push(acc);
+              acc
           | Final as t                             => def stacc = stack.Pop();
-                                                      def acc = if (final != null) final(stacc, t) else acc;
-                                                      stack.Push(acc);
-                                                      acc    
-          | _                                      => acc          
+              def acc = if (final != null) final(stacc, t) else acc;
+              stack.Push(acc);
+              acc    
+          | _                                      => acc
         }
       }
 
-      Iterator.FoldLeft(init, loop)
+      Iterator().FoldLeft(init, loop)
     }
 
     public Fold[T](init          : T,
-                   state_machine : StateMachine * T -> T,
-                   region        : State * T -> T,
-                   state         : State * T -> T,
-                   final         : Final * T -> T) : T
+                  state_machine : StateMachine * T -> T,
+                  region        : State * T -> T,
+                  state         : State * T -> T,
+                  final         : Final * T -> T) : T
     {
       def stack = SCG.Stack();
 
@@ -277,53 +278,64 @@ namespace Nemerle.Statechart
         match (n)
         {
           | State(regions = Some()) as t           => def acc = if (region != null) region(t, acc) else acc;
-                                                      stack.Push(acc);
-                                                      acc
+              stack.Push(acc);
+              acc
           | State as t                             => def acc = if (state != null) state(t, acc) else acc;
-                                                      stack.Push(acc);
-                                                      acc
+              stack.Push(acc);
+              acc
           | StateMachine as t                      => def acc = if (state_machine != null) state_machine(t, acc) else acc;
-                                                      stack.Push(acc);
-                                                      acc
+              stack.Push(acc);
+              acc
           | Final as t                             => def acc = if (final != null) final(t, acc) else acc;
-                                                      stack.Push(acc);
-                                                      acc    
-          | _                                      => acc          
+              stack.Push(acc);
+              acc
+          | _                                      => acc
         }
       }
 
-      Iterator.FoldLeft(init, loop)
+      Iterator().FoldLeft(init, loop)
     }
-    
-    public Iterator : IEnumerable[StateNode]
+
+    public GetChild() : IEnumerable[StateNode.State]
     {
-      get
+      match (this)
       {
-        def child = SCG.Stack();
-        def parent = SCG.Stack();
-
-        def loop_init()
-        {
-          if (child.IsEmpty()) () else 
-          {
-            def curr = child.Pop();
-            parent.Push(curr);
-            match (curr)
-            {
-              | State(regions = Some(Region(sr))) => foreach (s in sr) child.Push(s);
-              | State(sub_states = sub)           => foreach (s in sub) child.Push(s);
-              | StateMachine(state = st)          => child.Push(st);
-              | _                                 => ()
-            }
-            loop_init()
-          }
-        }
-
-        child.Push(this);
-        loop_init();
-        parent
+        | State(regions = Some(Region(sr))) => sr
+        | State(sub_states = sub)           => sub
+        | StateMachine(state = st)          => TraverseUtils.SingleElement(st)
+        | _                                 => Enumerable.Empty()
       }
     }
+
+    //public Iterator : IEnumerable[StateNode]
+    //{
+    //  get
+    //  {
+    //    def child = SCG.Stack();
+    //    def parent = SCG.Stack();
+
+    //    def loop_init()
+    //    {
+    //      if (child.IsEmpty()) () else 
+    //      {
+    //        def curr = child.Pop();
+    //        parent.Push(curr);
+    //        match (curr)
+    //        {
+    //          | State(regions = Some(Region(sr))) => foreach (s in sr) child.Push(s);
+    //          | State(sub_states = sub)           => foreach (s in sub) child.Push(s);
+    //          | StateMachine(state = st)          => child.Push(st);
+    //          | _                                 => ()
+    //        }
+    //        loop_init()
+    //      }
+    //    }
+
+    //    child.Push(this);
+    //    loop_init();
+    //    parent
+    //  }
+    //}
 
   }
 
