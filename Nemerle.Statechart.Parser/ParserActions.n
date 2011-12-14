@@ -48,7 +48,7 @@ namespace Nemerle.Statechart
       Actions(acts)
     }
 
-    CreateState(pos : int, name : string, attr : list[StateAttribute], decls : list[StateNode], type : StateType) : StateNode.State
+    CreateState(pos : int, name : string, attr : IEnumerable[StateAttribute], decls : IEnumerable[StateNode], type : StateType) : StateNode.State
     {
       
       def check_tran(state, tr)
@@ -67,7 +67,7 @@ namespace Nemerle.Statechart
         def (states, decls) =  decls.PartitionType();
         def (trans, decls)  =  decls.PartitionType();
         def (in_trans, decls) = decls.PartitionType();
-        def (do_act, decls) = decls.FindType();
+        def (do_act, decls) = decls.PartitionType();
         def (init, decls) = decls.PartitionType();
         def (hist, decls) = decls.PartitionType();
         def (pseudo, decls) = decls.PartitionType();
@@ -75,7 +75,7 @@ namespace Nemerle.Statechart
                       {
                         | [head]  => TwoOption.One(head)
                         | [f, s]  => TwoOption.Two(f, s)
-                        | _  => TwoOption.None() // TODO: надо отслеживать ошибку и выдавать пользователю
+                        | _       => TwoOption.None() // TODO: надо отслеживать ошибку и выдавать пользователю
                       }
         (en, ex, states, trans, in_trans, do_act, init, history, pseudo, decls)
       } 
@@ -87,10 +87,10 @@ namespace Nemerle.Statechart
         State(0, null, init, [], en, ex, in_trans, trans, do_act, hist, states, None(), pseudo, StateType.SubRegion(), [])
       }
       
-      def decls = decls.Sort((x, y)  => x.pos - y.pos);
+      def decls = decls.ToArray().Sort(x  => x.pos);
       def (reg_trans, reg) = decls.Partition(_ is StateNode.Transition);
       def regions = reg.FindDelimited(_ is State(type = StateType.SubRegion)); // split list by regions
-      def (regions, decls) = if (regions.IsEmpty()) ([], decls) else (regions.Map(create_sub_regions), reg_trans); // create regions
+      def (regions, decls) = if (regions.IsEmpty()) (Enumerable.Empty(), decls) else (regions.Select(create_sub_regions), reg_trans); // create regions
       def (en, ex, states, trans, in_trans, do_act, init, hist, pseudo, decls) = get_decls(decls);
       def regions = match (regions)
                     {
@@ -99,7 +99,7 @@ namespace Nemerle.Statechart
                     }
       def trans  = trans |> check_tran(State(name), _);
       def type = if (regions.HasValue) StateType.Region() else type;
-      State(pos, name, init, attr, en, ex, in_trans, trans, do_act, hist, states, regions, pseudo, type, decls |> Error(_.pos, _));
+      State(pos, name, init, attr, en, ex, in_trans, trans, do_act, hist, states, regions, pseudo, type, decls.Select(x => Error(x.pos, x)));
       }
 
     def_history(hist : HistoryType, tok : NToken, tran : option[StateNode.Default]) : History

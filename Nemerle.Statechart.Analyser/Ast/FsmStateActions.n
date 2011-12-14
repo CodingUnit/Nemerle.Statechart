@@ -17,23 +17,25 @@ namespace Nemerle.Statechart
   public partial variant FsmState
   {
 
-    public all_transitions_nested : list[StateTransition]
+    public all_transitions_nested : IEnumerable[StateTransition]
     {
       get
       {
-        all_transitions_with_init + (AllSubStates |>< all_transitions_with_init)
+        Iterator().FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.all_transitions_with_init))
+        //all_transitions_with_init + (AllSubStates |>< all_transitions_with_init)
       }
     }
 
-    public transitions_nested : list[StateTransition]
+    public transitions_nested : IEnumerable[StateTransition]
     {
       get
       {
-        transitions + (AllLivedSubStatesNested |>< transitions)
+        def tran = AllLivedSubStatesNested.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.transitions));
+        transitions.Concat(tran)
       }
     }
-    
-    public completion_transitions : list[StateTransition]
+
+    public completion_transitions : IEnumerable[StateTransition]
     {
       get
       {
@@ -41,7 +43,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public change_transitions : list[StateTransition]
+    public change_transitions : IEnumerable[StateTransition]
     {
       get
       {
@@ -50,21 +52,20 @@ namespace Nemerle.Statechart
       }
     }
 
-    public all_transitions : list[StateTransition]
+    public all_transitions : IEnumerable[StateTransition]
     {
       get
       {
-        change_transitions + internal_tran
+        change_transitions.Concat(internal_tran)
       }
     }
 
-    public static create_transition_group(tr : list[StateTransition]) : Map[string, list[StateTransition]]
+    public static create_transition_group(tr : IEnumerable[StateTransition]) : IEnumerable[(string * IEnumerable[StateTransition])]
     {
       single_func
       {
-        tr.Group((x, y)  => string.Compare(x.FriendlyTriggerName, y.FriendlyTriggerName));
-        __ |> (_.Head.FriendlyTriggerName, _);
-        Map(__)
+        tr.GroupBy(x => x.FriendlyTriggerName);
+        __.Select(x => (x.First().FriendlyTriggerName, x));
       }
     }
 
@@ -80,7 +81,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public grouped_transitions : Map[string, list[StateTransition]]
+    public grouped_transitions : IEnumerable[string * IEnumerable[StateTransition]]
     {
       get
       {
@@ -88,15 +89,15 @@ namespace Nemerle.Statechart
       }
     }
 
-    public this_cross_transitions : Map[string, list[StateTransition]]
+    public this_cross_transitions : IEnumerable[string * IEnumerable[StateTransition]]
     {
       get
       {
-        create_transition_group(this_transitions).Filter((_, x)  => x.Length > 1)
+        create_transition_group(this_transitions).Where((_, x)  => x.Length > 1)
       }
     }
 
-    public work_transition_group : Map[string, list[StateTransition]]
+    public work_transition_group : IEnumerable[string * IEnumerable[StateTransition]]
     {
       get
       {
@@ -104,18 +105,18 @@ namespace Nemerle.Statechart
       }
     }
 
-    public cross_transitions : Map[string, list[StateTransition]]
+    public cross_transitions : IEnumerable[string * IEnumerable[StateTransition]]
     {
       get
       {
-        grouped_transitions.Filter((_, x)  => x.Length > 1)
+        grouped_transitions.Where((_, x)  => x.Length > 1)
       }
     }
 
     /// <summary>
-	  /// Transitions defined direct from this state
-	  /// </summary>
-    public this_transitions : list[StateTransition]
+    /// Transitions defined direct from this state
+    /// </summary>
+    public this_transitions : IEnumerable[StateTransition]
     {
       get
       {
@@ -134,8 +135,8 @@ namespace Nemerle.Statechart
     }
 
     /// <summary>
-	  /// State comparing
-	  /// </summary>
+    /// State comparing
+    /// </summary>
     public CompareTo(b : FsmState) : int
     {
       string.Compare(Name, b.Name)
@@ -163,25 +164,25 @@ namespace Nemerle.Statechart
       }
     }
 
-    public all_transitions_with_init : list[StateTransition]
+    public all_transitions_with_init : IEnumerable[StateTransition]
     {
       get
       {
-        all_transitions + Initial
+        all_transitions.Concat(Initial)
       }
     }
     /// <summary>
-	  /// Normal and Internal Transitions
-	  /// </summary>
-    public combined_transitions : list[StateTransition]
+    /// Normal and Internal Transitions
+    /// </summary>
+    public combined_transitions : IEnumerable[StateTransition]
     {
       get
       {
-        transitions + internal_tran
+        transitions.Concat(internal_tran)
       }
     }
 
-    public incoming_transitions : list[StateTransition]
+    public incoming_transitions : IEnumerable[StateTransition]
     {
       get
       {
@@ -190,9 +191,9 @@ namespace Nemerle.Statechart
     }
 
     /// <summary>
-	  /// Work transitions
-	  /// </summary>
-    public work_transitions : list[StateTransition]
+    /// Work transitions
+    /// </summary>
+    public work_transitions : IEnumerable[StateTransition]
     {
       get
       {
@@ -200,39 +201,39 @@ namespace Nemerle.Statechart
         {
           single_func
           {
-            transitions + internal_tran;
+            transitions.Concat(internal_tran);
             __.Exclude(_.CrossFor);
             __.Exclude(_.NotWork);
-            __.Filter(_.UsedInGenerate)
+            __.Where(_.UsedInGenerate)
           }
-        } else []
+        } else Enumerable.Empty()
       }
     }
 
     /// <summary>
-	  /// All sub states at all nesting levels
-	  /// </summary>
+    /// All sub states at all nesting levels
+    /// </summary>
     public AllSubStates : IEnumerable[FsmState]
     {
       get
       {
-        LevelOrderIterator.Skip(1)
+        LevelOrderIterator().Skip(1)
         //sub_states + (sub_states |>< AllSubStates)
       }
     }
 
     /// <summary>
-	  /// All sub states include this at all nesting levels
-	  /// </summary>
+    /// All sub states include this at all nesting levels
+    /// </summary>
     public AllStates : IEnumerable[FsmState]
     {
       get
       {
-        LevelOrderIterator
+        LevelOrderIterator()
         //sub_states + (sub_states |>< AllSubStates)
       }
     }
-    
+
     //public AllPseudoStates : list[PseudoStateNode]
     //{
     //  get
@@ -240,10 +241,10 @@ namespace Nemerle.Statechart
     //    pseudo_states + (sub_states |>< AllPseudoStates)
     //  }
     //}
-    
+
     /// <summary>
-	  /// All lived sub states
-	  /// </summary>
+    /// All lived sub states
+    /// </summary>
     public AllLivedSubStates : IEnumerable[FsmState]
     {
       get
@@ -252,25 +253,25 @@ namespace Nemerle.Statechart
       }
     }
 
-   // /// <summary>
-	  ///// All lived sub states
-	  ///// </summary>
-   // public AllLivedSubStatesNotRegions : list[FsmState]
-   // {
-   //   get
-   //   {
-   //     AllLivedSubStates.Exclude(_ is ConcurrentRegion)
-   //     //def lived = LivedSubStates;
-   //     //def (reg, not_reg) = sub_states.Partition(_ is ConcurrentRegion);
-   //     //def reg = reg.Filter(_.LivedNested);
-   //     //def not_reg = not_reg |>< AllLivedSubStatesNotRegions;
-   //     //lived + reg + not_reg
-   //   }
-   // }
+  // /// <summary>
+    ///// All lived sub states
+    ///// </summary>
+  // public AllLivedSubStatesNotRegions : list[FsmState]
+  // {
+  //   get
+  //   {
+  //     AllLivedSubStates.Exclude(_ is ConcurrentRegion)
+  //     //def lived = LivedSubStates;
+  //     //def (reg, not_reg) = sub_states.Partition(_ is ConcurrentRegion);
+  //     //def reg = reg.Filter(_.LivedNested);
+  //     //def not_reg = not_reg |>< AllLivedSubStatesNotRegions;
+  //     //lived + reg + not_reg
+  //   }
+  // }
 
     /// <summary>
-	  /// Direct lived sub states without consider of living nesting states of this substates
-	  /// </summary>
+    /// Direct lived sub states without consider of living nesting states of this substates
+    /// </summary>
     public LivedSubStates : IEnumerable[FsmState]
     {
       get
@@ -280,8 +281,8 @@ namespace Nemerle.Statechart
     }
 
     /// <summary>
-	  /// All Lived substates with consider of nesting state life on all nesting levels
-	  /// </summary>
+    /// All Lived substates with consider of nesting state life on all nesting levels
+    /// </summary>
     public AllLivedSubStatesNested : IEnumerable[FsmState]
     {
       get
@@ -292,8 +293,8 @@ namespace Nemerle.Statechart
     }
 
     /// <summary>
-	  /// Is it Lived state, consider on nesting lived states
-	  /// </summary>
+    /// Is it Lived state, consider on nesting lived states
+    /// </summary>
     public LivedNested : bool
     {
       get
@@ -303,8 +304,8 @@ namespace Nemerle.Statechart
     }
 
     /// <summary>
-	  /// Direct lived substates with consider of nesting state life
-	  /// </summary>
+    /// Direct lived substates with consider of nesting state life
+    /// </summary>
     public LivedSubStatesNested : IEnumerable[FsmState]
     {
       get
@@ -314,8 +315,8 @@ namespace Nemerle.Statechart
     }
 
     /// <summary>
-	  /// Sub states included in the history of this state
-	  /// </summary>
+    /// Sub states included in the history of this state
+    /// </summary>
     public SubStatesParticipateInHistory : IEnumerable[FsmState]
     {
       get
@@ -332,9 +333,9 @@ namespace Nemerle.Statechart
     }
 
     /// <summary>
-	  /// History pseudo-states in which participate this state
-	  /// </summary>
-    public ParticipateInHistory : list[StateHistory]
+    /// History pseudo-states in which participate this state
+    /// </summary>
+    public ParticipateInHistory : IEnumerable[StateHistory]
     {
       get
       {
@@ -342,51 +343,53 @@ namespace Nemerle.Statechart
       }
     }
 
-    public SuperStates : list[FsmState]
+    public SuperStates : IEnumerable[FsmState]
     {
       get
       {
-        SuperStatesFromTop.Rev()
+        SuperStatesFromTop.Reverse()
       }
     }
 
-    public SuperStatesFromTop : list[FsmState]
+    public SuperStatesFromTop : IEnumerable[FsmState]
     {
       get
       {
-        def loop(p, res)
+        def loop(p)
         {
           match (p)
           {
-            | null  => res
-            | p  => loop(p.super_state, p :: res)
+            | null  => ()
+            | p  => yield p;
+                    loop(p.super_state)
           }
         }
 
-        loop(super_state, [])
+        loop(super_state)
       }
     }
 
-    public SuperStatesFromTopInclude : list[FsmState]
+    public SuperStatesFromTopInclude : IEnumerable[FsmState]
     {
       get
       {
-        def loop(p, res)
+        def loop(p)
         {
           match (p)
           {
-            | null  => res
-            | p  => loop(p.super_state, p :: res)
+            | null  => ()
+            | p     => yield p;
+                       loop(p.super_state)
           }
         }
 
-        loop(this, [])
+        loop(this)
       }
     }
-    
+
     /// <summary>
-	  /// Use both types of history in state
-	  /// </summary>
+    /// Use both types of history in state
+    /// </summary>
     public BothHistories : bool
     {
       get
@@ -395,11 +398,11 @@ namespace Nemerle.Statechart
       }
     }
 
-    public UsedHistory : list[StateHistory]
+    public UsedHistory : IEnumerable[StateHistory]
     {
       get
       {
-        history.Value.Filter(_.Used)
+        history.Value.Where(_.Used)
       }
     }
 
@@ -408,7 +411,7 @@ namespace Nemerle.Statechart
       SuperStates.Exists(_ == st)
     }
 
-    public static CreateState(st : StateNode.State, sub : list[FsmState], an : FsmAnalyser) : FsmState
+    public static CreateState(st : StateNode.State, sub : IEnumerable[FsmState], an : FsmAnalyser) : FsmState
     {
       match (st)
       {
@@ -420,7 +423,7 @@ namespace Nemerle.Statechart
       }
       //if (st != null) State(st, null, true) else state
     }
-    
+
     //public static CreateState(st : StateNode.State, state : FsmState) : FsmState
     //{
     //  if (st != null) State(st, null, true) else state

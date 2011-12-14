@@ -102,6 +102,48 @@ namespace Nemerle.Statechart
 
     }
 
+    public PartitionType[T, TRes](this lst : IEnumerable[T]) : IEnumerable[TRes] * IEnumerable[T]
+    {
+      def acc = List();
+      def res = List();
+      
+      def loop(lst : IEnumerator[T])
+      {
+        if (lst.MoveNext())
+        {
+          def elem = lst.Current;
+          match (elem)
+          {
+            | elem is TRes => res.Add(elem)
+            | _            => acc.Add(elem)
+          }
+          loop(lst)
+        } else ()
+      }
+      
+      loop(lst.GetEnumerator());
+      (res.AsEnumerable(), acc.AsEnumerable())
+    }
+
+    public Partition[T](this lst : IEnumerable[T], pred : T -> bool) : IEnumerable[T] * IEnumerable[T]
+    {
+      def acc = List();
+      def res = List();
+      
+      def loop(lst : IEnumerator[T])
+      {
+        if (lst.MoveNext())
+        {
+          def elem = lst.Current;
+          if (pred(elem)) res.Add(elem) else acc.Add(elem);
+          loop(lst)
+        } else ()
+      }
+      
+      loop(lst.GetEnumerator());
+      (res.AsEnumerable(), acc.AsEnumerable())
+    }
+    
     public PartitionAround[T](this lst : list[T], pred : T -> bool) : list[T] * list[T]
     {
       def loop(lst, res)
@@ -300,6 +342,15 @@ namespace Nemerle.Statechart
       }
     }
 
+    public WithDefault[T, T2](this opt : option[T], default : T2) : T2 where T : T2 
+    {
+      match (opt)
+      {
+        | Some(val)  => val : T2
+        | _          => default
+      }
+    }
+    
     public static @%+[T, T2](this lst : list[T], lst2 : list[T2]) : list[T] where T2 : T
     {
       lst + lst2.Map(_ : T)
@@ -339,6 +390,7 @@ namespace Nemerle.Statechart
       loop(sorted,  [])
     }
 
+    
     public DuplicatesPartition[T](this lst : list[T], comp : T * T -> int) : list[T] * list[T]
     {
       def sorted = lst.Sort(comp);
@@ -376,6 +428,31 @@ namespace Nemerle.Statechart
       loop(lst, [], [])
     }
 
+    public FindDelimited[T](this lst : IEnumerable[T], pred : T -> bool) : IEnumerable[IEnumerable[T]]
+    {
+      def acc = List();
+      def res = List();
+      
+      def lst = lst.GetEnumerator();
+      
+      def loop()
+      {
+          if (lst.MoveNext())
+          {
+            def head = lst.Current;
+            if (pred(head)) res.Add(acc.AsEnumerable()) else 
+            {
+              acc.Add(head);
+            }
+            loop()
+          } else ()
+          
+      }
+
+      loop();
+      res
+    }
+    
     public ElementsEqual[T](this lst : list[T], pred : (T * T) -> bool) : bool
     {
       def loop(lst)
@@ -388,6 +465,23 @@ namespace Nemerle.Statechart
       loop(lst)
     }
 
+    public ElementsEqual[T](this lst : IEnumerable[T], pred : (T * T) -> bool) : bool
+    {
+      def en = lst.GetEnumerator();
+
+      
+      def loop(acc)
+      {
+        if (en.MoveNext()) 
+        {
+          def elem = en.Current;
+          if (pred(acc, elem)) loop(elem) else false
+        } else true
+      }
+
+      if (en.MoveNext()) loop(en.Current) else true
+    }
+    
     public ChopLastN[T](this lst : list[T], num : int) : list[T]
     {
       def num = lst.Length - num;
@@ -587,6 +681,49 @@ namespace Nemerle.Statechart
       loop(0)
     }
 
+    public Pop[T, T2](this lst : SCG.Stack[T], lencoll : IEnumerable[T2]) : IEnumerable[T]
+    {
+      def loop(en, len)
+      {
+        while (len.MoveNext())
+        {
+          if (en.MoveNext())
+          {
+           yield en.Current;
+          } else throw InvalidOperationException("Collection does not contain needed number of element");
+        }
+      }
+
+      loop(lst.GetEnumerator(), lencoll.GetEnumerator())
+    }
+    
+
+    public Concat[T](this lst : IEnumerable[T], elem : T) : IEnumerable[T]
+    {
+      lst.Concat(TraverseUtils.SingleElement(elem))
+    }
+
+    public Concat[T](this lst : IEnumerable[T], elem1 : T, elem2 : T) : IEnumerable[T]
+    {
+      lst.Concat(TraverseUtils.DoubleElement(elem1, elem2))
+    }
+    
+    public IsSingle[T](this lst : IEnumerable[T]) : bool
+    {
+      def en = lst.GetEnumerator();
+      en.MoveNext() && !en.MoveNext()
+    }
+
+    public IsMoreThanOne[T](this lst : IEnumerable[T]) : bool
+    {
+      def en = lst.GetEnumerator();
+      en.MoveNext() && en.MoveNext()
+    }
+    
+    public AddBefore[T](this lst : IEnumerable[T], elem : T) : IEnumerable[T]
+    {
+      TraverseUtils.SingleElement(elem).Concat(lst)
+    }
   }
 
 }

@@ -53,21 +53,21 @@ namespace Nemerle.Statechart
               def path = head :: p;
               match (get_all_state(st, head), tail)
               {
-                | ([], _)    => (null, FsmError.StateNotFound(State(merge_name(path.Rev()))) :: err)
-                | ([st], []) => (st, err)
-                | ([st], _)  => get_loop(st.sub_states, tail, path, err)
+                | (x, _) when x.IsEmpty()   => (null, FsmError.StateNotFound(State(merge_name(path.Rev()))) :: err)
+                | (st, []) when (st.IsSingle()) => (st.First(), err)
+                | (st, _) when (st.IsSingle()) => get_loop(st.First().sub_states, tail, path, err)
                 | (lst, _)   => (null, FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev()))) :: err)
               }
           | _ => (null, err)
         }
       }
 
-      def (st, err) = get_loop(states.NToList(), state, [], []);
+      def (st, err) = get_loop(states, state, [], []);
       def an = an.AddErrors(err);
       (st, an)
     }
 
-    get_all_state(map : list[FsmState], state : string) : list[FsmState]
+    get_all_state(map : IEnumerable[FsmState], state : string) : IEnumerable[FsmState]
     {
       def name = state ?? FsmState.TopStateName;
       def (name, sub_name) = if (name != FsmState.TopStateName) 
@@ -76,7 +76,7 @@ namespace Nemerle.Statechart
                                 if (sub != null) (name.GetSub('['), sub) else (name, null)
                               } else (name, null);
       def name = if (sub_name != null) $"$(name)SubRegion$sub_name" else name;
-      map.FindAll(x => x.NativeName == name)
+      map.Where(x => x.NativeName == name)
     }
 
     public Get(state : string, an : FsmAnalyser) : FsmState * FsmAnalyser
