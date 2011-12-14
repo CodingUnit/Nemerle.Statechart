@@ -12,9 +12,27 @@ namespace Nemerle.Statechart
   using ListUtils;
 
   [Record]
+  public struct ErrorInfo
+  {
+    public this(err : IEnumerable[FsmError]) {errors = err}
+    
+    [NeedChange] public errors : IEnumerable[FsmError];
+    [NeedChange] public warnings : IEnumerable[FsmWarning];
+    
+    public AddWarning(err : IEnumerable[FsmWarning]) : ErrorInfo {ChangeWarnings(warnings.Concat(err))}
+    public AddError(err : IEnumerable[FsmError]) : ErrorInfo {ChangeErrors(errors.Concat(err))}
+    public AddError(err : FsmError) : ErrorInfo {ChangeErrors(errors.Concat(err))}
+  }
+  
+  [Record]
   public partial class FsmAnalyser
   {
 
+    GetErrorInfo() : ErrorInfo
+    {
+      ErrorInfo(Enumerable.Empty(), Enumerable.Empty())
+    }
+    
     [NeedChange(Errors)]
     [NeedChange]
     public statemap : StateMap;
@@ -81,15 +99,15 @@ namespace Nemerle.Statechart
       }
     }
 
-    public all_pseudo : list[PseudoStateNode]
+    public all_pseudo : IEnumerable[PseudoStateNode]
     {
       get
       {
-        States |>< pseudo_states
+        TopState.Iterator().FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.pseudo_states))
       }
     }
 
-    public actions : list[string]
+    public actions : IEnumerable[string]
     {
       get
       {
@@ -486,46 +504,51 @@ namespace Nemerle.Statechart
       ChangeErrors(GetErrors(err))
     }
 
-    public AddErrors(err : list[ParseError]) : FsmAnalyser
+    public AddErrors(err : IEnumerable[ParseError]) : FsmAnalyser
     {
       ChangeErrors(GetErrors(err))
     }
 
-    public GetErrors(err : list[FsmError]) : list[string]
+    public GetErrors(err : IEnumerable[FsmError]) : IEnumerable[string]
     {
-      Errors + (err |> AddError(_))
+      Errors.Concat(err.Select(AddError))
     }
 
-    public GetErrors(err : FsmError) : list[string]
+    public GetErrors(err : FsmError) : IEnumerable[string]
     {
-      AddError(err) :: Errors
+      Errors.Concat(AddError(err))
     }
 
-    public GetErrors(err : list[ParseError]) : list[string]
+    public GetErrors(err : IEnumerable[ParseError]) : IEnumerable[string]
     {
-      Errors + (err |> AddParseError(_))
+      Errors.Concat(err.Select(AddParseError))
     }
 
-    public GetWarnings(err : list[FsmWarning]) : list[string]
+    public GetWarnings(err : IEnumerable[FsmWarning]) : IEnumerable[string]
     {
-      Warnings + (err |> AddWarning(_))
+      Warnings.Concat(err.Select(AddWarning))
     }
 
+    public AddErrors(err : ErrorInfo) : FsmAnalyser
+    {
+      ChangeErrorsWarnings(GetErrors(err.errors), GetWarnings(err.warnings))
+    }
+    
     public this(fsm : StateNode.StateMachine)
     {
       this.Fsm = fsm;
       statemap = StateMap();
     }
 
-    [NeedChange(Warnings)] [NeedChange(Warnings, statemap)] [NeedChange] public Errors : list[string] = [];
-    [NeedChange] public Warnings : list[string] = [];
+    [NeedChange(Warnings)] [NeedChange(Warnings, statemap)] [NeedChange] public Errors : IEnumerable[string] = Enumerable.Empty();
+    [NeedChange] public Warnings : IEnumerable[string] =  Enumerable.Empty();
 
     FinalizeAnalyse() : FsmAnalyser
     {
       def id = StateId(this);
       def top = id.CreateMasks();
       def map = statemap.Update(top);
-      ChangeErrorsStatemapWarnings(Errors.Rev(), map, Warnings.Rev())
+      ChangeStatemap(map)
     }
 
     public Analyse() : FsmAnalyser
