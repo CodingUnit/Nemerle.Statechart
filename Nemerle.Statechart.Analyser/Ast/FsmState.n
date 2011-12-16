@@ -196,7 +196,7 @@ namespace Nemerle.Statechart
         {
           get
           {
-            def st = this :: SuperStates;
+            def st = SuperStatesInclude;
             HaveFinal && st.Exists(x => !x.completion_transitions.IsEmpty())
           }
         }
@@ -226,26 +226,37 @@ namespace Nemerle.Statechart
             //    | _ => null
             //  }
             //}
+           
+          def num = instance_of.ncopy + 1;
+          def st = instance_of.ChangeCopyNum(num); // clone the inline sub machine instance
 
-
-          def st = instance_of.ChangeCopyNum(instance_of.ncopy + 1); // clone the inline sub machine instance
+          def copy_state(_, st)
+          {
+            def init = st.Initial.Select(x : StateTransition => x.Clone(num));
+            def tran = st.transitions.Select(x => x.Clone(num));
+            def intern = st.internal_tran.Select(x => x.Clone(num));
+            def hist = st.history.Map(x => x.ChangeReferenceState(true, st));
+            def en = st.entry.Map(x => x.ChangeState(st));
+            def ex = st.exit.Map(x => x.ChangeState(st));
+            st.ChangeTransitionsHistoryInitialEntryExitInternalTran(tran, hist, init, en, ex, intern)
+          }
+          
+          def st = st.FoldThis(copy_state);
           def do_act = st.do_activity; // take data from it except transitions to outer world
           def inter_tran = st.internal_tran;
           def entry = st.entry;
           def exit = st.exit;
-          def history = st.history;
           def init = st.Initial;
+          def history = st.history;
           def sub_st = st.sub_states;
           def tran = st.all_transitions_nested;
-          def tran = tran %+ st.AllHistory.FilterValues(_.Default);
+          def tran = tran.Concat(st.AllHistory.FilterValues(_.default));
           def old = instance_of.AllStates;
           def ren_st = st.AllStates.ZipLazy(old); // take old and new copy
             //def pst = st.AllPseudoStates |> (CloneFor, _);
           def sub_st = sub_st.Map(x => x.ChangeSuperState(this)); // change super state to this
             //pst.Iter((ost, nst) => tran.Iter(x => x.TargetTraverse(update_pseudo(_, ost, nst)))); // update pseudo states in this sub machine
           def an = ren_st.FoldLeft(an, ((ost, nst), a) => tran.FoldLeft(a, (x, a) => x.UpdateTargets(a, ost, nst))); // change targets according to rename in new location
-          st.AllSubStates.Iter(x => x.history.Iter(x => x.reference = true)); // history must point to real state history
-          st.AllSubStates.Iter(_.RenameState()); // actions renaming state
           def nst = ren_st.MapLazy((x, y) => y.ChangeCloneFor(x));
           def pseudo = st.pseudo_states;
           def st = InlinedSubMachineInstance ^& (do_activity = do_act, sub_states = sub_st, history = history, 

@@ -130,16 +130,17 @@ namespace Nemerle.Statechart
         }
 
         def ordinary = tr.Exclude(x => x is Initial || x.IsCompletion);
-        def dups = ordinary.NToList().Duplicates(StateTransition.GuardComparer); // find duplicates with same guards and same triggers
+        def dups = ordinary.Duplicates(x => x.Guard); // find duplicates with same guards and same triggers
         if (!dups.IsEmpty())
         {
-          ErrorInfo(a.errors.Concat(FsmError.DuplicateTransition(dups)))
+          a.AddError(FsmError.DuplicateTransition(dups))
         } else
         {
           def (intern, other) = tr.Partition(_ is Internal);
-          def begin_and_end_eq = other.NToList().Group((x, y) => x.From.CompareTo(y.From) - x.To.CompareTo(y.To)).Map(x => x.AsEnumerable()).AsEnumerable();
-          def begin_and_end_eq = begin_and_end_eq.Where(x => x.IsMoreThanOne()).Concat(intern.Select(_ : StateTransition));
-          begin_and_end_eq.FoldLeft(a, check_begin_and_ends)
+          def begin_and_end_eq = other.NToList().Group((x, y) => x.From.CompareTo(y.From) - x.To.CompareTo(y.To)).Select(x => x.AsEnumerable());
+          def begin_and_end_eq = begin_and_end_eq.Where(_.IsMoreThanOne());
+          def merged = begin_and_end_eq.Append(intern.Select(_ : StateTransition));
+          merged.FoldLeft(a, check_begin_and_ends)
         }
       }
 
@@ -147,17 +148,17 @@ namespace Nemerle.Statechart
       {
         match (tr.Find(x => x.Guard.IsNone))
         {
-          | Some(t) => def tr = tr.Where(_ != t : object);
-              def warn = tr.Select(x => FsmWarning.TransitionOverriden(x, t));
-              a.Concat(warn)
+          | Some(t) => def tr = tr.Filter(_ != t : object);
+              def warn = tr.Map(x => FsmWarning.TransitionOverriden(x, t));
+              a.HeadAppend(warn)
           | _ => a
         }
       }
 
       def group = FsmState.create_transition_group(tr).Values();
-      def group = group.Where(x => x.IsMoreThanOne());
+      def group = group.Where(_.IsMoreThanOne());
       def dup = group.FoldLeft(a, check_duplicate_tran);
-      def warn = group.FoldLeft(Enumerable.Empty(), check_override);
+      def warn = group.FoldLeft([], check_override);
       dup.AddWarning(warn)
     }
 
@@ -413,9 +414,9 @@ namespace Nemerle.Statechart
       an.AddErrors(err + err2)
     }
 
-    RenameTransition(tran : list[StateTransition], an : FsmAnalyser) : list[string * StateTransition] * FsmAnalyser
+    RenameTransition(tran : IEnumerable[StateTransition], an : FsmAnalyser) : IEnumerable[string * StateTransition] * FsmAnalyser
     {
-      def (dups, tran) = tran.DuplicatesPartition(StateTransition.Comparer);
+      def (dups, tran) = tran.DuplicatesPartition(x => x.Name);
       dups.Iter(x => x.NeedGuardedName = true);
       def dups = dups |> (GuardedName, _);
       def tran = tran |> (Name, _);
@@ -431,18 +432,29 @@ namespace Nemerle.Statechart
     {
       def traverse()
       {
-        traverser.Add(TopState.Initial);
+        traverser.Add(TopState.Initial.NToList());
         def res = traverser.Traverse(this); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
         def map = statemap.CheckNew(res);
         ChangeStatemap(map)
-        //$[x.paths, x in States, x.paths != null]
       }
 
       def update_states(an)
       {
-        def dest = an.trans_paths.Map(x => x.Paths.Map((_, y) => y.Transition.Destination)).Flatten();
-        def st = dest.Map(_.ToState).Filter(_ != null);
-        an.statemap.CheckNew(st)
+        def dest = an.trans_paths.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Paths.Map((_, y) => y.Transition.Destination)));
+        def st = dest.Select(_.ToState).Where(_ != null);
+        def hist = dest.OfType.[TransitionDestination.History]().Select(_.state);
+        def hist = hist.Select(x => x.ChangeUsed(true));
+        
+        def update_hist(_, s)
+        {
+          def hist = hist.Where(x => x.state.name == s.name);
+          hist.FoldLeft(s, (x, a) => a.UpdateHistory(x))
+        }
+        
+        def map = an.statemap.CheckNew(st);
+        def top = map.Top.FoldThis(update_hist);
+        
+        an.statemap.Update(top)
       }
 
       def an = traverse(); // traverse paths
