@@ -12,7 +12,7 @@ namespace Nemerle.Statechart
 {
 
   using FsmState;
-  
+
   [Record]  
   public class StateEvent
   {
@@ -44,61 +44,47 @@ namespace Nemerle.Statechart
         evt.name == null
       }
     }
-    
+
     public override ToString() : string
     {
       $"Event$Name"
     }
   }
-  
+
+  [Record]
   public variant StateHistory
   {
     | Shallow
-        {
-          public this(st : FsmState,  hist : StateNode.History, reference : bool = false)
-          {
-            history = hist;
-            state = if (hist.state != null) FsmState.State(hist.state, null, null, true); else st;
-            type = hist.type;
-            this.reference = reference;
-            default = history.default |> StateTransition.Default(state, this, _);
-          }
-      
-        }
     | Deep
-        {
-          public this(st : FsmState,  hist : StateNode.History, reference : bool = false)
-          {
-            history = hist;
-            state = if (hist.state != null) FsmState.State(hist.state, null, null, true); else st;
-            type = hist.type;
-            this.reference = reference;
-            default = history.default |> StateTransition.Default(state, this, _);
-          }
-      
-        }
-      
-    [Accessor] mutable history : StateNode.History;
-    [Accessor] mutable default : option[StateTransition.Default];
-    public state : FsmState {get;set;}
-    [Accessor] mutable type : HistoryType;
-    public reference : bool {get;set;}
-          
-    public Used : bool {get;set;}
-    public Index : int {get;set;}
     
-    public this() {}
-    public this(hist : StateHistory, clone : bool = false, ncopy : int = 0)
+    public this(st : FsmState,  hist : StateNode.History, reference : bool = false)
     {
-      history = hist.history;
-      default = if (clone) hist.default.Map(x => x.Clone(ncopy) :> StateTransition.Default) else hist.default;
-      state = hist.state;
+      history = hist;
+      state = if (hist.state != null) FsmState.State(hist.state, null, null, true); else st;
       type = hist.type;
-      reference = hist.reference;
-      Used = hist.Used;
-      Index = hist.Index;
+      this.reference = reference;
+      default = history.default |> StateTransition.Default(state, this, _);
     }
-    
+
+    public history : StateNode.History;
+    public default : option[StateTransition.Default];
+    [NeedChange] public state : FsmState;
+    public type : HistoryType;
+    [NeedChange(state)] [NeedChange] public reference : bool;
+
+    [NeedChange] public Used : bool;
+
+    public this() {}
+    //public this(hist : StateHistory, clone : bool = false, ncopy : int = 0)
+    //{
+    //  history = hist.history;
+    //  default = if (clone) hist.default.Map(x => x.Clone(ncopy) :> StateTransition.Default) else hist.default;
+    //  state = hist.state;
+    //  type = hist.type;
+    //  reference = hist.reference;
+    //  Used = hist.Used;
+    //}
+
     public static Create(st : FsmState, hist : TwoOption[StateNode.History], href : bool = false) : TwoOption[StateHistory]
     {      
       hist.Map(Create(st, _, href))
@@ -113,20 +99,9 @@ namespace Nemerle.Statechart
         | _ => null
       }
     }
-    
-    public Clone(ncopy : int) : StateHistory
-    {
-      def newh = match (this)
-                 {
-                   | Shallow as h => Shallow(h, true, ncopy)
-                   | Deep    as h => Deep(h, true, ncopy)
-                 }
-      newh.clone_for = this;
-      newh
-    }
-    
-    [Accessor] mutable clone_for : StateHistory;
-    
+
+    //[Accessor] clone_for : StateHistory;
+
     public static  @==(a : StateHistory, b : StateHistory) : bool
     {
       | (null, null)  => true
@@ -139,7 +114,7 @@ namespace Nemerle.Statechart
     {
             !(@==(a, b))
     }
-          
+
     public BothHistories : bool
     {
       get
@@ -147,22 +122,22 @@ namespace Nemerle.Statechart
         state.BothHistories
       }
     }
-    
+
     public Name : string
     {
       get
       {
         def type = match (type)
-                   {
-                     | Deep  => "Deep"
-                     | Shallow  => "Shallow"
-                     | None  => ""
-                   }
-                  
+                    {
+                      | Deep  => "Deep"
+                      | Shallow  => "Shallow"
+                      | None  => ""
+                    }
+
         if (state.history.IsOne) $"$(state)History" else $"$(state)$(type)History"
       }
     }
-    
+
     public SimpleName : string
     {
       get
@@ -170,12 +145,12 @@ namespace Nemerle.Statechart
         $"$(state)History"
       }
     }
-    
+
     public override ToString() : string
     {
       Name
     }
-    
+
     public SubStatesParticipateInHistory : IEnumerable[FsmState]
     {
       get
@@ -191,108 +166,96 @@ namespace Nemerle.Statechart
         state.SubStatesParticipateIn(this)
       }
     }
-    
-    public UpdateReference(an : FsmAnalyser) : FsmAnalyser
+
+    public UpdateReference(an : FsmAnalyser) : StateHistory * FsmAnalyser
     {
-      def an = if (state.reference) 
-      {
-        def (st, an) = an.statemap.Get(state.Name, an);
-        // !!! mutable
-        when (st != null) state = st;
-        an
-      } else an;
-      when (history.reference)
-      {
-        def hist = state.GetHistory(this);
-        type = hist.type;
-        default = hist.default;
-      }
-      default.FoldLeft(an, _.UpdateReference(_));
+      def (st, an) = if (state.reference) 
+                      {
+                        an.statemap.Get(state.Name, an);
+        //def st = if (st != null) st else state;
+                      } else (state, an);
+      def hist = if (history.reference)
+                  {
+                    state.GetHistory(this);
+
+                  } else this;
+
+      def an = default.FoldLeft(an, _.UpdateReference(_));
+      (hist.ChangeState(st), an);
     }
-    
+
   }
-    
+
   [Record]    
   [DebuggerDisplay("Actions  =  {ActionList}")]
   public variant StateAction : Actions
   {
     | Entry
+      {
+
+        Name : string
         {
-          
-          Name : string
+          get
           {
-            get
-            {
-              $"$(state)Entry"
-            }
+            $"$(state)Entry"
           }
-         
-          flags : ActionFlags;
-          
-          
-          override ToString() : string
-          {
-            Name
-          }
-        
         }
+
+        flags : ActionFlags;
+
+
+        override ToString() : string
+        {
+          Name
+        }
+
+      }
     | Exit
+      {
+
+        this(act : list[string], st : FsmState)
         {
-         
-          this(act : list[string], st : FsmState)
+          base(act, st);
+          flags = ActionFlags.None;
+        }
+
+        Name : string
+        {
+          get
           {
-            base(act, st);
-            flags = ActionFlags.None;
-          }
-          
-          Name : string
-          {
-            get
-            {
-              $"$(state)Exit"
-            }
-          }
-         
-          flags : ActionFlags;
-          
-          override ToString() : string
-          {
-            Name
+            $"$(state)Exit"
           }
         }
-      
+
+        flags : ActionFlags;
+
+        override ToString() : string
+        {
+          Name
+        }
+      }
+
     | Do 
+      {
+        [FlagAccessor (Concurrently,  NoWaitCancel, NotLong)]
+        [NeedChange] public flags : ActivityFlag; // shows that we must run each action concurrently with others
+
+        Name : string
         {
-          [FlagAccessor (Concurrently,  NoWaitCancel, NotLong, flags = WantSetter)]
-          mutable flags : ActivityFlag; // shows that we must run each action concurrently with others
-          
-          Name : string
+          get
           {
-            get
-            {
-              $"DoActivity$(state)"
-            }
-          }
-         
-          override ToString() : string
-          {
-            Name
-          }
-        }       
-        
-        public Clone() : StateAction
-        {
-          def a = actions;
-          def st = state;
-          match (this)
-          {
-            | Entry(f) => Entry(a, st, f)
-            | Exit(f)  => Exit(a, st, f)
-            | Do(f)    => Do(a, st, f)
+            $"DoActivity$(state)"
           }
         }
-        
-    public mutable state : FsmState;
+
+        override ToString() : string
+        {
+          Name
+        }
+      }       
+
+
+    [NeedChange] public state : FsmState;
   }
-  
+
 }
