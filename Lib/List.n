@@ -106,7 +106,7 @@ namespace Nemerle.Statechart
     {
       def acc = List();
       def res = List();
-      
+
       def loop(lst : IEnumerator[T])
       {
         if (lst.MoveNext())
@@ -120,7 +120,7 @@ namespace Nemerle.Statechart
           loop(lst)
         } else ()
       }
-      
+
       loop(lst.GetEnumerator());
       (res.AsEnumerable(), acc.AsEnumerable())
     }
@@ -129,7 +129,7 @@ namespace Nemerle.Statechart
     {
       def acc = List();
       def res = List();
-      
+
       def loop(lst : IEnumerator[T])
       {
         if (lst.MoveNext())
@@ -139,11 +139,11 @@ namespace Nemerle.Statechart
           loop(lst)
         } else ()
       }
-      
+
       loop(lst.GetEnumerator());
       (res.AsEnumerable(), acc.AsEnumerable())
     }
-    
+
     public PartitionAround[T](this lst : list[T], pred : T -> bool) : list[T] * list[T]
     {
       def loop(lst, res)
@@ -262,18 +262,26 @@ namespace Nemerle.Statechart
       lst.FoldLeft([], loop).Rev()
     } 
 
-    public FilterValues[T, TRes](this lst : IEnumerable[T], pred : T -> option[TRes]) : list[TRes]
+    public FilterValues[T, TRes](this lst : IEnumerable[T], pred : T -> option[TRes]) : IEnumerable[TRes]
     {
-      def loop(head, res)
+      def en = lst.GetEnumerator();
+
+      def loop()
       {
-        match (pred(head))
+        if (en.MoveNext())
         {
-          | Some(val)  => val :: res
-          | _  => res
-        }
+          def elem = en.Current;
+          match (pred(elem))
+          {
+            | Some(val)  => yield val
+            | _          => ()
+          }
+          loop()
+        } else ()
       }
 
-      lst.FoldLeft([], loop).Rev()
+      loop()
+      //lst.FoldLeft([], loop).Rev()
     } 
 
 
@@ -287,6 +295,11 @@ namespace Nemerle.Statechart
     public Exclude[T, T2](this lst : list[T], lst2 : list[T2], eq : T * T2 -> bool) : list[T]
     {
       lst.Filter(x  => !lst2.Exists(y  => eq(x, y)))
+    }
+
+    public Exclude[T, T2](this lst : IEnumerable[T], lst2 : IEnumerable[T2], eq : T * T2 -> bool) : IEnumerable[T]
+    {
+      lst.Where(x  => !lst2.Exists(y  => eq(x, y)))
     }
 
     public MapIndex[T, TRes](this lst : list[T], conv : (T * int) -> TRes) : list[TRes]
@@ -350,7 +363,7 @@ namespace Nemerle.Statechart
         | _          => default
       }
     }
-    
+
     public static @%+[T, T2](this lst : list[T], lst2 : list[T2]) : list[T] where T2 : T
     {
       lst + lst2.Map(_ : T)
@@ -390,7 +403,7 @@ namespace Nemerle.Statechart
       loop(sorted,  [])
     }
 
-    
+
     public DuplicatesPartition[T](this lst : list[T], comp : T * T -> int) : list[T] * list[T]
     {
       def sorted = lst.Sort(comp);
@@ -414,6 +427,35 @@ namespace Nemerle.Statechart
       loop (sorted,  [], [])
     }
 
+    public DuplicatesPartition[T, TKey](this lst : IEnumerable[T], comp : T -> TKey) : IEnumerable[T] * IEnumerable[T]
+    {
+      def sorted = lst.OrderBy(comp);
+
+      def acc = List();
+      def res = List();
+      def comparer = Comparer.Default;
+
+      def en = sorted.GetEnumerator();
+
+      def eq(x)
+      {
+          !acc.IsEmpty() && comparer.Compare(comp(x), comp(acc.First())) == 0
+      }
+
+      def loop(elem1)
+      {
+        if (en.MoveNext()) 
+        {
+          def elem = en.Current;
+          if (comparer.Compare(comp(elem1), comp(elem)) == 0 || eq(elem1)) res.Add(elem1); else acc.Add(elem1);
+          loop(elem);
+        } else ()
+      }
+
+      if (en.MoveNext()) loop(en.Current) else acc.Add(en.Current);
+      (res, acc)
+    }
+
     public FindDelimited[T](this lst : list[T], pred : T -> bool) : list[list[T]]
     {
       def loop(lst, res, subres)
@@ -432,27 +474,27 @@ namespace Nemerle.Statechart
     {
       def acc = List();
       def res = List();
-      
+
       def lst = lst.GetEnumerator();
-      
+
       def loop()
       {
-          if (lst.MoveNext())
+        if (lst.MoveNext())
+        {
+          def head = lst.Current;
+          if (pred(head)) res.Add(acc.AsEnumerable()) else 
           {
-            def head = lst.Current;
-            if (pred(head)) res.Add(acc.AsEnumerable()) else 
-            {
-              acc.Add(head);
-            }
-            loop()
-          } else ()
-          
+            acc.Add(head);
+          }
+          loop()
+        } else ()
+
       }
 
       loop();
       res
     }
-    
+
     public ElementsEqual[T](this lst : list[T], pred : (T * T) -> bool) : bool
     {
       def loop(lst)
@@ -469,7 +511,7 @@ namespace Nemerle.Statechart
     {
       def en = lst.GetEnumerator();
 
-      
+
       def loop(acc)
       {
         if (en.MoveNext()) 
@@ -481,7 +523,7 @@ namespace Nemerle.Statechart
 
       if (en.MoveNext()) loop(en.Current) else true
     }
-    
+
     public ChopLastN[T](this lst : list[T], num : int) : list[T]
     {
       def num = lst.Length - num;
@@ -689,25 +731,25 @@ namespace Nemerle.Statechart
         {
           if (en.MoveNext())
           {
-           yield en.Current;
+            yield en.Current;
           } else throw InvalidOperationException("Collection does not contain needed number of element");
         }
       }
 
       loop(lst.GetEnumerator(), lencoll.GetEnumerator())
     }
-    
 
-    public Concat[T](this lst : IEnumerable[T], elem : T) : IEnumerable[T]
-    {
-      lst.Concat(TraverseUtils.SingleElement(elem))
-    }
 
-    public Concat[T](this lst : IEnumerable[T], elem1 : T, elem2 : T) : IEnumerable[T]
-    {
-      lst.Concat(TraverseUtils.DoubleElement(elem1, elem2))
-    }
-    
+    //public Concat[T](this lst : IEnumerable[T], elem : T) : IEnumerable[T]
+    //{
+    //  lst.Concat(TraverseUtils.SingleElement(elem))
+    //}
+
+    //public Concat[T](this lst : IEnumerable[T], elem1 : T, elem2 : T) : IEnumerable[T]
+    //{
+    //  lst.Concat(TraverseUtils.DoubleElement(elem1, elem2))
+    //}
+
     public IsSingle[T](this lst : IEnumerable[T]) : bool
     {
       def en = lst.GetEnumerator();
@@ -719,11 +761,76 @@ namespace Nemerle.Statechart
       def en = lst.GetEnumerator();
       en.MoveNext() && en.MoveNext()
     }
-    
+
     public AddBefore[T](this lst : IEnumerable[T], elem : T) : IEnumerable[T]
     {
       TraverseUtils.SingleElement(elem).Concat(lst)
     }
+
+    public HeadAppend[T](this lst : list[T], lst2 : list[T]) : list[T]
+    {
+      lst2.FoldLeft(lst, _ :: _)
+    }
+
+    public Duplicates[T, TKey](this lst : IEnumerable[T], comp : T -> TKey) : IEnumerable[T]
+    {
+      def sorted = lst.OrderBy(comp);
+
+      def comparer = Comparer.Default;
+
+      def en = sorted.GetEnumerator();
+
+      def loop(elem1)
+      {
+        if (en.MoveNext()) 
+        {
+          def elem = en.Current;
+          when (comparer.Compare(comp(elem1), comp(elem)) == 0) yield elem1;
+          loop(elem);
+        } else ()
+      }
+
+      when (en.MoveNext()) loop(en.Current);
+    }
+
+    public Append[T](this lst : IEnumerable[T], elem : T) : IEnumerable[T]
+    {
+      lst.Concat(TraverseUtils.SingleElement(elem))
+    }
+
+    public FoldLeft2[T, TAcc1, TAcc2](this lst : IEnumerable[T], init1 : TAcc1, init2 : TAcc2, fold : T * TAcc1 * TAcc2 -> TAcc1 * TAcc2) : TAcc1 * TAcc2
+    {
+      def en = lst.GetEnumerator();
+
+      def loop(acc1, acc2)
+      {
+        if (en.MoveNext())
+        {
+          def elem = en.Current;
+          loop(fold(elem, acc1, acc2))
+        } else (acc1, acc2)
+      }
+
+      loop(init1, init2)
+    }
+
+    public FoldList[T, TAcc1, TAcc2](this lst : IEnumerable[T], init1 : list[TAcc1], init2 : TAcc2, fold : T * TAcc2 -> TAcc1 * TAcc2) : list[TAcc1] * TAcc2
+    {
+      def en = lst.GetEnumerator();
+
+      def loop(acc1, acc2)
+      {
+        if (en.MoveNext())
+        {
+          def elem = en.Current;
+          def (r, a) = fold(elem, acc2);
+          loop(r :: init1, a)
+        } else (acc1, acc2)
+      }
+
+      loop(init1, init2)
+    }
+
   }
 
 }
