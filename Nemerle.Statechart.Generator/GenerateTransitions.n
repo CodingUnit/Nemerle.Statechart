@@ -56,14 +56,14 @@ namespace Nemerle.Statechart
             } else body
         | NoStateChange => if (ctx.IsInEventHandler) <[ fsm.cur_state ]> else <[ cur_state ]>
         | Choice(_, tran, Some(st)) => def target = GetExecStateName(st, ctx);
-            DefineTransBody(tran, ctx, target)
-        | Choice(_, tran, _) => DefineTransBody(tran, ctx)
+            DefineTransBody(tran.NToList(), ctx, target)
+        | Choice(_, tran, _) => DefineTransBody(tran.NToList(), ctx)
         | Terminate => 
             def after = if (ctx.HaveActionsAfter) <[ () ]> else <[ null ]>;
             if (ctx.IsInEventHandler) <[ fsm.Terminate();$after ]> else <[ Terminate();$after ]>
-        | History(StateHistory where (Default = Some()) as h) => def name = $"$(h)Run";
+        | History(StateHistory where (default = Some()) as h) => def name = $"$(h)Run";
             if (ctx.IsInEventHandler) <[ fsm.$(name : usesite)();]> else <[ $(name : usesite)();]>
-        | History(StateHistory where (Name = n, state = p, Type = t)) =>
+        | History(StateHistory where (Name = n, state = p, type = t)) =>
             def t = if (p.BothHistories) $"$t" else "";
             def name = $"$(t)HistoryFrom$p"; // call function of run history
             if (ctx.IsInEventHandler) <[ fsm.$(n : usesite).$(name : usesite)(fsm) ]> else <[ $(n : usesite).$(name : usesite)(this) ]>;
@@ -137,7 +137,7 @@ namespace Nemerle.Statechart
         | Final(st, sr, reg, tran) => 
             def regname = GetExecStateName(reg, ctx);
             def target = GetExecStateName(st, ctx);
-            def trans = DefineTransBody(tran, ctx);
+            def trans = DefineTransBody(tran.NToList(), ctx);
             if (reg.HaveFinal)
             {
               def hist = reg.ParticipateInHistory;
@@ -445,7 +445,7 @@ namespace Nemerle.Statechart
                        def defs = if (st.Lived)
                                   {
                                     st.work_transition_group.MapToList((x, y)  => <[decl: 
-                                      public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(def_tran_body(y))}]>)
+                                      public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(def_tran_body(y.NToList()))}]>)
                                   } else [];
                        from_top :: defs
                        
@@ -456,7 +456,7 @@ namespace Nemerle.Statechart
                        def defs = if (st.Lived)
                                   {
                                     st.work_transition_group.MapToList((x, y)  => <[decl: 
-                                      public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(DefineTransBody(y, GenCtx.InEventHandler()))}]>)
+                                      public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(DefineTransBody(y.NToList(), GenCtx.InEventHandler()))}]>)
                                   } else [];
                        from_top :: defs
                  }
@@ -467,7 +467,7 @@ namespace Nemerle.Statechart
     
     DefineTransitionActions() : void
     {
-      def trans = analyser.all_transitions;
+      def trans = analyser.all_transitions.NToList();
       def trans = trans.RemoveDuplicatesSort(StateTransition.Comparer);
       def (init : list[StateTransition.Initial], trans) = trans.PartitionType();
       def trans = trans.Filter(x => !(x.MaybeInlined && IsEmpty(x.PathNode)));

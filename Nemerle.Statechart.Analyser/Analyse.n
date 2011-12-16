@@ -60,11 +60,11 @@ namespace Nemerle.Statechart
           }
         }
 
-        
+
         def final = st.all_transitions_with_init.FoldLeft([], (x, a) => x.To.FoldThis(a, null, null, null, null, check_target(_, x, _), null, null, null, null, null).Map((a, b) => {x.To = a;b}));
         match (final)
         {
-          | head :: _ => st.ChangeSubStates(sub.Concat(head))
+          | head :: _ => st.ChangeSubStates(sub.Concat(TraverseUtils.SingleElement(head)))
           | _         => st
         }
       }
@@ -130,35 +130,31 @@ namespace Nemerle.Statechart
         {
           // duplicate variants
           | TwoOption.Two(StateHistory.Deep, StateHistory.Deep)
-          | Two(StateHistory.Shallow, StateHistory.Shallow)  =>
-              FsmError.DuplicateHistory(st, st.history.Value.First()) :: a
-          | _  => a
+          | Two(StateHistory.Shallow, StateHistory.Shallow) => FsmError.DuplicateHistory(st, st.history.Value.First()) :: a
+          | _                                               => a
         }
       }
 
-      def check_exit_actions(st, acc)
+      def check_exit_actions(st)
       {
-        match (st)
-        {
-          | StateHistory where (state = FsmState where (exit = []) as st) =>
-              st.ChangeExit([StateAction.Exit([], st)]) :: acc
-          | _ => acc
-        }
+        | FsmState where (exit = []) => st.ChangeExit([StateAction.Exit([], st)])
+        | _ => st
       }
 
-      def history = States.Filter(x => x.history.HasValue);
-      def err = history.FoldLeft([], check_dup_history);
-      def history_states : list[StateHistory] =  history |>< history.Value;
-      def group = history_states.Group((x, y) => string.Compare(x.state.Name, y.state.Name));
-      group.IterI((i, x) => x.Iter(x => x.Index = i));
-      def st = history_states.FoldLeft([], check_exit_actions);
-      def map = statemap.CheckNew(st);
+      def update_hist(sb, s, err)
+      {
+        if (s.history.HasValue)
+        {
+          def err = check_dup_history(s, err);
+          def s = check_exit_actions(s);
+          (s.ChangeSubStates(sb), err)
+        } else (s.ChangeSubStates(sb), err)
+      }
+
+      def (top, err) = TopState.FoldThis([], update_hist);
+      def map = statemap.Update(top);
       ChangeStatemapErrors(map, GetErrors(err))
     }
-
-    //InitEvents() : void
-    //{
-    //}
 
     static nodes_eq : ((string * PathNode) * (string * PathNode)) -> bool = (x, y) => PathNode.Equals(x[1], y[1]);
     static nodes_cmp : ((string * PathNode) * (string * PathNode)) -> int = (x, y) => PathNode.Compare(x[1], y[1]);
@@ -175,20 +171,30 @@ namespace Nemerle.Statechart
 
     CreateActions() : FsmAnalyser
     {
-      def check_do(act, acc)
+      def check_do(st : FsmState, act, acc)
       {
-        match (act)
+        def check(act, acc)
         {
-          | StateAction.Do(actions = [_], Concurrently = true) => def err = FsmWarning.NoConcurrentActivity(act);
-              act.Concurrently = false;
-              err :: acc
-          | _ => acc
+          match (act)
+          {
+            | StateAction.Do(actions = [_], Concurrently = true, flags = f) => def err = FsmWarning.NoConcurrentActivity(act);
+                def act = act.ChangeFlags(f & ~ActivityFlag.Concurrently);
+                (act, err :: acc)
+            | _ => (act, acc)
+          }
         }
+
+        def (act, err) = act.FoldList([], acc, check);
+        (st.ChangeDoActivity(act), err)
       }
 
-      def do_activities = States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.do_activity));
-      def err = do_activities.FoldLeft([], check_do);
-      AddWarnings(err);
+      def (top, err) = TopState.FoldThis([], (_, s, a) => check_do(s, s.do_activity, a));
+      
+      def map = statemap.Update(top);
+      //def do_activities = States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.do_activity));
+      //def err = do_activities.FoldLeft([], check_do);
+      def warn = GetWarnings(err);
+      ChangeStatemapWarnings(map, warn)
     }
 
     CreateConcurrentRegion() : FsmAnalyser

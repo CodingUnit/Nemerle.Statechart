@@ -30,13 +30,11 @@ namespace Nemerle.Statechart
                            map.Get(super_state.Name, an)
                          } else (super_state, an);
       //def super = if (super.AstName == null) super.ChangeName(TopStateName) else super;
-      def an = Initial.FoldLeft(an, _.UpdateReference(_));
+      def an = this.Initial.FoldLeft(an, (x, a) => x.UpdateReference(a));
       def an = transitions.FoldLeft(an, _.UpdateReference(_));
-      def an = history.Value.FoldLeft(an, _.UpdateReference(_));
-      //def sub = map.Get(sub);
-      def (pseudo, an) = pseudo_states.MapThrough(an, _.UpdateReference(_));//MapThrough(an, _.UpdateReference(_));
-      //def (sub_states, an) = sub_states.MapThrough(an, _.UpdateReference(_));
-      def st = ChangePseudoStatesSubStatesSuperStateAnalyser(pseudo, sub, super, an);
+      def (hist, an) = history.Value.FoldList([], an, _.UpdateReference(_));
+      def (pseudo, an) = pseudo_states.FoldList([], an, _.UpdateReference(_));
+      def st = ChangePseudoStatesSubStatesHistorySuperStateAnalyser(pseudo.AsEnumerable(), sub, TwoOption.FromList(hist), super, an);
       (st, an)
     }
 
@@ -53,13 +51,13 @@ namespace Nemerle.Statechart
                     | ConcurrentSubRegion(contained_in = r) => Initial(r, st)
                     | _                                     => Initial(this, st)
                   }
-      ChangeInitial(init :: Initial)
+      ChangeInitial(TraverseUtils.SingleElement(init))
     }
 
     public AddSubState(st : FsmState) : FsmState
     {
       //st.analyser = Analyser;
-      if (sub_states.Exists(x => x.Name == st.Name)) this else ChangeSubStates(sub_states.Concat(st))//sub_states = sub_states + [st];
+      if (sub_states.Exists(x => x.Name == st.Name)) this else ChangeSubStates(sub_states.Append(st))//sub_states = sub_states + [st];
     }
 
     //public DefineTransition(tr : StateTransition) : void
@@ -204,18 +202,18 @@ namespace Nemerle.Statechart
     //  pseudo_states = if (ncopy != 0) st.pseudo_states |> SetCopy(ncopy) else st.pseudo_states
     //}
 
-    public HistoryPaths : list[string * HistoryPath] // paths from outer history
+    public HistoryPaths : IEnumerable[string * HistoryPath] // paths from outer history
     {
       get
       {
         //def reg = this is ConcurrentRegion;
         //when (Lived || reg) DefineHistoryPath(st, nodes);
         //when (!reg) sub_states.Iter(x  => x.DefineHistoryPathRecurse(st, nodes))
-        def shist = SuperStates.Filter(x => x.ParticipateInHistory.Exists(x => x.Type == HistoryType.Shallow));
-        def spaths = shist |>< HistoryPaths;
-        def paths = ParticipateInHistory.Map(x => (x.state.name, HistoryPath(x.state, this, x)));
+        def shist = SuperStates.Where(x => x.ParticipateInHistory.Exists(x => x.type == HistoryType.Shallow));
+        def spaths = shist.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.HistoryPaths));
+        def paths = ParticipateInHistory.Select(x => (x.state.name, HistoryPath(x.state, this, x)));
         paths.Iter((_, x) => x.CreatePath(analyser));
-        paths + spaths
+        paths.Concat(spaths)
       }
     }
 
@@ -244,7 +242,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        Lived || AllLivedSubStates is _ :: _
+        Lived || !AllLivedSubStates.IsEmpty()
       }
     }
 
@@ -255,7 +253,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        SuperStates.Length
+        SuperStates.Count()
       }
     }
 
@@ -363,11 +361,11 @@ namespace Nemerle.Statechart
       }
     }
 
-    public SuperStatesInclude : list[FsmState]
+    public SuperStatesInclude : IEnumerable[FsmState]
     {
       get
       {
-        this :: SuperStates
+        SuperStates.AddBefore(this)
       }
     }
 
@@ -375,7 +373,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        SuperStatesInclude.FindType()[0]
+        SuperStatesInclude.FindType()
       }
     }
 
@@ -383,7 +381,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        AllSubStates |>< history.Value
+        AllSubStates.FoldLeft([], (x, a) => a.HeadAppend(x.history.Value))
       }
     }
 
@@ -391,11 +389,11 @@ namespace Nemerle.Statechart
     {
       get
       {
-        SuperStatesInclude.FindType()[0]
+        SuperStatesInclude.FindType()
       }
     }
 
-    public PartOfSubRegions : list[ConcurrentSubRegion]
+    public PartOfSubRegions : IEnumerable[ConcurrentSubRegion]
     {
       get
       {
@@ -419,11 +417,11 @@ namespace Nemerle.Statechart
     {
       get
       {
-        SuperStatesInclude.FindType()[0]
+        SuperStatesInclude.FindType()
       }
     }
 
-    public PartOfRegions : list[ConcurrentRegion]
+    public PartOfRegions : IEnumerable[ConcurrentRegion]
     {
       get
       {
@@ -431,32 +429,25 @@ namespace Nemerle.Statechart
       }
     }
 
-    public GetPathFrom(st : FsmState) : list[FsmState]
-    {
-      def super = SuperStatesInclude.FirstElems(x => x.Name == st.Name);
-      st :: super.Rev()
-    }
+    //public GetPathFrom(st : FsmState) : IEnumerable[FsmState]
+    //{
+    //  def super = SuperStatesInclude.FirstElems(x => x.Name == st.Name);
+    //  st :: super.Rev()
+    //}
 
-    public PathName : list[FsmState]
-    {
-      get
-      {
-        (this :: SuperStates.SplitLast()[1]).Rev()
-      }
-    }
+    //public PathName : list[FsmState]
+    //{
+    //  get
+    //  {
+    //    (this :: SuperStates.SplitLast()[1]).Rev()
+    //  }
+    //}
 
     public static NameComparer : FsmState * FsmState -> int = (x, y) => string.Compare(x.Name, y.Name);
 
     public PartOfRegionsOf(st : FsmState) : list[ConcurrentRegion]
     {
-      SuperStatesInclude.FirstElems(_ == st).FilterType();
-    }
-
-    public RenameState() : void
-    {
-      entry.Iter(x => x.state = this);
-      exit.Iter(x => x.state = this);
-      //history.Map(x => x.state = this)
+      SuperStatesInclude.NToList().FirstElems(_ == st).FilterType();
     }
 
     public FoldThis(
@@ -713,5 +704,11 @@ namespace Nemerle.Statechart
     //    | _                => this
     //  }
     //}
+    
+    public UpdateHistory(hist : StateHistory) : FsmState
+    {
+      def hist = history.Map(x => if (x.type == hist.type) hist else x);
+      ChangeHistory(hist)
+    }
   }
 }

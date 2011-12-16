@@ -22,8 +22,8 @@ namespace Nemerle.Statechart
              entry : list[FsmState]
              ) : list[FsmState] * list[FsmState]
     {
-       def src = src_st.SuperStatesFromTopInclude;
-       def dest = dest_st.SuperStatesFromTopInclude;
+       def src = src_st.SuperStatesFromTopInclude.NToList();
+       def dest = dest_st.SuperStatesFromTopInclude.NToList();
        def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x == (y : object));
        (exit + ex.Rev(), en + entry)
     }
@@ -67,11 +67,7 @@ namespace Nemerle.Statechart
     {
       def entering_state(st)
       {
-        match (st)
-        {
-          | StateAction.Entry(state = FsmState where (do_activity = Some(act))) => Entry(st, [(RunDoActivity(act), true)])
-          | Entry => Entry(st)
-        }
+          | StateAction.Entry(state = FsmState where (do_activity = act)) => Entry(st, act.Map(x => (RunDoActivity(x), true)))
       }
 
       
@@ -83,14 +79,9 @@ namespace Nemerle.Statechart
     {
       def get_exit(st)
       {
-        | StateAction.Exit(state = FsmState where (do_activity = Some(act), history = TwoOption where (HasValue = true) as h)) =>
-            Exit(st, [(SaveHistory(h.Value), false), (StopDoActivity(act), false)]);
-        | Exit(state = FsmState where (do_activity = Some(act))) =>
-            Exit(st, [(StopDoActivity(act), false)]);
-        | Exit(state = FsmState where (history = TwoOption where (HasValue = true) as h)) =>  
-            Exit(st, [(SaveHistory(h.Value), false)]);
-        | Exit => Exit(st)
-          
+        | StateAction.Exit(state = FsmState where (do_activity = act, history = TwoOption where (HasValue = true) as h)) =>
+            Exit(st, (SaveHistory(h.Value), false) :: act.Map(x => (StopDoActivity(x), false)));
+        | Exit(state = FsmState where (do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)));
       }
       
       def exiting_state(st)
@@ -129,14 +120,9 @@ namespace Nemerle.Statechart
     {
       def get_exit(st)
       {
-        | StateAction.Exit(state = FsmState where (do_activity = Some(act), history = TwoOption where (HasValue = true) as h)) =>
-            Exit(st, [(SaveHistory(h.Value), false), (StopDoActivity(act), false)]);
-        | Exit(state = FsmState where (do_activity = Some(act))) =>
-            Exit(st, [(StopDoActivity(act), false)]);
-        | Exit(state = FsmState where (history = TwoOption where (HasValue = true) as h)) =>  
-            Exit(st, [(SaveHistory(h.Value), false)]);
-        | Exit => Exit(st)
-          
+        | StateAction.Exit(state = FsmState where (do_activity = act, history = TwoOption where (HasValue = true) as h))=>
+            Exit(st, (SaveHistory(h.Value), false) :: act.Map(x => (StopDoActivity(x), false)));
+        | Exit(state = FsmState where (do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)));
       }
       
       def exiting_state(st)

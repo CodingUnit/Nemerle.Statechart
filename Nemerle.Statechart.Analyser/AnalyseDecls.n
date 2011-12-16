@@ -1,7 +1,7 @@
 ﻿using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
-
+using Nemerle.Linq;
 using Nemerle.Statechart;
 using System;
 using System.Collections.Generic;
@@ -14,25 +14,26 @@ namespace Nemerle.Statechart
   [Record]
   public struct ErrorInfo
   {
-    public this(err : IEnumerable[FsmError]) {errors = err}
+    public this(err : list[FsmError]) {errors = err}
     
-    [NeedChange] public errors : IEnumerable[FsmError];
-    [NeedChange] public warnings : IEnumerable[FsmWarning];
+    [NeedChange] public errors : list[FsmError];
+    [NeedChange] public warnings : list[FsmWarning];
     
-    public AddWarning(err : IEnumerable[FsmWarning]) : ErrorInfo {ChangeWarnings(warnings.Concat(err))}
-    public AddError(err : IEnumerable[FsmError]) : ErrorInfo {ChangeErrors(errors.Concat(err))}
-    public AddError(err : FsmError) : ErrorInfo {ChangeErrors(errors.Concat(err))}
+    public AddWarning(err : list[FsmWarning]) : ErrorInfo {ChangeWarnings(warnings.HeadAppend(err))}
+    public AddError(err : list[FsmError]) : ErrorInfo {ChangeErrors(errors.HeadAppend(err))}
+    public AddError(err : FsmError) : ErrorInfo {ChangeErrors(err :: errors)}
   }
   
   [Record]
   public partial class FsmAnalyser
   {
 
-    GetErrorInfo() : ErrorInfo
-    {
-      ErrorInfo(Enumerable.Empty(), Enumerable.Empty())
-    }
+    //GetErrorInfo() : ErrorInfo
+    //{
+    //  ErrorInfo([], [])
+    //}
     
+    [NeedChange(Warnings)]
     [NeedChange(Errors)]
     [NeedChange]
     public statemap : StateMap;
@@ -72,11 +73,13 @@ namespace Nemerle.Statechart
       }
     }
     //[NeedChange(Warnings)]
-    public trans_paths : list[TransitionPaths]
+    public trans_paths : IEnumerable[TransitionPaths]
     {
       get
       {
-        $[x.paths, x in States, x.paths != null]
+        States.Select(_.paths).Where(_ != null)
+        
+        //$[x.paths, x in States, x.paths != null]
       }
     }
 
@@ -137,11 +140,11 @@ namespace Nemerle.Statechart
       }
     }
 
-    public HistoryStates : list[StateHistory]
+    public HistoryStates : IEnumerable[StateHistory]
     {
       get
       {
-        $[h, x in States, h in x.history.Value, h.Used]//.Filter(x => x.history.HasValue) |>< history.Value
+        States.FoldLeft([], (x, a) => a.HeadAppend(x.history.Value)).Filter(_.Used)//$[h, x in States, h in x.history.Value, h.Used]//.Filter(x => x.history.HasValue) |>< history.Value
       }
     }
 
@@ -182,23 +185,24 @@ namespace Nemerle.Statechart
       }
     }
 
-    states_initial_tran : list[StateTransition]
+    states_initial_tran : IEnumerable[StateTransition]
     {
       get
       {
-        States |>< Initial
+        States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Initial))
+        //States |>< Initial
       }
     }
 
-    used_states_initial_tran : list[StateTransition]
+    used_states_initial_tran : IEnumerable[StateTransition]
     {
       get
       {
-        states_initial_tran.Filter(_.Used)
+        states_initial_tran.Where(_.Used)
       }
     }
 
-    not_used_states_initial_tran : list[StateTransition]
+    not_used_states_initial_tran : IEnumerable[StateTransition]
     {
       get
       {
@@ -228,15 +232,15 @@ namespace Nemerle.Statechart
       }
     }
 
-    public PseudoStates : list[PseudoStateNode]
+    public PseudoStates : IEnumerable[PseudoStateNode]
     {
       get
       {
-        other_pseudo %+ junctions %+ choices %+ merges
+        other_pseudo.Concat(junctions).Concat(choices).Concat(merges)
       }
     }
 
-    public other_pseudo : list[PseudoStateNode]
+    public other_pseudo : IEnumerable[PseudoStateNode]
     {
       get
       {
@@ -244,7 +248,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public junctions : list[PseudoStateNode.Junction]
+    public junctions : IEnumerable[PseudoStateNode.Junction]
     {
       get
       {
@@ -258,11 +262,11 @@ namespace Nemerle.Statechart
         }
 
         def junc = all_pseudo.FilterType();
-        States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_junction)) + junc
+        States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_junction)).Concat(junc)
       }
     }
 
-    public choices : list[PseudoStateNode.Junction]
+    public choices : IEnumerable[PseudoStateNode.Junction]
     {
       get
       {
@@ -276,11 +280,11 @@ namespace Nemerle.Statechart
         }
 
         def choice = all_pseudo.FilterType();
-        States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_choice)) + choice
+        States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_choice)).Concat(choice)
       }
     }
 
-    public merges : list[PseudoStateNode.Merge]
+    public merges : IEnumerable[PseudoStateNode.Merge]
     {
       get
       {
@@ -294,7 +298,7 @@ namespace Nemerle.Statechart
         }
 
         def merge = all_pseudo.FilterType();
-        States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_merge)) + merge
+        States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_merge)).Concat(merge)
       }
     }
 
@@ -451,7 +455,7 @@ namespace Nemerle.Statechart
       | SubMachineStateNotFound(m, s) => $<#Sub machine "$m" does not contain referenced sub state "$s"#>
       | UnknownState(s, name, tran)  => $<#Transition "$tran" in "$s" has unknown target state "$name"#>
       | DuplicateTransition(tran)  => $<#Duplicate transitions "$tran"#>;
-      | DuplicateHistory(st, hist)  => $<#Duplicate history of type "$(hist.Type)" in "$st"#>
+      | DuplicateHistory(st, hist)  => $<#Duplicate history of type "$(hist.type)" in "$st"#>
       | RegionMustContainInitial(reg, tran) => $<#Transition "$tran" requires region "$reg" to contain initial transition in each of it sub regions#>
       | SubRegionsMustContainInitial(reg, tran) => $<#Transition "$tran" requires sub regions "$reg" to contain initial transitions#>
       | UnknownTerminateTransition(tran) => $<#Unknown terminate transition target of "$tran", there is several terminate pseudo states, specify full name#>                  
@@ -479,7 +483,7 @@ namespace Nemerle.Statechart
     {
       match (err)
       {
-        | HistoryNotUsed(hist = StateHistory where (state = st, Type = t))  => $<#"$t History in "$st" is not used in fsm life history#>
+        | HistoryNotUsed(hist = StateHistory where (state = st, type = t))  => $<#"$t History in "$st" is not used in fsm life history#>
         | StateNotUsed(state = st) => $<#State "$st" is not used in fsm life history#>
         | TransitionNotUsed(tran) => $<#Transition "$tran" is not used in fsm life history#>
         | RegionNotUsed(reg) => $<#Concurrent region "$reg" is not used in fsm life history#>
@@ -504,29 +508,29 @@ namespace Nemerle.Statechart
       ChangeErrors(GetErrors(err))
     }
 
-    public AddErrors(err : IEnumerable[ParseError]) : FsmAnalyser
+    public AddErrors(err : list[ParseError]) : FsmAnalyser
     {
       ChangeErrors(GetErrors(err))
     }
 
-    public GetErrors(err : IEnumerable[FsmError]) : IEnumerable[string]
+    public GetErrors(err : list[FsmError]) : list[string]
     {
-      Errors.Concat(err.Select(AddError))
+      Errors.HeadAppend(err.Map(AddError))
     }
 
-    public GetErrors(err : FsmError) : IEnumerable[string]
+    public GetErrors(err : FsmError) : list[string]
     {
-      Errors.Concat(AddError(err))
+      AddError(err) :: Errors
     }
 
-    public GetErrors(err : IEnumerable[ParseError]) : IEnumerable[string]
+    public GetErrors(err : list[ParseError]) : list[string]
     {
-      Errors.Concat(err.Select(AddParseError))
+      Errors.HeadAppend(err.Map(AddParseError))
     }
 
-    public GetWarnings(err : IEnumerable[FsmWarning]) : IEnumerable[string]
+    public GetWarnings(err : list[FsmWarning]) : list[string]
     {
-      Warnings.Concat(err.Select(AddWarning))
+      Warnings.HeadAppend(err.Map(AddWarning))
     }
 
     public AddErrors(err : ErrorInfo) : FsmAnalyser
@@ -540,15 +544,17 @@ namespace Nemerle.Statechart
       statemap = StateMap();
     }
 
-    [NeedChange(Warnings)] [NeedChange(Warnings, statemap)] [NeedChange] public Errors : IEnumerable[string] = Enumerable.Empty();
-    [NeedChange] public Warnings : IEnumerable[string] =  Enumerable.Empty();
+    [NeedChange(Warnings)] [NeedChange(Warnings, statemap)] [NeedChange] public Errors : list[string] = [];
+    [NeedChange] public Warnings : list[string] =  [];
 
     FinalizeAnalyse() : FsmAnalyser
     {
       def id = StateId(this);
       def top = id.CreateMasks();
       def map = statemap.Update(top);
-      ChangeStatemap(map)
+      def err = Errors.Rev();
+      def warn = Warnings.Rev();
+      ChangeErrorsStatemapWarnings(err, map, warn)
     }
 
     public Analyse() : FsmAnalyser
@@ -611,55 +617,54 @@ namespace Nemerle.Statechart
       }
     }
 
-    public history_default_transitions : list[StateTransition]
+    public history_default_transitions : IEnumerable[StateTransition]
     {
       get
       {
-        HistoryStates.FilterValues(_.Default).Filter(_.Used) |> _ : StateTransition//x.ActualTo != null)
+        HistoryStates.FilterValues(x => x.default).Where(_.Used).Select(_ : StateTransition)//x.ActualTo != null)
       }
     }
 
-    public used_transitions : list[StateTransition]
+    public used_transitions : IEnumerable[StateTransition]
     {
       get
       {
-        states_transitions.Filter(_.UsedInGenerate)
+        states_transitions.Where(_.UsedInGenerate)
       }
     }
 
-    public states_transitions : list[StateTransition]
+    public states_transitions : IEnumerable[StateTransition]
     {
       get
       {
-        States |>< all_transitions
+        States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.all_transitions))
       }
     }
 
-    public not_used_transitions : list[StateTransition]
+    public not_used_transitions : IEnumerable[StateTransition]
     {
       get
       {
         def not_used = states_transitions.Exclude(_.UsedInGenerate);
-        def not_used = not_used.Filter(x => x.From.Lived);
+        def not_used = not_used.Where(x => x.From.Lived);
         def not_used = not_used.Exclude(_.NotWork);
         not_used.Exclude(_.Used);
       }
     }
 
-    public all_transitions : list[StateTransition]
+    public all_transitions : IEnumerable[StateTransition]
     {
       get
       {
-          work_transitions.Values() 
-          + initial_transitions.Values() 
-          + history_transitions.Values() 
-          + history_default_transitions 
-          + special_transitions
-        + PathsFromOut
+          work_transitions.Values().Concat(initial_transitions.Values()).
+          Concat(history_transitions.Values()).
+          Concat(history_default_transitions).
+          Concat(special_transitions).
+          Concat(PathsFromOut)
       }
     }
 
-    public ActionNodes : list[PathNode]
+    public ActionNodes : IEnumerable[PathNode]
     {
       get
       {
