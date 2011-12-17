@@ -79,12 +79,11 @@ namespace Nemerle.Statechart
           }
         }
 
-        Guards : list[GuardNode]
+        Guards : IEnumerable[GuardNode]
         {
           get
           {
-            
-            def g = Nodes.Map(_.guard);//FoldLeft([], (x, a) => a + x.Guards).Rev();
+            def g = Nodes.Select(_.guard);//FoldLeft([], (x, a) => a + x.Guards).Rev();
             g.Exclude(_ is GuardNode.Else)
           }
         }
@@ -97,7 +96,7 @@ namespace Nemerle.Statechart
             | Junction(to = to) as j => 
                 match (to.UpdateReference(an))
                 {
-                 | (TransitionTarget.JunctionNode as nt, an) when (nt : object != to) => (j.ChangeTo(nt), an)
+                 | (TransitionTarget.JunctionNode as nt, an) => (j.ChangeTo(nt), an)
                  | (_, an) => (j, an)
                 }
             | _ => (this, an)
@@ -127,10 +126,11 @@ namespace Nemerle.Statechart
         {
           def (nnode, an) = to.UpdateReference(an);
           def (st, an) = base.UpdateReference(an);
-          def st = match (st)
+          
+          def st = match (st, nnode)
                     {
-                      | x when (x : object != this || to : object != nnode) => Merge(x.state, copy, name, nnode :> TransitionTarget.JunctionNode)
-                      | _                           => this
+                      | (Merge as j, TransitionTarget.JunctionNode as to) => j.ChangeTo(to)//Merge(x.state, copy, name, nnode :> TransitionTarget.JunctionNode)
+                      | (_, _)                                            => this
                     }
           (st, an)
         }
@@ -159,9 +159,9 @@ namespace Nemerle.Statechart
           def (st, an) = base.UpdateReference(an);
           match (st)
           {
-            | Fork(state = st) => def (target, an) = target.MapThrough(an, _.UpdateReference(_));
-                (Fork(st, copy, target, fork_tran), an)
-            | _                => (this, an)
+            | Fork as j => def (target, an) = target.MapThrough(an, _.UpdateReference(_));
+                           (j.ChangeTarget(target), an)//(Fork(st, copy, target, fork_tran), an)
+            | _         => (this, an)
           }
         }
 
@@ -218,8 +218,8 @@ namespace Nemerle.Statechart
           def (st, an) = base.UpdateReference(an);
           def st = match (st)
                     {
-                      | Join as j when (tar : object != target || j : object != this) => Join(state, copy, name, tar, region, joined_tran, transition)
-                      | _                                                             => this
+                      | Join as j => j.ChangeTarget(tar)//Join(state, copy, name, tar, region, joined_tran, transition)
+                      | _         => this
                     }
           (st, an)
         }
@@ -316,7 +316,7 @@ namespace Nemerle.Statechart
 
     public virtual UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
     {
-      if (state !=null && state.reference) 
+      if (state !=null) 
       {
         def (st, an) = an.statemap.Get(state.Name, an);
         def st = if (st != null) ChangeState(st) else this;
