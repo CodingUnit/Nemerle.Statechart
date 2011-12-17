@@ -60,7 +60,7 @@ namespace Nemerle.Statechart
 
         public override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
         {
-          if (state != null && state.reference) 
+          if (state != null) 
           {
             def (st, an) = an.statemap.Get(state.NativeName, an);
             def tar = if (st != null) ChangeState(st :> FsmState.Final) else this;
@@ -96,13 +96,10 @@ namespace Nemerle.Statechart
 
         override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
         {
-          if (state.reference) 
-          {
-            def map = an.statemap;
-            def (st, an) = map.Get(state.Name, an);
-            def tar =  if (st != null) ChangeState(st) else this;
-            (tar, an)
-          } else (this, an)
+          def map = an.statemap;
+          def (st, an) = map.Get(state.Name, an);
+          def tar =  if (st != null) ChangeState(st) else this;
+          (tar, an)
         }
 
         Name : string
@@ -134,7 +131,7 @@ namespace Nemerle.Statechart
           // TODO: вообще могут быть ссылки null если все immutable
         override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
         {
-          if (state != null && state.reference) 
+          if (state != null) 
           {
             def map = an.statemap;
             def (st, an) = map.Get(state.Name, an);
@@ -175,7 +172,7 @@ namespace Nemerle.Statechart
           def map = an.statemap;
           match (target)
           {
-            | State(st) as t when (st.reference) => 
+            | State(st) as t => 
                 def (st, an) = map.Get($"$parent.$(st.NativeName)", an);
                 def tar = if (st != null) t.ChangeState(st) else this;
                 (tar, an)
@@ -198,11 +195,10 @@ namespace Nemerle.Statechart
         {
           match (machine)
           {
-            | FsmState where (reference = true, Name = n) => 
+            | FsmState where (Name = n) => 
                 def (st, an) = an.statemap.Get(n, an);
                 def tar = if (st != null) ChangeMachine(st :> FsmState.SubMachine) else this;
                 (tar, an)
-            | _ => (this, an)
           }
         }
 
@@ -229,19 +225,20 @@ namespace Nemerle.Statechart
           } 
         }
 
-        Guards : list[GuardNode]
-        {
-          get
-          {
-            def g = match (to)
-                     {
-                       | TransitionTarget.PseudoState(Merge(to = TransitionTarget.JunctionNode(Guards = g)))
-                       | TransitionTarget.PseudoState(Junction(Guards = g)) => g
-                       | _ => []
-                     }
-            guard :: g
-          }
-        }
+        //Guards : list[GuardNode]
+        //{
+        //  get
+        //  {
+        //    to.Fold([guard], null, null, null, null, null, null, null, null, null, (a, t) => t.guard :: a)
+        //    //def g = match (to)
+        //    //         {
+        //    //           | TransitionTarget.PseudoState(Merge(to = TransitionTarget.JunctionNode(Guards = g)))
+        //    //           | TransitionTarget.PseudoState(Junction(Guards = g)) => g.NToList()
+        //    //           | _                                                  => []
+        //    //         }
+        //    //guard :: g//guard :: g
+        //  }
+        //}
 
         public UpdateRef(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
         {   
@@ -786,6 +783,23 @@ namespace Nemerle.Statechart
       def an = Iterator().FoldLeft(init, loop);
       def acc = stack.Pop();
       (acc, an)
+    }
+
+    public Guards : list[GuardNode]
+    {
+      get
+      {
+        Fold([], null, 
+                 null, 
+                 null, 
+                 null, 
+                 null, 
+                 null, 
+                 null, 
+                 null, 
+                 null, 
+                 (a, t) => t.guard :: a)
+      }
     }
 
     public GetChild() : IEnumerable[TransitionTarget]
