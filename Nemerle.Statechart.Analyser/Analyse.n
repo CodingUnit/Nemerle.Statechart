@@ -32,21 +32,22 @@ namespace Nemerle.Statechart
 
     InitStateMap() : FsmAnalyser
     {
-      def CheckAddFinalState(sub, st)
+      def CheckAddFinalState(an)
       {
         def is_top(st)
         {
           def super = st.super_state; 
           // check if state is top or state is sub of top and don't have transitions
-          super == null || (super.super_state == null && super.this_transitions is [])
+          super == null || (super.super_state == null && super.this_transitions.IsEmpty())
         }
 
         def check_target(t, tran, a)
         {
+          def st = tran.From;
           match (t, tran)
           {
             | (TransitionTarget.Final as t, _) when (is_top(st))=> 
-                def term = PseudoStateNode.Terminate(TopState, 0);
+                def term = PseudoStateNode.Terminate(an.TopState, 0);
               //TopState.pseudo_states ::= term;
                 (TransitionTarget.PseudoState(t.transition, term), a)
             | (Final as t, Initial) with super = st
@@ -60,18 +61,39 @@ namespace Nemerle.Statechart
           }
         }
 
-
-        def final = st.all_transitions_with_init.FoldLeft([], (x, a) => x.To.FoldThis(a, null, null, null, null, check_target(_, x, _), null, null, null, null, null).Map((a, b) => {x.To = a;b}));
-        match (final)
+        def check_final(f, sub, st)
         {
-          | head :: _ => st.ChangeSubStates(sub.Concat(TraverseUtils.SingleElement(head)))
-          | _         => st
+          match (f.Find(x => x.super_state.name == st.name))
+          {
+            | Some(final) => st.ChangeSubStates(sub.Concat(TraverseUtils.SingleElement(final)))
+            | _           => st
+          }
         }
+        
+        //def final = st.all_transitions_with_init.FoldLeft(acc, (x, a) => x.To.FoldThis(a, null, null, null, null, check_target(_, x, _), null, null, null, null, null).Map((a, b) => {x.To = a;b}));
+        //def acc = acc.Concat(final);
+        //match (final.Find(x => x.super_state.name == st.name))
+        //{
+        //  | Some(head) => (st.ChangeSubStates(sub.Concat(TraverseUtils.SingleElement(head))), final)
+        //  | _         => (st, final)
+        //}
+        def final = an.all_transitions_with_init.FoldLeft([], (x, a) => x.To.FoldThis(a, 
+                                                                                         null, 
+                                                                                         null, 
+                                                                                         null, 
+                                                                                         null, 
+                                                                                         check_target(_, x, _), 
+                                                                                         null, 
+                                                                                         null, 
+                                                                                         null, 
+                                                                                         null, 
+                                                                                         null).Map((a, b) => {x.To = a;b}));//an.TopState.FoldThis([], CheckAddFinalState(an, _, _, _)); // check to add final state
+        an.TopState.FoldThis(check_final(final, _, _));
       }
 
       def an = InitStatechart();
       def an = an.UpdateStateMap(); // first update state map 
-      def top = an.TopState.FoldThis(CheckAddFinalState); // check to add final state
+      def top = CheckAddFinalState(an);
       def map = an.statemap.Init(top);
       def an = an.ChangeStatemap(map);
       def an = an.UpdateStateMap(); // second update state map
