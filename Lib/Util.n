@@ -9,6 +9,7 @@ using Nemerle.Text;
 using Nemerle.Utility;
 using System.ComponentModel;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Nemerle.Statechart
 {
@@ -116,7 +117,7 @@ namespace Nemerle.Statechart
       <[ $(type : usesite)(..$expr) ]>
     }
     
-    public CreateNewInst(typebuilder : TypeBuilder, type : PExpr, parms : list[PExpr]) : PExpr
+    public CreateNewInst(typebuilder : TypeBuilder, type : PExpr, parms : PExpr) : PExpr
     {
       def split(p)
       {
@@ -126,17 +127,30 @@ namespace Nemerle.Statechart
 
       def unseq(p)
       {
-        | <[ {..$seq} ]> => seq
-        | <[ (..$seq) ]> => seq
-        | x              => [x]
+        match (p)
+        {
+          | <[ {..$seq} ]> 
+          | <[ (..$seq) ]> => seq
+          | x              => [x]
+        }
+      }
+      
+      def have_record_ignore(f : IField)
+      {
+        if (f is LibraryReference.ExternalFieldInfo) false else
+        {
+          def attr = f.GetModifiers().GetMacroAttributes();
+          attr.Exists(_ is <[ RecordIgnore ]>);
+        }
       }
       
       def def_constr(cur_type)
       {
         def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         def fields = cur_type.GetFields(opt);
+        def fields = fields.Exclude(have_record_ignore);
         def pars = fields.Map(_.Name);
-        def parms = parms.Map(unseq).Flatten();
+        def parms = unseq(parms);
         def parms = parms.Map(split);
         CreateConstrBody(cur_type.Name, pars, parms)
       }
@@ -168,6 +182,7 @@ namespace Nemerle.Statechart
             {
               def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly | BindingFlags.NonPublic;
               def fields = o.GetFields(opt);
+              def fields = fields.Exclude(have_record_ignore);
               def names = fields.Map(x => <[ $(x.Name : usesite) ]>);
               def body = def_constr(o);
               <[case: | $(o.Name : usesite)(..$names) => $body ]>
@@ -185,7 +200,7 @@ namespace Nemerle.Statechart
   }
   
   
-  macro @^&(type, params parms : list[PExpr])
+  macro @^&(type, parms)
   syntax (type, "^&", "(", parms,")")
   {
     //assert2(false);
