@@ -20,7 +20,7 @@ namespace Nemerle.Statechart
     | Region
   }
 
-  [Traversable]
+  [CachedTraversable]
   [Record]
   public variant StateNode
   {
@@ -225,44 +225,27 @@ namespace Nemerle.Statechart
 
     public pos : int;
 
+    public this(p : int) { pos = p }
+    
     public Fold[T](init          : T,
-                  state_machine : T * StateMachine -> T,
-                  region        : IEnumerable[T] * State -> T,
-                  state         : IEnumerable[T] * State -> T,
-                  final         : T * Final -> T) : T
+                  state_machine : StateMachine * T-> T,
+                  region        : State * IEnumerable[T] -> T,
+                  state         : State * IEnumerable[T] -> T,
+                  final         : Final * T -> T) : T
     {
-      def stack = SCG.Stack();
-
-      def pop(sub)
-      {
-        stack.PopRev(sub)
-      }
-
-      def loop(n, acc)
+      def loop(n, sub, acc)
       {
         match (n)
         {
-          | State(regions = Some(Region(sr))) as t => def sub_acc = pop(sr); 
-              def acc = if (region != null) region(sub_acc, t) else acc;
-              stack.Push(acc);
-              acc
-          | State(sub_states = sub) as t           => def sub_acc = pop(sub); 
-              def acc = if (state != null) state(sub_acc, t) else acc;
-              stack.Push(acc);
-              acc
-          | StateMachine as t                      => def stacc = stack.Pop();
-              def acc = if (state_machine != null) state_machine(stacc, t) else acc;
-              stack.Push(acc);
-              acc
-          | Final as t                             => def stacc = stack.Pop();
-              def acc = if (final != null) final(stacc, t) else acc;
-              stack.Push(acc);
-              acc    
+          | State(regions = Some) as t             => if (region != null) region(t, sub) else acc;
+          | State as t                             => if (state != null) state(t, sub) else acc;
+          | StateMachine as t                      => if (state_machine != null) state_machine(t, sub.First()) else acc;
+          | Final as t                             => if (final != null) final(t, sub.First()) else acc;
           | _                                      => acc
         }
       }
 
-      Iterator().FoldLeft(init, loop)
+      Fold(init, loop)
     }
 
     public Fold[T](init          : T,
@@ -271,24 +254,14 @@ namespace Nemerle.Statechart
                   state         : State * T -> T,
                   final         : Final * T -> T) : T
     {
-      def stack = SCG.Stack();
-
       def loop(n, acc)
       {
         match (n)
         {
-          | State(regions = Some()) as t           => def acc = if (region != null) region(t, acc) else acc;
-              stack.Push(acc);
-              acc
-          | State as t                             => def acc = if (state != null) state(t, acc) else acc;
-              stack.Push(acc);
-              acc
-          | StateMachine as t                      => def acc = if (state_machine != null) state_machine(t, acc) else acc;
-              stack.Push(acc);
-              acc
-          | Final as t                             => def acc = if (final != null) final(t, acc) else acc;
-              stack.Push(acc);
-              acc
+          | State(regions = Some()) as t           => if (region != null) region(t, acc) else acc;
+          | State as t                             => if (state != null) state(t, acc) else acc;
+          | StateMachine as t                      => if (state_machine != null) state_machine(t, acc) else acc;
+          | Final as t                             => if (final != null) final(t, acc) else acc;
           | _                                      => acc
         }
       }
@@ -306,36 +279,6 @@ namespace Nemerle.Statechart
         | _                                 => Enumerable.Empty()
       }
     }
-
-    //public Iterator : IEnumerable[StateNode]
-    //{
-    //  get
-    //  {
-    //    def child = SCG.Stack();
-    //    def parent = SCG.Stack();
-
-    //    def loop_init()
-    //    {
-    //      if (child.IsEmpty()) () else 
-    //      {
-    //        def curr = child.Pop();
-    //        parent.Push(curr);
-    //        match (curr)
-    //        {
-    //          | State(regions = Some(Region(sr))) => foreach (s in sr) child.Push(s);
-    //          | State(sub_states = sub)           => foreach (s in sub) child.Push(s);
-    //          | StateMachine(state = st)          => child.Push(st);
-    //          | _                                 => ()
-    //        }
-    //        loop_init()
-    //      }
-    //    }
-
-    //    child.Push(this);
-    //    loop_init();
-    //    parent
-    //  }
-    //}
 
   }
 
