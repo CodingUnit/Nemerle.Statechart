@@ -514,74 +514,31 @@ namespace Nemerle.Statechart
     }
 
     public FoldThis[T](an : T,
-                state   : IEnumerable[FsmState] * State * T -> FsmState * T,
+                state   : State * IEnumerable[FsmState] * T -> FsmState * T,
                 final   : Final * T-> FsmState * T,
-                sub_reg : IEnumerable[FsmState] * ConcurrentSubRegion * T -> FsmState * T,
-                region  : IEnumerable[FsmState] * ConcurrentRegion * T -> FsmState * T,
-                inlined_subm_inst : IEnumerable[FsmState] * InlinedSubMachineInstance * T -> FsmState * T,
+                sub_reg : ConcurrentSubRegion * IEnumerable[FsmState] * T -> FsmState * T,
+                region  : ConcurrentRegion * IEnumerable[FsmState] * T -> FsmState * T,
+                inlined_subm_inst : InlinedSubMachineInstance * IEnumerable[FsmState] * T -> FsmState * T,
                 sub_mach : SubMachine * T -> FsmState * T,
-                inlined_fsm : IEnumerable[FsmState] * InlinedSubMachine * T -> FsmState * T
+                inlined_fsm : InlinedSubMachine * IEnumerable[FsmState] * T -> FsmState * T
               ) : FsmState * T
     {
-
-      def xnode((n, an), sub : IEnumerable[FsmState], ot)
-      {
-        match (n)
-        {
-          | null when (sub != null)                    => (ot.ChangeSubStates(sub), an)
-          | t                                          => (t, an)
-        }
-      }
-
-      def stack = SCG.Stack();
-
-      def pop(sub)
-      {
-        stack.PopRev(sub)
-      }
-
-      def loop(st, an)
+      def loop(st, sub, an)
       {
         match (st)
         {
-          | State(sub_states = sub) as t                        => def sub_acc = pop(sub); 
-              def (acc, an) = if (state != null) xnode(state(sub_acc, t, an), sub_acc, t) else (t.ChangeSubStates(sub_acc), an);
-              stack.Push(acc);
-              an
-
-          | Final as t                                          => def (acc, an) = if (final != null) xnode(final(t, an), null, t) else (t, an);
-              stack.Push(acc);
-              an
-
-          | ConcurrentSubRegion(sub_states = sub) as t          => def sub_acc = pop(sub); 
-              def (acc, an) = if (sub_reg != null) xnode(sub_reg(sub_acc, t, an), sub_acc, t) else (t.ChangeSubStates(sub_acc), an);
-              stack.Push(acc);
-              an
-
-          | ConcurrentRegion(sub_regions = reg)  as t           => def regacc = pop(reg |> _ : FsmState);
-              def (acc, an) = if (region != null) xnode(region(regacc, t, an), regacc, t) else (t.ChangeSubStates(regacc), an);
-              stack.Push(acc);
-              an
-
-          | InlinedSubMachineInstance(sub_states = sub) as t    => def sub_acc = pop(sub); 
-              def (acc, an) = if (inlined_subm_inst != null) xnode(inlined_subm_inst(sub_acc, t, an), sub_acc, t) else (t.ChangeSubStates(sub_acc), an);
-              stack.Push(acc);
-              an 
-
-          | SubMachine as t                                     => def (acc, an) = if (sub_mach != null) sub_mach(t, an) else (t, an);
-              stack.Push(acc);
-              an
-
-          | InlinedSubMachine(sub_states = sub) as t            => def sub_acc = pop(sub); 
-              def (acc, an) = if (inlined_fsm != null) xnode(inlined_fsm(sub_acc, t, an), sub_acc, t) else (t.ChangeSubStates(sub_acc), an);
-              stack.Push(acc);
-              an
+          | State as t                        => if (state != null) state(t, sub, an) else (null, an);
+          | Final as t                        => if (final != null) final(t, an) else (null, an);
+          | ConcurrentSubRegion as t          => if (sub_reg != null) sub_reg(t, sub, an) else (null, an);
+          | ConcurrentRegion  as t            => if (region != null) region(t, sub, an) else (null, an);
+          | InlinedSubMachineInstance as t    => if (inlined_subm_inst != null) inlined_subm_inst(t, sub, an) else (null, an);
+          | SubMachine as t                   => if (sub_mach != null) sub_mach(t, an) else (null, an);
+          | InlinedSubMachine as t            => if (inlined_fsm != null) inlined_fsm(t, sub, an) else (null, an);
         }
       }
 
-      def an = Iterator().FoldLeft(an, loop);
-      def st = stack.Pop();
-      (st, an)
+      //def an = Iterator().FoldLeft(an, loop);
+      FoldThis(an, loop)
     }
 
     public FoldThis(state   : IEnumerable[FsmState] * FsmState -> FsmState) : FsmState
@@ -614,43 +571,16 @@ namespace Nemerle.Statechart
         }
       }
 
-      Iterator().FoldLeft(null, loop)
+      FoldThis()
+      //Iterator().FoldLeft(null, loop)
     }
 
-    public FoldThis[T](an : T, state   : IEnumerable[FsmState] * FsmState * T -> FsmState * T) : FsmState * T
-    {
+    //public FoldThis[T](an : T, state   : FsmState * IEnumerable[FsmState] * T -> FsmState * T) : FsmState * T
+    //{
 
-      def xnode((n, an), sub, ot)
-      {
-        match (n)
-        {
-          | null => (ot.ChangeSubStates(sub), an)
-          | t    => (t, an)
-        }
-      }
-
-      def stack = SCG.Stack();
-
-      def pop(sub)
-      {
-        stack.PopRev(sub)
-      }
-
-      def loop(st, _)
-      {
-        match (st)
-        {
-          | FsmState where (sub_states = sub) as t => def sub_acc = pop(sub); 
-              def (acc, an) = xnode(state(sub_acc, t, an), sub_acc, t);
-              stack.Push(acc);
-              an
-        }
-      }
-
-      def an = Iterator().FoldLeft(an, loop);
-      def st = stack.Pop();
-      (st, an)
-    }
+    //  //def an = Iterator().FoldLeft(an, loop);
+    //  FoldThis(an, state)
+    //}
 
     public Fold[T](
                   init : T,
@@ -683,6 +613,11 @@ namespace Nemerle.Statechart
     public GetChild() : IEnumerable[FsmState]
     {
       sub_states
+    }
+    
+    public Rebuild(child : IEnumerable[FsmState]) : FsmState
+    {
+      ChangeSubStates(child)
     }
     //public UpdateFromTarget(target : TransitionTarget) : FsmState
     //{

@@ -31,11 +31,11 @@ namespace Nemerle.Statechart
     TraversableImpl.DoTransformCached2(Macros.ImplicitCTX(), typeBuilder)
   }  
 
-  [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Class)]
-  macro CachedTraversable(typeBuilder : TypeBuilder)
-  {
-    TraversableImpl.DoTransformCached3(Macros.ImplicitCTX(), typeBuilder)
-  }  
+  //[MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Class)]
+  //macro CachedTraversable(typeBuilder : TypeBuilder)
+  //{
+  //  TraversableImpl.DoTransformCached3(Macros.ImplicitCTX(), typeBuilder)
+  //}  
 
   module TraversableImpl
   {
@@ -61,7 +61,7 @@ namespace Nemerle.Statechart
       //def change = "Change$(cached.Id)";
       //assert2(false);
       typeBuilder.AddImplementedInterface(<[ ICachedTraversable[$(name : usesite)] ]>);
-      typeBuilder.Define(<[decl: public cached_iter : IEnumerable[$(name : usesite)] * IEnumerable[int]; ]>);
+      typeBuilder.Define(<[decl: public cached_iter : IEnumerable[ITraversable[$(name : usesite)]] * IEnumerable[int]; ]>);
       typeBuilder.Define(<[decl: public cached_level_iter : IEnumerable[$(name : usesite)]; ]>);
       _ = typeBuilder;
     }
@@ -73,8 +73,15 @@ namespace Nemerle.Statechart
       //def cached = Macros.UseSiteSymbol("cached_iter");
       //def change = "Change$(cached.Id)";
       //assert2(false);
+      def is_get_code(x)
+      {
+        | ClassMember.Function(Name = "GetCode", header = PFunHeader where (Parameters = [])) => true
+        | _                                                                                   => false
+      }
+
       typeBuilder.Define(<[decl: public Current : $(name : usesite) { get { this } }]>);
-      typeBuilder.Define(<[decl: public CachedIterator : IEnumerable[$(name : usesite)] * IEnumerable[int] { get { cached_iter } } ]>);
+      when (!typeBuilder.GetParsedMembers().Exists(is_get_code)) typeBuilder.Define(<[decl: public GetCode() : int { _N_GetVariantCode() }]>);
+      typeBuilder.Define(<[decl: public CachedIterator : IEnumerable[ITraversable[$(name : usesite)]] * IEnumerable[int] { get { cached_iter } } ]>);
       typeBuilder.Define(<[decl: public CachedLevelIterator : IEnumerable[$(name : usesite)] { get { cached_level_iter } } ]>);
 
       typeBuilder.Define(<[decl: public CreateIterator() : $(name : usesite)
@@ -88,30 +95,50 @@ namespace Nemerle.Statechart
                               def iter = LevelOrderIterator();
                               $(name : usesite) ^& (cached_level_iter = iter);
                           } ]>);
-      typeBuilder.Define(<[decl: public this(c : IEnumerable[$(name : usesite)], cl : IEnumerable[$(name : usesite)]) {cached_iter = c; cached_level_iter = cl } ]>);
+      typeBuilder.Define(<[decl: public this(c : IEnumerable[ITraversable[$(name : usesite)]] * IEnumerable[int], cl : IEnumerable[$(name : usesite)]) {cached_iter = c; cached_level_iter = cl } ]>);
 
     }
 
-    public DoTransformCached3(typer : Typer, _typeBuilder : TypeBuilder) : void
-    {
-      Macros.DefineCTX(typer);
-      //def name = typeBuilder.Name;
-      //def cached = Macros.UseSiteSymbol("cached_iter");
-      //def change = "Change$(cached.Id)";
-      //assert2(false);
-
-    }
   }
 
   public interface ITraversable[T]
   {
     Current : T { get; }
+    GetCode() : int;
+    Visit[TAcc](ctx : IIterator[T], child : IEnumerable[TAcc]) : TAcc;
+    Visit[TAcc](ctx : IAccIterator[T], child : TAcc) : TAcc;
+    Rebuild(child : IEnumerable[T]) : T;
     GetChild() : IEnumerable[ITraversable[T]];
   }
 
+  public class IIterator[T]
+  {
+     setted : array[bool];
+
+     public this(params lst : array[object])
+     {
+       setted = lst.MapToArray(_ != null)
+     }
+     
+     public IsSet(node : ITraversable[T]) : bool
+     {
+       setted[node.GetCode()]
+     }
+     
+     //public abstract Visit(node : T, child : IEnumerable[TAcc], acc : TAcc) : TAcc;
+  }
+  
+  public class IAccIterator[T] : IIterator[T]
+  {
+     public this(params lst : array[object])
+     {
+       base(lst)
+     }
+  }
+  
   public interface ICachedTraversable[T] : ITraversable[T]
   {
-    CachedIterator : IEnumerable[T] * IEnumerable[int] { get; }
+    CachedIterator : IEnumerable[ITraversable[T]] * IEnumerable[int] { get; }
     CachedLevelIterator : IEnumerable[T] { get; }
   }
 
@@ -135,7 +162,7 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public Iterator[T](this obj : ICachedTraversable[T]) : IEnumerable[T]
+    public Iterator[T](this obj : ICachedTraversable[T]) : IEnumerable[ITraversable[T]]
     {
       def iter = obj.CachedIterator[0];
       if (iter == null) 
@@ -147,20 +174,83 @@ namespace Nemerle.Statechart
     public Fold[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, fold : T * IEnumerable[TAcc] * TAcc -> TAcc) : TAcc
     {
       def stack = SCG.Stack();
-      
+
       def fold_func(x, l, a)
       {
         def child = stack.PopRev(l);
-        def acc = fold(x, child, a);
+        def acc = fold(x.Current, child, a);
         stack.Push(acc);
         acc
       }
-      
+
       def (lst, len) = obj.LengthIterator(); 
       lst.Fold2(len, init, fold_func)
     }
 
-    public LengthIterator[T](this obj : ICachedTraversable[T]) : IEnumerable[T] * IEnumerable[int]
+    public Fold[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, fold : IIterator[T]) : TAcc
+    {
+      def stack = SCG.Stack();
+
+      def fold_func(x, l, a)
+      {
+        def child = stack.PopRev(l);
+        def acc = if (fold.IsSet(x)) x.Visit(fold, child) else a;
+        stack.Push(acc);
+        acc
+      }
+
+      def (lst, len) = obj.LengthIterator(); 
+      lst.Fold2(len, init, fold_func)
+    }
+
+    public Fold[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, fold : IAccIterator[T]) : TAcc
+    {
+      def fold_func(x, a)
+      {
+        if (fold.IsSet(x)) x.Visit(fold, a) else a
+      }
+
+      def lst = obj.Iterator(); 
+      lst.FoldLeft(init, fold_func)
+    }
+    
+    public FoldThis[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, fold : ITraversable[T] * IEnumerable[T] * TAcc -> T * TAcc) : T * TAcc where T : class
+    {
+      def stack = SCG.Stack();
+
+      def fold_func(x, l, a)
+      {
+        def child = stack.PopRev(l);
+        def (f, acc) = fold(x, child, a);
+        def f = if (f == null) x.Rebuild(child) else f;
+        stack.Push(f);
+        acc
+      }
+
+      def (lst, len) = obj.LengthIterator();
+      def acc = lst.Fold2(len, init, fold_func);
+      def st = stack.Pop();
+      (st, acc)
+    }
+
+    public FoldThis[T, TAcc](this obj : ICachedTraversable[T], fold : ITraversable[T] * IEnumerable[T] -> T) : T where T : class
+    {
+      def stack = SCG.Stack();
+
+      def fold_func(x, l, _)
+      {
+        def child = stack.PopRev(l);
+        def acc = fold(x, child);
+        def acc = if (acc == null) x.Rebuild(child) else acc;
+        stack.Push(acc);
+        acc
+      }
+
+      def (lst, len) = obj.LengthIterator();
+      lst.Fold2(len, null, fold_func)
+    }
+
+    public LengthIterator[T](this obj : ICachedTraversable[T]) : IEnumerable[ITraversable[T]] * IEnumerable[int]
     {
       def (iter, len) = obj.CachedIterator;
       if (iter == null) 
@@ -168,19 +258,19 @@ namespace Nemerle.Statechart
         LengthIterator(obj : ITraversable[T])
       } else (iter, len)
     }
-    
-    public LengthIterator[T](this obj : ITraversable[T]) : IEnumerable[T] * IEnumerable[int]
+
+    public LengthIterator[T](this obj : ITraversable[T]) : IEnumerable[ITraversable[T]] * IEnumerable[int]
     {
       def child = SCG.Stack();
       def parent = SCG.Stack();
       def length = SCG.Stack();
-      
+
       def loop_init()
       {
         if (child.IsEmpty()) () else 
         {
           def curr = child.Pop();
-          parent.Push(curr.Current);
+          parent.Push(curr);
           def len = child.PushLength(curr.GetChild());
           length.Push(len);
           //foreach (c in curr.GetChild()) child.Push(c);
@@ -192,18 +282,18 @@ namespace Nemerle.Statechart
       loop_init();
       (parent, length)
     }
-    
-    public Iterator[T](this obj : ITraversable[T]) : IEnumerable[T]
+
+    public Iterator[T](this obj : ITraversable[T]) : IEnumerable[ITraversable[T]]
     {
       def child = SCG.Stack();
       def parent = SCG.Stack();
-      
+
       def loop_init()
       {
         if (child.IsEmpty()) () else 
         {
           def curr = child.Pop();
-          parent.Push(curr.Current);
+          parent.Push(curr);
           foreach (c in curr.GetChild()) child.Push(c);
           loop_init()
         }
