@@ -14,10 +14,171 @@ namespace Nemerle.Statechart
 {
   using StateTransition;
   using PseudoStateNode;
+
+  public class FsmStateIteratorContext[T] : IIteratorContext[FsmState, T]
+  {
+    public state              : FsmState.State * IEnumerable[T]-> T;
+    public final              : FsmState.Final -> T;
+    public sub_reg            : FsmState.ConcurrentSubRegion * IEnumerable[T] -> T;
+    public region             : FsmState.ConcurrentRegion * IEnumerable[T] -> T;
+    public inlined_subm_inst  : FsmState.InlinedSubMachineInstance * IEnumerable[T] -> T;
+    public sub_mach           : FsmState.SubMachine -> T;
+    public inlined_fsm        : FsmState.InlinedSubMachine * IEnumerable[T] -> T;
+
+    public this(state              : FsmState.State * IEnumerable[T]-> T,
+                final              : FsmState.Final -> T,
+                sub_reg            : FsmState.ConcurrentSubRegion * IEnumerable[T] -> T,
+                region             : FsmState.ConcurrentRegion * IEnumerable[T] -> T,
+                inlined_subm_inst  : FsmState.InlinedSubMachineInstance * IEnumerable[T] -> T,
+                sub_mach           : FsmState.SubMachine -> T,
+                inlined_fsm        : FsmState.InlinedSubMachine * IEnumerable[T] -> T
+              ) 
+    {
+      base(state, final, sub_reg, region, inlined_subm_inst, sub_mach, inlined_fsm);
+      this.state = state;
+      this.final = final;
+      this.sub_reg = sub_reg;
+      this.region = region;
+      this.inlined_subm_inst = inlined_subm_inst;
+      this.sub_mach = sub_mach;
+      this.inlined_fsm = inlined_fsm;
+    }
+
+    public static Fold(this obj          : FsmState,
+                      init               : T,
+                      state              : FsmState.State * IEnumerable[T]-> T,
+                      final              : FsmState.Final -> T,
+                      sub_reg            : FsmState.ConcurrentSubRegion * IEnumerable[T] -> T,
+                      region             : FsmState.ConcurrentRegion * IEnumerable[T] -> T,
+                      inlined_subm_inst  : FsmState.InlinedSubMachineInstance * IEnumerable[T] -> T,
+                      sub_mach           : FsmState.SubMachine -> T,
+                      inlined_fsm        : FsmState.InlinedSubMachine * IEnumerable[T] -> T) : T
+    {
+      obj.Fold(init, FsmStateIteratorContext(state, final, sub_reg, region, inlined_subm_inst, sub_mach, inlined_fsm))
+    }
+
+    public static FoldThis(this obj      : FsmState,
+                      init               : FsmState,
+                      state              : FsmState.State * IEnumerable[FsmState]-> FsmState,
+                      final              : FsmState.Final -> FsmState,
+                      sub_reg            : FsmState.ConcurrentSubRegion * IEnumerable[FsmState] -> FsmState,
+                      region             : FsmState.ConcurrentRegion * IEnumerable[FsmState] -> FsmState,
+                      inlined_subm_inst  : FsmState.InlinedSubMachineInstance * IEnumerable[FsmState] -> FsmState,
+                      sub_mach           : FsmState.SubMachine -> FsmState,
+                      inlined_fsm        : FsmState.InlinedSubMachine * IEnumerable[FsmState] -> FsmState) : FsmState
+    {
+      obj.FoldThis(init, FsmStateIteratorContext(state, final, sub_reg, region, inlined_subm_inst, sub_mach, inlined_fsm))
+    }
+
+    public override Visit(obj : FsmState, acc : IEnumerable[T]) : T
+    {
+      match (obj)
+      {
+        | State as t                        => state(t, acc)
+        | Final as t                        => final(t) 
+        | ConcurrentSubRegion as t          => sub_reg(t, acc)
+        | ConcurrentRegion  as t            => region(t, acc)
+        | InlinedSubMachineInstance as t    => inlined_subm_inst(t, acc)
+        | SubMachine as t                   => sub_mach(t)
+        | InlinedSubMachine as t            => inlined_fsm(t, acc)
+      }
+    }
+
+  }
+
+  public class FsmStateSingleIteratorContext[T] : ISingleIteratorContext[FsmState, T]
+  {
+    public state         : FsmState * IEnumerable[T] -> T;
+
+    public this(state : FsmState * IEnumerable[T] -> T) 
+    {
+      base(state);
+      this.state = state;
+    }
+
+    public static FoldThis(this obj : FsmState,
+                          init          : FsmState,
+                          state         : FsmState * IEnumerable[FsmState] -> FsmState) : FsmState
+    {
+      obj.FoldThis(init, FsmStateSingleIteratorContext(state))
+    }
+
+    public static Fold(this obj : FsmState,
+                      init     : T,
+                      state    : FsmState * IEnumerable[T] -> T) : T
+    {
+      obj.Fold(init, FsmStateSingleIteratorContext(state))
+    }
+
+    public override Visit(obj : FsmState, acc : IEnumerable[T]) : T
+    {
+      state(obj, acc)
+    }
+    
+  }
+
+  public class FsmStateAccIteratorContext[T] : IAccIteratorContext[FsmState, T]
+  {
+    public state              : FsmState.State * T-> T;
+    public final              : FsmState.Final * T -> T;
+    public sub_reg            : FsmState.ConcurrentSubRegion * T -> T;
+    public region             : FsmState.ConcurrentRegion * T -> T;
+    public inlined_subm_inst  : FsmState.InlinedSubMachineInstance * T -> T;
+    public sub_mach           : FsmState.SubMachine * T -> T;
+    public inlined_fsm        : FsmState.InlinedSubMachine * T -> T;
+
+    public this(state             : FsmState.State * T -> T, 
+                final             : FsmState.Final * T -> T, 
+                sub_reg           : FsmState.ConcurrentSubRegion * T -> T, 
+                region            : FsmState.ConcurrentRegion * T -> T,
+                inlined_subm_inst : FsmState.InlinedSubMachineInstance * T -> T,
+                sub_mach          : FsmState.SubMachine * T -> T,
+                inlined_fsm       : FsmState.InlinedSubMachine * T -> T,
+              ) 
+    {
+      base(state, final, sub_reg, region, inlined_subm_inst, sub_mach, inlined_fsm);
+      this.state = state;
+      this.final = final;
+      this.sub_reg = sub_reg;
+      this.region = region;
+      this.inlined_subm_inst = inlined_subm_inst;
+      this.sub_mach = sub_mach;
+      this.inlined_fsm = inlined_fsm;
+    }
+
+    public static Fold(this obj : FsmState,
+                      init              : T,
+                      state             : FsmState.State * T -> T, 
+                      final             : FsmState.Final * T -> T, 
+                      sub_reg           : FsmState.ConcurrentSubRegion * T -> T, 
+                      region            : FsmState.ConcurrentRegion * T -> T,
+                      inlined_subm_inst : FsmState.InlinedSubMachineInstance * T -> T,
+                      sub_mach          : FsmState.SubMachine * T -> T,
+                      inlined_fsm       : FsmState.InlinedSubMachine * T -> T) : T
+    {
+      obj.Fold(init, FsmStateAccIteratorContext(state, final, sub_reg, region, inlined_subm_inst, sub_mach, inlined_fsm))
+    }
+
+    public override Visit(obj : FsmState, acc : T) : T
+    {
+      match (obj)
+      {
+        | State as t                        => state(t, acc)
+        | Final as t                        => final(t, acc)
+        | ConcurrentSubRegion as t          => sub_reg(t, acc)
+        | ConcurrentRegion  as t            => region(t, acc)
+        | InlinedSubMachineInstance as t    => inlined_subm_inst(t, acc)
+        | SubMachine as t                   => sub_mach(t, acc)
+        | InlinedSubMachine as t            => inlined_fsm(t, acc)
+      }
+    }
+
+  }
+
   /// <summary>
   /// Description of FsmStateImpl.
   /// </summary>
-  [CachedTraversable]
+  [Traversable]
   public partial variant FsmState
   {
     public override ToString() : string {Name}
@@ -26,9 +187,9 @@ namespace Nemerle.Statechart
     {
       def map = an.statemap;
       def (super, an) = if (super_state != null) 
-                        {
+                         {
                            map.Get(super_state.Name, an)
-                        } else (super_state, an);
+                         } else (super_state, an);
       //def super = if (super.AstName == null) super.ChangeName(TopStateName) else super;
       def an = this.Initial.FoldLeft(an, _.UpdateReference(_));
       def an = transitions.FoldLeft(an, _.UpdateReference(_));
@@ -450,68 +611,68 @@ namespace Nemerle.Statechart
       SuperStatesInclude.NToList().FirstElems(_ == st).FilterType();
     }
 
-    public FoldThis(
-                state   : IEnumerable[FsmState] * State -> FsmState,
-                final   : Final            -> FsmState,
-                sub_reg : IEnumerable[FsmState] * ConcurrentSubRegion -> FsmState,
-                region  : IEnumerable[FsmState] * ConcurrentRegion -> FsmState,
-                inlined_subm_inst : IEnumerable[FsmState] * InlinedSubMachineInstance -> FsmState,
-                sub_mach : SubMachine -> FsmState,
-                inlined_fsm : IEnumerable[FsmState] * InlinedSubMachine -> FsmState
-              ) : FsmState
-    {
+    //public FoldThis(
+    //            state   : IEnumerable[FsmState] * State -> FsmState,
+    //            final   : Final            -> FsmState,
+    //            sub_reg : IEnumerable[FsmState] * ConcurrentSubRegion -> FsmState,
+    //            region  : IEnumerable[FsmState] * ConcurrentRegion -> FsmState,
+    //            inlined_subm_inst : IEnumerable[FsmState] * InlinedSubMachineInstance -> FsmState,
+    //            sub_mach : SubMachine -> FsmState,
+    //            inlined_fsm : IEnumerable[FsmState] * InlinedSubMachine -> FsmState
+    //          ) : FsmState
+    //{
 
-      def xnode(n, sub : IEnumerable[FsmState], ot)
-      {
-        match (n)
-        {
-          | null when (sub != null) => ot.ChangeSubStates(sub)
-          | t    => t
-        }
-      }
+    //  def xnode(n, sub : IEnumerable[FsmState], ot)
+    //  {
+    //    match (n)
+    //    {
+    //      | null when (sub != null) => ot.ChangeSubStates(sub)
+    //      | t    => t
+    //    }
+    //  }
 
-      def stack = SCG.Stack();
+    //  def stack = SCG.Stack();
 
-      def pop(sub)
-      {
-        stack.PopRev(sub)
-      }
+    //  def pop(sub)
+    //  {
+    //    stack.PopRev(sub)
+    //  }
 
-      def loop(st, _)
-      {
-        match (st)
-        {
-          | State(sub_states = sub) as t                        => def sub_acc = pop(sub); 
-              def acc = if (state != null) xnode(state(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
-              stack.Push(acc);
-              acc
-          | Final as t                                          => def acc = if (final != null) xnode(final(t), null, t) else t;
-              stack.Push(acc);
-              acc
+    //  def loop(st, _)
+    //  {
+    //    match (st)
+    //    {
+    //      | State(sub_states = sub) as t                        => def sub_acc = pop(sub); 
+    //          def acc = if (state != null) xnode(state(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
+    //          stack.Push(acc);
+    //          acc
+    //      | Final as t                                          => def acc = if (final != null) xnode(final(t), null, t) else t;
+    //          stack.Push(acc);
+    //          acc
 
-          | ConcurrentSubRegion(sub_states = sub) as t          => def sub_acc = pop(sub); 
-              def acc = if (sub_reg != null) xnode(sub_reg(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
-              stack.Push(acc);
-              acc
+    //      | ConcurrentSubRegion(sub_states = sub) as t          => def sub_acc = pop(sub); 
+    //          def acc = if (sub_reg != null) xnode(sub_reg(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
+    //          stack.Push(acc);
+    //          acc
 
-          | ConcurrentRegion(sub_regions = reg)  as t           => def regacc = pop(reg |> _ : FsmState);
-              def acc = if (regacc != null) xnode(region(regacc, t), regacc, t) else t.ChangeSubStates(regacc);
-              stack.Push(acc);
-              acc
-          | InlinedSubMachineInstance(sub_states = sub) as t    => def sub_acc = pop(sub); 
-              def acc = if (inlined_subm_inst != null) xnode(inlined_subm_inst(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
-              stack.Push(acc);
-              acc 
-          | SubMachine as t                                     => if (sub_mach != null) sub_mach(t) else t;
-          | InlinedSubMachine(sub_states = sub) as t            => def sub_acc = pop(sub); 
-              def acc = if (inlined_fsm != null) xnode(inlined_fsm(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
-              stack.Push(acc);
-              acc
-        }
-      }
+    //      | ConcurrentRegion(sub_regions = reg)  as t           => def regacc = pop(reg |> _ : FsmState);
+    //          def acc = if (regacc != null) xnode(region(regacc, t), regacc, t) else t.ChangeSubStates(regacc);
+    //          stack.Push(acc);
+    //          acc
+    //      | InlinedSubMachineInstance(sub_states = sub) as t    => def sub_acc = pop(sub); 
+    //          def acc = if (inlined_subm_inst != null) xnode(inlined_subm_inst(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
+    //          stack.Push(acc);
+    //          acc 
+    //      | SubMachine as t                                     => if (sub_mach != null) sub_mach(t) else t;
+    //      | InlinedSubMachine(sub_states = sub) as t            => def sub_acc = pop(sub); 
+    //          def acc = if (inlined_fsm != null) xnode(inlined_fsm(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
+    //          stack.Push(acc);
+    //          acc
+    //    }
+    //  }
 
-      Iterator().FoldLeft(null, loop)
-    }
+    //  Iterator().FoldLeft(null, loop)
+    //}
 
     public FoldThis[T](an : T,
                 state   : State * IEnumerable[FsmState] * T -> FsmState * T,
@@ -541,39 +702,39 @@ namespace Nemerle.Statechart
       FoldThis(an, loop)
     }
 
-    public FoldThis(state   : IEnumerable[FsmState] * FsmState -> FsmState) : FsmState
-    {
+    //public FoldThis(state   : IEnumerable[FsmState] * FsmState -> FsmState) : FsmState
+    //{
 
-      def xnode(n, ot)
-      {
-        match (n)
-        {
-          | null => ot
-          | t    => t
-        }
-      }
+    //  def xnode(n, ot)
+    //  {
+    //    match (n)
+    //    {
+    //      | null => ot
+    //      | t    => t
+    //    }
+    //  }
 
-      def stack = SCG.Stack();
+    //  def stack = SCG.Stack();
 
-      def pop(sub)
-      {
-        stack.PopRev(sub)
-      }
+    //  def pop(sub)
+    //  {
+    //    stack.PopRev(sub)
+    //  }
 
-      def loop(st, _)
-      {
-        match (st)
-        {
-          | FsmState where (sub_states = sub) as t => def sub_acc = pop(sub); 
-              def acc = xnode(state(sub_acc, t), t);
-              stack.Push(acc);
-              acc
-        }
-      }
+    //  def loop(st, _)
+    //  {
+    //    match (st)
+    //    {
+    //      | FsmState where (sub_states = sub) as t => def sub_acc = pop(sub); 
+    //          def acc = xnode(state(sub_acc, t), t);
+    //          stack.Push(acc);
+    //          acc
+    //    }
+    //  }
 
-      FoldThis()
-      //Iterator().FoldLeft(null, loop)
-    }
+    //  FoldThis()
+    //  //Iterator().FoldLeft(null, loop)
+    //}
 
     //public FoldThis[T](an : T, state   : FsmState * IEnumerable[FsmState] * T -> FsmState * T) : FsmState * T
     //{
@@ -582,39 +743,57 @@ namespace Nemerle.Statechart
     //  FoldThis(an, state)
     //}
 
-    public Fold[T](
-                  init : T,
-                  state   : T * State -> T,
-                  final   : T * Final -> T,
-                  sub_reg : T * ConcurrentSubRegion -> T,
-                  region  : T * ConcurrentRegion -> T,
-                  inlined_subm_inst : T * InlinedSubMachineInstance -> T,
-                  sub_mach : T * SubMachine -> T,
-                  inlined_fsm : T * InlinedSubMachine -> T
-                  ) : T
-    {
-      def loop(st, acc)
-      {
-        match (st)
-        {
-          | State as t                        => state(acc, t)
-          | Final as t                        => final(acc, t)
-          | ConcurrentSubRegion as t          => sub_reg(acc, t)
-          | ConcurrentRegion  as t            => region(acc, t)
-          | InlinedSubMachineInstance as t    => inlined_subm_inst(acc, t)
-          | SubMachine as t                   => sub_mach(acc, t)
-          | InlinedSubMachine as t            => inlined_fsm(acc, t)
-        }
-      }
+    //public Fold[T](
+    //              init : T,
+    //              state   : T * State -> T,
+    //              final   : T * Final -> T,
+    //              sub_reg : T * ConcurrentSubRegion -> T,
+    //              region  : T * ConcurrentRegion -> T,
+    //              inlined_subm_inst : T * InlinedSubMachineInstance -> T,
+    //              sub_mach : T * SubMachine -> T,
+    //              inlined_fsm : T * InlinedSubMachine -> T
+    //              ) : T
+    //{
+    //  def loop(st, acc)
+    //  {
+    //    match (st)
+    //    {
+    //      | State as t                        => state(acc, t)
+    //      | Final as t                        => final(acc, t)
+    //      | ConcurrentSubRegion as t          => sub_reg(acc, t)
+    //      | ConcurrentRegion  as t            => region(acc, t)
+    //      | InlinedSubMachineInstance as t    => inlined_subm_inst(acc, t)
+    //      | SubMachine as t                   => sub_mach(acc, t)
+    //      | InlinedSubMachine as t            => inlined_fsm(acc, t)
+    //    }
+    //  }
 
-      Iterator().FoldLeft(init, loop)
-    }
+    //  Iterator().FoldLeft(init, loop)
+    //}
+
+
+
+
+    //public Visit[T](ctx : ISingleIteratorContext[FsmState], acc : T) : T
+    //{
+    //  def ctx = ctx :> FsmStateSingleIteratorContext[T];
+    //  match (this)
+    //  {
+    //      | State as t                        => ctx.state(t, acc)
+    //      | Final as t                        => ctx.final(t, acc)
+    //      | ConcurrentSubRegion as t          => ctx.sub_reg(t, acc)
+    //      | ConcurrentRegion  as t            => ctx.region(t, acc)
+    //      | InlinedSubMachineInstance as t    => ctx.inlined_subm_inst(t, acc)
+    //      | SubMachine as t                   => ctx.sub_mach(t, acc)
+    //      | InlinedSubMachine as t            => ctx.inlined_fsm(t, acc)
+    //  }
+    //}
 
     public GetChild() : IEnumerable[FsmState]
     {
       sub_states
     }
-    
+
     public Rebuild(child : IEnumerable[FsmState]) : FsmState
     {
       ChangeSubStates(child)
@@ -639,7 +818,7 @@ namespace Nemerle.Statechart
     //    | _                => this
     //  }
     //}
-    
+
     public UpdateHistory(hist : StateHistory) : FsmState
     {
       def hist = history.Map(x => if (x.type == hist.type) hist else x);

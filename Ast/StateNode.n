@@ -20,8 +20,7 @@ namespace Nemerle.Statechart
     | Region
   }
 
-    //[Record]
-  public class Iterator[T] : IIterator[StateNode]
+  public class StateNodeIteratorContext[T] : IIteratorContext[StateNode, T]
   {
     public state_machine : StateNode.StateMachine * T-> T;
     public region        : StateNode.State * IEnumerable[T] -> T;
@@ -37,10 +36,32 @@ namespace Nemerle.Statechart
       this.final = final;
     }
 
+    public static Fold(this obj : StateNode,
+                      init          : T,
+                      state_machine : StateNode.StateMachine * T-> T,
+                      region        : StateNode.State * IEnumerable[T] -> T,
+                      state         : StateNode.State * IEnumerable[T] -> T,
+                      final         : StateNode.Final * T -> T) : T
+    {
+      obj.Fold(init, StateNodeIteratorContext(state_machine, region, state, final))
+    }
 
+    public override Visit(obj : StateNode, acc : IEnumerable[T]) : T
+    {
+      match (obj)
+      {
+        | State(regions = Some) as t => region(t, acc)
+        | State as t                 => state(t, acc)
+        | StateMachine as t          => state_machine(t, acc.First())
+        | Final as t                 => final(t, acc.First())
+        | _                          => default(T)
+      }
+    }
+    
+    
   }
 
-  public class AccIterator[T] : IAccIterator[StateNode]
+  public class StateNodeAccIteratorContext[T] : IAccIteratorContext[StateNode, T]
   {
     public state_machine : StateNode.StateMachine * T-> T;
     public region        : StateNode.State * T -> T;
@@ -56,14 +77,36 @@ namespace Nemerle.Statechart
       this.final = final;
     }
 
+    public static Fold(this obj : StateNode,
+                      init          : T,
+                      state_machine : StateNode.StateMachine * T -> T,
+                      region        : StateNode.State * T -> T,
+                      state         : StateNode.State * T -> T,
+                      final         : StateNode.Final * T -> T) : T
+    {
+      obj.Fold(init, StateNodeAccIteratorContext(state_machine, region, state, final))
+    }
+
+    public override Visit(obj : StateNode, acc : T) : T
+    {
+      match (obj)
+      {
+        | State(regions = Some) as t => region(t, acc)
+        | State as t                 => state(t, acc)
+        | StateMachine as t          => state_machine(t, acc)
+        | Final as t                 => final(t, acc)
+        | _                          => acc
+      }
+    }
 
   }
-  
-  [CachedTraversable]
+
+  [Traversable]
   [Record]
   public variant StateNode
   {
-    | StateMachine 
+    //[Traverse(_)]
+    | StateMachine
       {
         flags : MachineFlags;
         state : State;
@@ -113,6 +156,7 @@ namespace Nemerle.Statechart
         }
 
       }
+    //[Traverse(_)]
     | Final
       {
         state  : State;
@@ -124,6 +168,8 @@ namespace Nemerle.Statechart
         }
 
       }
+    //[Traverse]
+    //[Traverse(regions = Some)]
     | State 
       {
         this (n : string) {name = n;reference = true;base(0);}
@@ -267,62 +313,6 @@ namespace Nemerle.Statechart
 
     public this(p : int) { pos = p }
 
-    public Visit[T](ctx : IIterator[StateNode], acc : IEnumerable[T]) : T
-    {
-      def ctx = ctx :> Iterator[T];
-      match (this)
-      {
-        | State(regions = Some) as t => ctx.region(t, acc)
-        | State as t                 => ctx.state(t, acc)
-        | StateMachine as t          => ctx.state_machine(t, acc.First())
-        | Final as t                 => ctx.final(t, acc.First())
-        | _                          => default(T)
-      }
-    }
-
-    public Visit[T](ctx : IAccIterator[StateNode], acc : T) : T
-    {
-      def ctx = ctx :> AccIterator[T];
-      match (this)
-      {
-        | State(regions = Some) as t => ctx.region(t, acc)
-        | State as t                 => ctx.state(t, acc)
-        | StateMachine as t          => ctx.state_machine(t, acc)
-        | Final as t                 => ctx.final(t, acc)
-        | _                          => default(T)
-      }
-    }
-    
-    public Fold[T](init          : T,
-                  state_machine : StateMachine * T-> T,
-                  region        : State * IEnumerable[T] -> T,
-                  state         : State * IEnumerable[T] -> T,
-                  final         : Final * T -> T) : T
-    {
-      //def loop(n, sub, acc)
-      //{
-      //  match (n)
-      //  {
-      //    | State(regions = Some) as t             => if (region != null) region(t, sub) else acc;
-      //    | State as t                             => if (state != null) state(t, sub) else acc;
-      //    | StateMachine as t                      => if (state_machine != null) state_machine(t, sub.First()) else acc;
-      //    | Final as t                             => if (final != null) final(t, sub.First()) else acc;
-      //    | _                                      => acc
-      //  }
-      //}
-
-      Fold(init, Iterator(state_machine, region, state, final))
-    }
-
-    public Fold[T](init          : T,
-                  state_machine : StateMachine * T -> T,
-                  region        : State * T -> T,
-                  state         : State * T -> T,
-                  final         : Final * T -> T) : T
-    {
-      Fold(init, AccIterator(state_machine, region, state, final))
-    }
-
     public GetCode() : int
     {
       match (this)
@@ -335,6 +325,7 @@ namespace Nemerle.Statechart
       }
     }
 
+    
     public GetChild() : IEnumerable[StateNode.State]
     {
       match (this)
