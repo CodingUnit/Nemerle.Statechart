@@ -25,8 +25,8 @@ namespace Nemerle.Statechart
   {
     <[ ]>
   }
-  
-  
+
+
   macro @=.(first, second)
   syntax (first, "=.", second)
   {
@@ -48,13 +48,28 @@ namespace Nemerle.Statechart
   {
     Utils.CreateAssign(obj, expr)
   }
-  
+
   module Utils
   {
-   
+
+    public attr_func(this f : IField, func : list[PExpr] -> bool) : bool
+    {
+      if (f is LibraryReference.ExternalFieldInfo) false else
+      {
+        def attr = f.GetModifiers().GetMacroAttributes();
+        func(attr)
+      }
+    }
+
+    public attr_func(this f : ClassMember.Field, func : list[PExpr] -> bool) : bool
+    {
+        def attr = f.ParsedAttributsAndModifiers.GetMacroAttributes();
+        func(attr)
+    }
+    
     public CreateAssign(obj : PExpr, expr : PExpr) : PExpr
     {
-      
+
       match (expr)
       {
         | <[ {..$expr} ]> => <[ {..$(expr.Map(CreateAssign(obj, _)))} ]>
@@ -62,7 +77,7 @@ namespace Nemerle.Statechart
         | _ => Message.Error("element must be PExpr.Ref"); <[ () ]>
       }
     }
-    
+
     public CreateSingleFunc(block : PExpr) : PExpr
     {
       def create_res(x)
@@ -70,7 +85,7 @@ namespace Nemerle.Statechart
         | <[ def $_ = $_ ]> => x
         | x => <[ def res = $x ]>
       }
-      
+
       def process(_, after, expr)
       {
         match (after, expr)
@@ -82,10 +97,10 @@ namespace Nemerle.Statechart
           | (_, x) => x
         }
       }
-      
+
       Macros.TraverseExpr(None(), block, false, process)
     }
-    
+
     public GetRetExpr(first : PExpr, second : PExpr) : PExpr * PExpr
     {
       def assign = <[ $first = $second ]>;
@@ -94,13 +109,13 @@ namespace Nemerle.Statechart
         | (_, <[ $(_ : name) ]>) => (assign, second)
         | (<[ $(_ : name) ]>, _) => (assign, first)
         | _ => def assign = <[
-                              def res = $second;
+                             def res = $second;
                               $first = res;
                             ]>;
             (assign, <[ res ]>)
       }
     }
-    
+
     public CreateConstrBody(type : string, pars : list[string], parms : list[string * string]) : PExpr
     {
       def inst_par(p, pars)
@@ -112,11 +127,11 @@ namespace Nemerle.Statechart
           | _            => <[ $(ep : usesite) = $(p : usesite) ]>
         }
       }
-      
+
       def expr = pars.Map(inst_par(_, parms));
       <[ $(type : usesite)(..$expr) ]>
     }
-    
+
     public CreateNewInst(typebuilder : TypeBuilder, type : PExpr, parms : PExpr) : PExpr
     {
       def split(p)
@@ -134,50 +149,49 @@ namespace Nemerle.Statechart
           | x              => [x]
         }
       }
-      
+
+
       def have_record_ignore(f : IField)
       {
-        if (f is LibraryReference.ExternalFieldInfo) false else
-        {
-          def attr = f.GetModifiers().GetMacroAttributes();
-          attr.Exists(_ is <[ RecordIgnore ]>);
-        }
+        f.attr_func(x => x.Exists(_ is <[ RecordIgnore ]>))
       }
-      
+
+
+
       def def_constr(cur_type)
       {
         def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         def fields = cur_type.GetFields(opt);
-        def fields = fields.Exclude(have_record_ignore);
+        def fields = fields.Exclude(x => attr_func(x, x => x.Exists(_ is <[ RecordIgnore ]>) && !x.Exists(_ is <[ NeedChange ]>)));
         def pars = fields.Map(_.Name);
         def parms = unseq(parms);
         def parms = parms.Map(split);
         CreateConstrBody(cur_type.Name, pars, parms)
       }
-      
+
       //assert2(false);
       def cur_type = typebuilder;
       def type = type?.ToString();
       match (cur_type.GetVariantOptions())
       {
         | [] => def cur_type = if (type == null) cur_type else
-                {
-                  if (cur_type.Name == type) cur_type else 
-                  {
-                    def cur_type = cur_type.GetVariantOptionParent();
-                    if (type == cur_type.Name) cur_type else 
-                    match (cur_type.GetVariantOptions().Find(x => x.Name == type))
-                    {
-                      | Some(t) => t
-                      | _       => Message.Error($"Cannot find the '$type' type");null
-                    }
-                  }
-                }
-                
+                                {
+                                  if (cur_type.Name == type) cur_type else 
+                                  {
+                                    def cur_type = cur_type.GetVariantOptionParent();
+                                    if (type == cur_type.Name) cur_type else 
+                                      match (cur_type.GetVariantOptions().Find(x => x.Name == type))
+                                      {
+                                        | Some(t) => t
+                                        | _       => Message.Error($"Cannot find the '$type' type");null
+                                      }
+                                  }
+                                }
+
             if (cur_type != null) def_constr(cur_type) else <[]>
-            
+
         | lst => 
-        
+
             def def_opts(o)
             {
               def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly | BindingFlags.NonPublic;
@@ -187,7 +201,7 @@ namespace Nemerle.Statechart
               def body = def_constr(o);
               <[case: | $(o.Name : usesite)(..$names) => $body ]>
             }
-        
+
             def expr = lst.Map(def_opts);
             <[
             match (this)
@@ -198,13 +212,13 @@ namespace Nemerle.Statechart
       }     
     }
   }
-  
-  
+
+
   macro @^&(type, parms)
   syntax (type, "^&", "(", parms,")")
   {
     //assert2(false);
     Utils.CreateNewInst(Macros.ImplicitCTX().CurrentTypeBuilder, type, parms)
   }
-  
+
 }

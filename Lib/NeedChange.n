@@ -19,8 +19,35 @@ namespace Nemerle.Statechart
     NeedChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, field, pars)
   }
 
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Field)]
+  macro NeedChange(typeBuilder : TypeBuilder, field : ClassMember.Field, params pars : list[PExpr])
+  {
+    NeedChangeImpl.DoTransform2(Macros.ImplicitCTX(), typeBuilder, field, pars)
+  }
+
   module NeedChangeImpl
   {
+    public DoTransform2(_ : Typer, typeBuilder : TypeBuilder, field : ClassMember.Field, _ : list[PExpr]) : void
+    {
+      def defined(fields)
+      {
+        def constr = typeBuilder.GetParsedMembers(true).OfType.[ClassMember.Function]().Filter(x => x.Name == ".ctor");
+        constr.Exists(c => c.header.Parameters.Equals(fields.NToList(), (x, y) => x.Name == y.Name))
+      }
+      
+      when (field.attr_func(x => x.Exists(_ is <[ RecordIgnore ]>) && x.Exists(_ is <[ NeedChange ]>)))
+      {
+        def fields = typeBuilder.GetParsedMembers(true).OfType.[ClassMember.Field]();
+        def body = fields.Map(x => <[ this.$(x.Name : usesite) = $(x.Name : usesite) ]>);
+        def pars = fields.Map(f => <[ parameter: $(f.Name : usesite) : $(f.ty) ]>);
+        when (!defined(fields))
+         typeBuilder.Define(<[decl: public this(..$pars)
+                              {
+                                ..$body
+                              } ]>);
+      }
+    }
+
     public DoTransform(typer : Typer, typeBuilder : TypeBuilder, field : FieldBuilder, aliases : list[PExpr]) : void
     {
       Macros.DefineCTX(typer);
@@ -53,52 +80,11 @@ namespace Nemerle.Statechart
 
       def have_record_ignore(f : IField)
       {
-        if (f is LibraryReference.ExternalFieldInfo) false else
-        {
-          def attr = f.GetModifiers().GetMacroAttributes();
-          attr.Exists(_ is <[ RecordIgnore ]>);
-        }
+        f.attr_func(x => x.Exists(_ is <[ RecordIgnore ]>) && !x.Exists(_ is <[ NeedChange ]>))
       }
-      
-      //def define_explicit_constr(_f)
-      {
-        //def _ = field :: f.Exclude(x => have_record_ignore(x));
-        //CreateConstrBody(cur_type.Name, pars, parms)
-        
-      //match (typeBuilder.GetVariantOptions())
-      //{
-      //  | [] => def cur_type = if (type == null) cur_type else
-      //          {
-      //            if (cur_type.Name == type) cur_type else 
-      //            {
-      //              def cur_type = cur_type.GetVariantOptionParent();
-      //              if (type == cur_type.Name) cur_type else 
-      //              match (cur_type.GetVariantOptions().Find(x => x.Name == type))
-      //              {
-      //                | Some(t) => t
-      //                | _       => Message.Error($"Cannot find the '$type' type");null
-      //              }
-      //            }
-      //          }
-                
-      //      if (cur_type != null) def_constr(cur_type) else <[]>
-            
-      //  | lst => 
-        
-      //      def def_opts(o)
-      //      {
-      //        def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly | BindingFlags.NonPublic;
-      //        def fields = o.GetFields(opt);
-      //        def names = fields.Map(x => <[ $(x.Name : usesite) ]>);
-      //        def body = def_constr(o);
-      //        <[case: | $(o.Name : usesite)(..$names) => $body ]>
-      //      }
-        
-      }
-      
+
       def create_cons(t, f : IField)
       {
-
         def fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic).Rev();
         def fields = fields.Exclude(have_record_ignore);
         def fields = f :: fields.Filter(x => aliases.Exists(y => y.ToString() == x.Name));
@@ -113,24 +99,19 @@ namespace Nemerle.Statechart
 
         def clist = chlist.Map((x, y, _) => <[ $(x : usesite) = $(y : usesite) ]>);
         def body = Utils.CreateNewInst(t, null, <[ {..$clist} ]>);
-        def check_list = chlist.Map((x, y, t) => if (t.IsValueType) <[ $(x : usesite) != $(y : usesite) ]> else <[ $(x : usesite) : object != $(y : usesite) ]>);
+        def check_list = chlist.Map((x, y, t) => if (t.IsValueType) <[ ! $(x : usesite).Equals($(y : usesite)) ]> else <[ $(x : usesite) : object != $(y : usesite) ]>);
         def check = check_list.FoldLeft(<[ false ]>, (x, a) => <[ $x || $a ]>);
         t.Define(<[ decl: public $(name : usesite)(..$sname) : $(type : typed)
             {
               if ($check) $body else this
             }]>);
-        //when (have_record_ignore(f))    
-        //{
-        //  define_explicit_constr(fields)
-        //}
       }
-      
+
       match (typeBuilder.GetVariantOptions())
       {
         | [] => create_cons(typeBuilder, field)
-        | lst => 
-            create_cons(typeBuilder, field);
-            lst.Iter(create_cons(_, field))
+        | lst => create_cons(typeBuilder, field);
+                 lst.Iter(create_cons(_, field))
       }
 
       // TODO: Add implementation here.
