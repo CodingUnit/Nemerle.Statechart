@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Collections;
 using System.Linq;
 using SCG = System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Nemerle.Statechart
 {
@@ -17,6 +18,7 @@ namespace Nemerle.Statechart
   [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
   macro Traverse(_typeBuilder : TypeBuilder, params _expr : list[PExpr])
   {
+    //TraversableImpl.DoCheckTraverse(Macros.ImplicitCTX(), typeBuilder, expr)
   }
 
   [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
@@ -31,6 +33,12 @@ namespace Nemerle.Statechart
     TraversableImpl.DoTransformCached2(Macros.ImplicitCTX(), typeBuilder, expr)
   }  
 
+  [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Class)]
+  macro Traversable(typeBuilder : TypeBuilder, params expr : list[PExpr])
+  {
+    TraversableImpl.DoCheckTraverse(Macros.ImplicitCTX(), typeBuilder, expr)
+  }  
+  
   //[MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Class)]
   //macro CachedTraversable(typeBuilder : TypeBuilder)
   //{
@@ -44,14 +52,9 @@ namespace Nemerle.Statechart
     {
       Macros.DefineCTX(typer);
       def name = typeBuilder.Name;
-      //def cached = Macros.UseSiteSymbol("cached_iter");
-      //def change = "Change$(cached.Id)";
-      //assert2(false);
       typeBuilder.AddImplementedInterface(<[ ICachedTraversable[$(name : usesite)] ]>);
       typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] public cached_iter : IEnumerable[ITraversable[$(name : usesite)]] * IEnumerable[int]; ]>);
       typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] public cached_level_iter : IEnumerable[$(name : usesite)]; ]>);
-      
-      _ = typeBuilder;
     }
 
 
@@ -79,9 +82,89 @@ namespace Nemerle.Statechart
                           {
                               ChangeCachedLevelIter(LevelOrderIterator())
                           } ]>);
+                          
+      //DoCheckTraverse(typer, typeBuilder);                    
 
     }
 
+    public DoCheckTraverse(typer : Typer, typeBuilder : TypeBuilder, _expr : list[PExpr]) : void
+    {
+      Macros.DefineCTX(typer);
+      assert2(false);
+      def opts = typeBuilder.GetVariantOptions();
+      //def name = typeBuilder.Name;
+      def get_type(t, a)
+      {
+        match (t)
+        {
+          | <[ $(x : name) ]> => x.Id :: a
+          | _                 => a
+        }
+      }
+      
+      def map_types(t, a)
+      {
+        match (opts.Find(y => y.Name.EndsWith(t)))
+        {
+          | Some(s) => s :: a
+          | _       => a
+        }
+      }
+      
+      def types = _expr.FoldLeft([], get_type);
+      def types = types.FoldLeft([], map_types);
+      //def type = typeBuilder.GetFreshType();
+      
+      
+      def collect_trav_opts(t, x, a)
+      {
+        match (x)
+        {
+          | <[ Traverse($_) ]> as x => (t, x) :: a
+          | <[ Traverse ]>     as x => (t, x) :: a
+          | _                       => a
+        }
+      }
+
+      def get_members(f, _)
+      {
+        def is_traversable(f, a)
+        {
+          def ty = f.GetMemType();
+          
+          def is_enum(t)
+          {
+            def type = t.GetFreshType();
+            def type = <[ ttype: IEnumerable[$type] ]>;
+            ty.TryUnify(type)
+          }
+          
+          def is_opt(t)
+          {
+            def type = t.GetFreshType();
+            def opt = <[ ttype: option[$type] ]>;
+            ty.TryUnify(opt)
+          }
+          
+          def any_of_super = types.Exists(x => ty.TryRequire(x.GetFreshType()));
+          def any_of_ienum = types.Exists(is_enum);
+          def any_of_opt = types.Exists(is_opt);
+          
+          if (any_of_super || any_of_ienum || any_of_opt) f :: a else a
+        }
+        
+        def fields = f.GetFields();
+        fields.FoldLeft([], is_traversable)
+      }
+      
+      def traverse = opts.FoldLeft([], (x, a) => x.GetModifiers().GetMacroAttributes().FoldLeft(a, collect_trav_opts(x, _, _)));
+      def a = traverse.Map(get_members);
+      foreach (t in a)
+      {
+        Debug.Print($"..$t")
+      }
+    }
+    
   }
 
   public interface ITraversable[T]
