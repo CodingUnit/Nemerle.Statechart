@@ -1,0 +1,430 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+
+namespace Nemerle.Statechart
+{
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
+  macro Traverse(_typeBuilder : TypeBuilder, params _expr : list[PExpr])
+  {
+    //TraversableImpl.DoCheckTraverse(Macros.ImplicitCTX(), typeBuilder, expr)
+  }
+
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
+  macro Traversable(typeBuilder : TypeBuilder, params expr : list[PExpr])
+  {
+    TraversableImpl.DoTransformCached(Macros.ImplicitCTX(), typeBuilder, expr)
+  }  
+
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Class)]
+  macro Traversable(typeBuilder : TypeBuilder, params expr : list[PExpr])
+  {
+    TraversableImpl.DoTransformCached2(Macros.ImplicitCTX(), typeBuilder, expr)
+  }  
+
+  [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Class)]
+  macro Traversable(typeBuilder : TypeBuilder, params expr : list[PExpr])
+  {
+    TraversableImpl.DoCheckTraverse(Macros.ImplicitCTX(), typeBuilder, expr)
+  }  
+
+
+  enum TreeType
+  {
+    | Unknown
+    | Type
+    | Enumerable
+    | Option
+  }
+
+  module TraversableImpl
+  {
+
+    public DoTransformCached(typer : Typer, typeBuilder : TypeBuilder, _expr : list[PExpr]) : void
+    {
+      Macros.DefineCTX(typer);
+      def name = typeBuilder.Name;
+      typeBuilder.AddImplementedInterface(<[ ICachedTraversable[$(name : usesite)] ]>);
+      typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] cached_iter : IEnumerable[ITraversable[$(name : usesite)]] * IEnumerable[int]; ]>);
+      typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] cached_level_iter : IEnumerable[$(name : usesite)]; ]>);
+    }
+
+
+    public DoTransformCached2(typer : Typer, typeBuilder : TypeBuilder, _expr : list[PExpr]) : void
+    {
+      Macros.DefineCTX(typer);
+      def name = typeBuilder.Name;
+//      assert2(false);
+      def is_get_code(x)
+      {
+        | ClassMember.Function(Name = "GetCode", header = PFunHeader where (Parameters = [])) => true
+        | _                                                                                   => false
+      }
+
+      typeBuilder.Define(<[decl: public Current : $(name : usesite) { get { this } }]>);
+
+      typeBuilder.Define(<[decl: public CachedIterator : IEnumerable[ITraversable[$(name : usesite)]] * IEnumerable[int] { get { cached_iter } } ]>);
+      typeBuilder.Define(<[decl: public CachedLevelIterator : IEnumerable[$(name : usesite)] { get { cached_level_iter } } ]>);
+      typeBuilder.Define(<[decl: public CreateIterator() : $(name : usesite)
+                          {
+                              ChangeCachedIter(LengthIterator())
+                          } ]>);
+
+
+      typeBuilder.Define(<[decl: public CreateLevelIterator() : $(name : usesite)
+                          {
+                              ChangeCachedLevelIter(LevelOrderIterator())
+                          } ]>);
+      def create_cases((t, e, i), a)
+      {
+          def e = match (e)
+          {
+            | <[]> => <[ case: | $(t.ParsedName : name)     => $i ]>
+            | _    => <[ case: | $(t.ParsedName : name)($e) => $i ]>
+          } 
+          e :: a
+      }
+
+      when (!typeBuilder.GetParsedMembers().Exists(is_get_code))
+      {
+        def body = match (CollectTraverseOpt(typeBuilder.GetVariantOptions()))
+                    {
+                      | []   => <[ _N_GetVariantCode() ]>
+                      | lst  => 
+                          def lst = lst.MapIndex(((x, y), i) => (x, y, i));
+                          def sorted = SortCases(lst, x => x[1]);
+                          def cases = sorted.FoldLeft([<[case: | _ => -1 ]>], create_cases);
+                          <[ match (this)
+                            {
+                              ..$cases
+                            }
+                          ]>
+                    }
+        typeBuilder.Define(<[decl: public GetCode() : int { $body }]>);
+      }
+
+    }
+
+    SortCases[T](data : list[T], expr : T -> PExpr) : list[T]
+    {
+      def case_sorter(x, y)
+      {
+        | (<[]>, <[]>)         => 0
+        | (<[ $_ = $_]>, <[]>) => 1
+        | (<[]>, <[ $_ = $_]>) => -1
+        | _                    => 0
+      }
+
+
+      data.Sort((x, y) => case_sorter(expr(x), expr(y)));
+    }
+
+    CollectTraverseOpt(opts : list[TypeBuilder]) : list[TypeBuilder * PExpr]
+    {
+      def collect_trav_opts(t, x, a)
+      {
+        match (x)
+        {
+          | <[ Traverse($r) ]> => (t, r) :: a
+          | <[ Traverse ]>     => (t, <[]>) :: a
+          | _                  => a
+        }
+      }
+
+      opts.FoldLeft([], (x, a) => x.GetModifiers().GetMacroAttributes().FoldLeft(a, collect_trav_opts(x, _, _))).Rev();
+    }
+
+    public DoCheckTraverse(typer : Typer, typeBuilder : TypeBuilder, _expr : list[PExpr]) : void
+    {
+      Macros.DefineCTX(typer);
+      assert2(false);
+      def opts = typeBuilder.GetVariantOptions();
+
+      def get_type(t, a)
+      {
+        match (t)
+        {
+          | <[ $(x : name) ]> => x.Id :: a
+          | _                 => a
+        }
+      }
+
+      def map_types(t, a)
+      {
+        match (opts.Find(y => y.Name.EndsWith(t)))
+        {
+          | Some(s) => s :: a
+          | _       => a
+        }
+      }
+
+      def types = _expr.FoldLeft([], get_type).Rev();
+      def types = types.FoldLeft([], map_types).Rev();
+      def types = if (types is []) [typeBuilder] else types;
+
+
+      def get_members(f, e)
+      {
+        def is_traversable(f, a)
+        {
+          def ty = f.GetMemType();
+
+          def is_enum(t)
+          {
+            def type = t.GetFreshType();
+            def type = <[ ttype: IEnumerable[$type] ]>;
+            ty.TryUnify(type)
+          }
+
+          def is_opt(t)
+          {
+            def type = t.GetFreshType();
+            def opt = <[ ttype: option[$type] ]>;
+            ty.TryUnify(opt)
+          }
+
+          def ret = if (types.Exists(x => ty.TryRequire(x.GetFreshType()))) TreeType.Type else
+                      if (types.Exists(is_enum)) TreeType.Enumerable else
+                        if (types.Exists(is_opt)) TreeType.Option else TreeType.Unknown;
+
+          if (ret == TreeType.Unknown) a else (f, ret) :: a
+        }
+
+        def fields = f.GetFields(BindingFlags.Public);
+        (f, e, fields.FoldLeft([], is_traversable).Rev())
+      }
+
+      def to_lower(s)
+      {
+        def idx = s.IndexOf(x => char.IsUpper(x));
+        if (idx == -1) s else 
+        {
+          def str = s.Substring(0, idx);
+          def low = char.ToLower(s[idx]);
+          def nstr = s.Substring(idx + 1);
+          if (str.IsEmpty()) $"$low$(to_lower(nstr))" else $"$(str)_$low$(to_lower(nstr))"
+        }
+      }
+
+      def create_iterator_data(t, e, f)
+      {
+        def get_name(e)
+        {
+          | <[ $(n : name) = $_]> => n.Id
+          | _                     => t.Name
+        }
+
+        def name = get_name(e);
+        def name = to_lower(name);
+        (t, f, name, e)
+      }
+
+      def traverse = CollectTraverseOpt(opts);
+      def traverse = if (traverse is []) opts.Map(x => (x, <[]>)) else traverse;
+      
+      def traversable = traverse.Map(get_members);
+      def data = traversable.Map(create_iterator_data);
+
+      def ttype = typeBuilder.GetMemType();
+
+      def env = typer.Manager.CoreEnv.EnterIntoNamespace(typeBuilder.NamespaceNode.Parent);
+
+      def create_params(_, _, t, n, _)
+      {
+        <[ parameter: $(n : usesite) : $t ]>
+      }
+
+      def create_assign(_, _, _, n, _)
+      {
+          <[ this.$(n : usesite) = $(n : usesite) ]>
+      }
+
+      def create_iterator(data)
+      {
+        def make_type(b, f)
+        {
+
+          def make_ftype(_, t)
+          {
+            match (t)
+            {
+              | TreeType.Enumerable => <[ IEnumerable[T] ]>
+              | Option              => <[ Option[T] ]>
+              | Type                => <[ T ]>
+              | Unknown             => <[ ]>
+            }
+          }
+
+          if (f is [])
+          {
+            <[ $(b.GetMemType() : typed) -> T ]>
+          } else
+          {
+            def ftype = f.Map(make_ftype);
+            def ftype = <[ $(b.GetMemType() : typed) ]> :: ftype;
+            <[ @*(..$ftype) -> T ]>
+          }
+        }
+
+        def make_type_this(b, f)
+        {
+
+          def make_ftype(_, t)
+          {
+            match (t)
+            {
+              | TreeType.Enumerable => <[ IEnumerable[$(ttype : typed)] ]>
+              | Option              => <[ option[$(ttype : typed)] ]>
+              | Type                => <[ $(ttype : typed) ]>
+              | Unknown             => <[ ]>
+            }
+          }
+
+          def ftype = f.Map(make_ftype);
+          def ftype = <[ $(b.GetMemType() : typed) ]> :: ftype;
+          <[ @*(..$ftype) -> $(ttype : typed) ]>
+        }
+
+
+        def create_params_this(b, f, n)
+        {
+          def t = make_type_this(b, f);
+        <[ parameter: $(n : usesite) : $t ]>
+        }
+
+        def create_case((b, c, _, n, e), a)
+        {
+          def type = b.ParsedName;
+          def acc = match (c)
+          {
+            | []                                       => [<[ t ]>]
+            | [(_, TreeType.Type)]                     => <[ t ]> :: <[ acc.First() ]> :: []
+            | [(_, TreeType.Enumerable)]               => <[ t ]> :: <[ acc ]> :: []
+            | [(_, TreeType.Type), (_, TreeType.Type)] => <[ def (a, b) = acc.TakeTwo(); ]> :: <[ (t, a, b) ]> :: []
+            | _                                        => throw InvalidOperationException("unknown pattern")
+          }
+          def e = match (e)
+          {
+            | <[]> => <[ case: | $(type : name) as t     => this.$(n : usesite)(..$acc) ]>
+            | _    => <[ case: | $(type : name)($e) as t => this.$(n : usesite)(..$acc) ]>
+          } 
+          e :: a
+        }
+
+        def name = $"$(typeBuilder.Name)IteratorContext";
+
+        def builder = env.Define(<[decl: public class $(name : usesite)[T] : IIteratorContext[$(ttype : typed), T] {}]>);
+        def data = data.Map((b, f, n, e) => (b, f, make_type(b, f), n, e));
+        foreach ((_, _, t, n, _) in data)
+        {
+          builder.Define(<[ decl: public $(n : usesite) : $t; ]>);
+        }
+        def pars = data.Map(create_params);
+        def assign = data.Map(create_assign);
+        def npars = data.Map((_, _, _, n, _) => <[ $(n : usesite) ]>);
+        builder.Define(<[decl: public this (..$pars)
+                        {
+                          base(..$npars);
+                          { ..$assign }
+                        } ]>);
+
+        def sorted = SortCases(data, x => x[4]);
+        def cases = sorted.FoldLeft(<[case: | _ => default(T) ]> :: [], create_case);
+
+        builder.Define(<[decl: public override Visit(obj : $(ttype : typed), acc : IEnumerable[T]) : T
+                        {
+                          match (obj)
+                          {
+                            ..$cases
+                          }
+                        } ]>);    
+        def fold = <[parameter: this obj : $(ttype : typed) ]> :: <[parameter: init : T]> :: pars;
+        builder.Define(<[decl: public static Fold(..$fold) : T
+                        {
+                          obj.Fold(init, $(name : usesite)(..$npars))
+                        } ]>);
+        def pars_this = data.Map((b, f, _, n, _) => create_params_this(b, f, n));
+        def fold_this = <[parameter: this obj : $(ttype : typed) ]> :: <[parameter: init : $(ttype : typed)]> :: pars_this;
+        builder.Define(<[decl: public static FoldThis(..$fold_this) : $(typeBuilder.GetMemType() : typed)
+                        {
+                          obj.FoldThis(init, $(name : usesite)(..$npars))
+                        } ]>);
+        builder.Compile();
+
+      }
+
+      def create_acc_iterator(data)
+      {
+        def make_type(b)
+        {
+          <[ $(b.GetMemType() : typed) * T -> T ]>
+        }
+
+        def create_case((b, _, _, n, e), a)
+        {
+          def type = b.ParsedName;
+          def e = match (e)
+          {
+            | <[]> => <[ case: | $(type : name) as t     => this.$(n : usesite)(t, acc) ]>
+            | _    => <[ case: | $(type : name)($e) as t => this.$(n : usesite)(t, acc) ]>
+          } 
+          e :: a
+        }
+
+        def case_sorter(x, y)
+        {
+          | (<[]>, <[]>)         => 0
+          | (<[ $_ = $_]>, <[]>) => 1
+          | (<[]>, <[ $_ = $_]>) => -1
+          | _                    => 0
+        }
+
+        def name = $"$(typeBuilder.Name)AccIteratorContext";
+
+        def builder = env.Define(<[decl: public class $(name : usesite)[T] : IAccIteratorContext[$(ttype : typed), T] {}]>);
+        def data = data.Map((b, f, n, e) => (b, f, make_type(b), n, e));
+        foreach ((_, _, t, n, _) in data)
+        {
+          builder.Define(<[ decl: public $(n : usesite) : $t; ]>);
+        }
+        def pars = data.Map(create_params);
+        def assign = data.Map(create_assign);
+        def npars = data.Map((_, _, _, n, _) => <[ $(n : usesite) ]>);
+        builder.Define(<[decl: public this (..$pars)
+                        {
+                          base(..$npars);
+                          { ..$assign }
+                        } ]>);
+
+        def sorted = data.Sort((x, y) => case_sorter(x[4], y[4]));
+        def cases = sorted.FoldLeft(<[case: | _ => acc ]> :: [], create_case);
+
+        builder.Define(<[decl: public override Visit(obj : $(ttype : typed), acc : T) : T
+                        {
+                          match (obj)
+                          {
+                            ..$cases
+                          }
+                        } ]>);    
+        def fold = <[parameter: this obj : $(ttype : typed) ]> :: <[parameter: init : T]> :: pars;
+        builder.Define(<[decl: public static Fold(..$fold) : T
+                        {
+                          obj.Fold(init, $(name : usesite)(..$npars))
+                        } ]>);
+        builder.Compile();
+      }
+
+      create_iterator(data);
+      create_acc_iterator(data);
+      //traversable
+    }
+
+  }
+}

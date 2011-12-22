@@ -1,2 +1,3 @@
-msbuild Nemerle.Statechart1.sln
+msbuild Nemerle.Statechart_dev.sln
+
 pause
