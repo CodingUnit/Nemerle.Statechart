@@ -21,7 +21,7 @@ namespace Nemerle.Statechart
     Current : T { get; }
     GetCode() : int;
     Rebuild(child : IEnumerable[T]) : T;
-    GetChild() : IEnumerable[ITraversable[T]];
+    GetChild() :  IEnumerable[ITraversable[T]];
   }
 
   public class IIteratorContextBase[T]
@@ -49,6 +49,16 @@ namespace Nemerle.Statechart
     public abstract Visit(obj : T, acc : IEnumerable[TAcc]) : TAcc;
   }
 
+  public abstract class IReduceAccIteratorContext[T, TAcc] : IIteratorContextBase[T]
+  {
+    public this(params lst : array[object])
+    {
+      base(lst)
+    }
+
+    public abstract Visit(obj : T, acc : IEnumerable[T], acc2 : TAcc) : T * TAcc;
+  }
+  
   public abstract class IAccIteratorContext[T, TAcc] : IIteratorContextBase[T]
   {
     public this(params lst : array[object])
@@ -104,7 +114,7 @@ namespace Nemerle.Statechart
       } else iter
     }
 
-    public Fold[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, fold : T * IEnumerable[TAcc] * TAcc -> TAcc) : TAcc
+    public FoldDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, fold : T * IEnumerable[TAcc] * TAcc -> TAcc) : TAcc
     {
       def stack = SCG.Stack();
 
@@ -120,7 +130,7 @@ namespace Nemerle.Statechart
       lst.Fold2(len, init, fold_func)
     }
 
-    public Fold[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IIteratorContext[T, TAcc]) : TAcc
+    public FoldDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IIteratorContext[T, TAcc]) : TAcc
     {
       def stack = SCG.Stack();
 
@@ -152,7 +162,7 @@ namespace Nemerle.Statechart
     //  lst.Fold2(len, init, fold_func)
     //}
 
-    public Fold[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IAccIteratorContext[T, TAcc]) : TAcc
+    public FoldDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IAccIteratorContext[T, TAcc]) : TAcc
     {
       def fold_func(x, a)
       {
@@ -163,43 +173,62 @@ namespace Nemerle.Statechart
       lst.FoldLeft(init, fold_func)
     }
 
-    public FoldThis[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, fold : ITraversable[T] * IEnumerable[T] * TAcc -> T * TAcc) : T * TAcc where T : class
+    //public ReduceDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, fold : ITraversable[T] * IEnumerable[T] * TAcc -> T * TAcc) : T * TAcc where T : class
+    //{
+    //  def stack = SCG.Stack();
+
+    //  def fold_func(x, l, a)
+    //  {
+    //    def child = stack.PopRev(l);
+    //    def (f, acc) = fold(x, child, a);
+    //    def f = if (f == null) x.Rebuild(child) else f;
+    //    stack.Push(f);
+    //    acc
+    //  }
+
+    //  def (lst, len) = obj.LengthIterator();
+    //  def acc = lst.Fold2(len, init, fold_func);
+    //  def st = stack.Pop();
+    //  (st, acc)
+    //}
+
+    //public ReduceDo[T, TAcc](this obj : ICachedTraversable[T], fold : ITraversable[T] * IEnumerable[T] -> T) : T where T : class
+    //{
+    //  def stack = SCG.Stack();
+
+    //  def fold_func(x, l, _)
+    //  {
+    //    def child = stack.PopRev(l);
+    //    def acc = fold(x, child);
+    //    def acc = if (acc == null) x.Rebuild(child) else acc;
+    //    stack.Push(acc);
+    //    acc
+    //  }
+
+    //  def (lst, len) = obj.LengthIterator();
+    //  lst.Fold2(len, null, fold_func)
+    //}
+
+    public ReduceDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IReduceAccIteratorContext[T, TAcc]) : T * TAcc where T : class, ITraversable[T]
     {
       def stack = SCG.Stack();
 
-      def fold_func(x, l, a)
+      def fold_func(x, l, acc2)
       {
-        def child = stack.PopRev(l);
-        def (f, acc) = fold(x, child, a);
-        def f = if (f == null) x.Rebuild(child) else f;
-        stack.Push(f);
-        acc
-      }
-
-      def (lst, len) = obj.LengthIterator();
-      def acc = lst.Fold2(len, init, fold_func);
-      def st = stack.Pop();
-      (st, acc)
-    }
-
-    public FoldThis[T, TAcc](this obj : ICachedTraversable[T], fold : ITraversable[T] * IEnumerable[T] -> T) : T where T : class
-    {
-      def stack = SCG.Stack();
-
-      def fold_func(x, l, _)
-      {
-        def child = stack.PopRev(l);
-        def acc = fold(x, child);
-        def acc = if (acc == null) x.Rebuild(child) else acc;
+        def child : IEnumerable[T] = stack.PopRev(l);
+        def (acc, acc2) = if (ctx.IsSet(x)) ctx.Visit(obj.Current, child, acc2); else (null, acc2);
+        def acc = if (acc != null) acc else x.Rebuild(child);
         stack.Push(acc);
-        acc
+        acc2
       }
 
       def (lst, len) = obj.LengthIterator();
-      lst.Fold2(len, null, fold_func)
+      def acc2= lst.Fold2(len, init, fold_func);
+      def acc = stack.Pop();
+      (acc, acc2)
     }
 
-    public FoldThis[T](this obj : ICachedTraversable[T], init : T, ctx : IIteratorContext[T, T]) : T where T : class
+    public ReduceDo[T](this obj : ICachedTraversable[T], ctx : IIteratorContext[T, T]) : T where T : class, ITraversable[T]
     {
       def stack = SCG.Stack();
 
@@ -213,9 +242,9 @@ namespace Nemerle.Statechart
       }
 
       def (lst, len) = obj.LengthIterator();
-      lst.Fold2(len, init, fold_func)
+      lst.Reduce2(len, fold_func).Current
     }
-
+    
     //public FoldThis[T](this obj : ICachedTraversable[T], init : T, ctx : ISingleIteratorContext[T]) : T where T : class
     //{
     //  def stack = SCG.Stack();
@@ -327,127 +356,5 @@ namespace Nemerle.Statechart
 
   }
 
-  public variant Tree[T]
-  {
-    | Item {item : T;}
-    | Section {sect : list[Tree[T]];}
-  }
-
-  public variant Path[T]
-  {
-    | Top
-    | Node {node : list[Tree[T]]; path : Path[T]; tree : list[Tree[T]];}
-  }
-
-  [Record]
-  public class Loc[T]
-  {
-    public tree : Tree[T];
-    public path : Path[T];
-
-    public Left() : Loc[T] 
-    {
-      match (path)
-      {
-        | Top => throw InvalidOperationException("left at top")
-        | Node(l :: left, up, right) => Loc(l, Path.Node(left, up, tree :: right))
-        | Node([], _, _) => throw InvalidOperationException("left of first")
-      }
-    }
-
-    public Right() : Loc[T]
-    {
-      match (path)
-      {
-        | Top => throw InvalidOperationException("right at top")
-        | Node(left, up, r :: right) => Loc(r, Path.Node(tree :: left , up, right))
-        | _ => throw InvalidOperationException("right of last")
-      }
-    }
-
-    public Up() : Loc[T]
-    {
-
-      match (path)
-      {
-        | Top => throw InvalidOperationException("up at top")
-        | Node(left, up, right) => Loc(Tree.Section(left.Rev() + (tree :: right)), up)
-      } 
-    }
-
-    public Down() : Loc[T]
-    {
-      match (tree)
-      {
-        | Item => throw InvalidOperationException("down with item")
-        | Section(t1 :: trees) => Loc(t1, Path.Node([], path, trees))
-        | _ => throw InvalidOperationException("down of empty")
-      } 
-    }
-
-    public static Zipper(tree : Tree[T]) : Loc[T]
-    {
-      Loc(tree, Path.Top())
-    }
-
-    public Root : Tree[T]
-    {
-      get
-      {
-        def loop(l)
-        {
-          | Loc where (t, Path.Top) => t
-          | _                       => loop(l.Up())
-        }
-
-        loop(this)
-      }
-    }
-
-    public Change(t : Tree[T]) : Loc[T]
-    {
-      Loc(t, path)
-    }
-
-    public InsertRight(t : Tree[T]) : Loc[T]
-    {
-      match (path)
-      {
-        | Path.Top              => throw InvalidOperationException("insert at top")
-        | Node(left, up, right) => Loc(t, Path.Node(left, up, t :: right))
-      }
-    }
-
-    public InsertLeft(t : Tree[T]) : Loc[T]
-    {
-      match (path)
-      {
-        | Path.Top              => throw InvalidOperationException("insert at top")
-        | Node(left, up, right) => Loc(t, Path.Node(t :: left, up, right))
-      }
-    }
-
-    public InsertDown(t : Tree[T]) : Loc[T]
-    {
-      match (tree)
-      {
-        | Item       => throw InvalidOperationException("down with item")
-        | Section(s) => Loc(t, Path.Node([], path, s))
-      }
-    }
-
-    public Delete() : Loc[T]
-    {
-      match (path)
-      {
-        | Path.Top                   => throw InvalidOperationException("delete at top")
-        | Node(left, up, r :: right) => Loc(r, Path.Node(left, up, right))
-        | Node(l :: left, up, [])    => Loc(l, Path.Node(left, up, []))
-        | Node([], up, [])           => Loc(Tree.Section([]), up)
-      }
-    }
-
-
-  }
 
 }
