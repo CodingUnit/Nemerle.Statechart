@@ -1,0 +1,151 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+
+namespace Nemerle.Statechart
+{
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
+  macro Traverse(_typeBuilder : TypeBuilder, params _expr : list[PExpr])
+  {
+  }
+
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Field)]
+  macro TraverseIgnore(_typeBuilder : TypeBuilder, _ : ParsedField)
+  {
+  }
+
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Field)]
+  macro TraverseInclude(_typeBuilder : TypeBuilder, _ : ParsedField)
+  {
+  }
+
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
+  macro Traversable(typeBuilder : TypeBuilder, params expr : list[PExpr])
+  {
+    TraversableImpl.DoTransformCached(Macros.ImplicitCTX(), typeBuilder, expr)
+  }  
+
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Class)]
+  macro Traversable(typeBuilder : TypeBuilder, params expr : list[PExpr])
+  {
+    TraversableImpl.DoTransformCached2(Macros.ImplicitCTX(), typeBuilder, expr)
+  }  
+
+  [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Class)]
+  macro Traversable(typeBuilder : TypeBuilder, params expr : list[PExpr])
+  {
+    TraversableImpl.DoCheckTraverse(Macros.ImplicitCTX(), typeBuilder, expr)
+  }  
+
+
+  enum TreeType
+  {
+    | Unknown
+    | Type
+    | Enumerable
+    | Option
+  }
+  
+  partial module TraversableImpl
+  {
+    public DoTransformCached(typer : Typer, typeBuilder : TypeBuilder, _expr : list[PExpr]) : void
+    {
+      Macros.DefineCTX(typer);
+      def name = typeBuilder.Name;
+      typeBuilder.AddImplementedInterface(<[ ICachedTraversable[$(name : usesite)] ]>);
+      typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] cached_iter : IEnumerable[ITraversable[$(name : usesite)]] * IEnumerable[int]; ]>);
+      typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] cached_level_iter : IEnumerable[$(name : usesite)]; ]>);
+    }
+
+    public DoTransformCached2(typer : Typer, typeBuilder : TypeBuilder, _expr : list[PExpr]) : void
+    {
+      Macros.DefineCTX(typer);
+      def name = typeBuilder.Name;
+
+      def is_get_code(x)
+      {
+        | ClassMember.Function(Name = "GetCode", header = PFunHeader where (Parameters = [])) => true
+        | _                                                                                   => false
+      }
+
+      typeBuilder.Define(<[decl: public Current : $(name : usesite) { get { this } }]>);
+
+      typeBuilder.Define(<[decl: public CachedIterator : IEnumerable[ITraversable[$(name : usesite)]] * IEnumerable[int] { get { cached_iter } } ]>);
+      typeBuilder.Define(<[decl: public CachedLevelIterator : IEnumerable[$(name : usesite)] { get { cached_level_iter } } ]>);
+      typeBuilder.Define(<[decl: public CreateIterator() : $(name : usesite)
+                          {
+                              ChangeCachedIter(LengthIterator())
+                          } ]>);
+
+      typeBuilder.Define(<[decl: public CreateLevelIterator() : $(name : usesite)
+                          {
+                              ChangeCachedLevelIter(LevelOrderIterator())
+                          } ]>);
+      def create_cases((t, e, i), a)
+      {
+          def e = match (e)
+          {
+            | <[ ]> => <[ case: | $(t.ParsedName : name)    => $i ]>
+            | _    => <[ case: | $(t.ParsedName : name)($e) => $i ]>
+          } 
+          e :: a
+      }
+
+      when (!typeBuilder.GetParsedMembers().Exists(is_get_code))
+      {
+        def body = match (CollectTraverseOpt(typeBuilder.GetVariantOptions()))
+                    {
+                      | []   => <[ _N_GetVariantCode() ]>
+                      | lst  => 
+                          def lst = lst.MapIndex(((x, y), i) => (x, y, i));
+                          def sorted = SortCases(lst, x => x[1]);
+                          def cases = sorted.FoldLeft([<[ case: | _ => -1 ]>], create_cases);
+                          <[ match (this)
+                            {
+                              ..$cases
+                            }
+                          ]>
+                    }
+        typeBuilder.Define(<[decl: public GetCode() : int { $body }]>);
+      }
+
+    }
+
+    SortCases[T](data : list[T], expr : T -> PExpr) : list[T]
+    {
+      def case_sorter(x, y)
+      {
+        | (<[]>, <[]>)         => 0
+        | (<[ $_ = $_]>, <[]>) => 1
+        | (<[]>, <[ $_ = $_]>) => -1
+        | _                    => 0
+      }
+
+
+      data.Sort((x, y) => case_sorter(expr(x), expr(y)));
+    }
+
+    CollectTraverseOpt(opts : list[TypeBuilder]) : list[TypeBuilder * PExpr]
+    {
+      def collect_trav_opts(t, x, a)
+      {
+        match (x)
+        {
+          | <[ Traverse($r) ]> => (t, r) :: a
+          | <[ Traverse ]>     => (t, <[]>) :: a
+          | _                  => a
+        }
+      }
+
+      opts.FoldLeft([], (x, a) => x.GetModifiers().GetMacroAttributes().FoldLeft(a, collect_trav_opts(x, _, _))).Rev();
+    }
+    
+  }
+}

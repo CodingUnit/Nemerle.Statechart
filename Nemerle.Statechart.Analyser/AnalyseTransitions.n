@@ -20,7 +20,7 @@ namespace Nemerle.Statechart
 
     CheckInitialTransitions() : FsmAnalyser
     {
-      def check_auto_initial(sub, st)
+      def check_auto_initial(st, sub)
       {
         match (st)
         {
@@ -33,11 +33,11 @@ namespace Nemerle.Statechart
       }
 
       def err = States.FoldLeft(ErrorInfo(), (x, a) => check_duplicates(x.Initial, a));  // check duplicates
-      def top = if (FsmFlags.AutoInitial) TopState.FoldThis(check_auto_initial) else TopState;
+      def top = if (FsmFlags.AutoInitial) TopState.Reduce(check_auto_initial) else TopState;
 
       def top = if (top.Initial.IsEmpty()) // if not have initial transition in top state
                  if (top.transitions.IsEmpty()) // if not have other transitions
-                   check_auto_initial(top.sub_states, top) // initial is first substate
+                   check_auto_initial(top, top.sub_states) // initial is first substate
                  else top; // else initial transition is top state
                 else top;
       def map = statemap.Init(top);
@@ -445,14 +445,14 @@ namespace Nemerle.Statechart
         def hist = dest.OfType.[TransitionDestination.History]().Select(_.state);
         def hist = hist.Select(x => x.ChangeUsed(true));
         
-        def update_hist(_, s)
+        def update_hist(s, _)
         {
           def hist = hist.Where(x => x.state.name == s.name);
           hist.FoldLeft(s, (x, a) => a.UpdateHistory(x))
         }
         
         def map = an.statemap.CheckNew(st);
-        def top = map.Top.FoldThis(update_hist);
+        def top = map.Top.Reduce(update_hist);
         
         an.statemap.Update(top)
       }
