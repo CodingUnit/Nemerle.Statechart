@@ -175,11 +175,11 @@ namespace Nemerle.Statechart
               match (t)
               {
                 | StateTransition where (To = TransitionTarget.PseudoState(Join as j)) => j :: lst
-                | _ => lst
+                | _                                                                    => lst
               }
             }
 
-            def tran = AllLivedSubStatesNested.Map(x => x.all_transitions.FoldLeft([], get_join)).Flatten();
+            def tran = AllLivedSubStatesNested.FoldLeft([], (x, a) => x.all_transitions.FoldLeft(a, get_join));
             tran.RemoveDuplicatesSort((x, y) => x.name.CompareTo(y.name));
           }
         }
@@ -230,7 +230,7 @@ namespace Nemerle.Statechart
           def num = instance_of.ncopy + 1;
           def st = instance_of.ChangeCopyNum(num); // clone the inline sub machine instance
 
-          def copy_state(_, st)
+          def copy_state(st, _)
           {
             def init = st.Initial.Select(x : StateTransition => x.Clone(num));
             def tran = st.transitions.Select(x => x.Clone(num));
@@ -241,7 +241,7 @@ namespace Nemerle.Statechart
             st.ChangeTransitionsHistoryInitialEntryExitInternalTran(tran, hist, init, en, ex, intern)
           }
           
-          def st = st.FoldThis(copy_state);
+          def st = st.Reduce(copy_state);
           def do_act = st.do_activity; // take data from it except transitions to outer world
           def inter_tran = st.internal_tran;
           def entry = st.entry;
