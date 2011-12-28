@@ -64,7 +64,7 @@ namespace Nemerle.Statechart
       typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] cached_level_iter : IEnumerable[$(name : usesite)]; ]>);
     }
 
-    public DoTransformCached2(typer : Typer, typeBuilder : TypeBuilder, _expr : list[PExpr]) : void
+    public DoTransformCached2(typer : Typer, typeBuilder : TypeBuilder, expr : list[PExpr]) : void
     {
       Macros.DefineCTX(typer);
       def name = typeBuilder.Name;
@@ -93,14 +93,15 @@ namespace Nemerle.Statechart
           def e = match (e)
           {
             | <[ ]> => <[ case: | $(t.ParsedName : name)    => $i ]>
-            | _    => <[ case: | $(t.ParsedName : name)($e) => $i ]>
+            | _     => <[ case: | $(t.ParsedName : name)($e) => $i ]>
           } 
           e :: a
       }
 
+      def is_all = expr is [<[ All ]>];
       when (!typeBuilder.GetParsedMembers().Exists(is_get_code))
       {
-        def body = match (CollectTraverseOpt(typeBuilder.GetVariantOptions()))
+        def body = match (CollectTraverseOpt(typeBuilder.GetVariantOptions(), is_all))
                     {
                       | []   => <[ _N_GetVariantCode() ]>
                       | lst  => 
@@ -132,19 +133,20 @@ namespace Nemerle.Statechart
       data.Sort((x, y) => case_sorter(expr(x), expr(y)));
     }
 
-    CollectTraverseOpt(opts : list[TypeBuilder]) : list[TypeBuilder * PExpr]
+    CollectTraverseOpt(opts : list[TypeBuilder], all : bool) : list[TypeBuilder * PExpr]
     {
       def collect_trav_opts(t, x, a)
       {
         match (x)
         {
           | <[ Traverse($r) ]> => (t, r) :: a
+          | _ when (all)
           | <[ Traverse ]>     => (t, <[]>) :: a
           | _                  => a
         }
       }
 
-      opts.FoldLeft([], (x, a) => x.GetModifiers().GetMacroAttributes().FoldLeft(a, collect_trav_opts(x, _, _))).Rev();
+        opts.FoldBack([], (x, a) => x.GetModifiers().GetMacroAttributes().FoldLeft(a, collect_trav_opts(x, _, _)))
     }
     
   }

@@ -16,17 +16,18 @@ namespace Nemerle.Statechart
   {
 
 
-    public DoCheckTraverse(typer : Typer, typeBuilder : TypeBuilder, _expr : list[PExpr]) : void
+    public DoCheckTraverse(typer : Typer, typeBuilder : TypeBuilder, expr : list[PExpr]) : void
     {
       Macros.DefineCTX(typer);
-      //assert2(false);
+      assert2(false);
       def opts = typeBuilder.GetVariantOptions();
       def name = typeBuilder.Name;
-      
+
       def get_type(t, a)
       {
         match (t)
         {
+          | <[ All ]>         => a
           | <[ $(x : name) ]> => x.Id :: a
           | _                 => a
         }
@@ -41,36 +42,53 @@ namespace Nemerle.Statechart
         }
       }
 
-      def types = _expr.FoldBack([], get_type);
+      def ttype = typeBuilder.GetFreshType();
+      def types = expr.FoldBack([], get_type);
       def types = types.FoldBack([], map_types);
-      def types = if (types is []) [typeBuilder] else types;
+      def is_all = expr is [<[ All ]>];
+      def types = //if (is_all) opts else
+                   if (types is []) [typeBuilder] else types;
 
 
       def get_members(f, e)
       {
         def is_traversable(f, a)
         {
+
+          def is_that_type(ty, type, cont)
+          {
+            if (cont.Unify(ty))
+            {
+              match (cont)
+              {
+                | FixedType.Class(_, [t]) => t.TryRequire(type)
+                | _                       => false
+              }
+            } else false
+            
+          }
+          
+          def is_enum(ty, t)
+          {
+            def type = t.GetFreshType();
+            def cont = <[ ttype: IEnumerable[_] ]>;
+            is_that_type(ty, type, cont)
+          }
+
+          def is_opt(ty, t)
+          {
+            def type = t.GetFreshType();
+            def cont = <[ ttype: option[_] ]>;
+            is_that_type(ty, type, cont)
+          }
+
           def ty = f.GetMemType();
-
-          def is_enum(t)
-          {
-            def type = t.GetFreshType();
-            def type = <[ ttype: IEnumerable[$type] ]>;
-            ty.TryUnify(type)
-          }
-
-          def is_opt(t)
-          {
-            def type = t.GetFreshType();
-            def opt = <[ ttype: option[$type] ]>;
-            ty.TryUnify(opt)
-          }
-
           def ret = if (types.Exists(x => ty.TryRequire(x.GetFreshType()))) TreeType.Type else
-                      if (types.Exists(is_enum)) TreeType.Enumerable else
-                        if (types.Exists(is_opt)) TreeType.Option else TreeType.Unknown;
-
+          if (types.Exists(is_enum(ty, _))) TreeType.Enumerable else
+            if (types.Exists(is_opt(ty, _))) TreeType.Option else TreeType.Unknown;
           if (ret == TreeType.Unknown) a else (f, ret) :: a
+
+
         }
 
         def fields = f.GetFields(BindingFlags.Public | BindingFlags.Instance);
@@ -104,17 +122,17 @@ namespace Nemerle.Statechart
         (t, f, name, e)
       }
 
-      def traverse = CollectTraverseOpt(opts);
-      def traverse = if (traverse is []) opts.MapRev(x => (x, <[]>)) else traverse;
+      
+      def traverse = CollectTraverseOpt(opts, is_all);
+      def traverse = if (traverse is []) opts.RevMap(x => (x, <[ ]>)) else traverse;
 
       def traversable = traverse.Map(get_members);
       def data = traversable.Map(create_iterator_data);
-
-      def ttype = typeBuilder.GetMemType();
+      
 
       def env = typer.Manager.CoreEnv.EnterIntoNamespace(typeBuilder.NamespaceNode.Parent);
 
-      def create_iter(data, name, tp, ntp, create_type, it_type, run_body_func, vis_types, ret_type, fold : bool, reduce, reduce_create, red_par)
+      def create_iter(data, name, tp, ntp, create_type, it_type, run_body_func, vis_types, ret_type, fold, reduce, reduce_create, red_par)
       {
         def ntp = <[ $(ttype : typed) ]> :: ntp;
         def builder = env.Define(<[decl: public class $(name : usesite)[..$tp] : $it_type[..$ntp] {}]>);
@@ -123,7 +141,7 @@ namespace Nemerle.Statechart
         {
           f.Map((t, n) => <[ parameter: $(n : usesite) : $t ]>)
         }
-        
+
         def fld_data = data.Map((b, f, n, _) => (create_type(b, f), n));
         fld_data.Iter((t, n) => builder.Define(<[ decl: public $(n : usesite) : $t; ]>));
         def pars = create_param(fld_data);
@@ -165,36 +183,34 @@ namespace Nemerle.Statechart
         }
         builder.Compile();
       }
-      
-      //create_iterator(data);
-      //create_acc_iterator(data);
-      //create_reduce_iterator(data);
-      //create_single_iterator(data);
-  
+
       def create_case((b, c, n, e), add, a, create_case)
         {
           def acc = create_case(c, add);
           def type = b.ParsedName;
-          def e = match (e)
+          def expr = match (c)
+                      {
+                        | [(f, TreeType.Option)] 
+                        | [(_, TreeType.Type), (f, TreeType.Option)] 
+                        | [(f, TreeType.Option), (_, TreeType.Type)] => <[ $(f.Name : usesite) = n ]>;
+                        | _                                          => e
+                      }
+          def e = match (e, expr)
           {
-            | <[]> => <[ case: | $(type : name) as obj     => this.$(n : usesite)(..$acc) ]>
-            | _    => <[ case: | $(type : name)($e) as obj => this.$(n : usesite)(..$acc) ]>
+            | (<[]>, <[]>) => <[ case: | $(type : name) as obj     => this.$(n : usesite)(..$acc) ]>
+            | (_, e)       => <[ case: | $(type : name)($e) as obj => this.$(n : usesite)(..$acc) ]>
           } 
           e :: a
         }
 
-      //    {
-      //      | <[]> => <[ case: | $(type : name) as t     => this.$(n : usesite)(t, acc) ]>
-      //      | _    => <[ case: | $(type : name)($e) as t => this.$(n : usesite)(t, acc) ]>
-      //    } 
       def run_body_func(data, default, add, create_case_par)
       {
         def sorted = SortCases(data, x => x[3]);
         def cases = sorted.FoldLeft([default], create_case(_, add, _, create_case_par));
         <[ match (obj)
-           {
-             ..$cases
-           }
+          {
+            ..$cases
+          }
         ]>
       }
 
@@ -206,7 +222,7 @@ namespace Nemerle.Statechart
           match (t)
           {
             | TreeType.Enumerable => <[ IEnumerable[$type] ]>
-            | Option              => <[ Option[$type] ]>
+            | Option              => <[ option[$type] ]>
             | Type                => <[ $type ]>
             | Unknown             => <[ ]>
           }
@@ -216,17 +232,50 @@ namespace Nemerle.Statechart
         def ftype = <[ $(b.GetMemType() : typed) ]> :: ftype;
         <[ @*(..$ftype) -> $ret ]>
       }
-      
+
       def create_case_param(c, add)
       {
         match (c)
         {
           | []                                       => <[ obj ]> :: add
           | [(_, TreeType.Type)]                     => <[ obj ]> :: <[ acc.First() ]> :: add
+          | [(_, TreeType.Option)]                   => def acc1 = <[ obj ]> :: <[ Some(a) ]> :: add;
+                                                        def acc2 = <[ obj ]> :: <[ None() ]> :: add;
+                                                        <[
+                                                            match (n)
+                                                            {
+                                                              | Some(n) => def a = acc.First();
+                                                                           (..$acc1)
+                                                              | _       => (..$acc2)
+                                                            }
+                                                        ]> :: []
           | [(_, TreeType.Enumerable)]               => <[ obj ]> :: <[ acc ]> :: add
           | [(_, TreeType.Type), (_, TreeType.Type)] => def acc = <[ obj ]> :: <[ a ]> :: <[ b ]> :: add;
-                                                        <[ def (a, b) = acc.TakeTwo(); ]> :: <[ (..$acc) ]> :: []
-          | _                                        => throw InvalidOperationException("unknown pattern")
+                                                        <[ def (a, b) = acc.TakeTwo();
+                                                           (..$acc) ]> :: []
+          | [(_, TreeType.Option), (_, TreeType.Type)] => def acc1 = <[ obj ]> :: <[ Some(a) ]> :: <[ b ]> :: add;
+                                                          def acc2 = <[ obj ]> :: <[ None() ]> :: <[ b ]> :: add;
+                                                          <[
+                                                            match (n)
+                                                            {
+                                                              | Some(n) => def (a, b) = acc.TakeTwo();
+                                                                           (..$acc1)
+                                                              | _       => def b = acc.First();
+                                                                           (..$acc2)
+                                                            }
+                                                          ]> :: []
+          | [(_, TreeType.Type), (_, TreeType.Option)] => def acc1 = <[ obj ]> :: <[ a ]> :: <[ Some(b) ]> :: add;
+                                                          def acc2 = <[ obj ]> :: <[ a ]> :: <[ None() ]> :: add;
+                                                          <[
+                                                            match (n)
+                                                            {
+                                                              | Some(n) => def (a, b) = acc.TakeTwo();
+                                                                           (..$acc1)
+                                                              | _       => def a = acc.First();
+                                                                           (..$acc2)
+                                                            }
+                                                          ]> :: []
+          | _                                          => throw InvalidOperationException("unknown pattern")
         }
       }
 
@@ -236,20 +285,19 @@ namespace Nemerle.Statechart
       {
         make_type(b, f, <[ $(ttype : typed) ]>, [], <[ $(ttype : typed) ]>)
       }
-      
+
       def make_reduce_type2(b, f)
       {
         make_type(b, f, <[ $(ttype : typed) ]>, [<[ TAcc ]>], <[ $(ttype : typed) * TAcc ]>)
       }
-      
+
       def run_body_func_single(data, add, create_case_par)
       {
         def (_, c, n, _) = data.Head;
-        //def n = data[0].
         def acc = create_case_par(c, add);
         <[ this.$(n : usesite)(..$acc) ]>
       }
-      
+
       create_iter(data, $"$(name)IteratorContext", 
                   [Splicable.Name(<[ T ]>)], 
                   [<[ T ]>], 
@@ -262,9 +310,7 @@ namespace Nemerle.Statechart
                   <[ $(ttype : typed) ]>,
                   make_reduce_type,
                   []);
-      
-      //def make_type(b, _) { <[ $(b.GetMemType() : typed) * T -> T ]> }
-        
+
       create_iter(data, $"$(name)AccIteratorContext", 
                   [Splicable.Name(<[ T ]>)], 
                   [<[ T ]>], 
@@ -277,7 +323,7 @@ namespace Nemerle.Statechart
                   null, 
                   null,
                   null);
-                  
+
       create_iter(data, $"$(name)TwoAccIteratorContext", 
                   [Splicable.Name(<[ T ]>), Splicable.Name(<[ TAcc ]>)], 
                   [<[ T ]>, <[ TAcc ]>], 
@@ -291,18 +337,18 @@ namespace Nemerle.Statechart
                   make_reduce_type2,
                   [(<[parameter: init : TAcc; ]>, <[ init ]>)]);
 
-        def compare_types(x, y)
-        {
-          x :> int - y :> int
-        }
-                  
-        def flds = data.FoldLeft([], (x, a) => a.HeadAppend(x[1]));
-        def dups = flds.Group((x, y) => x[0].Name.CompareTo(y[0].Name) + compare_types(x[1], y[1]));
-        def f = dups.MapFiltered(x => x.Length == data.Length, _.Head);
-        def f = if (f is []) [(null, TreeType.Enumerable)] else f;
-        def data = (typeBuilder, f, to_lower(name), <[]>);
-      
-                  
+      def compare_types(x, y)
+      {
+        x :> int - y :> int
+      }
+
+      def flds = data.FoldLeft([], (x, a) => a.HeadAppend(x[1]));
+      def dups = flds.Group((x, y) => x[0].Name.CompareTo(y[0].Name) + compare_types(x[1], y[1]));
+      def f = dups.MapFiltered(x => x.Length == data.Length, _.Head);
+      def f = if (f is []) [(null, TreeType.Enumerable)] else f;
+      def data = (typeBuilder, f, to_lower(name), <[]>);
+
+
       create_iter([data], 
                   $"$(name)SingleIteratorContext", 
                   [Splicable.Name(<[ T ]>)], 
@@ -316,7 +362,7 @@ namespace Nemerle.Statechart
                   <[ $(ttype : typed) ]>,
                   make_reduce_type,
                   []);
-                  
+
       create_iter([data], $"$(name)TwoAccSingleIteratorContext", 
                   [Splicable.Name(<[ T ]>), Splicable.Name(<[ TAcc ]>)], 
                   [<[ T ]>, <[ TAcc ]>], 
@@ -329,7 +375,7 @@ namespace Nemerle.Statechart
                   <[ $(ttype : typed) * TAcc ]>,
                   make_reduce_type2,
                   [(<[parameter: init : TAcc; ]>, <[ init ]>)]);
-                  
+
     }
 
   }
