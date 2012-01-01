@@ -901,11 +901,11 @@ namespace Nemerle.Statechart
 
       loop(init)
     }
-    
+
     public TakeTwo[T](this lst : IEnumerable[T]) : T * T
     {
       def dothrow() { throw InvalidOperationException("no elements") }
-      
+
       def en = lst.GetEnumerator();
       if (en.MoveNext())
       {
@@ -917,11 +917,11 @@ namespace Nemerle.Statechart
         } else dothrow()
       } else dothrow()
     }
-    
+
     public IndexOf(this str : string, pred : char -> bool) : int
     {
       def en = str.GetEnumerator();
-      
+
       def loop(i)
       {
         if (en.MoveNext()) 
@@ -929,23 +929,46 @@ namespace Nemerle.Statechart
           if (pred(en.Current)) i else loop(i + 1)
         } else -1
       }
-      
+
       loop(0)
     }
 
-    public Reduce[T, TAcc](this lst : IEnumerable[T], folder : T * T-> T) : T
+    public Reduce[T, TAcc](this lst : IEnumerable[T], folder : T * T -> T) : T
     {
       def en = lst.GetEnumerator();
 
+      def loop(a)
+      {
+        if (en.MoveNext())
+        {
+          loop(folder(en.Current, a))
+        } else a
+      }
+
       when (!en.MoveNext()) throw ArgumentException("Enumerable is empty");
-      lst.FoldLeft(en.Current, folder)
+      loop(en.Current)
     }
-    
+
     public Reduce2[T, T2](this lst : IEnumerable[T], lst2 : IEnumerable[T2], folder : (T * T2 * T) -> T) : T
     {
-      Fold2(lst, lst2, lst.First(), folder)
+      def en1 = lst.GetEnumerator();
+      def en2 = lst2.GetEnumerator();
+
+      def loop(acc)
+      {
+        if (en1.MoveNext())
+        {
+          if (en2.MoveNext())
+          {
+            loop(folder(en1.Current, en2.Current, acc))
+          } else throw InvalidOperationException("second enumerable must have enough elements")
+        } else acc
+      }
+
+      when (!en1.MoveNext()) throw ArgumentException("Enumerable is empty");
+      loop(en1.Current)
     }
-    
+
   }
 
 }
