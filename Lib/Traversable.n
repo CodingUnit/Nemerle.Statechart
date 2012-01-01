@@ -46,8 +46,7 @@ namespace Nemerle.Statechart
       def types = expr.FoldBack([], get_type);
       def types = types.FoldBack([], map_types);
       def is_all = expr is [<[ All ]>];
-      def types = //if (is_all) opts else
-                   if (types is []) [typeBuilder] else types;
+      def types = if (types is []) [typeBuilder] else types;
 
 
       def get_members(f, e)
@@ -55,39 +54,37 @@ namespace Nemerle.Statechart
         def is_traversable(f, a)
         {
 
-          def is_that_type(ty, type, cont)
+          def is_that_type(ty, tt, type, cont)
           {
-            if (cont.Unify(ty))
+            if (cont.TryRequire(ty))
             {
-              match (cont)
-              {
-                | FixedType.Class(_, [t]) => t.TryRequire(type)
-                | _                       => false
-              }
+                tt.TryRequire(type)
             } else false
             
           }
           
-          def is_enum(ty, t)
+          def is_enum(ty, tt, t)
           {
             def type = t.GetFreshType();
             def cont = <[ ttype: IEnumerable[_] ]>;
-            is_that_type(ty, type, cont)
+            is_that_type(ty, tt, type, cont)
           }
 
-          def is_opt(ty, t)
+          def is_opt(ty, tt, t)
           {
             def type = t.GetFreshType();
             def cont = <[ ttype: option[_] ]>;
-            is_that_type(ty, type, cont)
+            is_that_type(ty, tt, type, cont)
           }
 
-          def ty = f.GetMemType();
-          def ret = if (types.Exists(x => ty.TryRequire(x.GetFreshType()))) TreeType.Type else
-          if (types.Exists(is_enum(ty, _))) TreeType.Enumerable else
-            if (types.Exists(is_opt(ty, _))) TreeType.Option else TreeType.Unknown;
-          if (ret == TreeType.Unknown) a else (f, ret) :: a
-
+          match (f.GetMemType())
+          {
+            | FixedType.Class(_, [t]) as ty => def ret = if (types.Exists(is_enum(ty, t, _))) TreeType.Enumerable else
+                                               if (types.Exists(is_opt(ty, t, _))) TreeType.Option else TreeType.Unknown;
+                                               if (ret == TreeType.Unknown) a else (f, ret) :: a
+            | FixedType.Class as ty         => if (types.Exists(x => ty.TryRequire(x.GetFreshType()))) (f, TreeType.Type) :: a else a
+            | _                             => a
+          }
 
         }
 
@@ -113,7 +110,8 @@ namespace Nemerle.Statechart
       {
         def get_name(e)
         {
-          | <[ $(n : name) = $_]> => n.Id
+          | <[ $(n : name) = $_]> 
+          | <[ $(n : name)($_)]>   => n.Id
           | _                     => t.Name
         }
 
@@ -143,11 +141,11 @@ namespace Nemerle.Statechart
         }
 
         def fld_data = data.Map((b, f, n, _) => (create_type(b, f), n));
-        fld_data.Iter((t, n) => builder.Define(<[ decl: public $(n : usesite) : $t; ]>));
+        fld_data.Iter((t, n) => _ = builder.DefineWithSource(<[ decl: public $(n : usesite) : $t; ]>));
         def pars = create_param(fld_data);
         def assign = fld_data.Map((_, n) => <[ this.$(n : usesite) = $(n : usesite) ]>);
         def npars = fld_data.Map((_, n) => <[ $(n : usesite) ]>);
-        builder.Define(<[ decl: public this (..$pars)
+        _ = builder.DefineWithSource(<[ decl: public this (..$pars)
                         {
                           base(..$npars);
                           { ..$assign }
@@ -169,7 +167,7 @@ namespace Nemerle.Statechart
         }
         when (reduce != null)
         {
-          def fld_data = data.Map((b, f, n, _) => (reduce_create(b, f), n));                
+          def fld_data = data.Map((b, f, n, _) => (reduce_create(b, f), n));
           def pars = create_param(fld_data);
           def (rpar, rpare) = red_par.Split();
           def pars = pars.HeadAppend(rpar);
@@ -198,8 +196,10 @@ namespace Nemerle.Statechart
           def e = match (e, expr)
           {
             | (<[]>, <[]>) => <[ case: | $(type : name) as obj     => this.$(n : usesite)(..$acc) ]>
-            | (_, e)       => <[ case: | $(type : name)($e) as obj => this.$(n : usesite)(..$acc) ]>
-          } 
+            | (_, <[ $_ = $_ ]> as ex)
+            | (_, <[ $_($ex) ]>)       => <[ case: | $(type : name)($ex) as obj => this.$(n : usesite)(..$acc) ]>
+            | (_, _)                   => throw InvalidOperationException("invalid pattern")
+          }
           e :: a
         }
 

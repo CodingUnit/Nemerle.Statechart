@@ -20,87 +20,6 @@ namespace Nemerle.Statechart
     | Region
   }
 
-  //~ public class StateNodeIteratorContext[T] : IIteratorContext[StateNode, T]
-  //~ {
-    //~ public state_machine : StateNode.StateMachine * T -> T;
-    //~ public region        : StateNode.State * IEnumerable[T] -> T;
-    //~ public state         : StateNode.State * IEnumerable[T] -> T;
-    //~ public final         : StateNode.Final * T -> T;
-
-    //~ public this(state_machine : StateNode.StateMachine * T -> T, region : StateNode.State * IEnumerable[T] -> T, state : StateNode.State * IEnumerable[T] -> T, final : StateNode.Final * T -> T)
-    //~ {
-      //~ base(state_machine, region, state, final);
-      //~ this.state_machine = state_machine;
-      //~ this.region = region;
-      //~ this.state = state;
-      //~ this.final = final;
-    //~ }
-
-    //~ public static Fold(this obj : StateNode,
-                      //~ init          : T,
-                      //~ state_machine : StateNode.StateMachine * T-> T,
-                      //~ region        : StateNode.State * IEnumerable[T] -> T,
-                      //~ state         : StateNode.State * IEnumerable[T] -> T,
-                      //~ final         : StateNode.Final * T -> T) : T
-    //~ {
-      //~ obj.Fold(init, StateNodeIteratorContext(state_machine, region, state, final))
-    //~ }
-
-    //~ public override Visit(obj : StateNode, acc : IEnumerable[T]) : T
-    //~ {
-      //~ match (obj)
-      //~ {
-        //~ | State(regions = Some) as t => region(t, acc)
-        //~ | State as t                 => state(t, acc)
-        //~ | StateMachine as t          => state_machine(t, acc.First())
-        //~ | Final as t                 => final(t, acc.First())
-        //~ | _                          => default(T)
-      //~ }
-    //~ }
-
-
-  //~ }
-
-  //public class StateNodeAccIteratorContext[T] : IAccIteratorContext[StateNode, T]
-  //{
-  //  public state_machine : StateNode.StateMachine * T-> T;
-  //  public region        : StateNode.State * T -> T;
-  //  public state         : StateNode.State * T -> T;
-  //  public final         : StateNode.Final * T -> T;
-
-  //  public this(state_machine : StateNode.StateMachine * T -> T, region : StateNode.State * T -> T, state : StateNode.State * T -> T, final : StateNode.Final * T -> T)
-  //  {
-  //    base(state_machine, region, state, final);
-  //    this.state_machine = state_machine;
-  //    this.region = region;
-  //    this.state = state;
-  //    this.final = final;
-  //  }
-
-  //  public static Fold(this obj : StateNode,
-  //                    init          : T,
-  //                    state_machine : StateNode.StateMachine * T -> T,
-  //                    region        : StateNode.State * T -> T,
-  //                    state         : StateNode.State * T -> T,
-  //                    final         : StateNode.Final * T -> T) : T
-  //  {
-  //    obj.Fold(init, StateNodeAccIteratorContext(state_machine, region, state, final))
-  //  }
-
-  //  public override Visit(obj : StateNode, acc : T) : T
-  //  {
-  //    match (obj)
-  //    {
-  //      | State(regions = Some) as t => region(t, acc)
-  //      | State as t                 => state(t, acc)
-  //      | StateMachine as t          => state_machine(t, acc)
-  //      | Final as t                 => final(t, acc)
-  //      | _                          => acc
-  //    }
-  //  }
-
-  //}
-
   [Traversable(State)]
   [Record]
   public variant StateNode
@@ -120,12 +39,8 @@ namespace Nemerle.Statechart
 
         GetErrors() : IEnumerable[Error]
         {
-          Fold(Enumerable.Empty(), null, null, null, (s, a) => a.Concat(s.errors))
+          Fold(Enumerable.Empty(), null, null, (s, a) => a.Concat(s.errors), null)
         }
-      }
-    | Region
-      {
-        regions : IEnumerable[State];
       }
     | Initial
       {
@@ -169,7 +84,7 @@ namespace Nemerle.Statechart
 
       }
     [Traverse]
-    [Traverse(regions = Some)]
+    [Traverse(region(type = StateType.Region))]
     | State
       {
         this (n : string) {name = n;reference = true;base(0);}
@@ -201,7 +116,6 @@ namespace Nemerle.Statechart
         do_activity : IEnumerable[DoActivity] = Enumerable.Empty();
         history : TwoOption[History] = TwoOption.None();
         sub_states : IEnumerable[State] = Enumerable.Empty();
-        regions : option[Region] = None();
         [RecordIgnore]
         reference : bool;
         pseudo_states : IEnumerable[PseudoState] = Enumerable.Empty();
@@ -327,7 +241,6 @@ namespace Nemerle.Statechart
     {
       match (this)
       {
-        | State(regions = Some(Region(sr))) => sr
         | State(sub_states = sub)           => sub
         | StateMachine(state = st)          => TraverseUtils.SingleElement(st)
         | Final(state = st)                 => TraverseUtils.SingleElement(st)
