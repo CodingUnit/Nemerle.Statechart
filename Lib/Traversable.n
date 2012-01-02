@@ -19,7 +19,7 @@ namespace Nemerle.Statechart
     public DoCheckTraverse(typer : Typer, typeBuilder : TypeBuilder, expr : list[PExpr]) : void
     {
       Macros.DefineCTX(typer);
-      assert2(false);
+      //assert2(false);
       def opts = typeBuilder.GetVariantOptions();
       def name = typeBuilder.Name;
 
@@ -56,11 +56,7 @@ namespace Nemerle.Statechart
 
           def is_that_type(ty, tt, type, cont)
           {
-            if (cont.TryRequire(ty))
-            {
-                tt.TryRequire(type)
-            } else false
-            
+            cont.TryRequire(ty) && tt.TryRequire(type)
           }
           
           def is_enum(ty, tt, t)
@@ -88,7 +84,30 @@ namespace Nemerle.Statechart
 
         }
 
-        def fields = f.GetFields(BindingFlags.Public | BindingFlags.Instance);
+        def get_fields()
+        {
+          
+          def get_name(e)
+          {
+            | <[ $e.$b ]>       => get_name(e) + [b.GetName().Id]
+            | <[ $(e : name) ]> => [e.Id]
+            | _                 => throw InvalidOperationException("invalid type specified")
+          }
+          
+          match (e)
+          {
+           | <[ $_($_ = $e(_)) ]> => def name = get_name(e);
+                                     match (typer.Env.LookupType(name))
+                                     {
+                                       | Some(t) => t.GetFields(BindingFlags.Public | BindingFlags.Instance)
+                                       | _       => throw InvalidOperationException("invalid type specified")
+                                     }
+           | _                     => f.GetFields(BindingFlags.Public | BindingFlags.Instance);
+          }
+        }
+        
+        
+        def fields = get_fields();
         def fields_incl = fields.Filter(x => x.attr_func(x => x.Exists(_ is <[ TraverseInclude ]>)));
         def fields = if (fields_incl is []) fields.Exclude(x => x.attr_func(x => x.Exists(_ is <[ TraverseIgnore ]>))); else fields_incl;
         (f, e, fields.FoldBack([], is_traversable))
@@ -112,7 +131,7 @@ namespace Nemerle.Statechart
         {
           | <[ $(n : name) = $_]> 
           | <[ $(n : name)($_)]>   => n.Id
-          | _                     => t.Name
+          | _                      => t.Name
         }
 
         def name = get_name(e);
@@ -182,31 +201,37 @@ namespace Nemerle.Statechart
         builder.Compile();
       }
 
-      def create_case((b, c, n, e), add, a, create_case)
+      def create_case((b, c, n, e), add, a, opts, create_case)
         {
           def acc = create_case(c, add);
           def type = b.ParsedName;
-          def expr = match (c)
-                      {
-                        | [(f, TreeType.Option)] 
-                        | [(_, TreeType.Type), (f, TreeType.Option)] 
-                        | [(f, TreeType.Option), (_, TreeType.Type)] => <[ $(f.Name : usesite) = n ]>;
-                        | _                                          => e
-                      }
+          def expr = opts(c, e);
           def e = match (e, expr)
           {
             | (<[]>, <[]>) => <[ case: | $(type : name) as obj     => this.$(n : usesite)(..$acc) ]>
             | (_, <[ $_ = $_ ]> as ex)
-            | (_, <[ $_($ex) ]>)       => <[ case: | $(type : name)($ex) as obj => this.$(n : usesite)(..$acc) ]>
+            | (_, <[ $_($f = $t(_)) ]>) with ex = <[ $f = $t ]>
+            | (_, <[ $_($ex) ]>)        => <[ case: | $(type : name)($ex) as obj => this.$(n : usesite)(..$acc) ]>
             | (_, _)                   => throw InvalidOperationException("invalid pattern")
           }
           e :: a
         }
 
-      def run_body_func(data, default, add, create_case_par)
+        def def_opts(c, e)
+        {
+          match (c)
+          {
+                        | [(f, TreeType.Option)] 
+                        | [(_, TreeType.Type), (f, TreeType.Option)] 
+                        | [(f, TreeType.Option), (_, TreeType.Type)] => <[ $(f.Name : usesite) = n ]>;
+                        | _                                          => e
+           }
+        }
+        
+      def run_body_func(data, default, add, opts, create_case_par)
       {
         def sorted = SortCases(data, x => x[3]);
-        def cases = sorted.FoldLeft([default], create_case(_, add, _, create_case_par));
+        def cases = sorted.FoldLeft([default], create_case(_, add, _, opts, create_case_par));
         <[ match (obj)
           {
             ..$cases
@@ -214,7 +239,7 @@ namespace Nemerle.Statechart
         ]>
       }
 
-      def make_type(b : TypeBuilder, f, type, end, ret)
+      def make_type(b, f, type, end, ret)
       {
 
         def make_ftype(_, t)
@@ -230,7 +255,12 @@ namespace Nemerle.Statechart
 
         def ftype = f.FoldBack(end, (x, a) => make_ftype(x) :: a);
         def ftype = <[ $(b.GetMemType() : typed) ]> :: ftype;
-        <[ @*(..$ftype) -> $ret ]>
+        match (ftype)
+        {
+          | [fld] => <[ $fld -> $ret ]>
+          | _     => <[ @*(..$ftype) -> $ret ]>
+        }
+        
       }
 
       def create_case_param(c, add)
@@ -242,12 +272,11 @@ namespace Nemerle.Statechart
           | [(_, TreeType.Option)]                   => def acc1 = <[ obj ]> :: <[ Some(a) ]> :: add;
                                                         def acc2 = <[ obj ]> :: <[ None() ]> :: add;
                                                         <[
-                                                            match (n)
+                                                            if (n.HasValue) 
                                                             {
-                                                              | Some(n) => def a = acc.First();
-                                                                           (..$acc1)
-                                                              | _       => (..$acc2)
-                                                            }
+                                                              def a = acc.First();
+                                                              (..$acc1) 
+                                                            } else (..$acc2)
                                                         ]> :: []
           | [(_, TreeType.Enumerable)]               => <[ obj ]> :: <[ acc ]> :: add
           | [(_, TreeType.Type), (_, TreeType.Type)] => def acc = <[ obj ]> :: <[ a ]> :: <[ b ]> :: add;
@@ -256,23 +285,27 @@ namespace Nemerle.Statechart
           | [(_, TreeType.Option), (_, TreeType.Type)] => def acc1 = <[ obj ]> :: <[ Some(a) ]> :: <[ b ]> :: add;
                                                           def acc2 = <[ obj ]> :: <[ None() ]> :: <[ b ]> :: add;
                                                           <[
-                                                            match (n)
+                                                            if (n.HasValue)
                                                             {
-                                                              | Some(n) => def (a, b) = acc.TakeTwo();
-                                                                           (..$acc1)
-                                                              | _       => def b = acc.First();
-                                                                           (..$acc2)
+                                                              def (a, b) = acc.TakeTwo();
+                                                              (..$acc1)
+                                                            } else
+                                                            {
+                                                              def b = acc.First();
+                                                              (..$acc2)
                                                             }
                                                           ]> :: []
           | [(_, TreeType.Type), (_, TreeType.Option)] => def acc1 = <[ obj ]> :: <[ a ]> :: <[ Some(b) ]> :: add;
                                                           def acc2 = <[ obj ]> :: <[ a ]> :: <[ None() ]> :: add;
                                                           <[
-                                                            match (n)
+                                                            if (n.HasValue)
                                                             {
-                                                              | Some(n) => def (a, b) = acc.TakeTwo();
-                                                                           (..$acc1)
-                                                              | _       => def a = acc.First();
-                                                                           (..$acc2)
+                                                              def (a, b) = acc.TakeTwo();
+                                                              (..$acc1)
+                                                            } else
+                                                            {
+                                                              def a = acc.First();
+                                                              (..$acc2)
                                                             }
                                                           ]> :: []
           | _                                          => throw InvalidOperationException("unknown pattern")
@@ -303,7 +336,7 @@ namespace Nemerle.Statechart
                   [<[ T ]>], 
                   make_type(_, _, <[ T ]>, [], <[ T ]>), 
                   <[ IIteratorContext ]>, 
-                  run_body_func(_, <[case: | _ => default(T) ]>, [], create_case_param), 
+                  run_body_func(_, <[case: | _ => default(T) ]>, [], def_opts, create_case_param), 
                   <[ parameter: acc : IEnumerable[T] ]> :: [], 
                   <[ T ]>, 
                   true,
@@ -316,7 +349,7 @@ namespace Nemerle.Statechart
                   [<[ T ]>], 
                   (b, _) => make_type(b, [], <[ ]>, [<[ T ]>], <[ T ]>), 
                   <[ IAccIteratorContext ]>, 
-                  run_body_func(_, <[case: | _ => acc ]>, [], create_acc_case_param), 
+                  run_body_func(_, <[case: | _ => acc ]>, [], (_, e) => e, create_acc_case_param), 
                   <[ parameter: acc : T ]> :: [], 
                   <[ T ]>, 
                   true,
@@ -329,7 +362,7 @@ namespace Nemerle.Statechart
                   [<[ T ]>, <[ TAcc ]>], 
                   make_type(_, _, <[ T ]>, [<[ TAcc ]>], <[ T * TAcc ]>), 
                   <[ ITwoAccIteratorContext ]>, 
-                  run_body_func(_, <[case: | _ => (default(T), acc2) ]>, [<[ acc2 ]>], create_case_param), 
+                  run_body_func(_, <[case: | _ => (default(T), acc2) ]>, [<[ acc2 ]>], def_opts, create_case_param), 
                   <[ parameter: acc : IEnumerable[T] ]> :: <[ parameter: acc2 : TAcc ]> :: [], 
                   <[ T * TAcc ]>, 
                   false,
