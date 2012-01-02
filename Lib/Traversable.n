@@ -19,10 +19,9 @@ namespace Nemerle.Statechart
     public DoCheckTraverse(typer : Typer, typeBuilder : TypeBuilder, expr : list[PExpr]) : void
     {
       Macros.DefineCTX(typer);
-      //assert2(false);
       def opts = typeBuilder.GetVariantOptions();
       def name = typeBuilder.Name;
-
+      //assert2(false);
       def get_type(t, a)
       {
         match (t)
@@ -141,7 +140,7 @@ namespace Nemerle.Statechart
 
       
       def traverse = CollectTraverseOpt(opts, is_all);
-      def traverse = if (traverse is []) opts.RevMap(x => (x, <[ ]>)) else traverse;
+      def traverse = if (traverse is []) opts.Map(x => (x, <[ ]>)) else traverse;
 
       def traversable = traverse.Map(get_members);
       def data = traversable.Map(create_iterator_data);
@@ -149,22 +148,29 @@ namespace Nemerle.Statechart
 
       def env = typer.Manager.CoreEnv.EnterIntoNamespace(typeBuilder.NamespaceNode.Parent);
 
-      def create_iter(data, name, tp, ntp, create_type, it_type, run_body_func, vis_types, ret_type, fold, reduce, reduce_create, red_par)
+      def create_iter(data, name, tp, ntp, create_type, it_type, run_body_func, vis_types, ret_type, fold, reduce, reduce_create, red_par, red_name)
       {
         def ntp = <[ $(ttype : typed) ]> :: ntp;
         def builder = env.Define(<[decl: public class $(name : usesite)[..$tp] : $it_type[..$ntp] {}]>);
 
         def create_param(f)
         {
-          f.Map((t, n) => <[ parameter: $(n : usesite) : $t ]>)
+          | [(t, n)] => [<[ parameter: $(n : usesite) : $t ]>]
+          | f => f.Map((t, n) => <[ parameter: $(n : usesite) : $t = null ]>)
         }
 
+        def create_param_cons(f)
+        {
+          f.Map((t, n) => <[ parameter: $(n : usesite) : $t ]>)
+        }
+        
         def fld_data = data.Map((b, f, n, _) => (create_type(b, f), n));
         fld_data.Iter((t, n) => _ = builder.DefineWithSource(<[ decl: public $(n : usesite) : $t; ]>));
         def pars = create_param(fld_data);
         def assign = fld_data.Map((_, n) => <[ this.$(n : usesite) = $(n : usesite) ]>);
         def npars = fld_data.Map((_, n) => <[ $(n : usesite) ]>);
-        _ = builder.DefineWithSource(<[ decl: public this (..$pars)
+        def pars_cons = create_param_cons(fld_data);
+        _ = builder.DefineWithSource(<[ decl: public this (..$pars_cons)
                         {
                           base(..$npars);
                           { ..$assign }
@@ -193,7 +199,7 @@ namespace Nemerle.Statechart
           def npars = <[ $(name : usesite)(..$npars) ]> :: [];
           def npars = npars.HeadAppend(rpare);
           def pars = <[ parameter: this obj : $(ttype : typed) ]> :: pars;
-          _ = builder.DefineWithSource(<[decl: public static Reduce(..$pars) : $reduce
+          _ = builder.DefineWithSource(<[decl: public static $(red_name : usesite)(..$pars) : $reduce
                           {
                             obj.ReduceDo(..$npars)
                           } ]>);
@@ -342,7 +348,8 @@ namespace Nemerle.Statechart
                   true,
                   <[ $(ttype : typed) ]>,
                   make_reduce_type,
-                  []);
+                  [],
+                  "Reduce");
 
       create_iter(data, $"$(name)AccIteratorContext", 
                   [Splicable.Name(<[ T ]>)], 
@@ -354,6 +361,7 @@ namespace Nemerle.Statechart
                   <[ T ]>, 
                   true,
                   null, 
+                  null,
                   null,
                   null);
 
@@ -368,7 +376,8 @@ namespace Nemerle.Statechart
                   false,
                   <[ $(ttype : typed) * TAcc ]>,
                   make_reduce_type2,
-                  [(<[parameter: init : TAcc; ]>, <[ init ]>)]);
+                  [(<[parameter: init : TAcc; ]>, <[ init ]>)],
+                  "Reduce");
 
       def compare_types(x, y)
       {
@@ -394,7 +403,8 @@ namespace Nemerle.Statechart
                   true,
                   <[ $(ttype : typed) ]>,
                   make_reduce_type,
-                  []);
+                  [],
+                  "ReduceSingle");
 
       create_iter([data], $"$(name)TwoAccSingleIteratorContext", 
                   [Splicable.Name(<[ T ]>), Splicable.Name(<[ TAcc ]>)], 
@@ -407,7 +417,8 @@ namespace Nemerle.Statechart
                   false,
                   <[ $(ttype : typed) * TAcc ]>,
                   make_reduce_type2,
-                  [(<[parameter: init : TAcc; ]>, <[ init ]>)]);
+                  [(<[parameter: init : TAcc; ]>, <[ init ]>)],
+                  "ReduceSingle");
 
     }
 
