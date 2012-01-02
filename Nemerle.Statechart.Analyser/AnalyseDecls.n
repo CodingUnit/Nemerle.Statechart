@@ -117,10 +117,11 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def acts =  trans_paths |>< Actions;
-        def int_acts =  internal_transitions.Values() |>< Actions;
-        def acts = acts + int_acts;
-        acts.RemoveDuplicatesSort((x, y) => x.CompareTo(y));
+        def acts =  trans_paths.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Actions));
+        def int_acts =  internal_transitions.Values().FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Actions));
+        def acts = acts.Concat(int_acts);
+        acts.Distinct()
+        //acts.RemoveDuplicatesSort((x, y) => x.CompareTo(y));
         //def do_activities = States.FilterValues(_.do_activity);
       //def err = do_activities.FoldLeft([], check_do);
       }
@@ -147,17 +148,17 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.FoldLeft([], (x, a) => a.HeadAppend(x.history.Value)).Filter(_.Used)//$[h, x in States, h in x.history.Value, h.Used]//.Filter(x => x.history.HasValue) |>< history.Value
+        States.FoldLeft([], (x, a) => a.HeadAppend(x.history.Value)).Where(_.Used)//$[h, x in States, h in x.history.Value, h.Used]//.Filter(x => x.history.HasValue) |>< history.Value
       }
     }
 
-    public HistoryPaths : list[HistoryPath]
+    public HistoryPaths : IEnumerable[HistoryPath]
     {
       get
       {
-        def paths = States.Map(x => x.HistoryPaths.Map(x => x[1])).Flatten();
+        def paths = States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.HistoryPaths.Select(x => x[1])));
         def paths = paths.Exclude(x => x.IsDefault);
-        paths.RemoveDuplicatesSort((x, y) => x.Name.CompareTo(y.Name))
+        paths.RemoveDuplicatesSort(_.Name)
       }
     }
 
@@ -332,18 +333,21 @@ namespace Nemerle.Statechart
 
     [Accessor] traverser : TransitionTraverser = TransitionTraverser();
 
-    public special_transitions : list[StateTransition]
+    public special_transitions : IEnumerable[StateTransition]
     {
       get
       {
-        def get_special_transitions(tran)
+        def get_special_transitions(tran, a)
         {
-          | StateTransition.Transition(Destination = TransitionDestination.Fork(sub_tran = tr)) => tr
-          | StateTransition.Transition(To = PseudoState(PseudoStateNode.Join(transition = tr))) => [tr]
-          | _ => []
+          match (tran)
+          {
+            | StateTransition.Transition(Destination = TransitionDestination.Fork(sub_tran = tr)) => a.HeadAppend(tr)
+            | StateTransition.Transition(To = PseudoState(PseudoStateNode.Join(transition = tr))) => tr :: a 
+            | _                                                                                   => a
+          }
         }
 
-        def special = used_transitions |>< get_special_transitions(_);
+        def special = used_transitions.FoldLeft([], get_special_transitions);
         special.RemoveDuplicatesSort(StateTransition.Comparer)
       //special_transitions.Iter(x => x.UpdateReference(statemap));
       }
@@ -615,10 +619,9 @@ namespace Nemerle.Statechart
       {
         def tran = transitions.Values().Concat(initial_transitions.Values());// |>< Guards;
         def guards = tran.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Guards));
-        guards.Distinct()
         //def init_guards =  |>< Guards;
         //def guards = guards + init_guards;
-        //guards.RemoveDuplicatesSort((x, y) => x.Name.CompareTo(y.Name))
+        guards.RemoveDuplicatesSort(x => x.Name)
       }
     }
 

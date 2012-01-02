@@ -283,9 +283,9 @@ namespace Nemerle.Statechart
       //tran_events = analyser.Events.;
       events = analyser.Events;
       events_call = Map(events |> (_, <[ cur_state.$(_ : usesite)(this) ]>));
-      history_paths = Map(analyser.HistoryPaths |> (Name, GenAction.CreateActions(_.Path, action_for)));
-      history_transitions = Map(analyser.history_transitions |> (_, GenAction.CreateActions(_[2].PathNode, action_for)));
-      history_def_transitions = Map(analyser.history_default_transitions |> (Name, GenAction.CreateActions(_.PathNode, action_for)));
+      history_paths = analyser.HistoryPaths.Select(x => (x.Name, GenAction.CreateActions(x.Path, action_for)));
+      history_transitions = analyser.history_transitions.Select((x, y) => (x, GenAction.CreateActions(y.PathNode, action_for)));
+      history_def_transitions = analyser.history_default_transitions.Select(x => (x.Name, GenAction.CreateActions(x.PathNode, action_for)));
     }
 
     InitActionNames() : void
@@ -324,8 +324,8 @@ namespace Nemerle.Statechart
                                                | PathNode.RunDoActivity
                                                | PathNode.StopDoActivity => false
                                                | _ => true});
-      def acts = acts |>< GenAction.GetActions(_, action_for);
-      def acts = acts.RemoveDuplicatesSort((x, y) => x.action.CompareTo(y.action));
+      def acts = acts.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(GenAction.GetActions(x, action_for)));
+      def acts = acts.RemoveDuplicatesSort(_.action);
       actions = acts;
     }
 

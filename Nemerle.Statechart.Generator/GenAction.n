@@ -161,32 +161,33 @@ namespace Nemerle.Statechart
         | _ => ()
       }
     }
-        
-    public static CreateActions(node : PathNode, map : Map[string, string]) : list[GenAction]
+    
+    // TODO: fold for actions
+    public static CreateActions(node : PathNode, map : Map[string, string]) : IEnumerable[GenAction]
     {
       match (node)
       {
         | Action(act)  => create_act_name(act, node, map)
-        | Entry(action = StateAction.Entry(state = st)) => [GenAction($"$(st)Entry", node, map)]
-        | Exit(action = StateAction.Exit(state = st)) => [GenAction($"$(st)Exit", node, map)]
-        | Sequence(lst) => lst |>< CreateActions(_, map)
+        | Entry(action = StateAction.Entry(state = st))            => TraverseUtils.SingleElement(GenAction($"$(st)Entry", node, map))
+        | Exit(action = StateAction.Exit(state = st))              => TraverseUtils.SingleElement(GenAction($"$(st)Exit", node, map))
+        | Sequence(lst) => lst.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(CreateActions(x, map)))
         | RunDoActivity as n
-        | StopDoActivity as n => [GenAction(n.ToString(), node, map)]
-        | _  => []
+        | StopDoActivity as n                                      => TraverseUtils.SingleElement(GenAction(n.ToString(), node, map))
+        | _                                                        => Enumerable.Empty()
       }
     }
 
-    public static GetActions(node : PathNode, map : Map[string, string]) : list[GenAction]
+    public static GetActions(node : PathNode, map : Map[string, string]) : IEnumerable[GenAction]
     {
       match (node)
       {
         | Action(act)  => create_act_name(act, node, map)
         | Entry(action = StateAction.Entry(state = st) as act) => GenAction($"$(st)Entry", node, map) :: create_act_name(act, Action(act), map)
         | Exit(action = StateAction.Exit(state = st) as act) => GenAction($"$(st)Exit", node, map) :: create_act_name(act, Action(act), map)
-        | Sequence(lst) => lst |>< CreateActions(_, map)
+        | Sequence(lst) => lst.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(CreateActions(x, map)))
         | RunDoActivity as n
-        | StopDoActivity as n => [GenAction(n.ToString(), node, map)]
-        | _  => []
+        | StopDoActivity as n => TraverseUtils.SingleElement(GenAction(n.ToString(), node, map))
+        | _                   => Enumerable.Empty()
       }
     }
     
