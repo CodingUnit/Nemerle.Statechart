@@ -26,13 +26,13 @@ namespace Nemerle.Statechart
         {
           | (FsmState.Final) 
           | (ConcurrentRegion) => st
-          | (FsmState where (Initial = [])) when (!sub.IsEmpty()) with head = sub.First() =>
+          | (FsmState(Initial = [])) when (!sub.IsEmpty()) with head = sub.First() =>
               if (head is FsmState.Final) st else st.DefineInitial(head);
           | x => x
         }
       }
 
-      def err = States.FoldLeft(ErrorInfo(), (x, a) => check_duplicates(x.Initial, a));  // check duplicates
+      def err = States.FoldLeft(GetErrorInfo(), (x, a) => check_duplicates(x.Initial, a));  // check duplicates
       def top = if (FsmFlags.AutoInitial) TopState.ReduceSingle(check_auto_initial) else TopState;
 
       def top = if (top.Initial.IsEmpty()) // if not have initial transition in top state
@@ -48,8 +48,8 @@ namespace Nemerle.Statechart
 
     is_crossed_orthogonal(tr : StateTransition, st : FsmState) : bool
     {
-      | (StateTransition where (To = TransitionTarget.State(state = FsmState where (PartOfRegion = Some(r), PartOfSubRegion = Some(sr)))),
-                        FsmState where (PartOfRegion = Some(r2), PartOfSubRegion = Some(sr2))) when r == r2 =>
+      | (StateTransition(To = TransitionTarget.State(state = FsmState(PartOfRegion = Some(r), PartOfSubRegion = Some(sr)))),
+                        FsmState(PartOfRegion = Some(r2), PartOfSubRegion = Some(sr2))) when r == r2 =>
           sr2 != sr
       | _ => false
     }
@@ -59,7 +59,7 @@ namespace Nemerle.Statechart
       def create_trans(st)
       {
         | FsmState.State(super_state = null) => st
-        | FsmState where (super_state = super, PartOfSubRegion = r) =>
+        | FsmState(super_state = super, PartOfSubRegion = r) =>
             single_func
             {
               super.combined_transitions;
@@ -79,7 +79,7 @@ namespace Nemerle.Statechart
         match (tr)
         {
           | _ :: []  => st // if not have group exit
-          | StateTransition where (Guard = Some()) as head :: tail  => head.IsCrossed = true; // cross transition
+          | StateTransition(Guard = Some()) as head :: tail  => head.IsCrossed = true; // cross transition
               def (path, end) = tail.SplitFind(x  => x.Guard.IsNone); // get all include last without GuardNode
               head.ParentCrossed = path;
               path.Iter(x => x.CrossFor = true);
@@ -167,7 +167,7 @@ namespace Nemerle.Statechart
   /// </summary>
     CheckDuplicates() : FsmAnalyser
     {
-      def err = States.FoldLeft(ErrorInfo(), (x, a) => check_duplicates(x.this_transitions, a));
+      def err = States.FoldLeft(GetErrorInfo(), (x, a) => check_duplicates(x.this_transitions, a));
       def err = States.FoldLeft(err, (x, a) => check_duplicates(x.Initial, a));
       AddErrors(err)
     }
@@ -410,14 +410,14 @@ namespace Nemerle.Statechart
 
     RenameTransition(tran : IEnumerable[StateTransition], an : FsmAnalyser) : IEnumerable[string * StateTransition] * FsmAnalyser
     {
-      def (dups, tran) = tran.DuplicatesPartition(x => x.Name);
+      def (dups, tran) = tran.DuplicatesPartition(_.Name);
       dups.Iter(x => x.NeedGuardedName = true);
       def dups = dups |> (GuardedName, _);
       def tran = tran |> (Name, _);
-      def tran = tran + dups;
-      def (dups, tran) = tran.DuplicatesPartition((x, y) => x[0].CompareTo(y[0]));
-      def dups = dups.Group((x, y) => x[0].CompareTo(y[0]));
-      def err = dups.Map(x => FsmError.DuplicateTransition(x.Split()[1]));
+      def tran = tran.Concat(dups);
+      def (dups, tran) = tran.DuplicatesPartition(x => x[0]);
+      def dups = dups.GroupBy(x => x[0]);
+      def err = dups.Map(x => FsmError.DuplicateTransition(x.Values()));
       def an = an.AddErrors(err);
       (tran, an)
     }
@@ -461,9 +461,9 @@ namespace Nemerle.Statechart
     {
       def determine_used()
       {
-        def empty = empty_states.Map(x => FsmWarning.StateNotUsed(x) : FsmWarning); // warning about all without substates and not lived that is not used
-        def not_used = not_used_transitions.Map(x => FsmWarning.TransitionNotUsed(x) : FsmWarning);
-        empty + not_used
+        def empty = empty_states.Select(x => FsmWarning.StateNotUsed(x) : FsmWarning); // warning about all without substates and not lived that is not used
+        def not_used = not_used_transitions.Select(x => FsmWarning.TransitionNotUsed(x) : FsmWarning);
+        empty.Concat(not_used)
       }
       
       def warnings = determine_used(); // determine used elements
@@ -480,8 +480,8 @@ namespace Nemerle.Statechart
       def (init, an) = an.RenameTransition(init, an);
       def init = Map(init);
       def an = an.ChangeInternalTransitionsTransitionsInitialTransitions(int_tran, trans, init);
-      def hist = not_used_history.Map(x => FsmWarning.HistoryNotUsed(x) : FsmWarning);
-      def warnings = warnings + hist;
+      def hist = not_used_history.Select(x => FsmWarning.HistoryNotUsed(x) : FsmWarning);
+      def warnings = warnings.Concat(hist);
       an.ChangeWarnings(GetWarnings(warnings))
     }
     
