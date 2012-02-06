@@ -22,6 +22,7 @@ namespace Nemerle.Statechart
       def opts = typeBuilder.GetVariantOptions();
       def name = typeBuilder.Name;
       //assert2(false);
+      
       def get_type(t, a)
       {
         match (t)
@@ -148,15 +149,30 @@ namespace Nemerle.Statechart
 
       def env = typer.Manager.CoreEnv.EnterIntoNamespace(typeBuilder.NamespaceNode.Parent);
 
-      def create_iter(data, name, tp, ntp, create_type, it_type, run_body_func, vis_types, ret_type, fold, reduce, reduce_create, red_par, red_name)
+      def create_iter(data, 
+                      name, 
+                      tp, 
+                      ntp, 
+                      create_type, 
+                      it_type, 
+                      run_body_func, 
+                      vis_types, 
+                      ret_type, 
+                      fold, 
+                      reduce, 
+                      reduce_create, 
+                      red_par : list[PParameter * PExpr], 
+                      red_name, 
+                      is_single,
+                      exec_expr = null)
       {
         def ntp = <[ $(ttype : typed) ]> :: ntp;
         def builder = env.Define(<[decl: public class $(name : usesite)[..$tp] : $it_type[..$ntp] {}]>);
 
         def create_param(f)
         {
-          | [(t, n)] => [<[ parameter: $(n : usesite) : $t ]>]
-          | f => f.Map((t, n) => <[ parameter: $(n : usesite) : $t = null ]>)
+          | [(t, n)]          => [<[ parameter: $(n : usesite) : $t ]>]
+          | f => f.Map((t, n) => if (is_single) <[ parameter: $(n : usesite) : $t ]> else <[ parameter: $(n : usesite) : $t = null ]>)
         }
 
         def create_param_cons(f)
@@ -165,19 +181,21 @@ namespace Nemerle.Statechart
         }
         
         def fld_data = data.Map((b, f, n, _) => (create_type(b, f), n));
-        fld_data.Iter((t, n) => _ = builder.DefineWithSource(<[ decl: public $(n : usesite) : $t; ]>));
+        fld_data.Iter((t, n) => _ = builder.DefineWithSource(<[ decl: public $(n : usesite) : $t ]>));
         def pars = create_param(fld_data);
         def assign = fld_data.Map((_, n) => <[ this.$(n : usesite) = $(n : usesite) ]>);
         def npars = fld_data.Map((_, n) => <[ $(n : usesite) ]>);
         def pars_cons = create_param_cons(fld_data);
+        def cons = if (is_single) <[ base() ]> else <[ base(..$npars) ]>;
         _ = builder.DefineWithSource(<[ decl: public this (..$pars_cons)
                         {
-                          base(..$npars);
+                          $cons;
                           { ..$assign }
                         } ]>);
 
         def run_body = run_body_func(data); 
         def param = <[ parameter: obj : $(ttype : typed) ]> :: vis_types;
+        //def expr = if (exec_expr != null) exec_expr(run_body) else ;
         _ = builder.DefineWithSource(<[ decl: public override Visit(..$param) : $ret_type
                         {
                           $run_body
@@ -198,6 +216,7 @@ namespace Nemerle.Statechart
           def pars = pars.HeadAppend(rpar);
           def npars = <[ $(name : usesite)(..$npars) ]> :: [];
           def npars = npars.HeadAppend(rpare);
+          
           def pars = <[ parameter: this obj : $(ttype : typed) ]> :: pars;
           _ = builder.DefineWithSource(<[decl: public static $(red_name : usesite)(..$pars) : $reduce
                           {
@@ -327,7 +346,7 @@ namespace Nemerle.Statechart
 
       def make_reduce_type2(b, f)
       {
-        make_type(b, f, <[ $(ttype : typed) ]>, [<[ TAcc ]>], <[ $(ttype : typed) * TAcc ]>)
+        make_type(b, f, <[ $(ttype : typed) ]>, [<[ T ]>], <[ $(ttype : typed) * T ]>)
       }
 
       def run_body_func_single(data, add, create_case_par)
@@ -337,6 +356,18 @@ namespace Nemerle.Statechart
         <[ this.$(n : usesite)(..$acc) ]>
       }
 
+      def run_body_func_reduce(data, run_body_func, pars)
+      {
+        def body = run_body_func(data);
+        def tup_pat = pars.MapI((i, _) => <[ res[$i] ]>);
+        def cnv = <[ res[0] : ITraversable[$(name : usesite)] ]>;
+        def pars = cnv :: tup_pat.Tail;
+        def tup = <[ (..$pars) ]>;
+        <[ def res = $body;
+           $tup
+        ]>
+      }
+      
       create_iter(data, $"$(name)IteratorContext", 
                   [Splicable.Name(<[ T ]>)], 
                   [<[ T ]>], 
@@ -346,24 +377,42 @@ namespace Nemerle.Statechart
                   <[ parameter: acc : IEnumerable[T] ]> :: [], 
                   <[ T ]>, 
                   true,
+                  null,
+                  null,
+                  null,
+                  null,
+                  false);
+
+      create_iter(data, 
+                  $"$(name)ReduceIteratorContext", 
+                  [], 
+                  [], 
+                  make_reduce_type, 
+                  <[ IReduceIteratorContext ]>, 
+                  run_body_func(_, <[case: | _ => null ]>, [], def_opts, create_case_param), 
+                  <[ parameter: acc : IEnumerable[$(ttype : typed)] ]> :: [], 
+                  <[ ITraversable[$(ttype : typed)] ]>, 
+                  false,
                   <[ $(ttype : typed) ]>,
                   make_reduce_type,
                   [],
-                  "Reduce");
-
-      create_iter(data, $"$(name)AccIteratorContext", 
-                  [Splicable.Name(<[ T ]>)], 
-                  [<[ T ]>], 
-                  (b, _) => make_type(b, [], <[ ]>, [<[ T ]>], <[ T ]>), 
-                  <[ IAccIteratorContext ]>, 
+                  "Reduce",
+                  false);
+                  
+      create_iter(data, $"$(name)AccIteratorContext",
+                  [Splicable.Name(<[ T ]>)],
+                  [<[ T ]>],
+                  (b, _) => make_type(b, [], <[ ]>, [<[ T ]>], <[ T ]>),
+                  <[ IAccIteratorContext ]>,
                   run_body_func(_, <[case: | _ => acc ]>, [], (_, e) => e, create_acc_case_param), 
-                  <[ parameter: acc : T ]> :: [], 
-                  <[ T ]>, 
+                  <[ parameter: acc : T ]> :: [],
+                  <[ T ]>,
                   true,
-                  null, 
                   null,
                   null,
-                  null);
+                  null,
+                  null,
+                  false);
 
       create_iter(data, $"$(name)TwoAccIteratorContext", 
                   [Splicable.Name(<[ T ]>), Splicable.Name(<[ TAcc ]>)], 
@@ -374,11 +423,27 @@ namespace Nemerle.Statechart
                   <[ parameter: acc : IEnumerable[T] ]> :: <[ parameter: acc2 : TAcc ]> :: [], 
                   <[ T * TAcc ]>, 
                   false,
-                  <[ $(ttype : typed) * TAcc ]>,
-                  make_reduce_type2,
-                  [(<[parameter: init : TAcc; ]>, <[ init ]>)],
-                  "Reduce");
+                  null,
+                  null,
+                  null,
+                  null,
+                  false);
 
+      create_iter(data, $"$(name)ReduceTwoAccIteratorContext", 
+                  [Splicable.Name(<[ T ]>)], 
+                  [<[ T ]>], 
+                  make_reduce_type2, 
+                  <[ IReduceTwoAccIteratorContext ]>, 
+                  run_body_func_reduce(_, run_body_func(_, <[case: | _ => (null, acc2) ]>, [<[ acc2 ]>], def_opts, create_case_param), [<[$(ttype : typed)]>, <[ T ]>]), 
+                  <[ parameter: acc : IEnumerable[$(ttype : typed)] ]> :: <[ parameter: acc2 : T ]> :: [], 
+                  <[ ITraversable[$(ttype : typed)] * T ]>, 
+                  false,
+                  <[ $(ttype : typed) * T ]>,
+                  make_reduce_type2,
+                  (<[ parameter: init : T ]>, <[ init ]>) :: [],
+                  "Reduce",
+                  false);
+                  
       def compare_types(x, y)
       {
         x :> int - y :> int
@@ -401,10 +466,11 @@ namespace Nemerle.Statechart
                   <[ parameter: acc : IEnumerable[T] ]> :: [], 
                   <[ T ]>, 
                   true,
-                  <[ $(ttype : typed) ]>,
-                  make_reduce_type,
-                  [],
-                  "ReduceSingle");
+                  null,
+                  null,
+                  null,
+                  null,
+                  false);
 
       create_iter([data], $"$(name)TwoAccSingleIteratorContext", 
                   [Splicable.Name(<[ T ]>), Splicable.Name(<[ TAcc ]>)], 
@@ -415,11 +481,43 @@ namespace Nemerle.Statechart
                   <[ parameter: acc : IEnumerable[T] ]> :: <[ parameter: acc2 : TAcc ]> :: [], 
                   <[ T * TAcc ]>, 
                   false,
-                  <[ $(ttype : typed) * TAcc ]>,
-                  make_reduce_type2,
-                  [(<[parameter: init : TAcc; ]>, <[ init ]>)],
-                  "ReduceSingle");
+                  null,
+                  null,
+                  null,
+                  null,
+                  false);
 
+      create_iter([data], 
+                  $"$(name)ReduceSingleIteratorContext", 
+                  [], 
+                  [], 
+                  make_reduce_type, 
+                  <[ IReduceIteratorContext ]>,
+                  run_body_func_single(_, [], create_case_param), 
+                  <[ parameter: acc : IEnumerable[$(ttype : typed)] ]> :: [], 
+                  <[ ITraversable[$(ttype : typed)] ]>, 
+                  false,
+                  <[ $(ttype : typed) ]>,
+                  make_reduce_type,
+                  [],
+                  "ReduceSingle",
+                  true);
+
+      create_iter([data], $"$(name)ReduceTwoAccSingleIteratorContext", 
+                  [Splicable.Name(<[ T ]>)], 
+                  [<[ T ]>],
+                  make_reduce_type2, 
+                  <[ IReduceTwoAccIteratorContext ]>, 
+                  run_body_func_reduce(_, run_body_func_single(_, [<[ acc2 ]>], create_case_param), [<[ $(ttype : typed) ]>, <[ T ]>]), 
+                  <[ parameter: acc : IEnumerable[$(ttype : typed)] ]> :: <[ parameter: acc2 : T ]> :: [], 
+                  <[ ITraversable[$(ttype : typed)] * T ]>, 
+                  false,
+                  <[ $(ttype : typed) * T ]>,
+                  make_reduce_type2,
+                  (<[parameter: init : T ]>, <[ init ]>) :: [],
+                  "ReduceSingle",
+                  true);
+                  
     }
 
   }
