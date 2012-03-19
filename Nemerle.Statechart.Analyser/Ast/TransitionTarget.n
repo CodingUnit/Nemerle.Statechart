@@ -212,12 +212,12 @@ namespace Nemerle.Statechart
       }
     | JunctionNode
       {
-        guard : GuardNode;
-        action : option[Actions];
-        [NeedChange] to : TransitionTarget;
-        parent : PseudoStateNode;
+        guard                 : GuardNode;
+        action                : option[Actions];
+        [NeedChange] to       : TransitionTarget;
+        parent                : PseudoStateNode;
         [NeedChange(to)] next : option[JunctionNode];
-        state : FsmState;
+        state                 : FsmState;
 
         public static Create(st : FsmState, par : PseudoStateNode, to : TargetType.JunctionNode, tran : StateTransition) : JunctionNode
         {
@@ -242,7 +242,7 @@ namespace Nemerle.Statechart
         //  }
         //}
 
-        public UpdateRef(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
+        UpdateRef(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
         {   
           def (nto, an) = to.UpdateReference(an);
           def (st, an) = base.UpdateReference(an);
@@ -254,9 +254,14 @@ namespace Nemerle.Statechart
           (st, an)
         }
 
-        public override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
-        {   
+        override UpdateReference(an : FsmAnalyser) : TransitionTarget * FsmAnalyser
+        {
           UpdateRef(an);
+        }
+        
+        override ToString() : string
+        {
+          $"JunctionNode$state"
         }
       }
 
@@ -322,8 +327,8 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | PseudoState(PseudoStateNode where (state = st))
-          | History(StateHistory where (state = st))
+          | PseudoState(PseudoStateNode(state = st))
+          | History(StateHistory(state = st))
           | Final(state = st)
           | SubMachine(st, _)
           | JunctionNode(state = st)
@@ -688,8 +693,10 @@ namespace Nemerle.Statechart
         | TransitionTarget.Qualified as t => t.ChangeTarget(child.First())
         | PseudoState(Merge as p) as t    => t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
         | PseudoState(Junction as p) as t => t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
-        | JunctionNode as t               => def (f, s) = child.TakeTwo();
-            t.ChangeNextTo(if (f != null) Some(f :> JunctionNode) else None(), s)
+        | JunctionNode(next = Some) as t  => def (f, s) = child.TakeTwo();
+            t.ChangeNextTo(if (s != null) Some(s :> JunctionNode) else None(), f)
+        | JunctionNode as t               => def f = child.First();
+                                             t.ChangeTo(f);
         | _                               => this                                                                       
       }
     }

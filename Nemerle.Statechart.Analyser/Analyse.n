@@ -16,19 +16,18 @@ namespace Nemerle.Statechart
   public partial class FsmAnalyser
   {
 
-    InitStatechart() : FsmAnalyser
+    InitStatechart() : void
     {
       def top = Fsm.state.Fold(null, 
                                (_, a)  => a,
-                               (_, a)  => a,
+                               (s, _)  => FsmState.Final(s, this),
                                (s, sb) => FsmState.CreateState(s, sb, this),
                                (s, sr) => FsmState.ConcurrentRegion(s, sr.Select(x => x :> FsmState.ConcurrentSubRegion), this),
                               );
       def top = top.CreateIterator(); // cache iterator
       //def topState = FsmState.State(Fsm.state, null, this, false); // create statemachine from top state
       def top = top.ChangeName(FsmState.TopStateName);
-      def map = statemap.Init(top);
-      ChangeStatemap(map)
+      statemap.Init(top)
     }
 
     InitStateMap() : FsmAnalyser
@@ -82,23 +81,23 @@ namespace Nemerle.Statechart
         an.TopState.ReduceSingle(check_final(final, _, _));
       }
 
-      def an = InitStatechart();
-      def an = an.UpdateStateMap(); // first update state map 
+      InitStatechart();
+      def an = UpdateStateMap(); // first update state map 
       def top = CheckAddFinalState(an);
-      def map = an.statemap.Init(top);
-      def an = an.ChangeStatemap(map);
+      statemap.Init(top);
       def an = an.UpdateStateMap(); // second update state map
       def an = an.CreateHistoryStates();
       when (an.Error) throw FsmErrorException();
-      an.RenameDuplicates()
+      an.RenameDuplicates();
+      an
     }
 
     public UpdateStateMap() : FsmAnalyser
     {
       //InitStates();
       def (top, an) = TopState.ReduceSingle(this, (t, s, an) => t.UpdateReference(s, an));
-      def map = an.statemap.Update(top);
-      an.ChangeStatemap(map)
+      an.statemap.Update(top);
+      an
     }
 
     //InitStates() : void
@@ -112,7 +111,7 @@ namespace Nemerle.Statechart
     //  //states = statemap.States.NToList();
     //}
 
-    RenameDuplicates() : FsmAnalyser
+    RenameDuplicates() : void
     {
       def do_rename(st, n)
       {
@@ -130,8 +129,7 @@ namespace Nemerle.Statechart
       def dups = dups.Group(FsmState.NameComparer);
 
       def dups = dups.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(rename_group(x)));
-      def map = statemap.CheckNew(dups);
-      ChangeStatemap(map)
+      statemap.CheckNew(dups);
     }
 
     CreateHistoryStates() : FsmAnalyser
@@ -150,7 +148,7 @@ namespace Nemerle.Statechart
 
       def check_exit_actions(st)
       {
-        | FsmState where (exit = []) => st.ChangeExit([StateAction.Exit([], st)])
+        | FsmState(exit = []) => st.ChangeExit([StateAction.Exit([], st)])
         | _ => st
       }
 
@@ -165,8 +163,8 @@ namespace Nemerle.Statechart
       }
 
       def (top, err) = TopState.ReduceSingle([], update_hist);
-      def map = statemap.Update(top);
-      ChangeStatemapErrors(map, GetErrors(err))
+      statemap.Update(top);
+      ChangeErrors(GetErrors(err))
     }
 
     static nodes_eq : ((string * PathNode) * (string * PathNode)) -> bool = (x, y) => PathNode.Equals(x[1], y[1]);
@@ -203,11 +201,9 @@ namespace Nemerle.Statechart
 
       def (top, err) = TopState.ReduceSingle([], (s, _, a) => check_do(s, s.do_activity, a));
       
-      def map = statemap.Update(top);
-      //def do_activities = States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.do_activity));
-      //def err = do_activities.FoldLeft([], check_do);
+      statemap.Update(top);
       def warn = GetWarnings(err);
-      ChangeStatemapWarnings(map, warn)
+      ChangeWarnings(warn)
     }
 
     CreateConcurrentRegion() : FsmAnalyser
@@ -219,14 +215,13 @@ namespace Nemerle.Statechart
     CreateSubMachines() : FsmAnalyser
     {
       def (top, an) = TopState.Reduce(this, inlined_sub_machine_instance = (t, s, a) => t.ChangeSubStates(s).InitInline(a).Map((x, y) => (x : FsmState, y)));
-      def map = an.statemap.Init(top);
+      an.statemap.Init(top);
 
       //def fsm = States.FilterType();
       //def (st, an) = fsm.MapThrough(this, (x : FsmState.InlinedSubMachineInstance, a) => x.InitInline(a));
       //def st = st |> _ : FsmState;
       //def map = an.statemap.Add(st);
-
-      ChangeStatemap(map)
+      an
     }
   }
 }
