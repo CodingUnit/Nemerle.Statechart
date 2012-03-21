@@ -22,21 +22,21 @@ namespace Nemerle.Statechart
   [Traversable]
   public partial variant FsmState
   {
-    public override ToString() : string {Name}
+    public override ToString() : string { Name }
 
     public virtual UpdateReference(sub : IEnumerable[FsmState], an : FsmAnalyser) : FsmState * FsmAnalyser
     {
-      def map = an.statemap;
-      def (super, an) = if (super_state != null) 
+      def (super, an)  = if (super_state != null) 
                          {
-                           map.Get(super_state.Name, an)
+                           statemap.Get(super_state.Name, an)
                          } else (super_state, an);
+      //sub_states.Map(x => x.);
       //def super = if (super.AstName == null) super.ChangeName(TopStateName) else super;
-      def an = this.Initial.FoldLeft(an, _.UpdateReference(_));
-      def an = transitions.FoldLeft(an, _.UpdateReference(_));
-      def (hist, an) = history.Value.FoldList([], an, _.UpdateReference(_));
+      def an           = Initial.FoldLeft(an, _.UpdateReference(_));
+      def an           = transitions.FoldLeft(an, _.UpdateReference(_));
+      def (hist, an)   = history.Value.FoldList([], an, _.UpdateReference(_));
       def (pseudo, an) = pseudo_states.FoldList([], an, _.UpdateReference(_));
-      def st = ChangePseudoStatesSubStatesHistorySuperStateAnalyser(pseudo, sub, TwoOption.FromList(hist), super, an);
+      def st           = ChangePseudoStatesSubStatesHistorySuperAnalyser(pseudo, sub, TwoOption.FromList(hist), super, an);
       (st, an)
     }
 
@@ -138,22 +138,23 @@ namespace Nemerle.Statechart
       ChangePaths(paths)
     }
 
-    public this()
+    public this(map : StateMap)
     {
+      statemap = map
     }
 
     public this(super : FsmState, name : string, analyser : FsmAnalyser, reference : bool = false)
     {
-      this();
+      this(analyser.statemap);
       this.analyser = analyser;
       this.name = name;
-      this.super_state = super;
+      this.super = super;
       this.reference = reference
     }
 
     public this(st : StateNode.State, sub : IEnumerable[FsmState], analyser : FsmAnalyser, reference : bool = false)
     {
-      this();
+      this(analyser.statemap);
       state = st;
       name = st.name;
       this.reference = reference || state.reference;
@@ -179,7 +180,7 @@ namespace Nemerle.Statechart
         //super_state = super;
         //def subst = (subst |> st_from_node(_)) + regs;
         //sub_states = subst.Sort((x, y) => x.source_pos - y.source_pos);
-        sub_states = sub.Map(x => x.ChangeSuperState(this));
+        sub_states = sub.Map(_.ChangeSuper(this));
         pseudo_states = st.pseudo_states |> PseudoStateNode.Create(_.node, this, null)
       }
     }

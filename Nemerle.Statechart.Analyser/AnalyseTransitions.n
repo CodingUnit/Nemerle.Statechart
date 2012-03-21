@@ -40,9 +40,9 @@ namespace Nemerle.Statechart
                    check_auto_initial(top, top.sub_states) // initial is first substate
                  else top; // else initial transition is top state
                 else top;
-      statemap.Init(top);
+      def an = UpdateStateMap(top);
       //def map = map.ChangeStates(states.ToArray());
-      AddErrors(err);
+      an.AddErrors(err)
     }
 
     is_crossed_orthogonal(tr : StateTransition, st : FsmState) : bool
@@ -53,7 +53,7 @@ namespace Nemerle.Statechart
       | _ => false
     }
 
-    CreateSuperStateTransitions() : void
+    CreateSuperStateTransitions() : FsmAnalyser
     {
       def create_trans(st)
       {
@@ -68,10 +68,10 @@ namespace Nemerle.Statechart
       }
 
       def states = States.Map(create_trans);
-      statemap.CheckNew(states);
+      statemap.Update(states, this)
     }
 
-    CheckCrossTransitions() : void
+    CheckCrossTransitions() : FsmAnalyser
     {
       def group(tr, st)
       {
@@ -106,7 +106,7 @@ namespace Nemerle.Statechart
       }
 
       def states = States.Map(check_cross); // check from the top state
-      statemap.CheckNew(states.ToArray())
+      statemap.Update(states, this)
     }
 
     check_duplicates(tr : IEnumerable[StateTransition], a : ErrorInfo) : ErrorInfo
@@ -354,10 +354,9 @@ namespace Nemerle.Statechart
       def an = States.FoldLeft(this, check_tran);
       def an = an.create_join_transitions(); // creating join transitions
       def an = an.create_fork_transitions(); // creating fork transitions
-      an.CreateSuperStateTransitions(); // create parent transitions
+      def an = an.CreateSuperStateTransitions(); // create parent transitions
       def an = an.CheckDuplicates(); // check duplicates
       an.CheckCrossTransitions(); // look for cross transitions
-      an
     }
 
     CheckTransitions() : FsmAnalyser
@@ -392,18 +391,18 @@ namespace Nemerle.Statechart
       def err = States.FoldLeft(err, (x, e) => x.all_transitions.FoldLeft(e, check_cross_orthogonal));
       def an = States.FoldLeft(this, check_tran);
       
-      def update_states()
+      def update_states(an)
       {
         def check_target(t, a) 
         {
           t.To.Fold(a, state = (t, a) => t.state :: a, named = (t, a) => t.state :: a, junction_node = (t, a) => t.state :: a)
         }
         
-        def st = States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, check_target));
-        statemap.CheckNew(st);
+        def st = an.States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, check_target));
+        an.statemap.Update(st, this);
       }
       
-      update_states();
+      def an = update_states(an);
       an.AddErrors(err)
     }
 
@@ -427,10 +426,10 @@ namespace Nemerle.Statechart
       {
         traverser.Add(TopState.Initial.NToList());
         def res = traverser.Traverse(this); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
-        statemap.CheckNew(res);
+        statemap.Update(res, this);
       }
 
-      def update_states()
+      def update_states(an)
       {
         def dest = trans_paths.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Paths.Map((_, y) => y.Transition.Destination)));
         def st   = dest.Select(_.ToState).Where(_ != null);
@@ -443,14 +442,14 @@ namespace Nemerle.Statechart
           hist.FoldLeft(s, (x, a) => a.UpdateHistory(x))
         }
         
-        statemap.CheckNew(st);
-        def top = TopState.ReduceSingle(update_hist);
-        statemap.Update(top)
+        def an = an.statemap.Update(st, this);
+        def top = an.TopState.ReduceSingle(update_hist);
+        an.UpdateStateMap(top)
       }
 
-      traverse(); // traverse paths
-      update_states();
-      CreateTransitionsWithPaths()
+      def an = traverse(); // traverse paths
+      def an = update_states(an);
+      an.CreateTransitionsWithPaths()
     }
 
     CreateTransitionsWithPaths() : FsmAnalyser

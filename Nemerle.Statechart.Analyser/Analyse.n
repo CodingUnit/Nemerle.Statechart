@@ -16,7 +16,7 @@ namespace Nemerle.Statechart
   public partial class FsmAnalyser
   {
 
-    InitStatechart() : void
+    InitStatechart() : FsmAnalyser
     {
       def top = Fsm.state.Fold(null, 
                                (_, a)  => a,
@@ -27,7 +27,7 @@ namespace Nemerle.Statechart
       def top = top.CreateIterator(); // cache iterator
       //def topState = FsmState.State(Fsm.state, null, this, false); // create statemachine from top state
       def top = top.ChangeName(FsmState.TopStateName);
-      statemap.Init(top)
+      UpdateStateMap(top)
     }
 
     InitStateMap() : FsmAnalyser
@@ -81,23 +81,19 @@ namespace Nemerle.Statechart
         an.TopState.ReduceSingle(check_final(final, _, _));
       }
 
-      InitStatechart();
-      def an = UpdateStateMap(); // first update state map 
+      def an = InitStatechart();
+      def an = an.UpdateStateMap(); // first update state map 
       def top = CheckAddFinalState(an);
-      statemap.Init(top);
-      def an = an.UpdateStateMap(); // second update state map
+      def an = an.UpdateStateMap(top); // second update state map
       def an = an.CreateHistoryStates();
       when (an.Error) throw FsmErrorException();
-      an.RenameDuplicates();
-      an
+      an.RenameDuplicates()
     }
 
-    public UpdateStateMap() : FsmAnalyser
+    public UpdateStateMap(top : FsmState = null) : FsmAnalyser
     {
       //InitStates();
-      def (top, an) = TopState.ReduceSingle(this, (t, s, an) => t.UpdateReference(s, an));
-      an.statemap.Update(top);
-      an
+      statemap.Update(top ?? TopState, this);
     }
 
     //InitStates() : void
@@ -111,7 +107,7 @@ namespace Nemerle.Statechart
     //  //states = statemap.States.NToList();
     //}
 
-    RenameDuplicates() : void
+    RenameDuplicates() : FsmAnalyser
     {
       def do_rename(st, n)
       {
@@ -129,7 +125,7 @@ namespace Nemerle.Statechart
       def dups = dups.Group(FsmState.NameComparer);
 
       def dups = dups.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(rename_group(x)));
-      statemap.CheckNew(dups);
+      statemap.Update(dups, this)
     }
 
     CreateHistoryStates() : FsmAnalyser
@@ -163,8 +159,8 @@ namespace Nemerle.Statechart
       }
 
       def (top, err) = TopState.ReduceSingle([], update_hist);
-      statemap.Update(top);
-      ChangeErrors(GetErrors(err))
+      def an = statemap.Update(top, this);
+      an.AddErrors(err)
     }
 
     static nodes_eq : ((string * PathNode) * (string * PathNode)) -> bool = (x, y) => PathNode.Equals(x[1], y[1]);
@@ -201,9 +197,8 @@ namespace Nemerle.Statechart
 
       def (top, err) = TopState.ReduceSingle([], (s, _, a) => check_do(s, s.do_activity, a));
       
-      statemap.Update(top);
-      def warn = GetWarnings(err);
-      ChangeWarnings(warn)
+      def an = statemap.Update(top, this);
+      an.AddWarnings(err)
     }
 
     CreateConcurrentRegion() : FsmAnalyser
@@ -215,13 +210,11 @@ namespace Nemerle.Statechart
     CreateSubMachines() : FsmAnalyser
     {
       def (top, an) = TopState.Reduce(this, inlined_sub_machine_instance = (t, s, a) => t.ChangeSubStates(s).InitInline(a).Map((x, y) => (x : FsmState, y)));
-      an.statemap.Init(top);
-
+      an.UpdateStateMap(top)
       //def fsm = States.FilterType();
       //def (st, an) = fsm.MapThrough(this, (x : FsmState.InlinedSubMachineInstance, a) => x.InitInline(a));
       //def st = st |> _ : FsmState;
       //def map = an.statemap.Add(st);
-      an
     }
   }
 }

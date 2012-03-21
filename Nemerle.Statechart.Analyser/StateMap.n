@@ -16,7 +16,7 @@ namespace Nemerle.Statechart
   public class StateMap
   {
     [Accessor]
-    public mutable states : array[FsmState];
+    public mutable states : array[FsmState] = array(0);
 
     public this() {}
 
@@ -42,7 +42,7 @@ namespace Nemerle.Statechart
     {
       Get(state.NativeName, an)
     }
-    
+
     public Get(state : list[string], an : FsmAnalyser) : FsmState * FsmAnalyser
     {
       def merge_name(n)
@@ -100,23 +100,6 @@ namespace Nemerle.Statechart
     //  if (states.Contains(st)) this else Add(st)
     //}
 
-    public CheckNew(st : IEnumerable[FsmState]) : void
-    {
-      // replace state if we have new copy
-      def check_name(n, s)
-      {
-        match (st.Find(x => x.Name == n.Name))
-        {
-          | Some(n) => n.ChangeSubStates(s)
-          // if no new state use old
-          | _       => null
-        }
-      }
-
-      def top = Top.ReduceSingle(check_name);
-      Update(top)
-      //if (states.Exists(x => st.Exists(y => x : object != y))) this else Add(st)
-    }
 
     //public InitAdd(st : FsmState) : FsmState * StateMap
     //{
@@ -151,11 +134,11 @@ namespace Nemerle.Statechart
     //  //st.FormatName();
     //}
 
-    public Get(st : list[FsmState]) : list[FsmState]
-    {
-      if (states.Exists(x => st.Exists(_ != x : object)))
-        st.Map(x => Get(x.Num)) else st
-    }
+    //public Get(st : list[FsmState]) : list[FsmState]
+    //{
+    //  if (states.Exists(x => st.Exists(_ != x : object)))
+    //    st.Map(x => Get(x.Num)) else st
+    //}
 
     //public Rem(st : FsmState) : StateMap
     //{
@@ -186,25 +169,38 @@ namespace Nemerle.Statechart
       }
     }
 
-    //public this(analyser : FsmAnalyser)
-    //{
-    //  this.analyser = analyser;
-    //}
-
-    public Init(top : FsmState) : void
+    public Update(st : IEnumerable[FsmState], an : FsmAnalyser) : FsmAnalyser
     {
-      def states  = top.AllStates;
-      def states  = states.MapIndex((x, i) => x.ChangeNum(i));
-      this.states = states.ToArray();
+      def check_name(n, s)
+      {
+        match (st.Find(x => x.Name == n.Name))
+        {
+          | Some(n) => n.ChangeSubStates(s)
+              // if no new state use old
+          | _       => null
+        }
+      }
+
+      def top = Top.ReduceSingle(check_name); // replace old states with new ones
+      Update(top, an)
     }
 
-    public Update(top : FsmState) : void
+    public Update(top : FsmState, an : FsmAnalyser) : FsmAnalyser
     {
-      when (top != Top)
+      if (top != Top)
       {
-        def states = top.AllStates;
-        this.states = states.ToArray();
-      }
+        def st  = top.AllStates.ToArray();
+        if (states.Length != st.Length) // if new count of states, renum
+        {
+          def st = st.MapIndex(_.ChangeNum(_)).ToArray();
+          this.states = st;
+          Update(st, an)
+        } else
+        {
+          this.states = st;
+          an
+        }
+      } else an
     }
 
     public Names : array[string]
