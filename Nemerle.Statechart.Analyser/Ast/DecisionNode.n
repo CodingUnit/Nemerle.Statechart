@@ -35,7 +35,7 @@ namespace Nemerle.Statechart
     public actions : list[Actions] = [];
     public PrevState : FsmState;
 
-    public this() {}
+    public this(an : FsmAnalyser) { analyser = an }
 
     public SetCopy(n : int) : DecisionNode
     {
@@ -200,6 +200,8 @@ namespace Nemerle.Statechart
     public node_path : PathNode = PathNode.Empty();
     public out_path : PathNode = PathNode.Empty();
 
+    public analyser : FsmAnalyser;
+    
     public ThisOutPath : PathNode
     {
       get
@@ -231,7 +233,8 @@ namespace Nemerle.Statechart
       }
     }
 
-    static create_junc_tree_node(n : TransitionTarget.JunctionNode, 
+    static create_junc_tree_node(an : FsmAnalyser,
+                                n : TransitionTarget.JunctionNode, 
                                 aa : list[Actions], 
                                 lev : int, 
                                 st : FsmState, 
@@ -247,19 +250,19 @@ namespace Nemerle.Statechart
           | TransitionTarget.PseudoState(Junction(to = n, state = st, type = JunctionType.Junction)) => 
               def prevst = st;
                 //def st = nst ?? j.state =. st;
-              create_junc_tree_node(n, aa, lev + 1, st, prevst, els, err)
+              create_junc_tree_node(an, n, aa, lev + 1, st, prevst, els, err)
 
           | PseudoState(Junction(to = n, state = st, type = JunctionType.Choice)) => 
               def prevst = st;
                 //def st = nst ?? c.state =. st;
-              create_choice_tree_node(n, lev + 1, st, prevst, els, err)
+              create_choice_tree_node(an, n, lev + 1, st, prevst, els, err)
 
           | PseudoState(Merge(to = n, state = st)) => 
               def prevst = st;
                 //def st = nst ?? m.state =. st;
-              create_junc_tree_node(n, aa, lev + 1, st, prevst, els, err)
+              create_junc_tree_node(an, n, aa, lev + 1, st, prevst, els, err)
 
-          | _ => (Target(lev, st, aa.Rev(), prevst, PathNode.Empty(), PathNode.Empty(), t, null), err)
+          | _ => (Target(lev, st, aa.Rev(), prevst, PathNode.Empty(), PathNode.Empty(), an, t, null), err)
         }
       }
 
@@ -297,19 +300,19 @@ namespace Nemerle.Statechart
 
         | JunctionNode(g, a, t, _, None(), _) => 
             def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
-            (Condition(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), g, n, els), err)
+            (Condition(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), an, g, n, els), err)
 
         | JunctionNode(g, a, t, _, Some(n), _) => 
-            def (els, err) = create_junc_tree_node(n, aa, lev, st, prevst, els, err);
+            def (els, err) = create_junc_tree_node(an, n, aa, lev, st, prevst, els, err);
             def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
-            (Condition(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), g, n, els), err)
+            (Condition(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), an, g, n, els), err)
 
             // if no guards or actions there is error
         //| [] => (null, err)
       }
     }
 
-    static create_choice_tree_node(n : TransitionTarget.JunctionNode, lev : int, st : FsmState, prevst : FsmState, els : DecisionNode, err : list[FsmError]) : DecisionNode * list[FsmError]
+    static create_choice_tree_node(an : FsmAnalyser, n : TransitionTarget.JunctionNode, lev : int, st : FsmState, prevst : FsmState, els : DecisionNode, err : list[FsmError]) : DecisionNode * list[FsmError]
     {
 
       def get_sub_node(t, lev, st, prevst, els, err)
@@ -320,20 +323,20 @@ namespace Nemerle.Statechart
           | TransitionTarget.PseudoState(Junction(to = n, state = st, type = JunctionType.Junction)) => 
               def prevst = st ?? prevst;
                 //def st = nst ?? j.state =. st;
-              create_junc_tree_node(n, [], lev + 1, st, prevst, els, err)
+              create_junc_tree_node(an, n, [], lev + 1, st, prevst, els, err)
 
           | PseudoState(Junction(to = n, state = st, type = JunctionType.Choice)) => 
               def prevst = st ?? prevst;
                 //def st = nst ?? c.state =. st;
-              create_choice_tree_node(n, lev + 1, st, prevst, els, err)
+              create_choice_tree_node(an, n, lev + 1, st, prevst, els, err)
 
           | PseudoState(Merge(to = TransitionTarget.JunctionNode(g, a, t, _, _, _), state = st)) => 
               def prevst = st ?? prevst;
                 //def st = nst ?? m.state =. st;
               def (n, err) = get_sub_node(t, lev + 1, st, prevst, els, err);
-              (DecisionNode.Condition(lev, st, a %:: [], prevst, PathNode.Empty(), PathNode.Empty(), g, n, null), err)
+              (DecisionNode.Condition(lev, st, a %:: [], prevst, PathNode.Empty(), PathNode.Empty(), an, g, n, null), err)
 
-          | _ => (Target(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), t, null), err)
+          | _ => (Target(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), an, t, null), err)
         }
       }
 
@@ -399,25 +402,27 @@ namespace Nemerle.Statechart
             def a = a %:: [];
             def st = if (st != prevst) st else null;
             def prevst = prevst ?? (t.transition?.From ?? st);
-            def (n, err) = create_choice_tree_node(n, lev, st, prevst, els, err);
+            def (n, err) = create_choice_tree_node(an, n, lev, st, prevst, els, err);
             def (node, err) = get_sub_node(t, lev, st, prevst, els, err);
-            (Condition(lev, st, a, prevst, PathNode.Empty(), PathNode.Empty(), g, node, n), err)
+            (Condition(lev, st, a, prevst, PathNode.Empty(), PathNode.Empty(), an, g, node, n), err)
 
         | _ => (null, err)
       }
     }
 
-    public static Create(node : PseudoStateNode.Junction, analyser : FsmAnalyser) : DecisionNode * FsmAnalyser
+    public static Create(an : FsmAnalyser, node : PseudoStateNode.Junction) : DecisionNode
     {
       def (n, e) = match (node)
                     {
-                      | PseudoStateNode.Junction(type = JunctionType.Junction) => create_junc_tree_node(node.to, [], 0, node.state, null, null, [])
-                      | PseudoStateNode.Junction(type = JunctionType.Choice)   => create_choice_tree_node(node.to, 0, node.state, null, null, [])
+                      | PseudoStateNode.Junction(type = JunctionType.Junction) => create_junc_tree_node(an, node.to, [], 0, node.state, null, null, [])
+                      | PseudoStateNode.Junction(type = JunctionType.Choice)   => create_choice_tree_node(an, node.to, 0, node.state, null, null, [])
                     }
-      (n, analyser.AddErrors(e))
+      an.AddErrors(e);
+      n
     }
 
-    public static Create2(node : PseudoStateNode.Junction) : DecisionNode
+#if 0    
+    public static Create2(an : FsmAnalyser, node : PseudoStateNode.Junction) : DecisionNode
     {
       def check_merge(n, acc)
       {
@@ -425,7 +430,7 @@ namespace Nemerle.Statechart
         {
           | TransitionTarget.PseudoState(Merge(to = TransitionTarget.JunctionNode(g, a, _, _, _, _))) => 
               //def prevst = st ?? prevst;
-              DecisionNode.Condition(0, null, a %:: [], null, PathNode.Empty(), PathNode.Empty(), g, acc, null)
+              DecisionNode.Condition(0, null, a %:: [], null, PathNode.Empty(), PathNode.Empty(), an, g, acc, null)
           | _ => acc
         }
       }
@@ -437,7 +442,7 @@ namespace Nemerle.Statechart
 
       def check_target(t : TransitionTarget)
       {
-        Target(0, null, [], null, PathNode.Empty(), PathNode.Empty(), t, null)
+        Target(0, null, [], null, PathNode.Empty(), PathNode.Empty(), an, t, null)
       }
 
       def check_junction_node(n : TransitionTarget.JunctionNode, nacc : option[DecisionNode], toacc : DecisionNode)
@@ -474,7 +479,7 @@ namespace Nemerle.Statechart
           | JunctionNode(GuardNode.Empty, Some(), _, _, _, _) => null
           | JunctionNode(g, a, _, _, Some, st) => 
               def nacc = nacc.WithDefault(null);
-              Condition(0, st, a %:: [], null, PathNode.Empty(), PathNode.Empty(), g, toacc, nacc)
+              Condition(0, st, a %:: [], null, PathNode.Empty(), PathNode.Empty(), an, g, toacc, nacc)
           | _ => null
         }
       }
@@ -484,17 +489,19 @@ namespace Nemerle.Statechart
         throw InvalidOperationException("targets must be resolved")
       }
 
-      node.to.Fold(null, 
-                   check_target,
-                   check_target,
-                   check_target,
-                   check_junction,
-                   check_merge, 
-                   check_target, 
-                   check_target, 
-                   check_qual, 
-                   check_target, 
-                   check_junction_node)
+      null
+      //node.to.Fold(null, 
+      //             check_junction_node,
+      //             check_target,
+      //             check_qual, 
+      //             check_target, 
+      //             check_target,
+      //             check_target, 
+      //             check_junction,
+      //             check_target,
+      //             check_merge, 
+      //             check_target 
+      //             )
       //def (n, e) = match (node)
       //              {
       //                | PseudoStateNode.Junction(type = JunctionType.Junction) => create_junc_tree_node(node.to, [], 0, node.state, null, null, [])
@@ -502,7 +509,7 @@ namespace Nemerle.Statechart
       //              }
       //(n, analyser.AddErrors(e))
     }
-
+#endif
 
   }
 

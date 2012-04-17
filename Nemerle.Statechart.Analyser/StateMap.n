@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Collections;
 
+using NC = Nemerle.Collections;
+
 namespace Nemerle.Statechart
 {
   using FsmState;
@@ -15,35 +17,50 @@ namespace Nemerle.Statechart
   [Record]
   public class StateMap
   {
-    [Accessor]
-    public mutable states : array[FsmState] = array(0);
+    mutable states : Map[int, FsmState] = Map();
 
-    public this() {}
+    public Analyser : FsmAnalyser;
+    
+
+    public States : IEnumerable[FsmState]
+    {
+      get
+      {
+        states.Values()
+      }
+    }
+    
+    public this(an : FsmAnalyser) { Analyser = an; TopNum = -1 }
 
     public Count : int
     {
       get
       {
-        states.Length
+        states.Count()
       }
     }
 
-    public Contains(state : string) : bool
+    public Contains(state : FsmState) : bool
     {
-      states.Exists(x => x.Name == state)
+      states.Keys().Contains(state.Num)
     }
+    
+    //public Contains(state : string) : bool
+    //{
+    //  states.Exists(x => x.Name == state)
+    //}
 
     public static GetFullName(st : list[FsmState]) : string
     {
       string.Join(".", st |> NativeName)
     }
 
-    public Get(state : FsmState, an : FsmAnalyser) : FsmState * FsmAnalyser
+    public Get(state : FsmState) : FsmState
     {
-      Get(state.NativeName, an)
+      Get(state.Num)
     }
 
-    public Get(state : list[string], an : FsmAnalyser) : FsmState * FsmAnalyser
+    public Get(state : list[string]) : FsmState
     {
       def merge_name(n)
       {
@@ -58,18 +75,18 @@ namespace Nemerle.Statechart
               def path = head :: p;
               match (get_all_state(st, head), tail)
               {
-                | (x, _) when x.IsEmpty()   => (null, FsmError.StateNotFound(State(merge_name(path.Rev()))) :: err)
-                | (st, []) when (st.IsSingle()) => (st.First(), err)
-                | (st, _) when (st.IsSingle()) => get_loop(st.First().sub_states, tail, path, err)
-                | (lst, _)   => (null, FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev()))) :: err)
+                | (x, _)   when x.IsEmpty()     => (null, FsmError.StateNotFound(State(merge_name(path.Rev()))) :: err)
+                | (st, []) when st.IsSingle()   => (st.First(), err)
+                | (st, _)  when st.IsSingle()   => get_loop(st.First().sub_states, tail, path, err)
+                | (lst, _)                      => (null, FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev()))) :: err)
               }
-          | _ => (null, err)
+          | _                                   => (null, err)
         }
       }
 
-      def (st, err) = get_loop(states, state, [], []);
-      def an = an.AddErrors(err);
-      (st, an)
+      def (st, err) = get_loop(states.Values(), state, [], []);
+      Analyser.AddErrors(err);
+      st
     }
 
     get_all_state(map : IEnumerable[FsmState], state : string) : IEnumerable[FsmState]
@@ -84,15 +101,16 @@ namespace Nemerle.Statechart
       map.Where(x => x.NativeName == name)
     }
 
-    public Get(state : string, an : FsmAnalyser) : FsmState * FsmAnalyser
+    
+    public Get(state : string) : FsmState
     {
       def st = state.SplitToList('.');
-      Get(st, an)
+      Get(st)
     }
 
     public Get(num : int) : FsmState
     {
-      states[num]
+      states.Get(num)
     }
 
     //public CheckNew(st : FsmState) : StateMap
@@ -161,61 +179,73 @@ namespace Nemerle.Statechart
       }
     }
 
-    public CurrentNum : int
-    {
-      get
-      {
-        states.Length
-      }
-    }
+    //public CurrentNum : int
+    //{
+    //  get
+    //  {
+    //    states.Length
+    //  }
+    //}
 
-    public Update(st : IEnumerable[FsmState], an : FsmAnalyser) : FsmAnalyser
+    public Update(st : IEnumerable[FsmState]) : void
     {
-      def check_name(n, s)
+      def check_name(n, sb)
       {
-        match (st.Find(x => x.Name == n.Name))
+        match (st.Find(x => x.Num == n.Num))
         {
-          | Some(n) => n.ChangeSubStates(s)
+          | Some(n) => n.Rebuild(sb)
               // if no new state use old
           | _       => null
         }
       }
 
       def top = Top.ReduceSingle(check_name); // replace old states with new ones
-      Update(top, an)
+      Update(top)
     }
 
-    public Update(top : FsmState, an : FsmAnalyser) : FsmAnalyser
+    UpdateMap(st : IEnumerable[FsmState]) : void
     {
-      if (top != Top)
+      states = Map(st.Select(x => (x.Num, x)));
+    }
+
+    public Update(top : FsmState) : void
+    {
+      when (top != Top)
       {
-        def st  = top.AllStates.ToArray();
-        if (states.Length != st.Length) // if new count of states, renum
+        def st = top.AllStates;
+        if (states.Count() != st.Count()) // if new count of states, renum
         {
-          def st = st.MapIndex(_.ChangeNum(_)).ToArray();
-          this.states = st;
-          Update(st, an)
+          when (TopNum == -1)
+          {
+            def top = st.First();
+            TopNum = top.Num;
+          }
+          UpdateMap(st);
+          Update(st);
+          def top = Top.ReduceSingle(_.UpdateReference(_));
+          Update(top)
         } else
         {
-          this.states = st;
-          an
+          UpdateMap(st)
         }
-      } else an
-    }
-
-    public Names : array[string]
-    {
-      get
-      {
-        states |> Name
       }
     }
+
+    //public Names : array[string]
+    //{
+    //  get
+    //  {
+    //    states |> Name
+    //  }
+    //}
+
+    public TopNum : int {get; private set;}
 
     public Top : FsmState
     {
       get
       {
-        states[0]
+        states.Get(TopNum)
       }
     }
   }

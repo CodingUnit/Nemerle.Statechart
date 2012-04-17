@@ -57,7 +57,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public transitions : Map[string, StateTransition];
+    public mutable transitions : Map[string, StateTransition];
 
     //public events : IEnumerable[string] // event * for internal transition
     //{
@@ -74,13 +74,11 @@ namespace Nemerle.Statechart
     //    //Map(evts)
     //  }
     //}
-    //[NeedChange(Warnings)]
     public trans_paths : IEnumerable[TransitionPaths]
     {
       get
       {
         States.Select(_.paths).Where(_ != null)
-        
         //$[x.paths, x in States, x.paths != null]
       }
     }
@@ -192,7 +190,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Initial))
+        States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.initial))
         //States |>< Initial
       }
     }
@@ -201,7 +199,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        states_initial_tran.Where(_.Used)
+        states_initial_tran.Where(_.used)
       }
     }
 
@@ -209,11 +207,11 @@ namespace Nemerle.Statechart
     {
       get
       {
-        states_initial_tran.Exclude(_.Used)
+        states_initial_tran.Exclude(_.used)
       }
     }
 
-    public initial_transitions : Map[string, StateTransition];
+    public mutable initial_transitions : Map[string, StateTransition];
 
     [Accessor] do_activities : list[StateAction.Do];
 
@@ -394,13 +392,13 @@ namespace Nemerle.Statechart
     }
 
     [NeedChange(transitions, initial_transitions)]
-    public internal_transitions : Map[string, StateTransition];
+    public mutable internal_transitions : Map[string, StateTransition];
 
     public States : IEnumerable[FsmState]
     {
       get
       {
-        statemap.states
+        statemap.States
       }
     }
 
@@ -429,7 +427,7 @@ namespace Nemerle.Statechart
     }
 
 
-    CheckParseErrors() : FsmAnalyser
+    CheckParseErrors() : void
     { 
       def check_err(err, res)
       {
@@ -463,7 +461,7 @@ namespace Nemerle.Statechart
       when (!Errors.IsEmpty()) throw FsmErrorException()
     }
 
-    public AddError(err : FsmError) : string
+    public GetError(err : FsmError) : string
     {
       | StateNotFound(s)                                    => $<#State "$s" Not Found#>
       | SubMachineStateNotFound(m, s)                       => $<#Sub machine "$m" does not contain referenced sub state "$s"#>
@@ -489,10 +487,10 @@ namespace Nemerle.Statechart
       | ChoiceElseMustAfterAnotherGuard(j)                  => $<#Choice else node in "$(j.state).$j" must have preceded another GuardNode#>
       | EmptyChoice(j)                                      => $<#There is a empty node in choice "$(j.state).$j"#>
       | SeveralState(st)                                    => $<#There is several duplicate states of name $st #>
-      | Sequence(e)                                         => $<#..$(e;"\n";AddError)#>
+      | Sequence(e)                                         => $<#..$(e;"\n";GetError)#>
     }
 
-    public AddWarning(err : FsmWarning) : string
+    public GetWarning(err : FsmWarning) : string
     {
       match (err)
       {
@@ -506,92 +504,112 @@ namespace Nemerle.Statechart
       }
     }
 
-    public AddWarnings(err : list[FsmWarning]) : FsmAnalyser
+    public AddWarnings(err : list[FsmWarning]) : void
     {
-      ChangeWarnings(GetWarnings(err))
+      def err = GetWarnings(err);
+      Warnings = Warnings.HeadAppend(err);
     }
 
-    public AddErrors(err : list[FsmError]) : FsmAnalyser
+    public AddErrors(err : list[FsmError]) : void
     {
-      if (err is []) this else ChangeErrors(GetErrors(err))
+      def err = GetErrors(err);
+      AddErrors(err)
     }
 
-    public AddErrors(err : FsmError) : FsmAnalyser
+    public AddWarnings(err : list[string]) : void
     {
-      ChangeErrors(GetErrors(err))
+      Warnings = Warnings.HeadAppend(err);
+    }
+    
+    public AddErrors(err : string) : void
+    {
+      Errors = err :: Errors
+    }
+    
+    public AddErrors(err : list[string]) : void
+    {
+      Errors = Errors.HeadAppend(err);
+    }
+    
+    public AddErrors(err : FsmError) : void
+    {
+      AddErrors(GetError(err))
     }
 
-    public AddErrors(err : list[ParseError]) : FsmAnalyser
+    public AddErrors(err : list[ParseError]) : void
     {
-      ChangeErrors(GetErrors(err))
+      AddErrors(GetErrors(err))
     }
 
     public GetErrors(err : list[FsmError]) : list[string]
     {
-      Errors.HeadAppend(err.Map(AddError))
-    }
-
-    public GetErrors(err : FsmError) : list[string]
-    {
-      AddError(err) :: Errors
+      err.Map(GetError)
     }
 
     public GetErrors(err : IEnumerable[ParseError]) : list[string]
     {
-      Errors.HeadAppend(err.Map(AddParseError))
+      err.Map(AddParseError)
     }
 
     public GetWarnings(err : IEnumerable[FsmWarning]) : list[string]
     {
-      Warnings.HeadAppend(err.Map(AddWarning))
+      err.Map(GetWarning)
     }
 
-    public AddErrors(err : ErrorInfo) : FsmAnalyser
+    public AddErrors(err : ErrorInfo) : void
     {
-      ChangeErrorsWarnings(GetErrors(err.errors), GetWarnings(err.warnings))
+      Errors = GetErrors(err.errors);
+      Warnings = GetWarnings(err.warnings);
     }
     
     public this(fsm : StateNode.StateMachine)
     {
       this.Fsm = fsm;
-      statemap = StateMap();
+      statemap = StateMap(this);
     }
 
-    [NeedChange(Warnings)] [NeedChange(Warnings, statemap)] [NeedChange] public Errors : list[string] = [];
-    [NeedChange] public Warnings : list[string] =  [];
+    public mutable Errors   : list[string] = [];
+    public mutable Warnings : list[string] = [];
 
-    FinalizeAnalyse() : FsmAnalyser
+    FinalizeAnalyse() : void
     {
       def id = StateId(this);
       def top = id.CreateMasks();
+      def map = statemap.Update(top);
+      def err = Errors.Rev();
+      def warn = Warnings.Rev();
+      ChangeErrorsStatemapWarnings(err, map, warn)
       def err = Errors.Rev();
       def warn = Warnings.Rev();
       def an = UpdateStateMap(top);
       an.ChangeErrorsWarnings(err, warn)
+      Errors = Errors.Rev();
+      Warnings = Warnings.Rev();
+      UpdateStateMap(top);
     }
 
-    public Analyse() : FsmAnalyser
+    public Analyse() : void
     {
       try
       {
-        def an = CheckParseErrors();
-        def an = an.InitStateMap();
-        def an = an.CheckTransitions();
-        def an = an.CreateSubMachines();
-        def an = an.CheckInitialTransitions();
-        def an = an.CreateTransitions();
-        an.BreakIfError();
-        def an = an.CreateTransitionPaths();
-        def an = an.CreateConcurrentRegion();
-        def an = an.UpdateInitial();
-        def an = an.CreateActions();
-        an.FinalizeAnalyse();
+        CheckParseErrors();
+        InitStateMap();
+        CheckTransitions();
+        CreateSubMachines();
+        CheckInitialTransitions();
+        CreateTransitions();
+        BreakIfError();
+        CreateTransitionPaths();
+        CreateConcurrentRegion();
+        UpdateInitial();
+        CreateActions();
+        FinalizeAnalyse();
       }
       catch 
       {
         | x is FsmErrorException => 
            def err = x.error;
-           if (err != null) AddErrors(err) else this
+           when (err != null) AddErrors(err);
       }
     }
 
@@ -635,7 +653,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        HistoryStates.FilterValues(x => x.default).Where(_.Used).Select(_ : StateTransition)//x.ActualTo != null)
+        HistoryStates.FilterValues(_.default).Where(_.used)//x.ActualTo != null)
       }
     }
 
@@ -662,7 +680,7 @@ namespace Nemerle.Statechart
         def not_used = states_transitions.Exclude(_.UsedInGenerate);
         def not_used = not_used.Where(x => x.From.Lived);
         def not_used = not_used.Exclude(_.NotWork);
-        not_used.Exclude(_.Used);
+        not_used.Exclude(_.used);
       }
     }
 

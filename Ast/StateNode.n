@@ -20,6 +20,17 @@ namespace Nemerle.Statechart
     | Region
   }
 
+  public variant TransitionType
+  {
+    | Internal
+    | Default 
+      { 
+        [NeedChange] history : StateNode.History;
+      }
+    | Initial
+    | Transition
+  }
+
   [Traversable(State)]
   [Record]
   public variant StateNode
@@ -39,38 +50,38 @@ namespace Nemerle.Statechart
 
         GetErrors() : IEnumerable[Error]
         {
-          Fold(Enumerable.Empty(), null, null, (s, a) => a.Concat(s.errors), null)
+          Fold(Enumerable.Empty(), (s, a) => a.Concat(s.errors))
         }
       }
-    | Initial
-      {
-        guard : option[GuardNode];
-        action : option[Actions];
-        [NeedChange] to : TargetType;
+    //| Initial
+    //  {
+    //    guard : option[GuardNode];
+    //    action : option[Actions];
+    //    [NeedChange] to : TargetType;
 
-        this(pos : int, tran : Transition)
-        {
-          guard = tran.guard;
-          action = tran.action;
-          to = tran.to;
-          base(pos)
-        }
+    //    this(pos : int, tran : Transition)
+    //    {
+    //      guard = tran.guard;
+    //      action = tran.action;
+    //      to = tran.to;
+    //      base(pos)
+    //    }
 
-      }
-    | Default
-      {
-        action : option[Actions];
-        target : StateNode.State;
-        [NeedChange(pos)] history : History;
+      //}
+    //| Default
+    //  {
+    //    action : option[Actions];
+    //    target : StateNode.State;
+    //    [NeedChange(pos)] history : History;
 
-        this(act : option[Actions], to : State)
-        {
-          action = act;
-          target = to;
-          base(0)
-        }
+    //    this(act : option[Actions], to : State)
+    //    {
+    //      action = act;
+    //      target = to;
+    //      base(0)
+    //    }
 
-      }
+    //  }
     [Traverse]
     | Final
       {
@@ -107,11 +118,11 @@ namespace Nemerle.Statechart
           this.type = type;
         }
         name : string;
-        initial : IEnumerable[Initial] = Enumerable.Empty();
+        initial : IEnumerable[Transition] = Enumerable.Empty();
         attributes : IEnumerable[StateAttribute] = Enumerable.Empty();
         entry : IEnumerable[Entry] = Enumerable.Empty();
         exit : IEnumerable[Exit] = Enumerable.Empty();
-        internal_tran : IEnumerable[InternalTransition] = Enumerable.Empty();
+        internal_tran : IEnumerable[Transition] = Enumerable.Empty();
         transitions : IEnumerable[Transition] = Enumerable.Empty();
         do_activity : IEnumerable[DoActivity] = Enumerable.Empty();
         history : TwoOption[History] = TwoOption.None();
@@ -142,27 +153,31 @@ namespace Nemerle.Statechart
       }
     | Error {node : StateNode;}
     | DoActivity {action : Actions;flags : ActivityFlag;}
-    | InternalTransition
-      {
-        evt : list[TransitionNode.Event];
-        guard : option[GuardNode];
-        action : Actions;
+    //| InternalTransition
+    //  {
+    //    evt : list[TransitionNode.Event];
+    //    guard : option[GuardNode];
+    //    action : Actions;
 
-        Actions : IEnumerable[string]
-        {
-          get
-          {
-            action.ActionList
-          }
-        }
+    //    Actions : IEnumerable[string]
+    //    {
+    //      get
+    //      {
+    //        action.ActionList
+    //      }
+    //    }
 
-      }
+    //  }
     | Transition
       {
-        evt : IEnumerable[TransitionNode.Event];
+        evt : IEnumerable[TransitionNode.Event] = Enumerable.Empty();
         guard : option[GuardNode];
         action : option[Actions];
         [NeedChange] to : TargetType;
+
+        [NeedChange(pos)]
+        [NeedChange]
+        type : TransitionType;
 
         ToState : StateNode.State
         {
@@ -171,26 +186,35 @@ namespace Nemerle.Statechart
             match (to)
             {
               | TargetType.State(st)  => st
-              | _  => null
+              | _                     => null
             }
           }
         }
 
         this(guard : option[GuardNode], action : option[Actions], to : TargetType)
         {
+          base(to.pos);
           this.guard = guard;
           this.action = action;
           this.to = to;
-          base(to.pos);
         }
 
+        this(pos : int,  tran : Transition, type : TransitionType)
+        {
+          base(pos);
+          guard = tran.guard;
+          action = tran.action;
+          to = tran.to;
+          this.type = type
+        }
+        
         this(evt : List[TransitionNode.Event],  tran : Transition)
         {
+          base(evt.First().pos);
           this.evt = evt.NToList();
           guard = tran.guard;
           action = tran.action;
           to = tran.to;
-          base(evt.First().pos);
         }
 
       }
@@ -198,7 +222,7 @@ namespace Nemerle.Statechart
     | History
       {
         type : HistoryType;
-        [NeedChange] default : option[Default];
+        [NeedChange] default : option[Transition];
         [NeedChange] state : State;
         reference : bool;
 
@@ -210,7 +234,7 @@ namespace Nemerle.Statechart
           base(pos);
         }
 
-        this(pos : int, type : HistoryType, default : option[Default])
+        this(pos : int, type : HistoryType, default : option[Transition])
         {
           this.type = type;
           this.default = default;
@@ -223,6 +247,7 @@ namespace Nemerle.Statechart
         [NeedChange] node : PseudoStateAstNode;
       }
 
+    [NeedChange]
     public pos : int;
 
     //public GetCode() : int

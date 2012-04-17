@@ -59,22 +59,36 @@ namespace Nemerle.Statechart
     
     public this(st : FsmState,  hist : StateNode.History, reference : bool = false)
     {
+      this(st.analyser);
       history = hist;
       state = if (hist.state != null) FsmState.State(hist.state, null, null, true); else st;
       type = hist.type;
       this.reference = reference;
-      default = history.default |> StateTransition.Default(state, this, _);
+      default = history.default |> StateTransition.Default(state, this, _).Create();
     }
 
     public history : StateNode.History;
-    public default : option[StateTransition.Default];
+    [NeedChange]
+    public default : option[StateTransition];
+    
+    [NeedChange(default)]
     [NeedChange] public state : FsmState;
     public type : HistoryType;
     [NeedChange(state)] [NeedChange] public reference : bool;
 
     [NeedChange] public Used : bool;
 
-    public this() {}
+    public analyser : FsmAnalyser;
+    
+    public StateMap : StateMap
+    {
+      get
+      {
+        analyser.statemap
+      }
+    }
+    
+    public this(an : FsmAnalyser) { analyser = an }
     //public this(hist : StateHistory, clone : bool = false, ncopy : int = 0)
     //{
     //  history = hist.history;
@@ -167,16 +181,16 @@ namespace Nemerle.Statechart
       }
     }
 
-    public UpdateReference(an : FsmAnalyser) : StateHistory * FsmAnalyser
+    public UpdateReference() : StateHistory
     {
-      def (st, an) = an.statemap.Get(state.Name, an);
+      def st = StateMap.Get(state.Name);
       def hist = if (history.reference)
                   {
                     state.GetHistory(this);
                   } else this;
 
-      def an = default.FoldLeft(an, _.UpdateReference(_));
-      (hist.ChangeState(st), an);
+      def default = default.Map(_.UpdateReference());
+      hist.ChangeStateDefault(st, default)
     }
 
   }
