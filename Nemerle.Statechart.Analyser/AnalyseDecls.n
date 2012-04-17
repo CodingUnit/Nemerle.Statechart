@@ -1,7 +1,6 @@
 ﻿using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
-using Nemerle.Linq;
 using Nemerle.Statechart;
 using System;
 using System.Collections.Generic;
@@ -58,7 +57,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public transitions : Map[string, StateTransition];
+    public mutable transitions : Map[string, StateTransition];
 
     //public events : IEnumerable[string] // event * for internal transition
     //{
@@ -75,13 +74,11 @@ namespace Nemerle.Statechart
     //    //Map(evts)
     //  }
     //}
-    //[NeedChange(Warnings)]
     public trans_paths : IEnumerable[TransitionPaths]
     {
       get
       {
         States.Select(_.paths).Where(_ != null)
-        
         //$[x.paths, x in States, x.paths != null]
       }
     }
@@ -193,7 +190,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Initial))
+        States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.initial))
         //States |>< Initial
       }
     }
@@ -202,7 +199,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        states_initial_tran.Where(_.Used)
+        states_initial_tran.Where(_.used)
       }
     }
 
@@ -210,11 +207,11 @@ namespace Nemerle.Statechart
     {
       get
       {
-        states_initial_tran.Exclude(_.Used)
+        states_initial_tran.Exclude(_.used)
       }
     }
 
-    public initial_transitions : Map[string, StateTransition];
+    public mutable initial_transitions : Map[string, StateTransition];
 
     [Accessor] do_activities : list[StateAction.Do];
 
@@ -395,13 +392,13 @@ namespace Nemerle.Statechart
     }
 
     [NeedChange(transitions, initial_transitions)]
-    public internal_transitions : Map[string, StateTransition];
+    public mutable internal_transitions : Map[string, StateTransition];
 
     public States : IEnumerable[FsmState]
     {
       get
       {
-        statemap.states
+        statemap.States
       }
     }
 
@@ -430,7 +427,7 @@ namespace Nemerle.Statechart
     }
 
 
-    CheckParseErrors() : FsmAnalyser
+    CheckParseErrors() : void
     { 
       def check_err(err, res)
       {
@@ -453,8 +450,8 @@ namespace Nemerle.Statechart
       "Parse Error:" + match (err)
       {
         | DuplicateActivity(act) => $<#Duplicate do activity $act, state may have only one do activity node#>
-        | UnknownElement(node) => $<#Unknown parse node $node #>
-        | UnknownMachineFlag(f) => $<#Unknown state machine flag "$f" #>
+        | UnknownElement(node)   => $<#Unknown parse node $node #>
+        | UnknownMachineFlag(f)  => $<#Unknown state machine flag "$f" #>
       }
       //Errors ::= str;
     }
@@ -464,136 +461,147 @@ namespace Nemerle.Statechart
       when (!Errors.IsEmpty()) throw FsmErrorException()
     }
 
-    public AddError(err : FsmError) : string
+    public GetError(err : FsmError) : string
     {
-      | StateNotFound(s)  => $<#State "$s" Not Found#>
-      | SubMachineStateNotFound(m, s) => $<#Sub machine "$m" does not contain referenced sub state "$s"#>
-      | UnknownState(s, name, tran)  => $<#Transition "$tran" in "$s" has unknown target state "$name"#>
-      | DuplicateTransition(tran)  => $<#Duplicate transitions "$tran"#>;
-      | DuplicateHistory(st, hist)  => $<#Duplicate history of type "$(hist.type)" in "$st"#>
-      | RegionMustContainInitial(reg, tran) => $<#Transition "$tran" requires region "$reg" to contain initial transition in each of it sub regions#>
-      | SubRegionsMustContainInitial(reg, tran) => $<#Transition "$tran" requires sub regions "$reg" to contain initial transitions#>
-      | UnknownTerminateTransition(tran) => $<#Unknown terminate transition target of "$tran", there is several terminate pseudo states, specify full name#>                  
-      | ForkMustGoToRegion(f) => $<#Fork "$f" must go to concurrent sub regions#>
-      | ForkMustGoToSeparateRegion(f) => $<#Fork "$f" must go to different concurrent sub regions#>
-      | UnknownNode(tran) => $<#Unknown pseudostate node used in target of "$tran" transition #>
-      | JoinTransitionMustHaveSameTrigger(j, tran) => $<#Transitions "$tran" to join "$j" must have same event trigger#>
-      | JoinTransitionMustLeaveRegion(j, tran) => $<#Transitions "$tran" to join "$j" must leave sub state of same orthogonal region#>
+      | StateNotFound(s)                                    => $<#State "$s" Not Found#>
+      | SubMachineStateNotFound(m, s)                       => $<#Sub machine "$m" does not contain referenced sub state "$s"#>
+      | UnknownState(s, name, tran)                         => $<#Transition "$tran" in "$s" has unknown target state "$name"#>
+      | DuplicateTransition(tran)                           => $<#Duplicate transitions "$tran"#>;
+      | DuplicateHistory(st, hist)                          => $<#Duplicate history of type "$(hist.type)" in "$st"#>
+      | RegionMustContainInitial(reg, tran)                 => $<#Transition "$tran" requires region "$reg" to contain initial transition in each of it sub regions#>
+      | SubRegionsMustContainInitial(reg, tran)             => $<#Transition "$tran" requires sub regions "$reg" to contain initial transitions#>
+      | UnknownTerminateTransition(tran)                    => $<#Unknown terminate transition target of "$tran", there is several terminate pseudo states, specify full name#>                  
+      | ForkMustGoToRegion(f)                               => $<#Fork "$f" must go to concurrent sub regions#>
+      | ForkMustGoToSeparateRegion(f)                       => $<#Fork "$f" must go to different concurrent sub regions#>
+      | UnknownNode(tran)                                   => $<#Unknown pseudostate node used in target of "$tran" transition #>
+      | JoinTransitionMustHaveSameTrigger(j, tran)          => $<#Transitions "$tran" to join "$j" must have same event trigger#>
+      | JoinTransitionMustLeaveRegion(j, tran)              => $<#Transitions "$tran" to join "$j" must leave sub state of same orthogonal region#>
       | TransitionCrossOrthogonalBoundaryOfSameRegion(tran) => $<#Transition "$tran" is cross orthogonal boundary of same region, this is not allowed#>
-      | DefaultTransitionMustGoToState(tran, hist) => $<#Default history transition "$tran" of history "$hist" must go to state#>
-      | JunctionElseMustBeLast(j) => $<#Else node in junction "$(j.state).$j" must be the last alternative node#>
-      | JunctionActionMaybeLast(j, a) => $<#Junction action "$a" in "$(j.state).$j" maybe single in node or last#>
-      | JunctionElseMustAfterAnotherGuard(j) => $<#Junction else node in "$(j.state).$j" must have preceded another GuardNode#>
-      | EmptyJunction(j) => $<#There is a empty node in junction "$(j.state).$j"#>
-      | ChoiceElseMustBeLast(j) => $<#Else node in choice "$(j.state).$j" must be the last alternative node#>
-      | ChoiceActionMaybeLast(j, a) => $<#Choice action "$a" in "$(j.state).$j" maybe single in node or last#>
-      | ChoiceElseMustAfterAnotherGuard(j) => $<#Choice else node in "$(j.state).$j" must have preceded another GuardNode#>
-      | EmptyChoice(j) => $<#There is a empty node in choice "$(j.state).$j"#>
-      | SeveralState(st) => $<#There is several duplicate states of name $st #>
-      | Sequence(e)      => def str = e.Map(AddError);
-          $<#..$(str;"\n")#>
+      | DefaultTransitionMustGoToState(tran, hist)          => $<#Default history transition "$tran" of history "$hist" must go to state#>
+      | JunctionElseMustBeLast(j)                           => $<#Else node in junction "$(j.state).$j" must be the last alternative node#>
+      | JunctionActionMaybeLast(j, a)                       => $<#Junction action "$a" in "$(j.state).$j" maybe single in node or last#>
+      | JunctionElseMustAfterAnotherGuard(j)                => $<#Junction else node in "$(j.state).$j" must have preceded another GuardNode#>
+      | EmptyJunction(j)                                    => $<#There is a empty node in junction "$(j.state).$j"#>
+      | ChoiceElseMustBeLast(j)                             => $<#Else node in choice "$(j.state).$j" must be the last alternative node#>
+      | ChoiceActionMaybeLast(j, a)                         => $<#Choice action "$a" in "$(j.state).$j" maybe single in node or last#>
+      | ChoiceElseMustAfterAnotherGuard(j)                  => $<#Choice else node in "$(j.state).$j" must have preceded another GuardNode#>
+      | EmptyChoice(j)                                      => $<#There is a empty node in choice "$(j.state).$j"#>
+      | SeveralState(st)                                    => $<#There is several duplicate states of name $st #>
+      | Sequence(e)                                         => $<#..$(e;"\n";GetError)#>
     }
 
-    public AddWarning(err : FsmWarning) : string
+    public GetWarning(err : FsmWarning) : string
     {
       match (err)
       {
-        | HistoryNotUsed(hist = StateHistory where (state = st, type = t))  => $<#"$t History in "$st" is not used in fsm life history#>
-        | StateNotUsed(state = st) => $<#State "$st" is not used in fsm life history#>
-        | TransitionNotUsed(tran) => $<#Transition "$tran" is not used in fsm life history#>
-        | RegionNotUsed(reg) => $<#Concurrent region "$reg" is not used in fsm life history#>
-        | NoConcurrentActivity(act) => $<#There is no other activities in do activity node $act. Flag is no meaning, concurrent activity means that several activities may run concurently in do activity region of state.#>
-        | TransitionOverriden(tran,by) => $<#Transition $(tran.GuardedName) is overriden by $(by.GuardedName), due to execute priority rules, because these transition is unguarded#>
-        | x  => $"Unknown Warning $x"
+        | HistoryNotUsed(hist = StateHistory(state = st, type = t))  => $<#"$t History in "$st" is not used in fsm life history#>
+        | StateNotUsed(state = st)                                   => $<#State "$st" is not used in fsm life history#>
+        | TransitionNotUsed(tran)                                    => $<#Transition "$tran" is not used in fsm life history#>
+        | RegionNotUsed(reg)                                         => $<#Concurrent region "$reg" is not used in fsm life history#>
+        | NoConcurrentActivity(act)                                  => $<#There is no other activities in do activity node $act. Flag is no meaning, concurrent activity means that several activities may run concurently in do activity region of state.#>
+        | TransitionOverriden(tran,by)                               => $<#Transition $(tran.GuardedName) is overriden by $(by.GuardedName), due to execute priority rules, because these transition is unguarded#>
+        | x                                                          => $"Unknown Warning $x"
       }
     }
 
-    public AddWarnings(err : list[FsmWarning]) : FsmAnalyser
+    public AddWarnings(err : list[FsmWarning]) : void
     {
-      ChangeWarnings(GetWarnings(err))
+      def err = GetWarnings(err);
+      Warnings = Warnings.HeadAppend(err);
     }
 
-    public AddErrors(err : list[FsmError]) : FsmAnalyser
+    public AddErrors(err : list[FsmError]) : void
     {
-      if (err is []) this else ChangeErrors(GetErrors(err))
+      def err = GetErrors(err);
+      AddErrors(err)
     }
 
-    public AddErrors(err : FsmError) : FsmAnalyser
+    public AddWarnings(err : list[string]) : void
     {
-      ChangeErrors(GetErrors(err))
+      Warnings = Warnings.HeadAppend(err);
+    }
+    
+    public AddErrors(err : string) : void
+    {
+      Errors = err :: Errors
+    }
+    
+    public AddErrors(err : list[string]) : void
+    {
+      Errors = Errors.HeadAppend(err);
+    }
+    
+    public AddErrors(err : FsmError) : void
+    {
+      AddErrors(GetError(err))
     }
 
-    public AddErrors(err : list[ParseError]) : FsmAnalyser
+    public AddErrors(err : list[ParseError]) : void
     {
-      ChangeErrors(GetErrors(err))
+      AddErrors(GetErrors(err))
     }
 
     public GetErrors(err : list[FsmError]) : list[string]
     {
-      Errors.HeadAppend(err.Map(AddError))
-    }
-
-    public GetErrors(err : FsmError) : list[string]
-    {
-      AddError(err) :: Errors
+      err.Map(GetError)
     }
 
     public GetErrors(err : IEnumerable[ParseError]) : list[string]
     {
-      Errors.HeadAppend(err.Map(AddParseError))
+      err.Map(AddParseError)
     }
 
     public GetWarnings(err : IEnumerable[FsmWarning]) : list[string]
     {
-      Warnings.HeadAppend(err.Map(AddWarning))
+      err.Map(GetWarning)
     }
 
-    public AddErrors(err : ErrorInfo) : FsmAnalyser
+    public AddErrors(err : ErrorInfo) : void
     {
-      ChangeErrorsWarnings(GetErrors(err.errors), GetWarnings(err.warnings))
+      Errors = GetErrors(err.errors);
+      Warnings = GetWarnings(err.warnings);
     }
     
     public this(fsm : StateNode.StateMachine)
     {
       this.Fsm = fsm;
-      statemap = StateMap();
+      statemap = StateMap(this);
     }
 
-    [NeedChange(Warnings)] [NeedChange(Warnings, statemap)] [NeedChange] public Errors : list[string] = [];
-    [NeedChange] public Warnings : list[string] =  [];
+    public mutable Errors   : list[string] = [];
+    public mutable Warnings : list[string] = [];
 
-    FinalizeAnalyse() : FsmAnalyser
+    FinalizeAnalyse() : void
     {
       def id = StateId(this);
       def top = id.CreateMasks();
-      def map = statemap.Update(top);
-      def err = Errors.Rev();
-      def warn = Warnings.Rev();
-      ChangeErrorsStatemapWarnings(err, map, warn)
+      Errors = Errors.Rev();
+      Warnings = Warnings.Rev();
+      UpdateStateMap(top);
     }
 
-    public Analyse() : FsmAnalyser
+    public Analyse() : void
     {
       try
       {
-        def an = CheckParseErrors();
-        def an = an.InitStateMap();
-        //an.InitEvents();
-        def an = an.CheckTransitions();
-        def an = an.CreateSubMachines();
-        def an = an.CheckInitialTransitions();
-        def an = an.CreateTransitions();
-        an.BreakIfError();
-        def an = an.CreateTransitionPaths();
-        def an = an.CreateConcurrentRegion();
-        def an = an.UpdateInitial();
-        def an = an.CreateActions();
-        an.FinalizeAnalyse();
+        CheckParseErrors();
+        InitStateMap();
+        CheckTransitions();
+        CreateSubMachines();
+        CheckInitialTransitions();
+        CreateTransitions();
+        BreakIfError();
+        CreateTransitionPaths();
+        CreateConcurrentRegion();
+        UpdateInitial();
+        CreateActions();
+        FinalizeAnalyse();
       }
       catch 
       {
-        | x is FsmErrorException => def err = x.error;
-          if (err != null) AddErrors(err) else this
+        | x is FsmErrorException => 
+           def err = x.error;
+           when (err != null) AddErrors(err);
       }
     }
 
@@ -637,7 +645,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        HistoryStates.FilterValues(x => x.default).Where(_.Used).Select(_ : StateTransition)//x.ActualTo != null)
+        HistoryStates.FilterValues(_.default).Where(_.used)//x.ActualTo != null)
       }
     }
 
@@ -664,7 +672,7 @@ namespace Nemerle.Statechart
         def not_used = states_transitions.Exclude(_.UsedInGenerate);
         def not_used = not_used.Where(x => x.From.Lived);
         def not_used = not_used.Exclude(_.NotWork);
-        not_used.Exclude(_.Used);
+        not_used.Exclude(_.used);
       }
     }
 

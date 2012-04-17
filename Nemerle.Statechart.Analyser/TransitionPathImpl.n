@@ -24,7 +24,7 @@ namespace Nemerle.Statechart
     {
        def src = src_st.SuperStatesFromTopInclude.NToList();
        def dest = dest_st.SuperStatesFromTopInclude.NToList();
-       def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x == (y : object));
+       def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x == y : object);
        (exit + ex.Rev(), en + entry)
     }
     
@@ -52,22 +52,22 @@ namespace Nemerle.Statechart
                  //* Case 5: Traverses the hiearchy until a common superstate is met.
     FindLCA(st : FsmState, dest_st : FsmState) : list[FsmState] * list[FsmState]
     {
-      def super = dest_st.super_state;
+      def super = dest_st.Super;
       def dest = if (super != null) super else dest_st;
-      FindPath(st.super_state, dest, st :: [], dest_st :: []);
+      FindPath(st.Super, dest, st :: [], dest_st :: []);
     }
 
     AddAction(nodes : PathNode, act : option[Actions]) : PathNode
     {
       | (n, Some(act))  => n + Action(act)
-      | (n, _)  => n
+      | (n, _)          => n
     }
 
     EntryNodeCreate(nodes : list[FsmState]) : PathNode
     {
       def entering_state(st)
       {
-          | StateAction.Entry(state = FsmState where (do_activity = act)) => Entry(st, act.Map(x => (RunDoActivity(x), true)))
+          | StateAction.Entry(state = FsmState(do_activity = act)) => Entry(st, act.Map(x => (RunDoActivity(x), true)))
       }
 
       
@@ -79,9 +79,9 @@ namespace Nemerle.Statechart
     {
       def get_exit(st)
       {
-        | StateAction.Exit(state = FsmState where (do_activity = act, history = TwoOption where (HasValue = true) as h)) =>
+        | StateAction.Exit(state = FsmState(do_activity = act, history = TwoOption(HasValue = true) as h)) =>
             Exit(st, (SaveHistory(h.Value), false) :: act.Map(x => (StopDoActivity(x), false)));
-        | Exit(state = FsmState where (do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)));
+        | Exit(state = FsmState(do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)));
       }
       
       def exiting_state(st)
@@ -102,14 +102,10 @@ namespace Nemerle.Statechart
             def regs = r.RegionsExcept(src);
             
             def node = if (last || r != reg) if (regs.Equals(r.sub_regions)) RegionExit([], r) else RegionExit(regs, r); else Empty();
-            match (e) 
-            {
-              | [] => node
-              | ex => Sequence(ex |> get_exit(_)) + node
-            }
+            if (e.IsEmpty()) node else Sequence(e |> get_exit(_)) + node;
             
-        | FsmState where (exit = (_ :: _) as ex) => Sequence(ex |> get_exit(_))
-        | _ => Empty()
+        | FsmState(exit = (_ :: _) as ex) => Sequence(ex |> get_exit(_))
+        | _                               => Empty()
       }
       
       def nodes = nodes |> exiting_state(_);
@@ -120,9 +116,9 @@ namespace Nemerle.Statechart
     {
       def get_exit(st)
       {
-        | StateAction.Exit(state = FsmState where (do_activity = act, history = TwoOption where (HasValue = true) as h))=>
+        | StateAction.Exit(state = FsmState(do_activity = act, history = TwoOption(HasValue = true) as h))=>
             Exit(st, (SaveHistory(h.Value), false) :: act.Map(x => (StopDoActivity(x), false)));
-        | Exit(state = FsmState where (do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)));
+        | Exit(state = FsmState(do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)));
       }
       
       def exiting_state(st)
@@ -131,14 +127,10 @@ namespace Nemerle.Statechart
             //def (reg, src, last) = get_source();
             def regs = r.RegionsExcept(src);
             def node = RegionExit(regs, r);
-            match (e) 
-            {
-              | [] => node
-              | ex => Sequence(ex |> get_exit(_)) + node
-            }
+            if (e.IsEmpty()) node else Sequence(e |> get_exit(_)) + node;
             
-        | FsmState where (exit = (_ :: _) as ex) => Sequence(ex |> get_exit(_))
-        | _ => Empty()
+        | FsmState(exit = (_ :: _) as ex) => Sequence(ex |> get_exit(_))
+        | _                               => Empty()
       }
       
       def nodes = nodes |> exiting_state(_);
@@ -166,7 +158,7 @@ namespace Nemerle.Statechart
     {
        // initial и pseudo is local transitions by default
       | Initial(AtLeastStaticTo = st, From = from)
-      | Transition(To = PseudoState(PseudoStateNode where (state = st)), From = from)
+      | Transition(To = PseudoState(PseudoStateNode(state = st)), From = from)
       | History(From = from, ToState = st)
        // fork transition
       | Transition(From = from, Local = true, AtLeastStaticTo = st)
@@ -174,7 +166,7 @@ namespace Nemerle.Statechart
        // transition to pseudo state
       | Transition(AtLeastStaticTo = st, From = from) => FindLCA(from, st)
       | Internal => ([], []) // no path for internal transition
-      | _  => ([], [])
+      | _        => ([], [])
     }
     
     DefExitPath(src : FsmState, dest : FsmState) : void
@@ -197,7 +189,7 @@ namespace Nemerle.Statechart
         def ex = match (ex)
                  {
                    | head :: tail when (head == skip) => tail
-                   | _ => ex
+                   | _                                => ex
                  }
         NodesCreate(ex, en);
       }

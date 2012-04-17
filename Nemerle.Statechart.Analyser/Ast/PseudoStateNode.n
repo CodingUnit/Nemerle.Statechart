@@ -22,10 +22,10 @@ namespace Nemerle.Statechart
         [TraverseIgnore] parent : Junction;
         type : JunctionType;
 
-        this(st : FsmState, n : string, node : TargetType.JunctionNode, tran : StateTransition, type : JunctionType)
+        this(an : FsmAnalyser, st : FsmState, n : string, node : TargetType.JunctionNode, tran : StateTransition, type : JunctionType)
         {
-          base(st, 0);
-          this.to = TransitionTarget.JunctionNode.Create(st, this, node, tran);//lst |> JunctionNode(st, tran, _, this);
+          base(st, 0, an);
+          this.to = TransitionTarget.JunctionNode.Create(an, st, this, node, tran);//lst |> JunctionNode(st, tran, _, this);
           name = n;
           this.type = type;
         }
@@ -88,18 +88,18 @@ namespace Nemerle.Statechart
           }
         }
 
-        override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
+        override UpdateReference() : PseudoStateNode
         {
-          def (st, an) = base.UpdateReference(an);
+          def st = base.UpdateReference();
           match (st)
           {
             | Junction(to = to) as j => 
-                match (to.UpdateReference(an))
+                match (to.UpdateReference())
                 {
-                 | (TransitionTarget.JunctionNode as nt, an) => (j.ChangeTo(nt), an)
-                 | (_, an) => (j, an)
+                 | TransitionTarget.JunctionNode as nt => j.ChangeTo(nt)
+                 | _ => j
                 }
-            | _ => (this, an)
+            | _ => this
           }
         }
 
@@ -115,24 +115,23 @@ namespace Nemerle.Statechart
         name : string;
         [NeedChange] to : TransitionTarget.JunctionNode;
 
-        this(st : FsmState, n : string, node : TargetType.JunctionNode, tran : StateTransition)
+        this(an : FsmAnalyser, st : FsmState, n : string, node : TargetType.JunctionNode, tran : StateTransition)
         {
-          base(st, 0);
-          this.to = TransitionTarget.JunctionNode.Create(st, this, node, tran);//lst |> JunctionNode(st, tran, _, this);
+          base(st, 0, an);
+          this.to = TransitionTarget.JunctionNode.Create(an, st, this, node, tran);//lst |> JunctionNode(st, tran, _, this);
           name = n;
         }
 
-        public override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
+        public override UpdateReference() : PseudoStateNode
         {
-          def (nnode, an) = to.UpdateReference(an);
-          def (st, an) = base.UpdateReference(an);
+          def nnode = to.UpdateReference();
+          def st = base.UpdateReference();
           
-          def st = match (st, nnode)
+          match (st, nnode)
                     {
                       | (Merge as j, TransitionTarget.JunctionNode as to) => j.ChangeTo(to)//Merge(x.state, copy, name, nnode :> TransitionTarget.JunctionNode)
                       | (_, _)                                            => this
                     }
-          (st, an)
         }
 
         Name : string
@@ -153,15 +152,15 @@ namespace Nemerle.Statechart
         [NeedChange] target : list[TransitionTarget];
         [NeedChange] fork_tran : list[StateTransition] = [];
 
-        override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
+        override UpdateReference() : PseudoStateNode
         { 
           // TODO: сделать через Lazy создание нового списк только в случае если есть новые элементы
-          def (st, an) = base.UpdateReference(an);
+          def st = base.UpdateReference();
           match (st)
           {
-            | Fork as j => def (target, an) = target.MapThrough(an, _.UpdateReference(_));
-                           (j.ChangeTarget(target), an)//(Fork(st, copy, target, fork_tran), an)
-            | _         => (this, an)
+            | Fork as j => def target = target.Map(_.UpdateReference());
+                           j.ChangeTarget(target)//(Fork(st, copy, target, fork_tran), an)
+            | _         => this
           }
         }
 
@@ -212,16 +211,15 @@ namespace Nemerle.Statechart
           Name
         }
 
-        override UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
+        override UpdateReference() : PseudoStateNode
         {
-          def (tar, an) = target?.UpdateReference(an);
-          def (st, an) = base.UpdateReference(an);
-          def st = match (st)
+          def tar = target?.UpdateReference();
+          def st = base.UpdateReference();
+          match (st)
                     {
                       | Join as j => j.ChangeTarget(tar)//Join(state, copy, name, tar, region, joined_tran, transition)
                       | _         => this
                     }
-          (st, an)
         }
 
       }
@@ -245,29 +243,29 @@ namespace Nemerle.Statechart
       }
 
 
-    public static Create(st : PseudoStateAstNode, state : FsmState, tran : StateTransition) : PseudoStateNode
+    public static Create(an : FsmAnalyser, st : PseudoStateAstNode, state : FsmState, tran : StateTransition) : PseudoStateNode
     {
-      def analyser = state.analyser;
+      def analyser = an;
       match (st)
       {
         | Junction(null, node, JunctionType.Junction) => 
             def num = analyser.NextJunctionNum();
             def name = $"Unnamed$num";
-            Junction(state, name, node, tran, JunctionType.Junction)
+            Junction(an, state, name, node, tran, JunctionType.Junction)
             
         | Junction(null, node, JunctionType.Choice) => 
             def num = analyser.NextChoiceNum();
             def name = $"Unnamed$num";
             //j.ChangeName(name)
-            Junction(state, name, node, tran, JunctionType.Choice)
+            Junction(an, state, name, node, tran, JunctionType.Choice)
 
-        | Junction(name = n, node = nn, type = tp)   => Junction(state, n, nn, tran, tp)
-        | Merge(name = n, node = node)    => Merge(state, n, node, tran)
-        | Fork(target = lst)              => Fork(state, 0, lst |> TransitionTarget.Create(state, tran, _), null)
-        | Join(name = n, target = t)      => Join(state, 0, n, TransitionTarget.Create(state, tran, t), null, null, null)
-        | EntryPoint                      => EntryPoint(state, 0)
-        | ExitPoint                       => ExitPoint(state, 0)
-        | Terminate                       => Terminate(state, 0)
+        | Junction(name = n, node = nn, type = tp)   => Junction(an, state, n, nn, tran, tp)
+        | Merge(name = n, node = node)    => Merge(an, state, n, node, tran)
+        | Fork(target = lst)              => Fork(state, 0, an, lst |> TransitionTarget.Create(an, state, tran, _), null)
+        | Join(name = n, target = t)      => Join(state, 0, an, n, TransitionTarget.Create(an, state, tran, t), null, null, null)
+        | EntryPoint                      => EntryPoint(state, 0, an)
+        | ExitPoint                       => ExitPoint(state, 0, an)
+        | Terminate                       => Terminate(state, 0, an)
       }
 
     }
@@ -314,16 +312,24 @@ namespace Nemerle.Statechart
       | _ => false
     }
 
-    public virtual UpdateReference(an : FsmAnalyser) : PseudoStateNode * FsmAnalyser
+    public virtual UpdateReference() : PseudoStateNode
     {
       if (state !=null) 
       {
-        def (st, an) = an.statemap.Get(state.Name, an);
-        def st = if (st != null) ChangeState(st) else this;
-        (st, an)
-      } else (this, an)
+        def st = StateMap.Get(state.NativeName);
+        if (st != null) ChangeState(st) else this;
+      } else this
     }
 
+    public analyser : FsmAnalyser;
+    
+    public StateMap : StateMap
+    {
+      get
+      {
+        analyser.statemap
+      }
+    }
   }
 
 
