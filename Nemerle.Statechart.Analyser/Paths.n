@@ -261,40 +261,41 @@ namespace Nemerle.Statechart
   /// <summary>
   /// Description of TransitionPath.
   /// </summary>
+  [Record]
   public class TransitionPaths
   {
-    [Accessor]
-    mutable paths : list[StateEvent * TransitionPath];
-    [Accessor]
-    state : FsmState;
+    [NeedChange]
+    public Paths : list[StateEvent * TransitionPath];
+    public State : FsmState;
 
     public this(st : FsmState)
     {
-      state = st;
+      State = st
     }
 
-    public TraverseTransitions(an : FsmAnalyser, recursive : bool = false) : void
+    public TraverseTransitions(an : FsmAnalyser, recursive : bool = false) : list[StateTransition] * TransitionPaths
     {
-      def trans = state.all_transitions.Exclude(_.UsedInGenerate);
-      trans.Iter(_.TraversePath(an, recursive));
-      def paths = trans |> (Trigger, Path);
-      this.paths = paths;
+      def trans = State.all_transitions.Exclude(_.UsedInGenerate);
+      def path = trans.Map(_.TraversePath(an, recursive));
+      def paths = path |> (Trigger, Path);
+      //this.paths = paths;
+      (path, ChangePaths(paths))
     }
 
     public Actions : IEnumerable[string]
     {
       get
       {
-        def act = paths.Split()[1].FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Actions));//.RemoveDuplicatesSort((x, y) => x.CompareTo(y))
+        def act = Paths.Split()[1].FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Actions));//.RemoveDuplicatesSort((x, y) => x.CompareTo(y))
         act.Distinct()
       }
     }
 
-    public ActionNodes : list[PathNode]
+    public ActionNodes : IEnumerable[PathNode]
     {
       get
       {
-        paths.Split()[1] |> Path
+        Paths.Split()[1].Select(_.Path)
       }
     }
 
