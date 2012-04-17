@@ -7,207 +7,206 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
-using Nemerle.Linq;
 
 namespace Nemerle.Statechart
 {  
-  
+
+  [Record]
   public partial variant StateTransition
   {
     | Default
+      {
+        history : StateHistory;
+
+        this(tran : Default)
         {
-          default : StateNode.Default;
-          history : StateHistory;
-          
-          this(tran : Default, ncopy : int = 0)
-          {
-            base(tran, ncopy);
-            default = tran.default;
-            history = tran.history;
-          }
-          
-          this(st : FsmState, hist : StateHistory, default : StateNode.Default)
-          {
-            this.default = default;
-            history = hist;
-            action = default.action;
-            From = st;
-            Source = From;
-            To = TransitionTarget.State(this, FsmState.State(default.target, null, null, true))
-          }
+          base(tran);
+          history = tran.history;
         }
-        
+
+        this(st : FsmState, hist : StateHistory, default : StateNode.Transition)
+        {
+          base(st, default, FsmState.State(default.ToState, null, null, true));
+          history = hist;
+        }
+      }
+
     | Initial 
+      {
+
+        this(from : FsmState, to : FsmState)
         {
-          initial : StateNode.Initial;
-          
-          this(tran : Initial, ncopy : int = 0)
-          {
-            base(tran, ncopy);
-            initial = tran.initial;
-          }
-          
-          this(st : FsmState, init : StateNode.Initial)
-          {
-            From = st;
-            Source = From;
-            guard = init.guard;
-            action = init.action;
-            To =  TransitionTarget.Create(st, this, init.to);
-          }
-          
-          this(from : FsmState, to : FsmState)
-          {
-            From = from;
-            Source = From;
-            To = TransitionTarget.State(this, to);
-          }
-          
+          base(from, null, to)
         }
-        
+
+        public static new Create(st : FsmState, tr : StateNode.Transition) : StateTransition
+        {
+          match (tr)
+          {
+            | StateNode.Transition(type = TransitionType.Initial)              => Initial(st, tr).Create()
+            | _                                                                => throw InvalidOperationException("invalid transition node")
+          }
+        }
+
+      }
+
     [DebuggerDisplay("Transition  =  {Name}")]
     | Transition 
+      {
+        trigger : StateEvent;
+        
+
+        TriggerName : string
         {
-          trigger : StateEvent;
-          node : StateNode.Transition;
-          
-          TriggerName : string
+          get
           {
-            get
-            {
-              trigger.Name
-            }
-          }
-
-          public static Create(st : FsmState, tr : IEnumerable[StateNode.Transition]) : IEnumerable[StateTransition]
-          { 
-            linq <# from x in tr 
-                              from y in x.evt
-                              select Transition(st, StateEvent(y), x) : StateTransition #>; 
-            //$[Transition(st, StateEvent(y), x) : StateTransition, x in tr, y in x.evt]
-          }
-
-          this(st : FsmState, evt : StateEvent, tr : StateNode.Transition)
-          {
-            From = st;
-            Source = From;
-            this.trigger = evt;
-            node = tr;
-            guard = tr.guard;
-            action = tr.action;
-            To = TransitionTarget.Create(st, this, tr.to)
-          }
-
-          this(st : FsmState, to : FsmState, source : PseudoStateNode)
-          {
-            From = st;
-            Source = From;
-            ImplicitFrom = source;
-            To = TransitionTarget.State(this, to);
-          }
-          
-          this(st : FsmState, trigger : StateEvent, to : TransitionTarget, source : PseudoStateNode)
-          {
-            From = st;
-            this.trigger = trigger;
-            Source = From;
-            ImplicitFrom = source;
-            To = to;
-          }
-          
-          this(tran : Transition, ncopy : int = 0)
-          {
-            base(tran, ncopy);
-            trigger = tran.trigger;
-            node = tran.node;
-          }
-          
-          this(st : FsmState, tr : Transition)
-          {
-            this(tr);
-            Source = st;
+            trigger.Name
           }
         }
-        
+
+        this(st : FsmState, evt : StateEvent, tr : StateNode.Transition)
+        {
+          base(st, tr);
+          trigger = evt;
+        }
+
+        //this(st : FsmState, to : FsmState, source : PseudoStateNode)
+        //{
+        //  base(st.analyser);
+        //  From = st;
+        //  Source = From;
+        //  ImplicitFrom = source;
+        //  To = TransitionTarget.State(this, st.analyser, to);
+        //}
+
+        this(st : FsmState, trigger : StateEvent, to : TransitionTarget, source : PseudoStateNode)
+        {
+          base(st, to);
+          this.trigger = trigger;
+          implicit_from = source;
+        }
+
+        [NeedChange]
+        public implicit_from : PseudoStateNode;        
+        //this(tran : Transition)
+        //{
+        //  base(tran);
+        //  trigger = tran.trigger;
+        //  node = tran.node;
+        //}
+
+        //this(st : FsmState, tr : Transition)
+        //{
+        //  this(tr);
+        //  Source = st;
+        //}
+      }
+
     | Internal
+      {
+        trigger : StateEvent;
+
+        this(tran : Internal)
         {
-          trigger : StateEvent;
-          node : StateNode.InternalTransition;
-          
-          this(tran : Internal, ncopy : int = 0)
-          {
-            base(tran, ncopy);
-            trigger = tran.trigger;
-            node = tran.node;
-          }
-          
-          ActionNode : PathNode
-          {
-            get
-            {
-              PathNode.Action(action.Value)
-            }
-          }
-
-          TriggerName : string
-          {
-            get
-            {
-              trigger.Name
-            }
-          }
-
-          override ToString() : string
-          {
-            Name
-          }
-          
-          this(st : FsmState, tr : Internal)
-          {
-            this(tr);
-            Source = st;
-          }
-          
-          this(trigger : StateEvent, tran : StateNode.InternalTransition, from : FsmState) 
-          {
-            this.trigger = trigger;
-            node = tran;
-            action = Some(node.action);
-            guard = node.guard;
-            From = from;
-            Source = from;
-          }
-
-          public static Create(st : FsmState, tr : IEnumerable[StateNode.InternalTransition]) : IEnumerable[StateTransition]
-          {
-            def req = linq <# from x in tr 
-                              from y in x.evt
-                              select Internal(StateEvent(y), x, st) : StateTransition #>; 
-              //$[Internal(StateEvent(y), x, st) : StateTransition, x in tr, y in x.evt]
-            req
-          }
-          
+          base(tran);
+          trigger = tran.trigger;
         }
-        
+
+        ActionNode : PathNode
+        {
+          get
+          {
+            PathNode.Action(action.Value)
+          }
+        }
+
+        TriggerName : string
+        {
+          get
+          {
+            trigger.Name
+          }
+        }
+
+        override ToString() : string
+        {
+          Name
+        }
+
+        //this(st : FsmState, tr : Internal)
+        //{
+        //  this(st, tr);
+        //}
+
+        this(from : FsmState, trigger : StateEvent, tran : StateNode.Transition) 
+        {
+          base(from, tran);
+          this.trigger = trigger;
+        }
+
+
+      }
+
     | History
+      {
+        history : StateHistory;
+
+        this(tran : History)
         {
-          history : StateHistory;
-          
-          this(tran : History, ncopy : int = 0)
-          {
-            base(tran, ncopy);
-            history = tran.history;
-          }
-          
-          this(hist : StateHistory, st : FsmState, to : FsmState)
-          {
-            From = st;
-            history = hist;
-            Source = From;
-            To = TransitionTarget.State(this, to);
-          }
-        
+          base(tran);
+          history = tran.history;
         }
+
+        this(hist : StateHistory, st : FsmState, to : FsmState)
+        {
+          base(st, null, to);
+          history = hist;
+        }
+
+      }
+
+    public static Create(st : FsmState, trigger : StateEvent, to : TransitionTarget, source : PseudoStateNode) : StateTransition
+    {
+      StateTransition.Transition(st, trigger, to, source).Create()
+    }
+
+    public static Create(st : FsmState, tr : StateNode.Transition) : IEnumerable[StateTransition]
+    {
+      match (tr)
+      {
+        | StateNode.Transition(type = TransitionType.Internal, evt = e)    => e.Map(x => Internal(st, StateEvent(x), tr).Create())
+        | StateNode.Transition(type = TransitionType.Initial)              => TraverseUtils.SingleElement(Initial(st, tr).Create())
+        | StateNode.Transition(type = TransitionType.Transition, evt = e)  => e.Map(x => Transition(st, StateEvent(x), tr).Create())
+        | _                                                                => throw InvalidOperationException("invalid transition node")
+      }
+    }
+
+
+    public static Create(st : FsmState, tr : IEnumerable[StateNode.Transition]) : IEnumerable[StateTransition]
+    {
+      tr.FoldLeft([], (x, a) => a.Concat(Create(st, x)))
+    }
+
+    //public static Create(st : FsmState, tr : IEnumerable[StateNode.InternalTransition]) : IEnumerable[StateTransition]
+    //{
+    //      $[Internal(StateEvent(y), x, st) : StateTransition, x in tr, y in x.evt].Map(x => x.ChangeNum(st.analyser.GetNewTransitionId(x)))
+    //}
+
+    //public static Create(st : FsmState, tr : IEnumerable[StateNode.Transition]) : IEnumerable[StateTransition]
+    //{ 
+    //        $[Transition(st, StateEvent(y), x) : StateTransition, x in tr, y in x.evt].Map(x => x.ChangeNum(st.analyser.GetNewTransitionId(x)))
+    //}
+
+    public Create() : StateTransition
+    {
+      ChangeNum(analyser.GetNewTransitionId(this))
+    }
+
+    //public static Create(st : FsmState, trigger : StateEvent, to : TransitionTarget, source : PseudoStateNode) : StateTransition
+    //{
+    //  def tr = Transition(st, trigger, to, source);
+    //  tr.ChangeNum(st.analyser.GetNewTransitionId(tr));
+    //}
   }
-    
+
 }

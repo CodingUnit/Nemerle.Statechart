@@ -18,123 +18,124 @@ namespace Nemerle.Statechart.Tests
   state FileWorking
   {
     close => Exiting;
-    
+
     state Files
     {
       (H*)
       NewFile => Processing;
-      Open => Opening;
-      
+      Open    => Opening;
+
       state Waiting
       {
-          $> / SaveAllDis CaptionProgName;
-          $< / SaveAsEna;
+        $> / SaveAllDis CaptionProgName;
+        $< / SaveAsEna;
       }
 
       state Opened
       {
         save_as => Saving.SaveAs;
-    
+
         state Saved
         {
-            $> / SaveDis CaptionFileName LastFileCur;
-            Save => @;
-            Change => Changed;
+          $> / SaveDis CaptionFileName LastFileCur;
+          Save   => @;
+          Change => Changed;
         }
 
         state NotSaved
         {
-            $> / SaveEna;
-            
-            state New
-            {
-                $> / CaptionFile LastFileEmpty SaveAsEna;
-                Save => Saving.SaveAs;
-            }
+          $> / SaveEna;
 
-            state Changed
-            {
-                $> / CaptionChanged;
-                Save => Saving.Overwrite;
-            }
+          state New
+          {
+            $> / CaptionFile LastFileEmpty SaveAsEna;
+            Save => Saving.SaveAs;
+          }
+
+          state Changed
+          {
+            $> / CaptionChanged;
+            Save => Saving.Overwrite;
+          }
         }
       }
     }
 
     state Processing
     {
-      _ => Saved;
+      _      => Saved;
       Cancel => Files.H;
-    
+
       state CreateNew
       {
         _ => NotSaved;
-        
-      statemachine dialogs : FileDialogs
-      {
-        _ => NewDialog;
-      }
-      
+
+        statemachine dialogs : FileDialogs
+        {
+          _ => NewDialog;
+        }
+
         state NewDialog
         {
           $> / ViewNewDialog;
           ok / LoadData => $0;
         }
-      
+
       }
 
-        new statemachine Saving : FileDialogs
+      new statemachine Saving : FileDialogs
+      {
+
+        0 => {
+                in_state(NotSaved) => WantSave;
+                else               => $0;
+              }
+
+        state WantSave
         {
-          
-          0 => {
-                 in_state(NotSaved) => WantSave;
-                 else               => $0;
-               }
-    
-          state WantSave
-          {
-            $> / ViewWantToSave;
-            yes => {
-                     in_state(New) => SaveAs;
-                     else          => Overwrite;
-                   }
-            no => $0;
-          }
-    
-          state SaveAs
-          {
-            $> / ViewSaveAsDialog;
-            ok => (save_junc);
-          }
-    
-          state Overwrite
-          {
-            $> / ViewOverwrite;
-            no  => SaveAs;
-            yes => (save_junc);
-          }
-    
-          junction save_junc
-          {
-            / save => $0;
-          }
+          $> / ViewWantToSave;
+          yes => {
+                    in_state(New) => SaveAs;
+                    else          => Overwrite;
+                  }
+          no  => $0;
         }
-      
+
+        state SaveAs
+        {
+          $> / ViewSaveAsDialog;
+          ok => (save_junc);
+        }
+
+        state Overwrite
+        {
+          $> / ViewOverwrite;
+          no  => SaveAs;
+          yes => (save_junc);
+        }
+
+        junction save_junc
+        {
+          / save => $0;
+        }
+          
+      }
+
       state Opening
       {
         statemachine OpenSave : FileDialogs
         {
           _ => OpenDialog;
         }
-      
+
         state OpenDialog
         {
           $> / ViewOpenDialog;
           ok / LoadData => $0;
         }
-      
+
       }
-    
+
       state Exiting
       {
         statemachine ExitSave : FileDialogs
@@ -147,7 +148,7 @@ namespace Nemerle.Statechart.Tests
           0 => X;
           $> / Exit;
         }
-        
+
       }
     }
   }
@@ -155,8 +156,8 @@ namespace Nemerle.Statechart.Tests
   )]
   public class FileFsm
   {
-    
-    
+
+
     LastFileCur() : void
     {
       LastSaved = CurFile;
@@ -202,22 +203,22 @@ namespace Nemerle.Statechart.Tests
         process_res(if (res) DialogResult.OK else DialogResult.Cancel)
       }
     }
-    
+
     process_res(res : DialogResult) : void
     {
-        | DialogResult.Yes => yes()
-        | Cancel => Cancel()
-        | No => no()
-        | OK => ok()
-        | _ => ()
+      | DialogResult.Yes => yes()
+      | Cancel           => Cancel()
+      | No               => no()
+      | OK               => ok()
+      | _                => ()
     }
-    
+
     ViewOverwrite() : void
     {
       when (!DisableDialogs)
       {
-      def res = MessageBox.Show(CurOverwrite, "Warning", MessageBoxButtons.YesNoCancel);
-      process_res(res)
+        def res = MessageBox.Show(CurOverwrite, "Warning", MessageBoxButtons.YesNoCancel);
+        process_res(res)
       }
     }
 
@@ -225,8 +226,8 @@ namespace Nemerle.Statechart.Tests
     {
       when (!DisableDialogs)
       {
-      def res = MessageBox.Show(CurWantToSave, "Warning", MessageBoxButtons.YesNoCancel);
-      process_res(res)
+        def res = MessageBox.Show(CurWantToSave, "Warning", MessageBoxButtons.YesNoCancel);
+        process_res(res)
       }
     }
 
@@ -252,5 +253,5 @@ namespace Nemerle.Statechart.Tests
     public CurOverwrite : string {get;set;}
 
   }
-  
+
 }

@@ -46,15 +46,15 @@ namespace Nemerle.Statechart
         match (n)
         {
           | "H"
-          | "h" => TargetType.History(name.pos, StateNode.History(0, HistoryType.Shallow, None(), p, true))
+          | "h"        => TargetType.History(name.pos, StateNode.History(0, HistoryType.Shallow, None(), p, true))
           | "history"  => TargetType.History(name.pos, p : State)
           | "h*" 
-          | "H*" => TargetType.History(name.pos, StateNode.History(0, HistoryType.Deep, None(), p, true))
+          | "H*"       => TargetType.History(name.pos, StateNode.History(0, HistoryType.Deep, None(), p, true))
           | "final"
-          | "$0"  => TargetType.Final(name.pos, Final(null))
+          | "$0"       => TargetType.Final(name.pos, Final(null))
           | "terminate"
           | "x"
-          | "X" => TargetType.PseudoState(name.pos, PseudoStateAstNode.Terminate(0))
+          | "X"        => TargetType.PseudoState(name.pos, PseudoStateAstNode.Terminate(0))
           | x when (x.IndexOf('(') != -1 ) => TargetType.Named(name.pos, p, name.TargetName.Trim('(',')'))
           | _ => TargetType.State(name.pos, State(n))
         }
@@ -74,14 +74,9 @@ namespace Nemerle.Statechart
       Transition(GuardNode, act, target)
     }
 
-    default_transition(act : option[Actions], target : TargetType) : Default
+    default_transition(act : option[Actions], target : TargetType) : StateNode.Transition
     {
-      // TODO: проверка с выводом ошибки в случае если не в состояние
-      match (target)
-      {
-        | State(st) => Default(act, st)
-        | _ => Default(act, null)
-      }
+      Transition(target.pos, Enumerable.Empty(), None(), act, target, TransitionType.Default(null))
     }
 
     events(id : NToken, evt : List[NToken]) : List[Event]
@@ -192,14 +187,14 @@ namespace Nemerle.Statechart
       DoActivity(key.StartPos, acts, flags)
     }
 
-    internal_trans(evt : NToken, GuardNode : option[GuardNode], acts : Actions) : InternalTransition
+    internal_trans(evt : NToken, guard : option[GuardNode], acts : Actions) : StateNode.Transition
     {
-      InternalTransition(evt.StartPos, [create_event(evt)], GuardNode, acts)
+      Transition(evt.StartPos, create_event(evt) :: [], guard, Some(acts), null, TransitionType.Internal())
     }
 
-    initial_trans(name : NToken, tran : StateNode.Transition) : Initial
+    initial_trans(name : NToken, tran : StateNode.Transition) : StateNode.Transition
     {
-      Initial(name.StartPos, tran)
+      Transition(name.StartPos, tran, TransitionType.Initial())
     }
 
     state(attr : option[List[StateAttribute]], name : NToken, nodes : List[StateNode]) : State
@@ -228,25 +223,25 @@ namespace Nemerle.Statechart
       MachineFlags(tok.FoldLeft((MachineFlag.None, []), proc_tok));
     }
 
-    history_deep(tok : NToken, tran : option[StateNode.Default]) : History
+    history_deep(tok : NToken, tran : option[StateNode.Transition]) : StateNode
     {
       def_history(HistoryType.Deep, tok, tran)
     }
 
-    history_shallow(tok : NToken, tran : option[StateNode.Default]) : History
+    history_shallow(tok : NToken, tran : option[StateNode.Transition]) : StateNode
     {
       def_history(HistoryType.Shallow, tok, tran)
     }
 
-    history_long(type : NToken, tran : option[StateNode.Default]) : History
+    history_long(type : NToken, tran : option[StateNode.Transition]) : StateNode
     {
       match (GetText(type))
       {
         | "Deep"
-        | "deep"  => def_history(HistoryType.Deep, type, tran)
+        | "deep"     => def_history(HistoryType.Deep, type, tran)
         | "Shallow"
         | "shallow"  => def_history(HistoryType.Shallow, type, tran)
-        | _  => def_history(HistoryType.None, type, tran)
+        | _          => StateNode.Error(type.StartPos, def_history(HistoryType.None, type, tran))
       }
     }
 
