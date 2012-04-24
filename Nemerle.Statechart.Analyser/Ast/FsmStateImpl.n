@@ -28,7 +28,7 @@ namespace Nemerle.Statechart
     {
       def super  = if (super_state != null) 
                     {
-                      statemap.Get(super_state.NativeName)
+                      statemap.Get(super_state)
                     } else super_state;
       //sub_states.Map(x => x.);
       //def super = if (super.AstName == null) super.ChangeName(TopStateName) else super;
@@ -114,6 +114,14 @@ namespace Nemerle.Statechart
     //  when (!reg) sub_states.Iter(x  => x.DefineHistoryPathRecurse(st, nodes))
     //}
 
+    public Updated : FsmState
+    {
+      get
+      {
+        statemap[Num]
+      }
+    }
+    
     public DeleteTransitions(tr : IEnumerable[StateTransition]) : FsmState
     {
       def (tran, other)     = tr.PartitionType();
@@ -136,7 +144,7 @@ namespace Nemerle.Statechart
         match (trans.Find(x => x.Num == tr.Num))
         {
           | Some(tr) => tr
-          | _        => throw InvalidOperationException("unknown transition")
+          | _        => tr
         }
       }
 
@@ -168,7 +176,8 @@ namespace Nemerle.Statechart
       this(analyser);
       this.name = name;
       this.super_state = super;
-      this.reference = reference
+      this.reference = reference;
+      Num = statemap.GetNewStateId(this)
     }
 
     public this(st : StateNode.State, sub : IEnumerable[FsmState], analyser : FsmAnalyser, reference : bool = false)
@@ -202,12 +211,12 @@ namespace Nemerle.Statechart
         sub_states = sub.Map(_.ChangeSuperState(this));
         pseudo_states = st.pseudo_states |> PseudoStateNode.Create(analyser, _.node, this, null)
       }
-      Num = analyser.GetNewStateId(this)
+      Num = statemap.GetNewStateId(this)
     }
 
     public SetNewId() : FsmState
     {
-      ChangeNum(analyser.GetNewStateId(this))
+      ChangeNum(statemap.GetNewStateId(this))
     }
     
     public Real : FsmState
@@ -661,12 +670,20 @@ namespace Nemerle.Statechart
 
     public GetChild() : IEnumerable[FsmState]
     {
-      sub_states
+      match (this)
+      {
+        | ConcurrentRegion(sub_regions = r) => r.Select(_ : FsmState)
+        | _                                 => sub_states
+      }
     }
 
     public Rebuild(child : IEnumerable[FsmState]) : FsmState
     {
-      ChangeSubStates(child)
+      match (this)
+      {
+        | ConcurrentRegion as r => r.ChangeSubRegions(child.Select(_ :> FsmState.ConcurrentSubRegion))
+        | _                     => ChangeSubStates(child)
+      }
     }
     //public UpdateFromTarget(target : TransitionTarget) : FsmState
     //{

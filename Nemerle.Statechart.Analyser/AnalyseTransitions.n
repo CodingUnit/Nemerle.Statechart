@@ -238,7 +238,7 @@ namespace Nemerle.Statechart
             }
 
         | Named as t => def t = get_named(t);
-            resolve_targets(st, t)
+                        resolve_targets(st, t)
         | Qualified(parent = st, target = t) => 
             def st = statemap.Get(st);
             match (st, t)
@@ -258,7 +258,7 @@ namespace Nemerle.Statechart
     create_join_transitions() : void
     {
 
-      def check_join(j, tr, (err, atran : IEnumerable[StateTransition]))
+      def check_join(j, tr, (err, atran))
       {
         match (j)
         {
@@ -433,12 +433,16 @@ namespace Nemerle.Statechart
       {
         traverser.Add(TopState.initial.NToList());
         def res = traverser.Traverse(this); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
+        def tran = traverser.Completed;
+        UpdateTransitions(tran);
         statemap.Update(res);
       }
 
       def update_states()
       {
         def dest = trans_paths.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Paths.Map((_, y) => y.Transition.Destination)));
+        def tran = dest.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Transition));
+        UpdateTransitions(tran);
         def st   = dest.Select(_.ToState).Where(_ != null);
         def hist = dest.OfType.[TransitionDestination.History]().Select(_.state);
         def hist = hist.Select(_.ChangeUsed(true));

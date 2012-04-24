@@ -44,7 +44,7 @@ namespace Nemerle.Statechart
       To = TransitionTarget.Create(st.analyser, st, this, tran.to);
       Source = st;
     }
-    
+
     public this(st : FsmState, to : TransitionTarget)
     {
       this(st.analyser);
@@ -52,9 +52,9 @@ namespace Nemerle.Statechart
       To = to;
       Source = st;
     }
-        
+
     public node : StateNode.Transition;
-    
+
     public this(tran : StateTransition)
     {
       this(tran.analyser);
@@ -68,20 +68,10 @@ namespace Nemerle.Statechart
       Local = tran.Local;
       //ImplicitFrom = tran.ImplicitFrom;
     }
-    /// <summary>
-    /// State reacts on event of transition (begining of transition line)
-    /// </summary>
-    public FromReal : FsmState
-    {
-      get
-      {
-        Statemap.Get(From)
-      }
-    }
-    
+
     [NeedChange]
     public Num : int;
-    
+
     [NeedChange(Source)]
     [NeedChange(To)]
     [NeedChange]
@@ -96,7 +86,7 @@ namespace Nemerle.Statechart
     public ActualTo : FsmState;
     [NeedChange]
     public Path : TransitionPath;
-    
+
     [NeedChange(ActualTo)]
     [NeedChange]
     public Destination : TransitionDestination;
@@ -146,10 +136,10 @@ namespace Nemerle.Statechart
 
     public IsCrossed : bool
     {
-        get
-        {                
+      get
+      {                
             !ParentCrossed.IsEmpty()
-        }
+      }
     }
 
     public IsCompletion : bool
@@ -193,10 +183,10 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (this)
+        match (Guard)
         {
-          | StateTransition where (Guard = Some(g)) => $"$(name)With$g"
-          | _ => name
+          | Some(g) => $"$(name)With$g"
+          | _       => name
         }
       }
     }
@@ -207,13 +197,8 @@ namespace Nemerle.Statechart
 
     public static FullComparer(t1 : StateTransition, t2 : StateTransition) : int
     {
-      ret:
-        {
-        when (Comparer(t1, t2) == 0)
-          when (GuardComparer(t1, t2) == 0)
-            when (t1.ActionList.Equals(t2.ActionList, _ == _)) ret(0);
-        -1
-        }
+      def eq = if (t1.ActionList.Equals(t2.ActionList, _ == _)) 0 else -1;
+      Comparer(t1, t2) + GuardComparer(t1, t2) + eq
     }
 
     /// <summary>
@@ -253,7 +238,7 @@ namespace Nemerle.Statechart
         match (To)
         {
           | TransitionTarget.State(st)  => st
-          | _  => null
+          | _                           => null
         }
       }
     }
@@ -295,10 +280,10 @@ namespace Nemerle.Statechart
     {
       if (Path == null)
       {
-        def path = TransitionPath(this, an);
-        def tr = ChangePath(path);
-        path.Traverse(recursive);
-        tr
+        def path = TransitionPath(this, an, recursive);
+        path.Traverse();
+        def tran = path.Transition;
+        tran.ChangePath(path)
       } else this
     }
 
@@ -309,7 +294,7 @@ namespace Nemerle.Statechart
         match (this)
         {
           | Internal(ActionNode = node) => node
-          | _                           => Path.Path
+          | _                           => Path.Path.Path
         }
       }
     }
@@ -356,12 +341,12 @@ namespace Nemerle.Statechart
           !p.Unsequenced.Exists(false_paths) && p.Actions is []
         }
 
-        def path_ok = path_inlined(Path.Path) && Guards is [];
+        def path_ok = path_inlined(Path.Path.Path) && Guards is [];
         def targ_ok = match (Destination)
                        {
-                         | ForceStateChange => false
-                         | JunctionNode(DecisionNode where (Paths = p, Guards = g)) => path_inlined(p) && g is [] 
-                         | _ => true
+                         | ForceStateChange                                  => false
+                         | JunctionNode(DecisionNode(Paths = p, Guards = g)) => path_inlined(p) && g is [] 
+                         | _                                                 => true
                        }
         path_ok && targ_ok
       }
@@ -386,13 +371,13 @@ namespace Nemerle.Statechart
         analyser.statemap
       }
     }
-    
+
     public UpdateReference() : StateTransition
     {
       def from = if (From != null) 
-      {
-        Statemap.Get(From);
-      } else null;
+                  {
+                    Statemap.Get(From);
+                  } else null;
       def to = To.UpdateReference();
       ChangeFromTo(from, to)
     }
@@ -525,6 +510,7 @@ namespace Nemerle.Statechart
     /// <summary>
     /// Shows that transition is used
     /// </summary>
+    [NeedChange(omit_guard)]
     [NeedChange]
     public Used : bool;
 
@@ -544,14 +530,13 @@ namespace Nemerle.Statechart
     {
       get
       {
-        used
+        Used
       }
     }
 
     /// <summary>
     /// Used in Choice of crossed transitions
     /// </summary>
-    [NeedChange(IsCrossed)]
     [NeedChange]
     public UsedInChoice : bool;
     /// <summary>

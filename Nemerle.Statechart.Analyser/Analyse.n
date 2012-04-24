@@ -16,40 +16,6 @@ namespace Nemerle.Statechart
   public partial class FsmAnalyser
   {
 
-    public GetNewStateId(state : FsmState) : int
-    {
-      match (States.Find(x => x.Name == state.Name))
-      {
-        | Some(st) => st.Num
-        | _        => GetNextStateNum()
-      }
-    }
-
-    public GetNewTransitionId(tran : StateTransition) : int
-    {
-      match (all_transitions_with_init.Find(x => x.Name == tran.Name))
-      {
-        | Some(tr) => tr.Num
-        | _        => GetNextTransitionNum()
-      }
-    }
-
-    mutable state_num : int;
-    mutable transition_num : int;
-
-    GetNextStateNum() : int
-    {
-      def num = state_num;
-      state_num++;
-      num
-    }
-
-    GetNextTransitionNum() : int
-    {
-      def num = transition_num;
-      transition_num++;
-      num
-    }
     
     UpdateTransitions(tran : IEnumerable[StateTransition]) : void
     {
@@ -60,17 +26,17 @@ namespace Nemerle.Statechart
     
     InitStatechart() : void
     {
-      def top = Fsm.state.Fold(null, 
-                               (s, sb) => FsmState.CreateState(s, sb, this),
-                               (s, sr) => FsmState.ConcurrentRegion(s, sr.Select(_ :> FsmState.ConcurrentSubRegion), this),
-                               s       => FsmState.Final(s, this),
-                               null
+      def state = Fsm.state.ChangeName(FsmState.TopStateName);
+      def top = state.Fold(null, 
+                              (s, sb) => FsmState.CreateState(s, sb, this),
+                              (s, sr) => FsmState.ConcurrentRegion(s, sr.Select(_ :> FsmState.ConcurrentSubRegion), this),
+                              (s, _)  => FsmState.Final(s, this),
+                              null
                             );
-      def top = top.CreateIterator(); // cache iterator
+      //def top = top.CreateIterator(); // cache iterator
     //def topState = FsmState.State(Fsm.state, null, this, false); // create statemachine from top state
-      def top = top.ChangeName(FsmState.TopStateName);
-      UpdateStateMap(top);
-      UpdateStateMap(null, true)
+      UpdateStateMap(top, true);
+      //UpdateStateMap(null, true)
     }
 
     InitStateMap() : void
@@ -86,7 +52,7 @@ namespace Nemerle.Statechart
 
         def check_target(t, tran, a)
         {
-          def st = tran.FromReal;
+          def st = tran.From.Updated;
           match (t, tran)
           {
             | (TransitionTarget.Final as t, _) when (is_top(st))=> 
@@ -152,8 +118,11 @@ namespace Nemerle.Statechart
     {
     //InitStates();
       statemap.Update(top ?? TopState);
-      def top = if (upd_ref) TopState.ReduceSingle(_.UpdateReference(_)); else TopState;
-      statemap.Update(top);
+      when (upd_ref) 
+      {
+        def top = TopState.ReduceSingle(_.UpdateReference(_));
+        statemap.Update(top);
+      }
     }
 
     //InitStates() : void
@@ -196,16 +165,16 @@ namespace Nemerle.Statechart
         match (st.history)
         {
         // duplicate variants
-          | TwoOption.Two(StateHistory.Deep, StateHistory.Deep)
-          | Two(StateHistory.Shallow, StateHistory.Shallow) => FsmError.DuplicateHistory(st, st.history.Value.First()) :: a
-          | _                                               => a
+          | TwoOption.Two(StateHistory.Deep,    StateHistory.Deep)
+          | TwoOption.Two(StateHistory.Shallow, StateHistory.Shallow) => FsmError.DuplicateHistory(st, st.history.Value.First()) :: a
+          | _                                                         => a
         }
       }
 
       def check_exit_actions(st)
       {
-        | FsmState(exit = []) => st.ChangeExit([StateAction.Exit([], st)])
-        | _ => st
+        | FsmState(exit = ex) when ex.IsEmpty() => st.ChangeExit(TraverseUtils.SingleElement(StateAction.Exit([], st)))
+        | _                                     => st
       }
 
       def update_hist(s, sb, err)
@@ -214,8 +183,8 @@ namespace Nemerle.Statechart
         {
           def err = check_dup_history(s, err);
           def s = check_exit_actions(s);
-          (s.ChangeSubStates(sb), err)
-        } else (s.ChangeSubStates(sb), err)
+          (s.Rebuild(sb), err)
+        } else (s.Rebuild(sb), err)
       }
 
       def (top, err) = TopState.ReduceSingle([], update_hist);

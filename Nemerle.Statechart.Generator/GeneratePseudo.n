@@ -170,12 +170,12 @@ namespace Nemerle.Statechart
     {
       def get_run_hist_body(hist)
       {
-        | StateTransition.Default(From = from, history = StateHistory where (Name = name) as hist) as t =>
+        | StateTransition.Default(From = from, history = StateHistory(Name = name) as hist) as t =>
             def hname = get_history_run_name(hist, from.Name);
                 <[ 
                 if ($(name : usesite) != null) // определяем выбор в случае если есть переход по умолчанию в случ.если нет истории
                     $(name : usesite).$(hname : usesite)(this); else $(DefineTransBody([t], GenCtx.Normal()));
-                ]> 
+                ]>
       }
       
       def def_history(h)
@@ -187,7 +187,12 @@ namespace Nemerle.Statechart
             {
                 $(hist.Name : usesite) = null
             }]>;    
-          def default = hist.default.Map(x => [<[decl: $($"$(x.history)Run" : usesite)() : State {$(get_run_hist_body(x));} ]>]).WithDefault([]);  
+            def create_default(x)
+            {
+              def tr = x :> StateTransition.Default;
+              [<[decl: $($"$(tr.history)Run" : usesite)() : State {$(get_run_hist_body(tr));} ]>]
+            }
+          def default = hist.default.Map(create_default).WithDefault([]);
           [hist_field, clear] + default
         }
         

@@ -20,11 +20,11 @@ namespace Nemerle.Statechart
     | State {state : FsmState;}
     | NoStateChange
     | Choice 
-        {
-          state      : FsmState;
-          choice     : IEnumerable[StateTransition];
-          else_state : option[FsmState] = None();
-        }
+      {
+        state      : FsmState;
+        choice     : IEnumerable[StateTransition];
+        else_state : option[FsmState] = None();
+      }
     | Terminate {node : PseudoStateNode.Terminate;}
     | Region {reg : ConcurrentRegion;}
     | SubRegion {reg : ConcurrentSubRegion;state : TransitionDestination;from : FsmState;}
@@ -40,10 +40,10 @@ namespace Nemerle.Statechart
     | JunctionNode {node : DecisionNode;}
     | ChoiceNode {node : DecisionNode;}
     | TransitionExecute {tran : StateTransition;}
-    
+
     /// <summary>
-	  /// Concrete State for where transition ends known at compile time
-	  /// </summary>
+    /// Concrete State for where transition ends known at compile time
+    /// </summary>
     public ConcreteTo : FsmState
     {
       get
@@ -61,11 +61,30 @@ namespace Nemerle.Statechart
           | SubRegion(state = st) => check_dest(st)
           | _ => null
         }
-          
+
         check_dest(this)
       }
     }
-    
+
+    public Transition : IEnumerable[StateTransition]
+    {
+      get
+      {
+        match (this)
+        {
+          | ForceStateChange(n)
+          | SubRegion(_, n, _)     => n.Transition
+          | Choice(_, tr, _)       => tr
+          | Fork(_, tr)           
+          | Final(_, _, _, tr)     => tr
+          | CheckAfter(_, b, n)    => b.Transition.Concat(n.Transition)
+          | JoinedTransition(_, t) 
+          | TransitionExecute(t)   => TraverseUtils.SingleElement(t)
+          | _                      => Enumerable.Empty()
+        }
+      }
+    }
+
     public ToState : FsmState
     {
       get
@@ -89,12 +108,12 @@ namespace Nemerle.Statechart
     }
 
     public this() {}
-    
+
     public this(post : TransitionPostConditions) 
     {
       post_conditions = post
     }
-    
+
     public Nested : TransitionDestination
     {
       get
@@ -108,12 +127,12 @@ namespace Nemerle.Statechart
         }
       }
     }
-  
+
     [RecordIgnore] 
     [Accessor]
     post_conditions : TransitionPostConditions;
   }
-  
+
   public variant TransitionPostConditions
   {
     | None
