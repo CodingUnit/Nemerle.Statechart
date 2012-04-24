@@ -15,36 +15,84 @@ namespace Nemerle.Statechart
   using FsmState;
 
   [Record]
+  class StateProxy
+  {
+    public statemap : StateMap;
+    public original : FsmState;
+
+    public state : FsmState
+    {
+      get
+      {
+        statemap[original.Num]
+      }
+    }
+  }
+
+  [Record]
   public class StateMap
   {
-    mutable states : Map[int, FsmState] = Map();
+    mutable states : array[FsmState] = array[];
 
     public Analyser : FsmAnalyser;
-    
+
+    public namemap : Hashtable[string, int] = Nemerle.Collections.Hashtable();
+    public tranmap : Hashtable[string, int] = Nemerle.Collections.Hashtable();
+
+    public GetNewStateId(state : FsmState) : int
+    {
+      match (namemap.Get(state.Name))
+      {
+        | Some(num) => num
+        | _        => def num = GetNextStateNum();
+                      namemap[state.Name] = num;
+                      num
+      }
+    }
+
+    public GetNewTransitionId(tran : StateTransition) : int
+    {
+      match (tranmap.Get(tran.Name))
+      {
+        | Some(num) => num
+        | _         => def num = GetNextTransitionNum();
+                      tranmap[tran.Name] = num;
+                      num
+      }
+    }
+
+    mutable state_num      : int;
+    mutable transition_num : int;
+
+    GetNextStateNum() : int
+    {
+      def num = state_num;
+      state_num++;
+      num
+    }
+
+    GetNextTransitionNum() : int
+    {
+      def num = transition_num;
+      transition_num++;
+      num
+    }
 
     public States : IEnumerable[FsmState]
     {
       get
       {
-        states.Values()
+        states
       }
     }
-    
-    public this(an : FsmAnalyser) { Analyser = an; TopNum = -1 }
 
-    public Count : int
-    {
-      get
-      {
-        states.Count()
-      }
-    }
+    public this(an : FsmAnalyser) { Analyser = an; TopNum = -1 }
 
     public Contains(state : FsmState) : bool
     {
-      states.Keys().Contains(state.Num)
+      states.Length - 1 >= state.Num
     }
-    
+
     //public Contains(state : string) : bool
     //{
     //  states.Exists(x => x.Name == state)
@@ -84,7 +132,7 @@ namespace Nemerle.Statechart
         }
       }
 
-      def (st, err) = get_loop(states.Values(), state, [], []);
+      def (st, err) = get_loop(states, state, [], []);
       Analyser.AddErrors(err);
       st
     }
@@ -101,7 +149,7 @@ namespace Nemerle.Statechart
       map.Where(x => x.NativeName == name)
     }
 
-    
+
     public Get(state : string) : FsmState
     {
       def st = state.SplitToList('.');
@@ -110,7 +158,7 @@ namespace Nemerle.Statechart
 
     public Get(num : int) : FsmState
     {
-      states.Get(num)
+      states[num]
     }
 
     //public CheckNew(st : FsmState) : StateMap
@@ -203,34 +251,37 @@ namespace Nemerle.Statechart
       Update(top)
     }
 
-    UpdateMap(st : IEnumerable[FsmState]) : void
-    {
-      states = Map(st.Select(x => (x.Num, x)));
-    }
-
     public Update(top : FsmState) : void
     {
       when (top != Top)
       {
-        def st = top.AllStates;
-        if (states.Count() != st.Count()) // if new count of states, renum
+        when (TopNum == -1)
         {
-          when (TopNum == -1)
-          {
-            def top = st.First();
-            TopNum = top.Num;
-          }
-          UpdateMap(st);
-          Update(st);
-          def top = Top.ReduceSingle(_.UpdateReference(_));
-          Update(top)
-        } else
-        {
-          UpdateMap(st)
+          TopNum = top.Num;
         }
+        def st = top.AllStates;
+        states = st.OrderBy(_.Num).ToArray();
+        //SetMap(st)
+        //if (st.Count() != Count) // if new count of states, renum
+        //{
+        //  SetMap(st);
+        //  //Update(st);
+        //  //def top = Top.ReduceSingle(_.UpdateReference(_));
+        //  //Update(top)
+        //} else
+        //{
+        //  SetMap(st)
+        //}
       }
     }
 
+    public Count : int
+    {
+      get
+      {
+        states.Length
+      }
+    }
     //public Names : array[string]
     //{
     //  get
@@ -245,7 +296,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        states.Get(TopNum)
+        if (Count != 0) states[TopNum] else null
       }
     }
   }
