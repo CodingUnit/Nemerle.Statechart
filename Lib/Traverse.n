@@ -20,7 +20,7 @@ namespace Nemerle.Statechart
   {
     Rebuild(child : IEnumerable[T]) : T;
     GetCode() : int;
-    GetChild() :  IEnumerable[T];
+    GetChild() :  IEnumerable[ITraversable[T]];
     
     Current : T { get; }
     MakeIter(iter_childs : IEnumerable[T], child_count : int) : T;
@@ -120,9 +120,9 @@ namespace Nemerle.Statechart
   public module TraverseUtils
   {
 
-    public Iterator[T](this obj : ICachedTraversable[T]) : IEnumerable[T] where T : class, ITraversable[T]
+    public Iterator[T](this obj : ICachedTraversable[T]) : IEnumerable[T]
     {
-      obj.CachedIterator ?? Iterator(obj.Current)
+      obj.CachedIterator ?? Iterator(obj : ITraversable[T])
     }
 
     //public Iterator[T](this obj : ICachedTraversable[T]) : IEnumerable[T]
@@ -233,7 +233,7 @@ namespace Nemerle.Statechart
       lst.Reduce(fold_func).Current;
     }
 
-    public Iterator[T](this obj : T) : IEnumerable[T] where T : class, ITraversable[T]
+    public Iterator[T](this obj : ITraversable[T]) : IEnumerable[T]
     {
       def child = SCG.Stack();
       def parent = SCG.Stack();
@@ -243,7 +243,7 @@ namespace Nemerle.Statechart
         if (child.IsEmpty()) () else 
         {
           def curr = child.Pop();
-          parent.Push(curr);
+          parent.Push(curr.Current);
           foreach (s in curr.GetChild()) child.Push(s);
           loop_init()
         }
@@ -254,16 +254,16 @@ namespace Nemerle.Statechart
       parent
     }
 
-    public static LevelOrderIterator[T](this obj : ICachedTraversable[T]) : IEnumerable[T] where T : class, ITraversable[T]
+    public static LevelOrderIterator[T](this obj : ICachedTraversable[T]) : IEnumerable[T]
     {
       def iter = obj.CachedLevelIterator;
       if (iter == null) 
       {
-        LevelOrderIterator(obj.Current)
+        LevelOrderIterator(obj)
       } else iter
     }
 
-    public static LevelOrderIterator[T](this obj : T) : IEnumerable[T] where T : class, ITraversable[T]
+    public static LevelOrderIterator[T](this obj : ITraversable[T]) : IEnumerable[T]
     {
       def queue = SCG.Queue();
       queue.Enqueue(obj);
