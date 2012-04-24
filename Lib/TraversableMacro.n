@@ -21,6 +21,12 @@ namespace Nemerle.Statechart
   {
   }
 
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
+  macro TraverseIgnore(_typeBuilder : TypeBuilder)
+  {
+  }
+
+  
   [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Field)]
   macro TraverseInclude(_typeBuilder : TypeBuilder, _ : ParsedField)
   {
@@ -51,7 +57,7 @@ namespace Nemerle.Statechart
     | Enumerable
     | Option
   }
-  
+
   partial module TraversableImpl
   {
     public DoTransformCached(typer : Typer, typeBuilder : TypeBuilder, _expr : list[PExpr]) : void
@@ -59,7 +65,7 @@ namespace Nemerle.Statechart
       Macros.DefineCTX(typer);
       def name = typeBuilder.Name;
       typeBuilder.AddImplementedInterface(<[ ICachedTraversable[$(name : usesite)] ]>);
-      typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] cached_iter : IEnumerable[ITraversable[$(name : usesite)]] * IEnumerable[int]; ]>);
+      typeBuilder.Define(<[decl: [NeedChange(child_count)] [RecordIgnore] cached_iter : IEnumerable[$(name : usesite)]; ]>);
       typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] cached_level_iter : IEnumerable[$(name : usesite)]; ]>);
     }
 
@@ -67,55 +73,60 @@ namespace Nemerle.Statechart
     {
       Macros.DefineCTX(typer);
       def name = typeBuilder.Name;
-      def is_get_code(x)
-      {
-        | ClassMember.Function(Name = "GetCode", header = PFunHeader(Parameters = [])) => true
-        | _                                                                            => false
-      }
-
+      
       typeBuilder.Define(<[decl: public Current : $(name : usesite) { get { this } }]>);
-      typeBuilder.Define(<[decl: public CachedIterator : IEnumerable[ITraversable[$(name : usesite)]] * IEnumerable[int] { get { cached_iter } } ]>);
+      typeBuilder.Define(<[decl: [NeedChange] child_count : int = -1; ]>);
+      typeBuilder.Define(<[decl: public ChildCount : int { get { if (child_count != -1)  child_count else GetChild().Count() } } ]>);
+      typeBuilder.Define(<[decl: public CachedIterator : IEnumerable[$(name : usesite)] { get { cached_iter } } ]>);
       typeBuilder.Define(<[decl: public CachedLevelIterator : IEnumerable[$(name : usesite)] { get { cached_level_iter } } ]>);
-      typeBuilder.Define(<[decl: public CreateIterator() : $(name : usesite)
-                          {
-                              ChangeCachedIter(LengthIterator())
-                          } ]>);
+      typeBuilder.Define(<[decl: public MakeIter(iter : IEnumerable[$(name : usesite)], len : int) : $(name : usesite) {  ChangeCachedIterChildCount(iter, len)  } ]>);
+      //typeBuilder.Define(<[decl: public CreateIterator() : $(name : usesite)
+      //                    {
+      //                        ChangeCachedIter(LengthIterator())
+      //                    } ]>);
 
-      typeBuilder.Define(<[decl: public CreateLevelIterator() : $(name : usesite)
-                          {
-                              ChangeCachedLevelIter(LevelOrderIterator())
-                          } ]>);
+      //typeBuilder.Define(<[decl: public CreateLevelIterator() : $(name : usesite)
+      //                    {
+      //                        ChangeCachedLevelIter(LevelOrderIterator())
+      //                    } ]>);
       def create_cases((t, e, i), a)
       {
-          def e = match (e)
-          {
-            | <[ ]>       => <[ case: | $(t.ParsedName : name)    => $i ]>
-            | <[ $_($f = $t(_))]> with e = <[ $f = $t ]>
-            | <[ $_($e)]>
-            | e           => <[ case: | $(t.ParsedName : name)($e) => $i ]>
-          } 
-          e :: a
+        def e = match (e)
+                 {
+                   | <[ ]>       => <[ case: | $(t.ParsedName : name)    => $i ]>
+                   | <[ $_($f = $t(_))]> with e = <[ $f = $t ]>
+                   | <[ $_($e)]>
+                   | e           => <[ case: | $(t.ParsedName : name)($e) => $i ]>
+                 } 
+        e :: a
       }
 
-      def is_all = expr is [<[ All ]>];
-      when (!typeBuilder.GetParsedMembers().Exists(is_get_code))
+      def lst = CollectTraverseOpt(typer, typeBuilder, expr);
+      def mems = typeBuilder.GetParsedMembers();
+      when (!mems.Exists(_ is ClassMember.Function(Name = "GetCode", header = PFunHeader(Parameters = [])))) 
       {
-        def body = match (CollectTraverseOpt(typeBuilder.GetVariantOptions(), is_all))
-                    {
-                      | []   => <[ _N_GetVariantCode() ]>
-                      | lst  => 
-                          def lst = lst.Rev().MapIndex(((x, y), i) => (x, y, i));
-                          def sorted = SortCases(lst, x => x[1]);
-                          def cases = sorted.FoldLeft([<[ case: | _ => -1 ]>], create_cases);
-                          <[ match (this)
-                            {
-                              ..$cases
-                            }
-                          ]>
-                    }
-        _ = typeBuilder.DefineWithSource(<[decl: public GetCode() : int { $body }]>);
-      }
+        match (lst)
+        {
+          | []   => typeBuilder.Define(<[decl: public GetCode() : int { _N_GetVariantCode() }]>);
 
+          | lst  => def lst = lst.MapIRev((i, (x, y, _)) => (x, y, i));
+                    def sorted = SortCases(lst, x => x[1]);
+                    def cases = sorted.FoldLeft([<[ case: | _ => -1 ]>], create_cases);
+                    _ = typeBuilder.DefineWithSource(<[decl: public GetCode() : int 
+                                                             { 
+                                                               match (this)
+                                                               {
+                                                                 ..$cases
+                                                               } 
+                                                             }]>);
+        }
+
+      }
+      //when (!mems.Exists(_ is ClassMember.Property(Name = "ChildCount")))
+      //{
+      //  typeBuilder.Define(<[decl: ChildCount : int { get; private set; } ]>);
+      //}
+      
     }
 
     SortCases[T](data : list[T], expr : T -> PExpr) : list[T]
@@ -132,21 +143,54 @@ namespace Nemerle.Statechart
       data.Sort((x, y) => case_sorter(expr(x), expr(y)));
     }
 
-    CollectTraverseOpt(opts : list[TypeBuilder], all : bool) : list[TypeBuilder * PExpr]
+    CollectTraverseOpt(typer : Typer, type : TypeBuilder, expr : list[PExpr]) : list[TypeBuilder * PExpr * list[IField * TreeType]]
     {
-      def collect_trav_opts(t, x, a)
+      def opts = type.GetVariantOptions();
+      def opts = opts.Filter(x => !x.GetModifiers().GetMacroAttributes().Exists(_ is <[ TraverseIgnore ]>));
+      
+      def get_type(t, a)
       {
-        match (x)
+        match (t)
         {
-          | <[ Traverse($r) ]> => (t, r) :: a
-          | _ when (all)
-          | <[ Traverse ]>     => (t, <[]>) :: a
-          | _                  => a
+          | <[ All ]>         => a
+          | <[ $(x : name) ]> => x.Id :: a
+          | _                 => a
         }
       }
 
-        opts.FoldBack([], (x, a) => x.GetModifiers().GetMacroAttributes().FoldLeft(a, collect_trav_opts(x, _, _)))
+      def map_types(t, a)
+      {
+        match (opts.Find(y => y.Name.EndsWith(t)))
+        {
+          | Some(s) => s :: a
+          | _       => a
+        }
+      }
+
+      def types = expr.FoldBack([], get_type);
+      def types = types.FoldBack([], map_types);
+      def types = if (types is []) [type] else types;
+      
+      def collect_trav_opts(t, x, a)
+      {
+        match (x, expr)
+        {
+          | (<[ Traverse($expr) ]>, _)
+          | (_, [<[ All ]>])        with expr = <[]>
+          | (<[ Traverse ]>, _)     with expr = <[]>
+          | (_, <[ $(n : name) ]> :: []) when (n.Id == t.Name) with expr = <[]>
+          | (_, [])                 with expr = <[]> => get_members(typer, t, expr, types) :: a
+          | (_, _ :: [])            with expr = <[]> => match (get_members(typer, t, expr, types))
+                                                        {
+                                                          | (_, _, []) => a
+                                                          | x          => x :: a
+                                                        }
+          | _ => a
+        }
+      }
+      
+      opts.FoldLeft([], (x, a) => x.GetModifiers().GetMacroAttributes().FoldLeft(a, collect_trav_opts(x, _, _)))
     }
-    
+
   }
 }
