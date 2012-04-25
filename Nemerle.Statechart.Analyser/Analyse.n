@@ -93,17 +93,17 @@ namespace Nemerle.Statechart
           (tran :: tr, fin)
         }
 
-        def check_state(s, sb, a)
+        def check_state(s, _, a)
         {
           def (tran, fin) = s.transitions.FoldLeft(([], a), check_tran);
           def (init, fin) = s.initial.FoldLeft(([], fin), check_tran);
-          def st = s.ChangeTransitionsSubStatesInitial(tran.Rev(), sb, init.Rev());
+          def st = s.ChangeTransitionsInitial(tran.Rev(), init.Rev());
           (st, fin)
         }
 
         def (top, final) = TopState.ReduceSingle([], check_state);
         // check to add final state
-        top.ReduceSingle(check_final(final, _, _));
+        top.ReduceSingle(true, check_final(final, _, _));
       }
 
       InitStatechart();
@@ -120,7 +120,7 @@ namespace Nemerle.Statechart
       statemap.Update(top ?? TopState);
       when (upd_ref) 
       {
-        def top = TopState.ReduceSingle(_.UpdateReference(_));
+        def top = TopState.ReduceSingle((x, _) => x.UpdateReference());
         statemap.Update(top);
       }
     }
@@ -177,14 +177,14 @@ namespace Nemerle.Statechart
         | _                                     => st
       }
 
-      def update_hist(s, sb, err)
+      def update_hist(s, _, err)
       {
         if (s.history.HasValue)
         {
           def err = check_dup_history(s, err);
           def s = check_exit_actions(s);
-          (s.Rebuild(sb), err)
-        } else (s.Rebuild(sb), err)
+          (s, err)
+        } else (s, err)
       }
 
       def (top, err) = TopState.ReduceSingle([], update_hist);
@@ -213,7 +213,8 @@ namespace Nemerle.Statechart
         {
           match (act)
           {
-            | StateAction.Do(actions = [_], Concurrently = true, flags = f) => def err = FsmWarning.NoConcurrentActivity(act);
+            | StateAction.Do(actions = [_], Concurrently = true, flags = f) => 
+                def err = FsmWarning.NoConcurrentActivity(act);
                 def act = act.ChangeFlags(f & ~ActivityFlag.Concurrently);
                 (act, err :: acc)
             | _ => (act, acc)
@@ -238,7 +239,7 @@ namespace Nemerle.Statechart
 
     CreateSubMachines() : void
     {
-      def top = TopState.Reduce(inlined_sub_machine_instance = (t, s) => t.ChangeSubStates(s).InitInline());
+      def top = TopState.Reduce(inlined_sub_machine_instance = (t, _) => t.InitInline());
       UpdateStateMap(top)
     //def fsm = States.FilterType();
     //def (st, an) = fsm.MapThrough(this, (x : FsmState.InlinedSubMachineInstance, a) => x.InitInline(a));
