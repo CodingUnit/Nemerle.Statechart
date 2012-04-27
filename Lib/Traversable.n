@@ -18,7 +18,7 @@ namespace Nemerle.Statechart
     get_members(typer : Typer, f : TypeBuilder, e : PExpr, types : list[TypeBuilder]) : TypeBuilder * PExpr * list[IField * TreeType]
     {
       Macros.DefineCTX(typer);
-      
+
       def is_traversable(f, a)
       {
 
@@ -51,32 +51,34 @@ namespace Nemerle.Statechart
         }
 
       }
-        def get_fields()
+      def get_fields()
+      {
+
+        def get_name(e)
         {
+          | <[ $e.$b ]>       => get_name(e) + [b.GetName().Id]
+          | <[ $(e : name) ]> => [e.Id]
+          | _                 => throw InvalidOperationException("invalid type specified")
+        }
 
-          def get_name(e)
-          {
-            | <[ $e.$b ]>       => get_name(e) + [b.GetName().Id]
-            | <[ $(e : name) ]> => [e.Id]
-            | _                 => throw InvalidOperationException("invalid type specified")
-          }
-
-          match (e)
-          {
-            | <[ $_($_ = $e(_)) ]> => def name = get_name(e);
+        match (e)
+        {
+          | <[ $_($_ = $e(_)) ]> => def name = get_name(e);
                                     match (typer.Env.LookupType(name))
                                     {
                                       | Some(t) => t.GetFields(BindingFlags.Public | BindingFlags.Instance)
                                       | _       => throw InvalidOperationException("invalid type specified")
                                     }
-            | _                     => f.GetFields(BindingFlags.Public | BindingFlags.Instance);
-          }
-        }
+          | _                     => f.GetFields(BindingFlags.Public | BindingFlags.Instance);
+                                      //f.GetParsedMembers(false).Filter(_ is ClassMember.Field);
 
-        def fields = get_fields();
-        def fields_incl = fields.Filter(x => x.attr_func(x => x.Exists(_ is <[ TraverseInclude ]>)));
-        def fields = if (fields_incl is []) fields.Exclude(x => x.attr_func(x => x.Exists(_ is <[ TraverseIgnore ]>))); else fields_incl;
-        (f, e, fields.FoldBack([], is_traversable))
+        }
+      }
+
+      def fields = get_fields();
+      def fields_incl = fields.Filter(x => x.attr_func(x => x.Exists(_ is <[ TraverseInclude ]>)));
+      def fields = if (fields_incl is []) fields.Exclude(x => x.attr_func(x => x.Exists(_ is <[ TraverseIgnore ]>))); else fields_incl;
+      (f, e, fields.FoldBack([], is_traversable))
 
     }
 
@@ -85,6 +87,40 @@ namespace Nemerle.Statechart
       Macros.DefineCTX(typer);
       def name = typeBuilder.Name;
       //assert2(false);
+
+      def traversable = CollectTraverseOpt(typer, typeBuilder, expr);
+      def mems = typeBuilder.GetParsedMembers();
+      when (!mems.Exists(_ is ClassMember.Function(Name = "GetCode", header = PFunHeader(Parameters = [])))) 
+      {
+        def create_cases((t, e, i), a)
+        {
+          def e = match (e)
+                   {
+                     | <[ ]>       => <[ case: | $(t.ParsedName : name)    => $i ]>
+                     | <[ $_($f = $t(_))]> with e = <[ $f = $t ]>
+                     | <[ $_($e)]>
+                     | e           => <[ case: | $(t.ParsedName : name)($e) => $i ]>
+                   } 
+          e :: a
+        }
+
+        match (traversable)
+        {
+          | []   => typeBuilder.Define(<[decl: public GetCode() : int { _N_GetVariantCode() }]>);
+
+          | lst  => def lst = lst.MapIRev((i, (x, y, _)) => (x, y, i));
+                    def sorted = SortCases(lst, x => x[1]);
+                    def cases = sorted.FoldLeft([<[ case: | _ => -1 ]>], create_cases);
+                    _ = typeBuilder.DefineWithSource(<[decl: public GetCode() : int 
+                                                            { 
+                                                              match (this)
+                                                              {
+                                                                ..$cases
+                                                              } 
+                                                            }]>);
+        }
+
+      }
 
       //def get_type(t, a)
       //{
@@ -137,7 +173,7 @@ namespace Nemerle.Statechart
       }
 
 
-      def traversable = CollectTraverseOpt(typer, typeBuilder, expr);
+      //def traversable = CollectTraverseOpt(typer, typeBuilder, expr);
       //def traverse = if (traverse is []) opts.Map(x => (x, <[ ]>)) else traverse;
 
       //def traversable = traverse.Map(get_members(typer, _, _, types));
@@ -220,11 +256,11 @@ namespace Nemerle.Statechart
           def (rpar, rpare) = red_par.Split();
           def pars = pars.HeadAppend(rpar);
           def npars = <[ $(name : usesite)(..$npars) ]> :: [];
-          
+
           def mpars = <[ $(name : usesite)(..$mpars) ]> :: []; // for manual rebuild
           def npars = npars.HeadAppend(rpare);
           def mpars = mpars.HeadAppend(rpare); // for manual rebuild
-          
+
           def rpars = <[ parameter: this obj : $(ttype : typed) ]> :: pars;
           _ = builder.DefineWithSource(<[decl: public static $(red_name : usesite)(..$rpars) : $reduce
                           {
@@ -490,7 +526,7 @@ namespace Nemerle.Statechart
       //            null,
       //            null,
       //            false);
-                  
+
       create_iter([data], $"$(name)TwoAccSingleIteratorContext", 
                   [Splicable.Name(<[ T ]>), Splicable.Name(<[ TAcc ]>)], 
                   [<[ T ]>, <[ TAcc ]>], 

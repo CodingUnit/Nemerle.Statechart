@@ -48,7 +48,7 @@ namespace Nemerle.Statechart
   macro Traversable(typeBuilder : TypeBuilder, params expr : list[PExpr])
   {
     TraversableImpl.DoCheckTraverse(Macros.ImplicitCTX(), typeBuilder, expr)
-  }  
+  }
 
   enum TreeType
   {
@@ -65,24 +65,22 @@ namespace Nemerle.Statechart
       Macros.DefineCTX(typer);
       def name = typeBuilder.Name;
       typeBuilder.AddImplementedInterface(<[ ICachedTraversable[$(name : usesite)] ]>);
-      typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] tree_pos : int = -1; ]>);
       typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] child_count : int = -1; ]>);
-      typeBuilder.Define(<[decl: [NeedChange(child_count)] [RecordIgnore] cached_iter : IEnumerable[$(name : usesite)]; ]>);
+      typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] cached_iter : IEnumerable[$(name : usesite)]; ]>);
       typeBuilder.Define(<[decl: [NeedChange] [RecordIgnore] cached_level_iter : IEnumerable[$(name : usesite)]; ]>);
     }
 
-    public DoTransformCached2(typer : Typer, typeBuilder : TypeBuilder, expr : list[PExpr]) : void
+    public DoTransformCached2(typer : Typer, typeBuilder : TypeBuilder, _ : list[PExpr]) : void
     {
       Macros.DefineCTX(typer);
       def name = typeBuilder.Name;
-      
+      //assert2(false);
       typeBuilder.Define(<[decl: public Current : $(name : usesite) { get { this } }]>);
       typeBuilder.Define(<[decl: public ChildCount : int { get { if (child_count != -1)  child_count else GetChild().Count() } } ]>);
-      typeBuilder.Define(<[decl: public TreePos : int { get { tree_pos } } ]>);
       typeBuilder.Define(<[decl: public CachedIterator : IEnumerable[$(name : usesite)] { get { cached_iter } } ]>);
       typeBuilder.Define(<[decl: public CachedLevelIterator : IEnumerable[$(name : usesite)] { get { cached_level_iter } } ]>);
-      typeBuilder.Define(<[decl: public MakeIter(iter : IEnumerable[$(name : usesite)], len : int) : $(name : usesite) {  ChangeCachedIterChildCount(iter, len)  } ]>);
-      typeBuilder.Define(<[decl: public SetTreePos(pos : int) : $(name : usesite) {  ChangeTreePos(pos)  } ]>);
+      typeBuilder.Define(<[decl: public SetChildCount(len : int) : $(name : usesite) {  ChangeChildCount(len)  } ]>);
+      typeBuilder.Define(<[decl: public MakeIter(iter : IEnumerable[$(name : usesite)]) : $(name : usesite) {  ChangeCachedIter(iter)  } ]>);
       //typeBuilder.Define(<[decl: public CreateIterator() : $(name : usesite)
       //                    {
       //                        ChangeCachedIter(LengthIterator())
@@ -92,39 +90,7 @@ namespace Nemerle.Statechart
       //                    {
       //                        ChangeCachedLevelIter(LevelOrderIterator())
       //                    } ]>);
-      def create_cases((t, e, i), a)
-      {
-        def e = match (e)
-                 {
-                   | <[ ]>       => <[ case: | $(t.ParsedName : name)    => $i ]>
-                   | <[ $_($f = $t(_))]> with e = <[ $f = $t ]>
-                   | <[ $_($e)]>
-                   | e           => <[ case: | $(t.ParsedName : name)($e) => $i ]>
-                 } 
-        e :: a
-      }
 
-      def lst = CollectTraverseOpt(typer, typeBuilder, expr);
-      def mems = typeBuilder.GetParsedMembers();
-      when (!mems.Exists(_ is ClassMember.Function(Name = "GetCode", header = PFunHeader(Parameters = [])))) 
-      {
-        match (lst)
-        {
-          | []   => typeBuilder.Define(<[decl: public GetCode() : int { _N_GetVariantCode() }]>);
-
-          | lst  => def lst = lst.MapIRev((i, (x, y, _)) => (x, y, i));
-                    def sorted = SortCases(lst, x => x[1]);
-                    def cases = sorted.FoldLeft([<[ case: | _ => -1 ]>], create_cases);
-                    _ = typeBuilder.DefineWithSource(<[decl: public GetCode() : int 
-                                                             { 
-                                                               match (this)
-                                                               {
-                                                                 ..$cases
-                                                               } 
-                                                             }]>);
-        }
-
-      }
       //when (!mems.Exists(_ is ClassMember.Property(Name = "ChildCount")))
       //{
       //  typeBuilder.Define(<[decl: ChildCount : int { get; private set; } ]>);

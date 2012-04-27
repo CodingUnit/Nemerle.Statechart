@@ -11,7 +11,6 @@ using System.Collections;
 using System.Linq;
 using SCG = System.Collections.Generic;
 using System.Diagnostics;
-using Wintellect.PowerCollections;
 
 namespace Nemerle.Statechart
 {
@@ -20,11 +19,9 @@ namespace Nemerle.Statechart
   {
     Current : T { get; }
 
-    MakeIter(iter_childs : IEnumerable[T], child_count : int) : T;
+    MakeIter(iter_childs : IEnumerable[T]) : T;
+    SetChildCount(len : int) : T;
     ChildCount : int {get;}
-
-    SetTreePos(pos : int) : ITraversable[T];
-    TreePos : int {get;}
   }
 
   public interface ITraversable[T] : ITree[T]
@@ -32,7 +29,6 @@ namespace Nemerle.Statechart
     Rebuild(child : IEnumerable[T]) : T;
     GetCode() : int;
     GetChild() :  IEnumerable[ITraversable[T]];
-    GetTreePos()    : int;
   }
 
   public class IIteratorContextBase[T]
@@ -161,7 +157,7 @@ namespace Nemerle.Statechart
       def fold_func(x, itacc)
       {
         def len = x.ChildCount;
-        def child = itacc.PopRev(len);
+        def (child, itacc) = itacc.PopRev(len);
         if (ctx.IsSet(x)) 
         {
           ctx.Visit(x.Current, child) :: itacc
@@ -185,63 +181,77 @@ namespace Nemerle.Statechart
 
     public ReduceDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IReduceTwoAccIteratorContext[T, TAcc]) : T * TAcc where T : class, ITraversable[T]
     {
-      def deque = Deque();
+      def deque = List();
 
-      def make_iter(elem : ITraversable[_], len)
+      def set_child_count(elem, len)
       {
-        deque.AddToBack(elem.Current);
-        elem.MakeIter(deque, len)
+        //deque.AddToBack(elem.Current);
+        elem.SetChildCount(len)
       }
 
-      def fold_func(x : ITraversable[_], _, acc2)
+      def fold_func(x, chacc, acc2)
       {
         def len = x.ChildCount;
-        def child = deque.PopBackRev(len);
+        def (child, lst) = chacc.PopRev(len);
         def (acc, acc2) = if (ctx.IsSet(x)) 
                            {
                              ctx.Visit(x.Current, child, acc2)
                            } else (null, acc2);
-        def acc = if (acc != null && ctx.manual_rebuild) make_iter(acc, acc.GetChild().Count()) 
-                   else make_iter((acc : ITraversable[T] ?? x).Rebuild(child) : ITraversable[T], len);
-        (acc, acc2)
+        def acc = if (acc != null && ctx.manual_rebuild) 
+                   {
+                     set_child_count(acc, child.Count()) 
+                   } else 
+                   {
+                     set_child_count((acc ?? x).Rebuild(child), len);
+                   }
+        deque.Add(acc);
+        (acc :: lst, acc2)
       }
 
       def lst = obj.Iterator();
-      def (res, acc) = lst.Reduce(init, fold_func);
-      (res.Current, acc)
+      match (lst.FoldLeft2([], init, fold_func))
+      {
+        | (head :: _, acc) => (head.MakeIter(deque), acc)
+        | (_, acc)         => (null, acc)
+      }
     }
 
     public ReduceDo[T](this obj : ICachedTraversable[T], ctx : IReduceIteratorContext[T]) : T where T : class, ITraversable[T]
     {
       //def stack = SCG.Stack();
-      def deque = Deque();
+      def deque = List();
 
       def make_iter(elem, len)
       {
-        deque.AddToBack(elem.Current);
-        elem.MakeIter(deque, len)
+        //deque.AddToBack(elem.Current);
+        elem.SetChildCount(len)
       }
-      
+
       def lst = obj.Iterator();
       //def height = if (lst.Count() != 0) lst.First().TreePos + 1 else 0;
       //def levels = Nemerle.Collections.LinkedList();
-      
-      def fold_func(x, _)
+
+      def fold_func(x, chacc)
       {
         def len = x.ChildCount;
-        def child = deque.PopBackRev(len);
+        def (child, lst) = chacc.PopRev(len);
         def acc = if (ctx.IsSet(x))
                    {
-                     ctx.Visit(x.Current, child) : ITraversable[_]
+                     ctx.Visit(x.Current, child)
                    } else null;
         def acc = if (acc != null && ctx.manual_rebuild) 
                    {
-                     make_iter(acc, acc.GetChild().Count());
-                   } else make_iter((acc ?? x).Rebuild(child) : ITraversable[T], len);
-        acc
+                     make_iter(acc, child.Count());
+                   } else make_iter((acc ?? x).Rebuild(child), len);
+        deque.Add(acc);
+        acc :: lst
       }
-      
-      lst.Reduce(fold_func).Current
+
+      match (lst.FoldLeft([], fold_func))
+      {
+        | head :: _ => head.MakeIter(deque)
+        | _         => null
+      }
     }
 
     public Iterator[T](this obj : ITraversable[T]) : IEnumerable[T]
@@ -260,32 +270,8 @@ namespace Nemerle.Statechart
         }
       }
 
-      def loop_init_pos(pos)
-      {
-        if (child.IsEmpty()) () else 
-        {
-          def curr = child.Pop();
-          parent.Push(curr.Current);
-          foreach (s in curr.GetChild()) 
-          {
-            def s = s.SetTreePos(curr.TreePos + 1);
-            child.Push(s);
-          }
-          loop_init_pos(pos)
-        }
-      }
-
-      if (obj.TreePos == -1) 
-      {
-        def pos = obj.GetTreePos();
-        def obj = obj.SetTreePos(pos);
-        child.Push(obj);
-        loop_init_pos(pos)
-      } else
-      {
-        child.Push(obj);
-        loop_init();
-      }
+      child.Push(obj);
+      loop_init();
       parent
     }
 
