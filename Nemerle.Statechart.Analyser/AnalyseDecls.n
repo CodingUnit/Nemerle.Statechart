@@ -439,9 +439,9 @@ namespace Nemerle.Statechart
         r :: res
       }
 
-      def flags = FsmFlags.errors |> ParseError.UnknownMachineFlag(_);
-      def err = Fsm.GetErrors().FoldLeft([], check_err).Rev();
-      def errs = err + flags;
+      def flags = FsmFlags.errors.Select(x => ParseError.UnknownMachineFlag(x));// |> ParseError.UnknownMachineFlag(_);
+      def err = Fsm.GetErrors().FoldBack([], check_err);
+      def errs = err.Concat(flags);
       AddErrors(errs)
     }
 
@@ -504,31 +504,31 @@ namespace Nemerle.Statechart
       }
     }
 
-    public AddWarnings(err : list[FsmWarning]) : void
+    public AddWarnings(err : IEnumerable[FsmWarning]) : void
     {
       def err = GetWarnings(err);
-      Warnings = Warnings.HeadAppend(err);
+      Warnings.AddRange(err);
     }
 
-    public AddErrors(err : list[FsmError]) : void
+    public AddErrors(err : IEnumerable[FsmError]) : void
     {
       def err = GetErrors(err);
       AddErrors(err)
     }
 
-    public AddWarnings(err : list[string]) : void
+    public AddWarnings(err : IEnumerable[string]) : void
     {
-      Warnings = Warnings.HeadAppend(err);
+      Warnings.AddRange(err);
     }
     
     public AddErrors(err : string) : void
     {
-      Errors = err :: Errors
+      Errors.Add(err)
     }
     
-    public AddErrors(err : list[string]) : void
+    public AddErrors(err : IEnumerable[string]) : void
     {
-      Errors = Errors.HeadAppend(err);
+      Errors.AddRange(err)
     }
     
     public AddErrors(err : FsmError) : void
@@ -536,30 +536,30 @@ namespace Nemerle.Statechart
       AddErrors(GetError(err))
     }
 
-    public AddErrors(err : list[ParseError]) : void
+    public AddErrors(err : IEnumerable[ParseError]) : void
     {
       AddErrors(GetErrors(err))
     }
 
-    public GetErrors(err : list[FsmError]) : list[string]
+    public GetErrors(err : IEnumerable[FsmError]) : IEnumerable[string]
     {
-      err.Map(GetError)
+      err.Select(GetError)
     }
 
-    public GetErrors(err : IEnumerable[ParseError]) : list[string]
+    public GetErrors(err : IEnumerable[ParseError]) : IEnumerable[string]
     {
-      err.Map(AddParseError)
+      err.Select(AddParseError)
     }
 
-    public GetWarnings(err : IEnumerable[FsmWarning]) : list[string]
+    public GetWarnings(err : IEnumerable[FsmWarning]) : IEnumerable[string]
     {
-      err.Map(GetWarning)
+      err.Select(GetWarning)
     }
 
     public AddErrors(err : ErrorInfo) : void
     {
-      Errors = GetErrors(err.errors);
-      Warnings = GetWarnings(err.warnings);
+      AddErrors(GetErrors(err.errors));
+      AddWarnings(GetWarnings(err.warnings));
     }
     
     public this(fsm : StateNode.StateMachine)
@@ -568,15 +568,13 @@ namespace Nemerle.Statechart
       statemap = StateMap(this);
     }
 
-    public mutable Errors   : list[string] = [];
-    public mutable Warnings : list[string] = [];
+    public Errors   : List[string] = List();
+    public Warnings : List[string] = List();
 
     FinalizeAnalyse() : void
     {
       def id = StateId(this);
       def top = id.CreateMasks();
-      Errors = Errors.Rev();
-      Warnings = Warnings.Rev();
       UpdateStateMap(top);
     }
 
