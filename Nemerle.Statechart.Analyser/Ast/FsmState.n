@@ -38,10 +38,10 @@ namespace Nemerle.Statechart
         {
           base(state.state, Enumerable.Empty(), an, false)
         }
-        
+
         this(super : FsmState, an : FsmAnalyser, reference : bool =  false)
         {
-          base(super, $"$(super)Final", an, reference)
+          base(super, null, an, reference)
         }
 
       }
@@ -49,7 +49,7 @@ namespace Nemerle.Statechart
     | ConcurrentSubRegion
       {
         index : int;
-        
+
         [TraverseIgnore] 
         [NeedChange(index)] 
         contained_in : ConcurrentRegion;
@@ -129,44 +129,44 @@ namespace Nemerle.Statechart
             {
               | null => false
               | _    => match (r.PartOfRegion)
-                        {
-                          | Some(r) when (r == this) => true
-                          | _                        => false
-                        }
+                  {
+                    | Some(r) when (r == this) => true
+                    | _                        => false
+                  }
             }
 
             analyser.forks.Exists(x => x.target.Exists(x => is_this(x.ToState)))
           }
         }
 
-        public static get_pattern(reg : list[ConcurrentSubRegion]) : string
+        public static get_pattern(reg : IEnumerable[ConcurrentSubRegion]) : string
         {
-          def idx = (reg |> index).Sort(_ - _);
-          $<#..$(idx;"")#>; 
+          def idx = reg.Select(_.index).OrderBy(x => x).NToList();
+          $<#..$(idx;"")#>
         }
 
 
-        RegionExcept(st : list[ConcurrentSubRegion]) : ConcurrentSubRegion
+        RegionExcept(st : IEnumerable[ConcurrentSubRegion]) : ConcurrentSubRegion
         {
           match (sub_regions.Exclude(st, _ == _))
           {
-            | [sub] => sub
+            | [sub]     => sub
             | head :: _ => head
-            | _ => null
+            | _         => null
           }
         }
 
-        RegionsExcept(st : list[FsmState]) : list[ConcurrentSubRegion]
+        RegionsExcept(st : IEnumerable[FsmState]) : IEnumerable[ConcurrentSubRegion]
         {
-          sub_regions.Filter(x => !x.AllSubStates.Exists(y => st.Exists(y == _)) && !st.Exists(_ == x))
+          sub_regions.Where(x => !x.AllSubStates.Exists(y => st.Exists(y == _)) && !st.Exists(_ == x))
         }
 
-        RegionsExcept(st : FsmState) : list[ConcurrentSubRegion]
+        RegionsExcept(st : FsmState) : IEnumerable[ConcurrentSubRegion]
         {
-          sub_regions.Filter(x => !x.AllSubStates.Contains(st) && x != st)
+          sub_regions.Where(x => !x.AllSubStates.Contains(st) && x != st)
         }
 
-        Joins : list[PseudoStateNode.Join]
+        Joins : IEnumerable[PseudoStateNode.Join]
         {
           get
           {
@@ -174,8 +174,8 @@ namespace Nemerle.Statechart
             {
               match (t)
               {
-                | StateTransition where (To = TransitionTarget.PseudoState(Join as j)) => j :: lst
-                | _                                                                    => lst
+                | StateTransition(To = TransitionTarget.PseudoState(Join as j)) => j :: lst
+                | _                                                             => lst
               }
             }
 
@@ -202,11 +202,11 @@ namespace Nemerle.Statechart
         }
 
 
-        FinalStates : list[FsmState]
+        FinalStates : IEnumerable[FsmState]
         {
           get
           {
-            if (HaveFinal) sub_regions |> FinalState.Value else []
+            if (HaveFinal) sub_regions.Select(x => x.FinalState.Value) else Enumerable.Empty()
           }
         }
 
@@ -216,12 +216,24 @@ namespace Nemerle.Statechart
       {
         instance_of : InlinedSubMachine;
 
-        this(st : FsmState)
-        {
-          base(st)
-        }
-        
-        InitInline() : InlinedSubMachineInstance
+        //this(inst : InlinedSubMachineInstance, sm : FsmState)
+        //{
+        //  //def do_act     = st.do_activity; // take data from it except transitions to outer world
+        //  //def inter_tran = st.internal_tran;
+        //  //def entry      = st.entry;
+        //  //def exit       = st.exit;
+        //  //def init       = st.initial;
+        //  //def history    = st.history;
+        //  //def sub_st     = st.sub_states;
+        //  //def tran       = st.all_transitions_nested; // get all transitions
+        //  //def tran       = tran.Concat(st.AllHistory.FilterValues(_.default));
+        //  base(sm);
+        //  transitions = inst.transitions;
+        //  Num = inst.Num;
+        //  name = inst.name;
+        //}
+
+        InitInline(sub : IEnumerable[FsmState]) : FsmState
         {
             //def update_pseudo(tar, _, new_st)
             //{
@@ -231,23 +243,34 @@ namespace Nemerle.Statechart
             //    | _ => null
             //  }
             //}
-           
-          def num = instance_of.ncopy + 1; // increment copy number
+          def instance_of = instance_of.Updated :> InlinedSubMachine;
+          
+          def num         = instance_of.ncopy + 1; // increment copy number
           //def st = instance_of.ChangeCopyNum(num); // clone the inline sub machine instance
+          def st          = instance_of.ChangeNameTransitionsNum(name, transitions, Num);
 
-          def copy_state(st, _)
+          def copy_state(st, sub)
           {
-            def init   = st.initial;//.Select(x : StateTransition => x.Clone(num));
-            def tran   = st.transitions;//.Select(x => x.Clone(num));
-            def intern = st.internal_tran;//.Select(x => x.Clone(num));
-            def hist   = st.history.Map(_.ChangeReferenceState(true, st));
+            def st = match (st)
+            {
+              | Final // если final состояние или если верхнее состояние
+              | FsmState(Num = n) when (n == Num) => st // то ничего не меняем
+              | _                                 => st.ChangeCopyNum(num).SetNewId() // изменяем все номера и задаем новый идентификатор
+            }
+            
+            def sub    = sub.Map(_.ChangeSuperState(st));
+            // set new identificator for state
+            def init   = st.initial.Map(_.ChangeFromSource(st, st));//.Select(x : StateTransition => x.Clone(num));
+            def tran   = st.transitions.Map(_.ChangeFromSource(st, st));//.Select(x => x.Clone(num));
+            def intern = st.internal_tran.Map(_.ChangeFromSource(st, st));//.Select(x => x.Clone(num));
+            def hist   = st.history.Map(_.ChangeState(st));
             def en     = st.entry.Map(_.ChangeState(st));
             def ex     = st.exit.Map(_.ChangeState(st));
-            def st = st.ChangeTransitionsHistoryInitialEntryExitInternalTranCopyNum(tran, hist, init,  en, ex, intern, num);
-            st.SetNewId() // set new identificator for state
+            st.ChangeTransitionsSubStatesHistoryInitialEntryExitInternalTran(tran, sub, hist, init,  en, ex, intern)
           }
-          
-          def st         = instance_of.ReduceSingle(copy_state); // copy state and its content, changing references accordingly
+
+          def st           = st.ReduceSingle(true, copy_state); // copy state and its content, changing references accordingly
+          //def st         = st.ChangeNum(Num); // set to copied state Num of this machine state
           //def do_act     = st.do_activity; // take data from it except transitions to outer world
           //def inter_tran = st.internal_tran;
           //def entry      = st.entry;
@@ -257,37 +280,59 @@ namespace Nemerle.Statechart
           //def sub_st     = st.sub_states;
           //def tran       = st.all_transitions_nested; // get all transitions
           //def tran       = tran.Concat(st.AllHistory.FilterValues(_.default));
+          
           def old_st       = instance_of.AllStates; // take old all states in sm
           def new_st       = st.AllStates; // take all states in new sm copy
           def ren_st       = old_st.ZipLazy(new_st); // take old and new copy
-          
+
           def retarget_transitions(s, _)
           {
+            def find_state(st)
+            {
+              match (ren_st.Find((x, _) => x.Num == st.Num))
+              {
+                | Some((_, st)) => st
+                | _             => st
+              }
+            }
+
+            def check_target(tar)
+            {
+              | TransitionTarget.State(st) as t                       => t.ChangeState(find_state(st))
+              | Qualified(_, State(st) as t)                          => t.ChangeState(find_state(st))
+              | JunctionNode(state = st) as t                         => t.ChangeState(find_state(st))
+              | Final(st) as t                                        => 
+                  match (find_state(st))
+                  {
+                    | Final as st => t.ChangeState(st)
+                    | _           => null
+                  }
+                  
+              | PseudoState(PseudoStateNode(state = st) as node) as t => t.ChangeNode(node.ChangeState(find_state(st)))
+              | _                                                     => null
+            }
+
             def check_tran(tr)
             {
-              ren_st.FoldLeft(tr, ((o, n), a) => a.UpdateTargets(o, n))
+              tr.TargetTraverse(check_target)
             }
-            
-            def update_target(tran)
-            {
-              // iterate over transitions and check states renaming if found old
-              tran.Map(check_tran)
-            }
-            
-            //ren_st.FoldLeft();
-            def init     = update_target(s.initial);
-            def tran     = update_target(s.transitions);
-            def int_tran = update_target(s.internal_tran);
-            def hist = s.history.Map(x => x.ChangeDefault(x.default.Map(check_tran)));
-            s.ChangeTransitionsHistoryInitialInternalTran(tran, hist, init, int_tran)
+
+            def s = s.TraverseTargets(check_target);
+            def hist     = s.history.Map(x => x.ChangeDefault(x.default.Map(check_tran)));
+            s.ChangeHistory(hist)
           }
           //def sub_st = sub_st.Map(_.ChangeSuperState(this)); // change super state to this
           //ren_st.Iter((ost, nst) => tran.Iter(x => x.UpdateTargets(ost, nst))); // change targets according to rename in new location
           def st = st.ReduceSingle(retarget_transitions); // retarget transitions to new place state
           //def nst = ren_st.MapLazy((x, y) => y.ChangeCloneFor(x));
           //def pseudo = st.pseudo_states;
-          //statemap.Update(nst);
-          InlinedSubMachineInstance(st)// updates state map
+          // increment copies number of state machine (indicates, number of instances)
+          def sm = instance_of.ChangeNcopy(num);
+          //statemap.Update(TraverseUtils.SingleElement(sm));
+          // updates state map
+          statemap.Update(sm);
+          st.Rebuild(sub)
+           // change name, number and transitions to outer world to this instance
         }
 
       }
@@ -296,7 +341,7 @@ namespace Nemerle.Statechart
         type : string;
 
         [NeedChange(proc_events)] ref_sub_states : array[string] = array[];
-        proc_events : array[string] = array[];
+        proc_events                              : array[string] = array[];
 
         this(st : StateNode.State, an : FsmAnalyser)
         {
@@ -309,7 +354,7 @@ namespace Nemerle.Statechart
         {
           get
           {
-              !ref_sub_states.IsEmpty() || !proc_events.IsEmpty()
+            !ref_sub_states.IsEmpty() || !proc_events.IsEmpty()
           }
         }
 
@@ -333,7 +378,7 @@ namespace Nemerle.Statechart
           def fsm = analyser.States.FilterType();
           match (fsm.Find(x => x.type == type))
           {
-            | Some(InlinedSubMachine as f) => InlinedSubMachineInstance ^& (instance_of = f);
+            | Some(InlinedSubMachine as f) => InlinedSubMachineInstance ^& (instance_of = f)
             | _                            => st
           }
         }
@@ -343,7 +388,7 @@ namespace Nemerle.Statechart
     | InlinedSubMachine
       {
         type : string;
-        ncopy : int;
+        [NeedChange] ncopy : int;
 
         //this(st : StateNode.State, an : FsmAnalyser, reference : bool = false)
         //{

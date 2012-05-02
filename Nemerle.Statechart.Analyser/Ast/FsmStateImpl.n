@@ -50,8 +50,8 @@ namespace Nemerle.Statechart
     {
       def init = match (this)
                   {
-                    | ConcurrentSubRegion(contained_in = r) => Initial(r, st)
-                    | _                                     => Initial(this, st)
+                    | ConcurrentSubRegion(contained_in = r) => Initial(r, st).Create()
+                    | _                                     => Initial(this, st).Create()
                   }
       ChangeInitial(TraverseUtils.SingleElement(init))
     }
@@ -59,7 +59,7 @@ namespace Nemerle.Statechart
     public AddSubState(st : FsmState) : FsmState
     {
       //st.analyser = Analyser;
-      if (sub_states.Exists(x => x.Name == st.Name)) this else ChangeSubStates(sub_states.Append(st))//sub_states = sub_states + [st];
+      if (sub_states.Exists(x => x.Num == st.Num)) this else ChangeSubStates(sub_states.Append(st))//sub_states = sub_states + [st];
     }
 
     //public DefineTransition(tr : StateTransition) : void
@@ -94,7 +94,7 @@ namespace Nemerle.Statechart
       def (tran, other)   = tr.PartitionType();
       def (intern, other) = other.PartitionType();
       def (init, _)       = other.PartitionType();
-      ChangeInternalTranInitialTransitions(intern, init, tran)
+      ChangeInternalTranInitialTransitions(internal_tran.Concat(intern), initial.Concat(init), transitions.Concat(tran))
           //  | Transition as tr => transitions ::= Transition(this, tr)
     //  | Internal   as tr => internal_tran ::= Internal(this, tr)
     //  | Initial    as tr => initial ::= tr
@@ -127,9 +127,9 @@ namespace Nemerle.Statechart
       def (tran, other)     = tr.PartitionType();
       def (int_tran, other) = other.PartitionType();
       def (init, _)         = other.PartitionType();
-      def initial           = this.initial.Exclude(init, (x, y) => StateTransition.FullComparer(x, y) == 0);
-      def internal_tran     = internal_tran.Exclude(int_tran, (x, y) => StateTransition.FullComparer(x, y) == 0);
-      def transitions       = transitions.Exclude(tran, (x, y) => StateTransition.FullComparer(x, y) == 0);
+      def initial           = initial.Exclude(init, (x, y : StateTransition.Initial) => x.Num == y.Num);
+      def internal_tran     = internal_tran.Exclude(int_tran, (x, y : StateTransition.Internal) => x.Num == y.Num);
+      def transitions       = transitions.Exclude(tran, (x, y : StateTransition.Transition) => x.Num == y.Num);
       ChangeInternalTranInitialTransitions(internal_tran, initial, transitions)
     }
 
@@ -159,10 +159,15 @@ namespace Nemerle.Statechart
     //  AllSubStates.Iter(x => x.DeleteTransitionsNested(tr));
     //}
 
-    public TraverseTransitions(an : FsmAnalyser) : FsmState
+    public TraverseTargets(func : TransitionTarget -> TransitionTarget, manual_rebuild : bool = false) : FsmState
+    {
+      UpdateTransitions(all_transitions_with_init.Select(_.TargetTraverse(func, manual_rebuild)))
+    }
+    
+    public TraverseTransitions() : FsmState
     {
       def paths = TransitionPaths(this);
-      def (trans, paths) = paths.TraverseTransitions(an, true);
+      def (trans, paths) = paths.TraverseTransitions(true);
       UpdateTransitions(trans).ChangePaths(paths)
     }
 
@@ -219,14 +224,6 @@ namespace Nemerle.Statechart
       ChangeNum(statemap.GetNewStateId(this))
     }
     
-    public Real : FsmState
-    {
-      get
-      {
-        statemap.Get(this)
-      }
-    }
-
     // copy constructor
     public this(st : FsmState)
     {
@@ -254,7 +251,7 @@ namespace Nemerle.Statechart
         //when (!reg) sub_states.Iter(x  => x.DefineHistoryPathRecurse(st, nodes))
         def shist = SuperStates.Where(x => x.ParticipateInHistory.Exists(x => x.type == HistoryType.Shallow));
         def spaths = shist.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.HistoryPaths));
-        def paths = ParticipateInHistory.Select(x => (x.state.name, HistoryPath(x.state, this, x).CreatePath(analyser)));
+        def paths = ParticipateInHistory.Select(x => (x.state.name, HistoryPath(x.state, this, x).CreatePath()));
         paths.Concat(spaths)
       }
     }
@@ -264,7 +261,7 @@ namespace Nemerle.Statechart
       get
       {
         def path = StateTransition.Initial(analyser.TopState, this);
-        path.TraversePath(analyser);
+        path.TraversePath()
       }
     }
 
@@ -287,11 +284,12 @@ namespace Nemerle.Statechart
       }
     }
 
+    
     public hierarchy_pos : int
     {
       get
       {
-        SuperStates.Count()
+        if (calc_hierarchy_pos != -1) calc_hierarchy_pos else SuperStates.Count()
       }
     }
 
@@ -307,7 +305,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        Name == TopStateName
+        Num == statemap.TopNum
       }
     }
 
@@ -343,6 +341,7 @@ namespace Nemerle.Statechart
         match (this)
         {
           | ConcurrentSubRegion(index = idx, contained_in = r) => $"$(r)SubRegion$idx"
+          | Final                                              => Name
           | _                                                  => if (name != null) name else AstName
         }
       }
@@ -356,11 +355,11 @@ namespace Nemerle.Statechart
       }
     }
 
-    public join_completion_transitions : list[StateTransition]
+    public join_completion_transitions : IEnumerable[StateTransition]
     {
       get
       {
-        completion_transitions.Filter(x => x.To is TransitionTarget.PseudoState(Join()))
+        completion_transitions.Where(x => x.To is TransitionTarget.PseudoState(Join()))
       }
     }
 
@@ -380,7 +379,6 @@ namespace Nemerle.Statechart
       get
       {
         work_transitions.Select(_.Trigger).Distinct();
-        //evts.RemoveDuplicatesSort(_.CompareTo(_))
       }
     }
 
@@ -393,8 +391,6 @@ namespace Nemerle.Statechart
       {
         def evts = AllLivedSubStates.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.events));
         evts.Distinct()
-        //def evts = events + ( |>< events);
-        //evts.RemoveDuplicatesSort(_.CompareTo(_));
       }
     }
 
@@ -466,20 +462,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    //public GetPathFrom(st : FsmState) : IEnumerable[FsmState]
-    //{
-    //  def super = SuperStatesInclude.FirstElems(x => x.Name == st.Name);
-    //  st :: super.Rev()
-    //}
-
-    //public PathName : list[FsmState]
-    //{
-    //  get
-    //  {
-    //    (this :: SuperStates.SplitLast()[1]).Rev()
-    //  }
-    //}
-
     public static NameComparer : FsmState * FsmState -> int = (x, y) => string.Compare(x.Name, y.Name);
 
     public PartOfRegionsOf(st : FsmState) : list[ConcurrentRegion]
@@ -487,183 +469,6 @@ namespace Nemerle.Statechart
       SuperStatesInclude.NToList().FirstElems(_ == st).FilterType();
     }
 
-    //public FoldThis(
-    //            state   : IEnumerable[FsmState] * State -> FsmState,
-    //            final   : Final            -> FsmState,
-    //            sub_reg : IEnumerable[FsmState] * ConcurrentSubRegion -> FsmState,
-    //            region  : IEnumerable[FsmState] * ConcurrentRegion -> FsmState,
-    //            inlined_subm_inst : IEnumerable[FsmState] * InlinedSubMachineInstance -> FsmState,
-    //            sub_mach : SubMachine -> FsmState,
-    //            inlined_fsm : IEnumerable[FsmState] * InlinedSubMachine -> FsmState
-    //          ) : FsmState
-    //{
-
-    //  def xnode(n, sub : IEnumerable[FsmState], ot)
-    //  {
-    //    match (n)
-    //    {
-    //      | null when (sub != null) => ot.ChangeSubStates(sub)
-    //      | t    => t
-    //    }
-    //  }
-
-    //  def stack = SCG.Stack();
-
-    //  def pop(sub)
-    //  {
-    //    stack.PopRev(sub)
-    //  }
-
-    //  def loop(st, _)
-    //  {
-    //    match (st)
-    //    {
-    //      | State(sub_states = sub) as t                        => def sub_acc = pop(sub); 
-    //          def acc = if (state != null) xnode(state(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
-    //          stack.Push(acc);
-    //          acc
-    //      | Final as t                                          => def acc = if (final != null) xnode(final(t), null, t) else t;
-    //          stack.Push(acc);
-    //          acc
-
-    //      | ConcurrentSubRegion(sub_states = sub) as t          => def sub_acc = pop(sub); 
-    //          def acc = if (sub_reg != null) xnode(sub_reg(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
-    //          stack.Push(acc);
-    //          acc
-
-    //      | ConcurrentRegion(sub_regions = reg)  as t           => def regacc = pop(reg |> _ : FsmState);
-    //          def acc = if (regacc != null) xnode(region(regacc, t), regacc, t) else t.ChangeSubStates(regacc);
-    //          stack.Push(acc);
-    //          acc
-    //      | InlinedSubMachineInstance(sub_states = sub) as t    => def sub_acc = pop(sub); 
-    //          def acc = if (inlined_subm_inst != null) xnode(inlined_subm_inst(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
-    //          stack.Push(acc);
-    //          acc 
-    //      | SubMachine as t                                     => if (sub_mach != null) sub_mach(t) else t;
-    //      | InlinedSubMachine(sub_states = sub) as t            => def sub_acc = pop(sub); 
-    //          def acc = if (inlined_fsm != null) xnode(inlined_fsm(sub_acc, t), sub_acc, t) else t.ChangeSubStates(sub_acc);
-    //          stack.Push(acc);
-    //          acc
-    //    }
-    //  }
-
-    //  Iterator().FoldLeft(null, loop)
-    //}
-
-    //public FoldThis[T](an : T,
-    //            state   : State * IEnumerable[FsmState] * T -> FsmState * T,
-    //            final   : Final * T-> FsmState * T,
-    //            sub_reg : ConcurrentSubRegion * IEnumerable[FsmState] * T -> FsmState * T,
-    //            region  : ConcurrentRegion * IEnumerable[FsmState] * T -> FsmState * T,
-    //            inlined_subm_inst : InlinedSubMachineInstance * IEnumerable[FsmState] * T -> FsmState * T,
-    //            sub_mach : SubMachine * T -> FsmState * T,
-    //            inlined_fsm : InlinedSubMachine * IEnumerable[FsmState] * T -> FsmState * T
-    //          ) : FsmState * T
-    //{
-    //  def loop(st, sub, an)
-    //  {
-    //    match (st)
-    //    {
-    //      | State as t                        => if (state != null) state(t, sub, an) else (null, an);
-    //      | Final as t                        => if (final != null) final(t, an) else (null, an);
-    //      | ConcurrentSubRegion as t          => if (sub_reg != null) sub_reg(t, sub, an) else (null, an);
-    //      | ConcurrentRegion  as t            => if (region != null) region(t, sub, an) else (null, an);
-    //      | InlinedSubMachineInstance as t    => if (inlined_subm_inst != null) inlined_subm_inst(t, sub, an) else (null, an);
-    //      | SubMachine as t                   => if (sub_mach != null) sub_mach(t, an) else (null, an);
-    //      | InlinedSubMachine as t            => if (inlined_fsm != null) inlined_fsm(t, sub, an) else (null, an);
-    //    }
-    //  }
-
-    //  //def an = Iterator().FoldLeft(an, loop);
-    //  FoldThis(an, loop)
-    //}
-
-    //public FoldThis(state   : IEnumerable[FsmState] * FsmState -> FsmState) : FsmState
-    //{
-
-    //  def xnode(n, ot)
-    //  {
-    //    match (n)
-    //    {
-    //      | null => ot
-    //      | t    => t
-    //    }
-    //  }
-
-    //  def stack = SCG.Stack();
-
-    //  def pop(sub)
-    //  {
-    //    stack.PopRev(sub)
-    //  }
-
-    //  def loop(st, _)
-    //  {
-    //    match (st)
-    //    {
-    //      | FsmState where (sub_states = sub) as t => def sub_acc = pop(sub); 
-    //          def acc = xnode(state(sub_acc, t), t);
-    //          stack.Push(acc);
-    //          acc
-    //    }
-    //  }
-
-    //  FoldThis()
-    //  //Iterator().FoldLeft(null, loop)
-    //}
-
-    //public FoldThis[T](an : T, state   : FsmState * IEnumerable[FsmState] * T -> FsmState * T) : FsmState * T
-    //{
-
-    //  //def an = Iterator().FoldLeft(an, loop);
-    //  FoldThis(an, state)
-    //}
-
-    //public Fold[T](
-    //              init : T,
-    //              state   : T * State -> T,
-    //              final   : T * Final -> T,
-    //              sub_reg : T * ConcurrentSubRegion -> T,
-    //              region  : T * ConcurrentRegion -> T,
-    //              inlined_subm_inst : T * InlinedSubMachineInstance -> T,
-    //              sub_mach : T * SubMachine -> T,
-    //              inlined_fsm : T * InlinedSubMachine -> T
-    //              ) : T
-    //{
-    //  def loop(st, acc)
-    //  {
-    //    match (st)
-    //    {
-    //      | State as t                        => state(acc, t)
-    //      | Final as t                        => final(acc, t)
-    //      | ConcurrentSubRegion as t          => sub_reg(acc, t)
-    //      | ConcurrentRegion  as t            => region(acc, t)
-    //      | InlinedSubMachineInstance as t    => inlined_subm_inst(acc, t)
-    //      | SubMachine as t                   => sub_mach(acc, t)
-    //      | InlinedSubMachine as t            => inlined_fsm(acc, t)
-    //    }
-    //  }
-
-    //  Iterator().FoldLeft(init, loop)
-    //}
-
-
-
-
-    //public Visit[T](ctx : ISingleIteratorContext[FsmState], acc : T) : T
-    //{
-    //  def ctx = ctx :> FsmStateSingleIteratorContext[T];
-    //  match (this)
-    //  {
-    //      | State as t                        => ctx.state(t, acc)
-    //      | Final as t                        => ctx.final(t, acc)
-    //      | ConcurrentSubRegion as t          => ctx.sub_reg(t, acc)
-    //      | ConcurrentRegion  as t            => ctx.region(t, acc)
-    //      | InlinedSubMachineInstance as t    => ctx.inlined_subm_inst(t, acc)
-    //      | SubMachine as t                   => ctx.sub_mach(t, acc)
-    //      | InlinedSubMachine as t            => ctx.inlined_fsm(t, acc)
-    //  }
-    //}
 
     public GetChild() : IEnumerable[FsmState]
     {
@@ -682,26 +487,6 @@ namespace Nemerle.Statechart
         | _                     => ChangeSubStates(child)
       }
     }
-    //public UpdateFromTarget(target : TransitionTarget) : FsmState
-    //{
-    //  def update_pseudo(op, p)
-    //  {
-    //    | (Choice(name = on), Choice(name = n))
-    //    | (Junction(name = on), Junction(name = n))
-    //    | (Join(name = on), Join(name = n)) 
-    //    | (Merge(name = on), Merge(name = n)) when (on == n)                     => p
-    //    | (Terminate(state = on), Terminate(state = n)) when (on.Name == n.Name) => p
-    //    | _                                                                      => op
-    //  }
-
-    //  match (target)
-    //  {
-    //    | History(h)       => ChangeHistory(history.Map(x => if (x == h) h else x))
-    //    | Final(f)         => ChangeSubStates(sub_states.Map(x => if (f.Name == x.Name) f else x))
-    //    | PseudoState(p)   => ChangePseudoStates(pseudo_states.Map(update_pseudo(_, p)))
-    //    | _                => this
-    //  }
-    //}
 
     public UpdateHistory(hist : StateHistory) : FsmState
     {

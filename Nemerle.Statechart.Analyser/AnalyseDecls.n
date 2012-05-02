@@ -11,27 +11,9 @@ namespace Nemerle.Statechart
   using ListUtils;
 
   [Record]
-  public struct ErrorInfo
-  {
-    public this(err : list[FsmError]) { errors = err; warnings = []; }
-    
-    [NeedChange] public errors : list[FsmError];
-    [NeedChange] public warnings : list[FsmWarning];
-    
-    public AddWarning(err : list[FsmWarning]) : ErrorInfo {ChangeWarnings(warnings.HeadAppend(err))}
-    public AddError(err : list[FsmError]) : ErrorInfo {ChangeErrors(errors.HeadAppend(err))}
-    public AddError(err : FsmError) : ErrorInfo {ChangeErrors(err :: errors)}
-  }
-  
-  [Record]
   public partial class FsmAnalyser
   {
 
-    GetErrorInfo() : ErrorInfo
-    {
-      ErrorInfo([], [])
-    }
-    
     [NeedChange(Warnings)]
     [NeedChange(Errors)]
     [NeedChange]
@@ -83,24 +65,24 @@ namespace Nemerle.Statechart
       }
     }
 
-    public transition_nodes : Map[string, PathNode]
-    {
-      get
-      {
-        def trans_nodes = transitions.Map((x, y) => (x, y.PathNode)); // nodes
-        def trans_nodes = trans_nodes.RemoveDuplicatesSort(nodes_cmp);
-        Map(trans_nodes)
-      }
-    }
+    //public transition_nodes : Map[string, PathNode]
+    //{
+    //  get
+    //  {
+    //    def trans_nodes = transitions.Map((x, y) => (x, y.PathNode)); // nodes
+    //    def trans_nodes = trans_nodes.RemoveDuplicatesSort(nodes_cmp);
+    //    Map(trans_nodes)
+    //  }
+    //}
 
-    public int_trans_nodes : Map[string, PathNode]
-    {
-      get
-      {
-        def int_nodes = internal_transitions |> (_, _[2].PathNode);
-        Map(int_nodes.RemoveDuplicatesSort(nodes_cmp))
-      }
-    }
+    //public int_trans_nodes : Map[string, PathNode]
+    //{
+    //  get
+    //  {
+    //    def int_nodes = internal_transitions |> (_, _[2].PathNode);
+    //    Map(int_nodes.RemoveDuplicatesSort(nodes_cmp))
+    //  }
+    //}
 
     public all_pseudo : IEnumerable[PseudoStateNode]
     {
@@ -168,23 +150,23 @@ namespace Nemerle.Statechart
       }
     }
 
-    public work_transition_nodes : Map[string, PathNode]
-    {
-      get
-      {
-        def work_nodes = work_transitions |> (_, _[2].PathNode);
-        Map(work_nodes.RemoveDuplicatesSort(nodes_cmp))
-      }
-    }
+    //public work_transition_nodes : Map[string, PathNode]
+    //{
+    //  get
+    //  {
+    //    def work_nodes = work_transitions |> (_, _[2].PathNode);
+    //    Map(work_nodes.RemoveDuplicatesSort(nodes_cmp))
+    //  }
+    //}
 
-    public initial_transition_nodes : Map[string, PathNode]
-    {
-      get
-      {
-        def init_nodes = initial_transitions |> (_, _[2].PathNode);
-        Map(init_nodes.RemoveDuplicatesSort(nodes_cmp))
-      }
-    }
+    //public initial_transition_nodes : Map[string, PathNode]
+    //{
+    //  get
+    //  {
+    //    def init_nodes = initial_transitions |> (_, _[2].PathNode);
+    //    Map(init_nodes.RemoveDuplicatesSort(nodes_cmp))
+    //  }
+    //}
 
     states_initial_tran : IEnumerable[StateTransition]
     {
@@ -265,8 +247,8 @@ namespace Nemerle.Statechart
         {
           match (t)
           {
-            | StateTransition where (To = TransitionTarget.PseudoState(Junction as j)) => j :: a
-            | _ => a
+            | StateTransition(To = TransitionTarget.PseudoState(Junction as j)) => j :: a
+            | _                                                                 => a
           }
         }
 
@@ -328,7 +310,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    [Accessor] traverser : TransitionTraverser = TransitionTraverser();
+    [Accessor] mutable traverser : TransitionTraverser;
 
     public special_transitions : IEnumerable[StateTransition]
     {
@@ -531,7 +513,7 @@ namespace Nemerle.Statechart
       Errors.AddRange(err)
     }
     
-    public AddErrors(err : FsmError) : void
+    public AddError(err : FsmError) : void
     {
       AddErrors(GetError(err))
     }
@@ -556,12 +538,6 @@ namespace Nemerle.Statechart
       err.Select(GetWarning)
     }
 
-    public AddErrors(err : ErrorInfo) : void
-    {
-      AddErrors(GetErrors(err.errors));
-      AddWarnings(GetWarnings(err.warnings));
-    }
-    
     public this(fsm : StateNode.StateMachine)
     {
       this.Fsm = fsm;
@@ -586,6 +562,7 @@ namespace Nemerle.Statechart
         InitStateMap();
         CheckTransitions();
         CreateSubMachines();
+        CreateHierarchy(); // create hierarchy
         CheckInitialTransitions();
         CreateTransitions();
         BreakIfError();
@@ -599,7 +576,7 @@ namespace Nemerle.Statechart
       {
         | x is FsmErrorException => 
            def err = x.error;
-           when (err != null) AddErrors(err);
+           when (err != null) AddError(err);
       }
     }
 
@@ -690,7 +667,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        action_node.Unsequenced.RemoveDuplicatesSort(PathNode.Compare)
+        action_node.Unsequenced//.RemoveDuplicatesSort(PathNode.Compare)
       }
     }
 

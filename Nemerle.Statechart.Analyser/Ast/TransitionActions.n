@@ -276,11 +276,11 @@ namespace Nemerle.Statechart
     [NeedChange]
     public Local : bool;
 
-    public TraversePath(an : FsmAnalyser, recursive : bool = false) : StateTransition
+    public TraversePath(recursive : bool = false) : StateTransition
     {
       if (Path == null)
       {
-        def path = TransitionPath(this, an, recursive);
+        def path = TransitionPath(this, analyser, recursive);
         path.Traverse();
         def tran = path.Transition;
         tran.ChangePath(path)
@@ -383,36 +383,38 @@ namespace Nemerle.Statechart
     }
 
     /// !!! mutable
-    public TargetTraverse(func : TransitionTarget -> TransitionTarget) : StateTransition
+    public TargetTraverse(func : TransitionTarget -> TransitionTarget, manual_rebuild : bool = false) : StateTransition
     {
       if (To != null) 
       {
-        def to = To.ReduceSingle((p, _) => func(p));
+        def to = To.ReduceSingle(manual_rebuild, (p, _) => func(p));
         ChangeTo(to)
       } else this
     }
 
-    public UpdateTargets(old_t : FsmState, new_t : FsmState) : StateTransition
-    {
-      def check_target(tar)
-      {
-        | TransitionTarget.State(st) as t when (st.Num == old_t.Num) => t.ChangeState(new_t)
-        | Qualified(_, State(st) as t) when (st.Num == old_t.Num)    => t.ChangeState(new_t)
-        | Final(st) as t when (st.Num == old_t.Num)                  => 
-            match (new_t)
-            {
-              | FsmState.Final as st => t.ChangeState(st)
-              | _                    => tar
-            }
-        | PseudoState(node) as t when (node.state.Num == old_t.Num)  => t.ChangeNode(node.ChangeState(new_t))
-        | _                                                          => tar
-      }
+    //public UpdateTargets(old_t : FsmState, new_t : FsmState) : StateTransition
+    //{
+    //  def old_num = old_t.Num;
+      
+    //  def check_target(tar)
+    //  {
+    //    | TransitionTarget.State(st) as t when (st.Num == old_t.Num) => t.ChangeState(new_t)
+    //    | Qualified(_, State(st) as t) when (st.Num == old_t.Num)    => t.ChangeState(new_t)
+    //    | Final(st) as t when (st.Num == old_t.Num)                  => 
+    //        match (new_t)
+    //        {
+    //          | FsmState.Final as st => t.ChangeState(st)
+    //          | _                    => null
+    //        }
+    //    | PseudoState(node) as t when (node.state.Num == old_t.Num)  => t.ChangeNode(node.ChangeState(new_t))
+    //    | _                                                          => null
+    //  }
 
-      def from = if (From == old_t)   new_t else From;
-      def src  = if (Source == old_t) new_t else Source;
-      def tr   = ChangeFromSource(from, src);
-      tr.TargetTraverse(check_target)
-    }
+    //  def from = if (From.Num == old_num) new_t else From;
+    //  def src  = if (Source.Num == old_num) new_t else Source;
+    //  def tr   = ChangeFromSource(from, src);
+    //  tr.TargetTraverse(check_target)
+    //}
 
     public ActionList : list[string]
     {
@@ -422,7 +424,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public Actions : list[string]
+    public Actions : IEnumerable[string]
     {
       get
       {

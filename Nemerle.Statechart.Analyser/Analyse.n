@@ -16,22 +16,22 @@ namespace Nemerle.Statechart
   public partial class FsmAnalyser
   {
 
-    
+
     UpdateTransitions(tran : IEnumerable[StateTransition]) : void
     {
-        def group = tran.GroupBy(x => x.Source.Num);
-        def st = group.Map(x => statemap[x.Key].UpdateTransitions(x));
-        statemap.Update(st)
+      def group = tran.GroupBy(x => x.Source.Num);
+      def st = group.Map(x => statemap[x.Key].UpdateTransitions(x));
+      statemap.Update(st)
     }
-    
+
     InitStatechart() : void
     {
       def state = Fsm.state.ChangeName(FsmState.TopStateName);
       def top = state.Fold(null, 
-                              (s, sb) => FsmState.CreateState(s, sb, this),
-                              (s, sr) => FsmState.ConcurrentRegion(s, sr.Select(_ :> FsmState.ConcurrentSubRegion), this),
-                              (s, _)  => FsmState.Final(s, this),
-                              null
+                           (s, sb) => FsmState.CreateState(s, sb, this),
+                           (s, sr) => FsmState.ConcurrentRegion(s, sr.Select(_ :> FsmState.ConcurrentSubRegion), this),
+                           (s, _)  => FsmState.Final(s, this),
+                           null
                             );
       //def top = top.CreateIterator(); // cache iterator
     //def topState = FsmState.State(Fsm.state, null, this, false); // create statemachine from top state
@@ -72,9 +72,9 @@ namespace Nemerle.Statechart
 
         def check_final(f, st, sub)
         {
-          match (f.Find(x => x.Super.Name == st.Name))
+          match (f.Find(x => x.Super.Num == st.Num))
           {
-            | Some(final) => st.ChangeSubStates(sub.Concat(TraverseUtils.SingleElement(final)).ToList())
+            | Some(final) => st.ChangeSubStates(sub.Append(final))
             | _           => null
           }
         }
@@ -95,9 +95,9 @@ namespace Nemerle.Statechart
 
         def check_state(s, _, a)
         {
-          def (tran, fin) = s.transitions.FoldLeft(([], a), check_tran);
-          def (init, fin) = s.initial.FoldLeft(([], fin), check_tran);
-          def st = s.ChangeTransitionsInitial(tran.Rev(), init.Rev());
+          def (tran, fin) = s.transitions.FoldBack(([], a), check_tran);
+          def (init, fin) = s.initial.FoldBack(([], fin), check_tran);
+          def st = s.ChangeTransitionsInitial(tran, init);
           (st, fin)
         }
 
@@ -184,7 +184,7 @@ namespace Nemerle.Statechart
           def err = check_dup_history(s, err);
           def s = check_exit_actions(s);
           (s, err)
-        } else (s, err)
+        } else (null, err)
       }
 
       def (top, err) = TopState.ReduceSingle([], update_hist);
@@ -192,8 +192,8 @@ namespace Nemerle.Statechart
       AddErrors(err)
     }
 
-    static nodes_eq : ((string * PathNode) * (string * PathNode)) -> bool = (x, y) => PathNode.Equals(x[1], y[1]);
-    static nodes_cmp : ((string * PathNode) * (string * PathNode)) -> int = (x, y) => PathNode.Compare(x[1], y[1]);
+    //static nodes_eq : ((string * PathNode) * (string * PathNode)) -> bool = (x, y) => PathNode.Equals(x[1], y[1]);
+    //static nodes_cmp : ((string * PathNode) * (string * PathNode)) -> int = (x, y) => PathNode.Compare(x[1], y[1]);
 
     //CreateHistory() : void    
     //{
@@ -237,10 +237,26 @@ namespace Nemerle.Statechart
       AddWarnings(warn)
     }
 
+    CreateHierarchy() : void
+    {
+
+      def set_hierarchy_pos(st)
+      {
+        def sub = st.sub_states.Map(x => x.ChangeCalcHierarchyPosSuperStates(st.calc_hierarchy_pos + 1, st :: st.super_states));
+        st.ChangeSubStates(sub)
+      }
+
+      def top = TopState.ChangeCalcHierarchyPos(0);
+      def states = top.LevelOrderMap(set_hierarchy_pos);
+      statemap.Update(states)
+    }
+
+
     CreateSubMachines() : void
     {
-      def top = TopState.Reduce(inlined_sub_machine_instance = (t, _) => t.InitInline());
-      UpdateStateMap(top)
+      def top = TopState.Reduce(true, inlined_sub_machine_instance = _.InitInline(_));
+
+      UpdateStateMap(top);
     //def fsm = States.FilterType();
     //def (st, an) = fsm.MapThrough(this, (x : FsmState.InlinedSubMachineInstance, a) => x.InitInline(a));
     //def st = st |> _ : FsmState;
