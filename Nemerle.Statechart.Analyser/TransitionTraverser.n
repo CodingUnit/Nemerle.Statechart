@@ -13,50 +13,48 @@ namespace Nemerle.Statechart
   /// </summary>
   public class TransitionTraverser
   {    
-    mutable defered : list[StateTransition] = [];
-    mutable defered_st : list[FsmState] = [];
+    defered    : List[StateTransition] = List();
+    defered_st : List[FsmState]        = List();
+    
+    analyser : FsmAnalyser;
+    
+    public this(an : FsmAnalyser) { analyser = an }
     
     [Accessor]
-    completed : List[StateTransition] = List();
+    completed  : List[StateTransition] = List();
+    
+    [Accessor]
+    completed_states : List[FsmState]  = List();
     
     public Add(tran : StateTransition) : void
     {
-      defered ::= tran
+      defered.Add(tran)
     }
     
-    public Add(tran : list[StateTransition]) : void
+    public Add(tran : IEnumerable[StateTransition]) : void
     {
-      defered = defered.HeadAppend(tran)
+      defered.AddRange(tran)
     }
 
     public Add(st : FsmState) : void
     {
-      defered_st ::= st
-    }    
-
-    public Traverse(an : FsmAnalyser) : list[FsmState]
-    {
-      Traverse(an, List())
+      defered_st.Add(st)
     }
-    
-    Traverse(an : FsmAnalyser, state_res : List[FsmState]) : list[FsmState]
+
+    public Traverse() : void
     {
-      def (fsm, st) = defered_st.Partition(x => x.PartOfStateMachine.HasValue);
-      def state_queue = st.RemoveDuplicatesSort((x, y) => x.CompareTo(y)) + fsm;
-      def tran_queue = defered.RemoveDuplicatesSort((x, y) => x.Name.CompareTo(y.Name));
-      def state_queue = state_queue.Exclude(x => state_res.Exists(y => y.Num == x.Num));
-      defered_st = [];
-      defered = [];
-      def st_res = state_queue.Map(_.TraverseTransitions(an));
-      state_res.AddRange(st_res);
-      def trans = tran_queue.Map(x => x.TraversePath(an));
+      def (fsm, st) = defered_st.PartitionLazy(x => x.PartOfStateMachine.HasValue);
+      def state_queue = st.RemoveDuplicatesSort(_.Num).Concat(fsm);
+      def tran_queue = defered.RemoveDuplicatesSort(_.Name);
+      def state_queue = state_queue.Exclude(completed_states.Contains);
+      defered_st.Clear();
+      defered.Clear();
+      def st_res = state_queue.Map(_.TraverseTransitions());
+      completed_states.AddRange(st_res);
+      def trans = tran_queue.Map(_.TraversePath());
       completed.AddRange(trans);
-      match (defered, defered_st)
-      {
-        // empty queue
-        | ([], []) => state_res.NToList() // finish traverse
-        | (_, _)   => Traverse(an, state_res) // else recursive call self and traverse again
-      }
+      // if empty queue
+      if (defered_st.IsEmpty() && defered.IsEmpty()) () else Traverse() // else recursive call self and traverse again
     }
   }
 }
