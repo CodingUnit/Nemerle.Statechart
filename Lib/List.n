@@ -98,8 +98,8 @@ namespace Nemerle.Statechart
           | _  => (res.Rev(), acc.Rev())
         }
       }
+      
       loop(lst, [], [])
-
     }
 
     public PartitionType[T, TRes](this lst : IEnumerable[T]) : IEnumerable[TRes] * IEnumerable[T]
@@ -125,23 +125,9 @@ namespace Nemerle.Statechart
       (res.AsEnumerable(), acc.AsEnumerable())
     }
 
-    public Partition[T](this lst : IEnumerable[T], pred : T -> bool) : IEnumerable[T] * IEnumerable[T]
+    public PartitionLazy[T](this lst : IEnumerable[T], pred : T -> bool) : IEnumerable[T] * IEnumerable[T]
     {
-      def acc = List();
-      def res = List();
-
-      def loop(lst : IEnumerator[T])
-      {
-        if (lst.MoveNext())
-        {
-          def elem = lst.Current;
-          if (pred(elem)) res.Add(elem) else acc.Add(elem);
-          loop(lst)
-        } else ()
-      }
-
-      loop(lst.GetEnumerator());
-      (res.AsEnumerable(), acc.AsEnumerable())
+      (lst.Where(pred), lst.Where(x => !pred(x)))
     }
 
     public PartitionAround[T](this lst : list[T], pred : T -> bool) : list[T] * list[T]
@@ -165,7 +151,7 @@ namespace Nemerle.Statechart
         match (lst)
         {
           | head :: tail => if (pred(head)) (res.Rev(), lst) else loop(tail, head :: res)
-          | _ => (res.Rev(), [])
+          | _            => (res.Rev(), [])
         }
       }
 
@@ -343,7 +329,7 @@ namespace Nemerle.Statechart
         }
       }
 
-      lst.FoldRight([], loop)
+      lst.FoldBack([], loop)
     }
 
     public MapDefault[T, T2](this opt : option[T], conv : T -> T2, default : T2) : T2
@@ -689,6 +675,22 @@ namespace Nemerle.Statechart
       loop(start)
     }
 
+    public UnfoldLazy[T, TResult](start : T, generator : T -> option[TResult] * option[T]) : IEnumerable[TResult]
+    {
+      def loop(next)
+      {
+        match (generator(next))
+        {
+          | (Some(r), Some(n)) => yield r; loop(n)
+          | (Some(r), _)       => yield r;
+          | (_      , Some(n)) => loop(n)
+          | _                  => ()
+        }
+      }
+
+      loop(start)
+    }
+    
     public Pop[T](this lst : SCG.Stack[T], len : int) : list[T]
     {
       def loop(acc, len)
@@ -839,7 +841,9 @@ namespace Nemerle.Statechart
 
     public AddBefore[T](this lst : IEnumerable[T], elem : T) : IEnumerable[T]
     {
-      TraverseUtils.SingleElement(elem).Concat(lst)
+      yield elem;
+      foreach (elem in lst) yield elem;
+      //TraverseUtils.SingleElement(elem).Concat(lst)
     }
 
     public HeadAppend[T](this lst : list[T], lst2 : IEnumerable[T]) : list[T]
@@ -868,37 +872,35 @@ namespace Nemerle.Statechart
       when (en.MoveNext()) loop(en.Current);
     }
 
-    public RemoveDuplicatesSort[T, TKey](this lst : IEnumerable[T], comp : T -> TKey) : IEnumerable[T]
+    public RemoveDuplicatesSort[T, TKey](this lst : IEnumerable[T], comp : T -> TKey) : list[T]
     {
       def sorted = lst.OrderBy(comp);
-
       def comparer = Comparer.Default;
 
-      def en = sorted.GetEnumerator();
-
-      def loop(elem1)
+      def loop(elem1, acc)
       {
-        if (en.MoveNext()) 
+        match (acc)
         {
-          def elem = en.Current;
-          when (comparer.Compare(comp(elem1), comp(elem)) != 0) yield elem1;
-          loop(elem);
-        } else ()
+          | head :: _ => if (comparer.Compare(comp(elem1), comp(head)) != 0) elem1 :: acc else acc
+          | _         => elem1 :: acc
+        }
       }
 
-      when (en.MoveNext()) loop(en.Current);
+      sorted.FoldBack([], loop)
+      //when (en.MoveNext()) loop(en.Current);
     }
 
     public Append[T](this lst : IEnumerable[T], elem : T) : IEnumerable[T]
     {
-      lst.Concat(TraverseUtils.SingleElement(elem))
+      foreach (elem in lst) yield elem;
+      yield elem;
     }
 
     public Append[T](this lst : IEnumerable[T], elem : option[T]) : IEnumerable[T]
     {
       match (elem)
       {
-        | Some(e) => lst.Concat(TraverseUtils.SingleElement(e))
+        | Some(e) => lst.Append(e)
         | _       => lst
       }
     }

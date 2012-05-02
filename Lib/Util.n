@@ -66,13 +66,13 @@ namespace Nemerle.Statechart
     //    def attr = f.GetModifiers().GetMacroAttributes();
     //    func(attr)
     //}
-    
-    public attr_func(this f : ClassMember.Field, func : list[PExpr] -> bool) : bool
-    {
-        def attr = f.ParsedAttributsAndModifiers.GetMacroAttributes();
-        func(attr)
-    }
-    
+
+    //public attr_func(this f : ClassMember.Field, func : list[PExpr] -> bool) : bool
+    //{
+    //    def attr = f.ParsedAttributsAndModifiers.GetMacroAttributes();
+    //    func(attr)
+    //}
+
     public CreateAssign(obj : PExpr, expr : PExpr) : PExpr
     {
 
@@ -115,19 +115,30 @@ namespace Nemerle.Statechart
         | (_, <[ $(_ : name) ]>) => (assign, second)
         | (<[ $(_ : name) ]>, _) => (assign, first)
         | _ => def assign = <[
-                             def res = $second;
+                              def res = $second;
                               $first = res;
                             ]>;
             (assign, <[ res ]>)
       }
     }
 
-    public CreateConstrBody(type : string, pars : list[string], parms : list[string * string]) : PExpr
+  }
+  
+  partial module NeedChangeImpl
+  {
+
+    StrToLower(s : string) : string
     {
-      def inst_par(p, pars)
+      char.ToLower(s[0]).ToString() + s.Substring(1);
+    }
+    
+    public CreateConstrBody(type : string, pars : list[string * string * string], parms : list[string * string]) : PExpr
+    {
+      
+      def inst_par((f, ep, p), pars)
       {
-        def ep = char.ToLower(p[0]).ToString() + p.Substring(1);
-        match (pars.Find((x, _) => p == x))
+        def ep = StrToLower(ep);
+        match (pars.Find((x, _) => f == x))
         {
           | Some((_, n)) => <[ $(ep : usesite) = $(n : usesite) ]>
           | _            => <[ $(ep : usesite) = $(p : usesite) ]>
@@ -138,41 +149,35 @@ namespace Nemerle.Statechart
       <[ $(type : usesite)(..$expr) ]>
     }
 
-    public CreateNewInst(typebuilder : TypeBuilder, type : PExpr, parms : PExpr) : PExpr
+    public CreateNewInst(typebuilder : TypeBuilder, type : PExpr, parms : list[string * string]) : PExpr
     {
-      def split(p)
+
+      //def have_record_ignore(f : IField)
+      //{
+      //  f.attr_func(x => x.Exists(_ is <[ RecordIgnore ]>) && !x.Exists(_ is <[ NeedChange ]>))
+      //}
+
+      def def_constr(cur_type, fields)
       {
-        | <[ $(x : name) = $(y : name) ]> => (x.Id, y.Id)
-        | _             => Message.Error(p.Location, "Unknown expression for new_inst assignment"); ("", "")
+        //def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        //def fields = cur_type.GetFields(opt);
+        //def fields = fields.Exclude(x => attr_func(x, x => x.Exists(_ is <[ RecordIgnore ]>) && !x.Exists(_ is <[ NeedChange ]>)));
+        //def pars = fields.Map(x => StrToLower(x.Name));
+        //def parms = unseq(parms);
+        //def parms = parms.Map(split);
+        CreateConstrBody(cur_type.Name, fields, parms)
       }
 
-      def unseq(p)
+      def def_opts(o)
       {
-        match (p)
-        {
-          | <[ {..$seq} ]> 
-          | <[ (..$seq) ]> => seq
-          | x              => [x]
-        }
-      }
-
-
-      def have_record_ignore(f : IField)
-      {
-        f.attr_func(x => x.Exists(_ is <[ RecordIgnore ]>))
-      }
-
-
-
-      def def_constr(cur_type)
-      {
-        def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        def fields = cur_type.GetFields(opt);
-        def fields = fields.Exclude(x => attr_func(x, x => x.Exists(_ is <[ RecordIgnore ]>) && !x.Exists(_ is <[ NeedChange ]>)));
-        def pars = fields.Map(_.Name);
-        def parms = unseq(parms);
-        def parms = parms.Map(split);
-        CreateConstrBody(cur_type.Name, pars, parms)
+        //def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy;
+        def fields = GetChangeFields(o);//o.GetFields(opt);
+        def match_fields = fields.Exclude(x => parms.Exists((y, _) => y == x.Name));
+              //def fields = fields.Exclude(have_record_ignore);
+        def names = match_fields.Map(x => <[ $(x.Name : usesite) = $(StrToLower(x.Name) : usesite) ]>);
+        def fields = fields.Map(x => (x.Name, StrToLower(x.Name), StrToLower(x.Name)));
+        def body = def_constr(o, fields);
+        <[case: | $(o.Name : usesite)(..$names) => $body ]>
       }
 
       //assert2(false);
@@ -189,33 +194,51 @@ namespace Nemerle.Statechart
                                       match (cur_type.GetVariantOptions().Find(x => x.Name == type))
                                       {
                                         | Some(t) => t
-                                        | _       => Message.Error($"Cannot find the '$type' type");null
+                                        | _       => Message.Error($"Cannot find the '$type' type");
+                                                     null
                                       }
                                   }
                                 }
 
-            if (cur_type != null) def_constr(cur_type) else <[]>
+            if (cur_type != null) 
+            {
+              def fields = GetChangeFields(cur_type);
+              def fields = fields.Map(x => (x.Name, StrToLower(x.Name), x.Name));
+              def_constr(cur_type, fields)
+            } else <[]>//GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy)) else <[]>
 
         | lst => 
-
-            def def_opts(o)
-            {
-              def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly | BindingFlags.NonPublic;
-              def fields = o.GetFields(opt);
-              def fields = fields.Exclude(have_record_ignore);
-              def names = fields.Map(x => <[ $(x.Name : usesite) ]>);
-              def body = def_constr(o);
-              <[case: | $(o.Name : usesite)(..$names) => $body ]>
-            }
-
             def expr = lst.Map(def_opts);
             <[
-            match (this)
-            {
-              ..$expr
-            }
+              match (this)
+              {
+                ..$expr
+              }
             ]>
       }     
+    }
+    
+    public CreateNewInst(typeBuilder : TypeBuilder, type : PExpr, parms : PExpr) : PExpr
+    {
+      def split(p)
+      {
+        | <[ $(x : name) = $(y : name) ]> => (x.Id, StrToLower(y.Id))
+        | _                               => Message.Error(p.Location, "Unknown expression for new_inst assignment"); ("", "")
+      }
+
+      def unseq(p)
+      {
+        match (p)
+        {
+          | <[ {..$seq} ]> 
+          | <[ (..$seq) ]> => seq
+          | x              => [x]
+        }
+      }
+      
+        def parms = unseq(parms);
+        def parms = parms.Map(split);
+        CreateNewInst(typeBuilder, type, parms)
     }
   }
 
@@ -224,7 +247,7 @@ namespace Nemerle.Statechart
   syntax (type, "^&", "(", parms,")")
   {
     //assert2(false);
-    Utils.CreateNewInst(Macros.ImplicitCTX().CurrentTypeBuilder, type, parms)
+    NeedChangeImpl.CreateNewInst(Macros.ImplicitCTX().CurrentTypeBuilder, type, parms)
   }
 
 }
