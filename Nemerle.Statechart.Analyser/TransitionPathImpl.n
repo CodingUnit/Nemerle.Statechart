@@ -19,12 +19,11 @@ namespace Nemerle.Statechart
     public static FindPath(src_st : FsmState,
              dest_st : FsmState,
              exit : IEnumerable[FsmState],
-             entry : IEnumerable[FsmState]
-             ) : IEnumerable[FsmState] * IEnumerable[FsmState]
+             entry : IEnumerable[FsmState]) : IEnumerable[FsmState] * IEnumerable[FsmState]
     {
        def src = src_st.SuperStatesFromTopInclude.NToList();
        def dest = dest_st.SuperStatesFromTopInclude.NToList();
-       def (ex, en) = src.RemoveDupFirst(dest, (x, y) => (x == y : object));
+       def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x.Num == y.Num);
        (exit.Concat(ex.Reverse()), en.Concat(entry))
     }
     
@@ -50,38 +49,39 @@ namespace Nemerle.Statechart
                  //* Case 4: The source is exited and the target entered.
                  //*
                  //* Case 5: Traverses the hiearchy until a common superstate is met.
-    FindLCA(st : FsmState, dest_st : FsmState) : IEnumerable[FsmState] * IEnumerable[FsmState]
+    static FindLCA(st : FsmState, dest_st : FsmState) : IEnumerable[FsmState] * IEnumerable[FsmState]
     {
       def super = dest_st.Super;
       def dest = if (super != null) super else dest_st;
       FindPath(st.Super, dest, TraverseUtils.SingleElement(st), TraverseUtils.SingleElement(dest_st))
     }
 
-    AddAction(nodes : PathNode, act : option[Actions]) : PathNode
+    static AddAction(nodes : PathNode, act : option[Actions]) : IEnumerable[PathNode]
     {
-      | (n, Some(act))  => n + Action(act)
-      | (n, _)          => n
+      | (n, Some(act))  => TraverseUtils.DoubleElement(n, Action(act))
+      | (n, _)          => TraverseUtils.SingleElement(n)
     }
 
-    EntryNodeCreate(nodes : IEnumerable[FsmState]) : PathNode
+    static EntryNodeCreate(nodes : IEnumerable[FsmState]) : IEnumerable[PathNode]
     {
       def entering_state(st)
       {
-          | StateAction.Entry(state = FsmState(do_activity = act)) => Entry(st, act.Map(x => (RunDoActivity(x), true)))
+        | StateAction.Entry(state = FsmState(do_activity = act)) => Entry(st, act.Map(x => (RunDoActivity(x), true)))
       }
 
       
-      def entry = nodes.FoldLeft([], (x, a) => x.entry.FoldLeft(a, (x, a) => entering_state(x) :: a));
-      Sequence(entry)
+      nodes.SelectMany(x => x.entry.Select(entering_state))
+      //Sequence(entry)
     }
 
-    public ExitNodeCreate(nodes : IEnumerable[FsmState]) : PathNode
+    public ExitNodeCreate(nodes : IEnumerable[FsmState]) : IEnumerable[PathNode]
     {
       def get_exit(st)
       {
         | StateAction.Exit(state = FsmState(do_activity = act, history = TwoOption(HasValue = true) as h)) =>
-            Exit(st, (SaveHistory(h.Value), false) :: act.Map(x => (StopDoActivity(x), false)));
-        | Exit(state = FsmState(do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)));
+            Exit(st, (SaveHistory(h.Value), false) :: act.Map(x => (StopDoActivity(x), false)))
+            
+        | Exit(state = FsmState(do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)))
       }
       
       def exiting_state(st)
@@ -91,33 +91,41 @@ namespace Nemerle.Statechart
             {
               match (transition.To)
               {
-                | TransitionTarget.PseudoState(Join(region = reg, joined_tran = jtran)) => def src = jtran |> Source;
+                | TransitionTarget.PseudoState(Join(region = reg, joined_tran = jtran)) => 
+                    def src = jtran |> Source;
                     if (jtran.Last().FromRegion == transition.FromRegion) (reg, src, true) else (reg, src, false)
                 | _ => (null, [transition.Source], true)
               }
             }
             
             def (reg, src, last) = get_source();
-            def src = if (r.sub_states.Exists(x => src.Contains(x))) src else [nodes.First()];
+            def src = if (r.sub_states.Exists(src.Contains)) src else [nodes.First()];
             def regs = r.RegionsExcept(src);
             
             def node = if (last || r != reg) if (regs.Equals(r.sub_regions)) RegionExit(Enumerable.Empty(), r) else RegionExit(regs, r); else Empty();
-            if (e.IsEmpty()) node else Sequence(e |> get_exit(_)) + node;
             
-        | FsmState(exit = (_ :: _) as ex) => Sequence(ex |> get_exit(_))
-        | _                               => Empty()
+            if (e.IsEmpty()) 
+            {
+              TraverseUtils.SingleElement(node)
+            } else 
+            {
+              e.Select(get_exit).Append(node)
+            }
+            
+        | FsmState(exit = (_ :: _) as ex) => ex.Select(get_exit)
+        | _                               => Enumerable.Empty()
       }
       
-      def nodes = nodes |> exiting_state(_);
-      Sequence(nodes)
+      nodes.SelectMany(exiting_state)
     }
 
-    public static ExitNodeCreate(src : FsmState, nodes : IEnumerable[FsmState]) : PathNode
+    public static ExitNodeCreate(src : FsmState, nodes : IEnumerable[FsmState]) : IEnumerable[PathNode]
     {
       def get_exit(st)
       {
         | StateAction.Exit(state = FsmState(do_activity = act, history = TwoOption(HasValue = true) as h))=>
             Exit(st, (SaveHistory(h.Value), false) :: act.Map(x => (StopDoActivity(x), false)));
+            
         | Exit(state = FsmState(do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)));
       }
       
@@ -127,14 +135,15 @@ namespace Nemerle.Statechart
             //def (reg, src, last) = get_source();
             def regs = r.RegionsExcept(src);
             def node = RegionExit(regs, r);
-            if (e.IsEmpty()) node else Sequence(e |> get_exit(_)) + node;
+            if (e.IsEmpty()) TraverseUtils.SingleElement(node) else e.Select(get_exit).Append(node)
             
-        | FsmState(exit = (_ :: _) as ex) => Sequence(ex |> get_exit(_))
-        | _                               => Empty()
+        | FsmState(exit = (_ :: _) as ex) => ex.Map(get_exit)
+        | _                               => Enumerable.Empty()
       }
       
-      def nodes = nodes |> exiting_state(_);
-      Sequence(nodes)
+      def res = List();
+      nodes.Iter(x => res.AddRange(exiting_state(x)));
+      res
     }
     
     NodesCreate(ex : IEnumerable[FsmState], tran : StateTransition) : PathNode
