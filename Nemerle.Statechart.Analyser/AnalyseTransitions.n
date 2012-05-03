@@ -242,7 +242,7 @@ namespace Nemerle.Statechart
     create_join_transitions() : void
     {
 
-      def check_join(j, tr, (err, atran))
+      def check_join(j, tr, atran)
       {
         match (j)
         {
@@ -253,9 +253,9 @@ namespace Nemerle.Statechart
                 if (tr.All(x => x.From.PartOfSubRegion.HasValue) &&
                     tr.ElementsEqual((x, y) => x.From.PartOfRegion.Value == y.From.PartOfRegion.Value))
                 {
-                  def tran = StateTransition.Create(st, tr.Head.Trigger, t, j);
-                  def reg = tr.Head.From.PartOfRegion.Value;
-                  def tr = tr.Sort((x, y) => x.FromRegion.index - y.FromRegion.index);
+                  def tran = StateTransition.Create(st, tr.First().Trigger, t, j);
+                  def reg = tr.First().From.PartOfRegion.Value;
+                  def tr = tr.OrderBy(x => x.FromRegion.index);
                   //j.joined_tran = tr;
                   //j.region = reg;
 
@@ -263,9 +263,14 @@ namespace Nemerle.Statechart
                   //j.transition = tran;
                   /// !!! mutable
                   def tr = tr.Map(x => x.ChangeTo(TransitionTarget.PseudoState(x, this, j))) : IEnumerable[_];
-                  (err, atran.Concat(tr))
-                } else (FsmError.JoinTransitionMustLeaveRegion(j, tr) :: err, atran)
-              } else (FsmError.JoinTransitionMustHaveSameTrigger(j, tr) :: err, atran)
+                  AddError(FsmError.JoinTransitionMustLeaveRegion(j, tr));
+                  atran.Concat(tr)
+                } else atran;
+              } else 
+              {
+                AddError(FsmError.JoinTransitionMustHaveSameTrigger(j, tr));
+                atran
+              }
         }
       }
 
@@ -278,16 +283,16 @@ namespace Nemerle.Statechart
         }
       }
 
-      def join_tran = States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_join));
-      def jtrans = join_tran.Group((x, y) => x[0].name.CompareTo(y[0].name)).Map(x => (x.Head[0], x.Split()[1]));
-      def (err, trans) = jtrans.FoldLeft(([], Enumerable.Empty()), ((x, y), a) => check_join(x, y, a));
-      UpdateTransitions(trans);
-      AddErrors(err)
+      def join_tran = States.SelectMany(x => x.all_transitions_with_init.FoldLeft([], get_join));
+      def jtrans = join_tran.GroupBy(x => x[0].name);
+      def jtrans = jtrans.Select(x => (x.First()[0], x.Values()));
+      def trans= jtrans.FoldLeft(Enumerable.Empty(), ((x, y), a) => check_join(x, y, a));
+      UpdateTransitions(trans)
     }
 
     create_fork_transitions() : void
     {
-      def check_fork(tr, f, (err, atrans))
+      def check_fork(tr, f, atrans)
       {
         match (f)
         {
@@ -299,18 +304,23 @@ namespace Nemerle.Statechart
               {
                 def sreg = reg |> Last();
                 def dups = sreg.Duplicates((x, y) => x.index - y.index);
-                if (dups.Length != 0) (FsmError.ForkMustGoToSeparateRegion(f) :: err, atrans) else
+                if (dups.Length != 0) 
+                {
+                  AddError(FsmError.ForkMustGoToSeparateRegion(f));
+                  atrans
+                } else
                 {
                   def reg = sreg.Head.contained_in;
                   def sub_trans = t |> StateTransition.Create(reg, null, _, f);
                   def sub_trans = sub_trans.Map(x => x.ChangeLocal(true));
               /// !!! mutable
                   def tr = tr.ChangeTo(TransitionTarget.PseudoState(tr, this, f.ChangeForkTran(sub_trans)));
-                  (err, tr :: atrans)
+                  tr :: atrans
                 }
               } else
               {
-                (FsmError.ForkMustGoToRegion(f) :: err, atrans)
+                AddError(FsmError.ForkMustGoToRegion(f));
+                atrans
               }
         }
       }
@@ -324,10 +334,9 @@ namespace Nemerle.Statechart
         }
       }
 
-      def tran = States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_fork));
-      def (err, tran) = tran.FoldLeft(([], []), ((x, y), a) => check_fork(x, y, a));
-      UpdateTransitions(tran);
-      AddErrors(err)
+      def tran = States.SelectMany(x => x.all_transitions_with_init.FoldLeft([], get_fork));
+      def tran = tran.FoldLeft([], ((x, y), a) => check_fork(x, y, a));
+      UpdateTransitions(tran)
     }
   /// <summary>
   /// Creating Transitions
@@ -361,24 +370,24 @@ namespace Nemerle.Statechart
 
     CheckTransitions() : void
     {
-      def proc_tran(st, tran, err)
+      def proc_tran(st, tran)
       {
         match (tran.To)
         {
-          | TransitionTarget.State(state = to) when (!statemap.Contains(st)) => FsmError.UnknownState(st, to, tran) :: err
-          | _                                                                => err
+          | TransitionTarget.State(state = to) when (!statemap.Contains(st)) => AddError(FsmError.UnknownState(st, to, tran))
+          | _                                                                => ()
         }
       }
 
-      def check_cross_orthogonal(tr, err)
+      def check_cross_orthogonal(tr)
       {
-        if (is_crossed_orthogonal(tr, tr.Source)) FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr) :: err else err
+        when (is_crossed_orthogonal(tr, tr.Source)) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr));
       }
 
-      def init(st, err)
+      def init(st)
       {
         //def err = st.initial.FoldLeft(err, proc_tran(st, _, _));
-        st.all_transitions_with_init.FoldLeft(err, proc_tran(st, _, _))
+        
       }
 
       def check_tran(st, _)
@@ -387,8 +396,12 @@ namespace Nemerle.Statechart
         st.TraverseTargets(resolve_targets(st, _)) // second pass final
       }
 
-      def err = States.FoldLeft([], init);
-      def err = States.FoldLeft(err, (x, e) => x.all_transitions.FoldLeft(e, check_cross_orthogonal));
+      foreach (st in States)
+      {
+        st.all_transitions_with_init.Iter(proc_tran(st, _));
+        st.all_transitions.Iter(check_cross_orthogonal)
+      }
+      
       UpdateStateMap(TopState.ReduceSingle(check_tran));
 
       //def update_states()
@@ -403,7 +416,6 @@ namespace Nemerle.Statechart
       //}
 
       //update_states();
-      AddErrors(err)
     }
 
     RenameTransition(tran : IEnumerable[StateTransition]) : IEnumerable[string * StateTransition]
@@ -434,8 +446,8 @@ namespace Nemerle.Statechart
 
       def update_states()
       {
-        def dest = trans_paths.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Paths.Map((_, y) => y.Transition.Destination)));
-        def tran = dest.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Transition));
+        def dest = trans_paths.SelectMany(x => x.Paths.Map((_, y) => y.Transition.Destination));
+        def tran = dest.SelectMany(_.Transition);
         UpdateTransitions(tran);
         def st   = dest.Select(_.ToState).Where(_ != null);
         def hist = dest.OfType.[TransitionDestination.History]().Select(_.state);
@@ -473,7 +485,7 @@ namespace Nemerle.Statechart
 
       def trans = RenameTransition(used_transitions);
       def trans = Map(trans);
-      def int_tran =  States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.internal_tran));
+      def int_tran =  States.SelectMany(_.internal_tran);
       def int_tran =  RenameTransition(int_tran);
       def int_tran = Map(int_tran);
       def init = used_states_initial_tran;

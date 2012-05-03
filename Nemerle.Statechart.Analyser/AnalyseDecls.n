@@ -26,15 +26,15 @@ namespace Nemerle.Statechart
         Fsm.flags
       }
     }
-    
+
     //[Accessor] mutable states : list[FsmState];
     public Events : IEnumerable[string]
     {
       get
       {
-        def evts = States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.events));
+        def evts = States.SelectMany(_.events);
         def evts = evts.Where(x => x.Name != null);
-        def evts = evts.Select(x => x.Name);
+        def evts = evts.Select(_.Name);
         evts.Distinct()
       }
     }
@@ -47,7 +47,7 @@ namespace Nemerle.Statechart
     //  {
     //    def int_evts =  
     //    def evts =  States |>< transitions |> Trigger;
-        
+
     //    def int_tran_evt = int_evts.RemoveDuplicatesSort(_.CompareTo(_));
     //    //def tran_evt = evts.RemoveDuplicatesSort(_.CompareTo(_));
     //    //def int_tran_evt =  int_tran_evt.Exclude(tran_evt, _  ==  _);
@@ -88,7 +88,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.pseudo_states))
+        States.SelectMany(_.pseudo_states)
       }
     }
 
@@ -96,8 +96,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def acts =  trans_paths.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Actions));
-        def int_acts =  internal_transitions.Values().FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Actions));
+        def acts =  trans_paths.SelectMany(_.Actions);
+        def int_acts =  internal_transitions.Values().SelectMany(_.Actions);
         def acts = acts.Concat(int_acts);
         acts.Distinct()
         //acts.RemoveDuplicatesSort((x, y) => x.CompareTo(y));
@@ -127,7 +127,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.FoldLeft([], (x, a) => a.HeadAppend(x.history.Value)).Where(_.Used)//$[h, x in States, h in x.history.Value, h.Used]//.Filter(x => x.history.HasValue) |>< history.Value
+        States.SelectMany(x => x.history.Value).Where(_.Used)//$[h, x in States, h in x.history.Value, h.Used]//.Filter(x => x.history.HasValue) |>< history.Value
       }
     }
 
@@ -135,8 +135,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def paths = States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.HistoryPaths.Select(x => x[1])));
-        def paths = paths.Exclude(x => x.IsDefault);
+        def paths = States.SelectMany(x => x.HistoryPaths.Select(x => x[1]));
+        def paths = paths.Exclude(_.IsDefault);
         paths.RemoveDuplicatesSort(_.Name)
       }
     }
@@ -172,7 +172,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.initial))
+        States.SelectMany(_.initial)
         //States |>< Initial
       }
     }
@@ -213,7 +213,7 @@ namespace Nemerle.Statechart
         if (TopState != null) TopState.all_transitions_nested else Enumerable.Empty()
       }
     }
-    
+
     public not_used_regions : IEnumerable[FsmState.ConcurrentRegion]
     {
       get
@@ -253,7 +253,7 @@ namespace Nemerle.Statechart
         }
 
         def junc = all_pseudo.FilterType();
-        States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_junction)).Concat(junc)
+        States.SelectMany(x => x.all_transitions_with_init.FoldLeft([], get_junction)).Concat(junc)
       }
     }
 
@@ -265,13 +265,13 @@ namespace Nemerle.Statechart
         {
           match (t)
           {
-            | StateTransition where (To = TransitionTarget.PseudoState(Junction(type = JunctionType.Choice) as j)) => j :: a
-            | _ => a
+            | StateTransition(To = TransitionTarget.PseudoState(Junction(type = JunctionType.Choice) as j)) => j :: a
+            | _                                                                                             => a
           }
         }
 
         def choice = all_pseudo.FilterType();
-        States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_choice)).Concat(choice)
+        States.SelectMany(x => x.all_transitions_with_init.FoldLeft([], get_choice)).Concat(choice)
       }
     }
 
@@ -283,17 +283,17 @@ namespace Nemerle.Statechart
         {
           match (t)
           {
-            | StateTransition where (To = TransitionTarget.PseudoState(Merge as j)) => j :: a
-            | _ => a
+            | StateTransition(To = TransitionTarget.PseudoState(Merge as j)) => j :: a
+            | _                                                              => a
           }
         }
 
         def merge = all_pseudo.FilterType();
-        States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_merge)).Concat(merge)
+        States.SelectMany(x => x.all_transitions_with_init.FoldLeft([], get_merge)).Concat(merge)
       }
     }
 
-    public forks : list[PseudoStateNode.Fork]
+    public forks : IEnumerable[PseudoStateNode.Fork]
     {
       get
       {
@@ -301,12 +301,12 @@ namespace Nemerle.Statechart
         {
           match (t)
           {
-            | StateTransition where (To = TransitionTarget.PseudoState(Fork as j)) => j :: a
-            | _ => a
+            | StateTransition(To = TransitionTarget.PseudoState(Fork as j)) => j :: a
+            | _                                                             => a
           }
         }
 
-        States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, get_forks))
+        States.SelectMany(x => x.all_transitions_with_init.FoldLeft([], get_forks))
       }
     }
 
@@ -336,7 +336,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.Filter(_ is FsmState.ConcurrentSubRegion)
+        States.Where(_ is FsmState.ConcurrentSubRegion)
       }
     }
 
@@ -344,11 +344,11 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.Filter(_.Lived)
+        States.Where(_.Lived)
       }
     }
 
-    public empty_states : list[FsmState]
+    public empty_states : IEnumerable[FsmState]
     {
       get
       {
@@ -357,11 +357,11 @@ namespace Nemerle.Statechart
           | FsmState.ConcurrentSubRegion
           | ConcurrentRegion
           | Final => false
-          | _ => true
+          | _     => true
         }
 
         def empty =  States.Exclude(_.LivedNested); // determine lived states
-        empty.Filter(filter_used)
+        empty.Where(filter_used)
       }
     }
 
@@ -384,11 +384,11 @@ namespace Nemerle.Statechart
       }
     }
 
-    public PathsFromOut : list[StateTransition]
+    public PathsFromOut : IEnumerable[StateTransition]
     {
       get
       {
-        States |> PathFromOut
+        States.Select(_.PathFromOut)
       }
     }
 
@@ -411,18 +411,17 @@ namespace Nemerle.Statechart
 
     CheckParseErrors() : void
     { 
-      def check_err(err, res)
+      def check_err(err)
       {
-        def r = match (err)
-                 {
-                   | StateNode.Error(StateNode.DoActivity as node) => ParseError.DuplicateActivity(node)
-                   | StateNode.Error(node)                         => ParseError.UnknownElement(node)
-                 }
-        r :: res
+        match (err)
+        {
+          | StateNode.Error(StateNode.DoActivity as node) => ParseError.DuplicateActivity(node)
+          | StateNode.Error(node)                         => ParseError.UnknownElement(node)
+        }
       }
 
       def flags = FsmFlags.errors.Select(x => ParseError.UnknownMachineFlag(x));// |> ParseError.UnknownMachineFlag(_);
-      def err = Fsm.GetErrors().FoldBack([], check_err);
+      def err = Fsm.GetErrors().Select(check_err);
       def errs = err.Concat(flags);
       AddErrors(errs)
     }
@@ -502,17 +501,17 @@ namespace Nemerle.Statechart
     {
       Warnings.AddRange(err);
     }
-    
+
     public AddErrors(err : string) : void
     {
       Errors.Add(err)
     }
-    
+
     public AddErrors(err : IEnumerable[string]) : void
     {
       Errors.AddRange(err)
     }
-    
+
     public AddError(err : FsmError) : void
     {
       AddErrors(GetError(err))
@@ -575,8 +574,8 @@ namespace Nemerle.Statechart
       catch 
       {
         | x is FsmErrorException => 
-           def err = x.error;
-           when (err != null) AddError(err);
+          def err = x.error;
+          when (err != null) AddError(err);
       }
     }
 
@@ -601,7 +600,7 @@ namespace Nemerle.Statechart
       get
       {
         def tran = transitions.Values().Concat(initial_transitions.Values());// |>< Guards;
-        def guards = tran.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.Guards));
+        def guards = tran.SelectMany(_.Guards);
         //def init_guards =  |>< Guards;
         //def guards = guards + init_guards;
         guards.RemoveDuplicatesSort(_.Name)
@@ -636,7 +635,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.FoldLeft(Enumerable.Empty(), (x, a) => a.Concat(x.all_transitions))
+        States.SelectMany(_.all_transitions)
       }
     }
 
@@ -655,7 +654,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-          work_transitions.Values().Concat(initial_transitions.Values()).
+        work_transitions.Values().Concat(initial_transitions.Values()).
           Concat(history_transitions.Values()).
           Concat(history_default_transitions).
           Concat(special_transitions).
