@@ -17,7 +17,7 @@ namespace Nemerle.Statechart
   public variant PathNode
   {
     | Empty
-    | Sequence {seq : IEnumerable[PathNode];}
+    //| Sequence {seq : IEnumerable[PathNode];}
     | Entry
       {
         action : StateAction.Entry;
@@ -121,30 +121,30 @@ namespace Nemerle.Statechart
     //  | (n1, n2)                        => string.Compare(n1.ToString(), n2.ToString())
     //}
 
-    public static @+(a : PathNode, b : PathNode) : PathNode
-    {
-      match (a, b)
-      {
-        | (Sequence(a), Sequence(b)) => Sequence(a.Concat(b))
-        | (Sequence(a), b)           => Sequence(a.Append(b))
-        | (a, Sequence(b))           => Sequence(b.AddBefore(a))
-        | (a, b)                     => Sequence(TraverseUtils.DoubleElement(a, b))
-      }
-      //Sequence([a, b])
-    }
+    //public static @+(a : PathNode, b : PathNode) : PathNode
+    //{
+    //  match (a, b)
+    //  {
+    //    | (Sequence(a), Sequence(b)) => Sequence(a.Concat(b))
+    //    | (Sequence(a), b)           => Sequence(a.Append(b))
+    //    | (a, Sequence(b))           => Sequence(b.AddBefore(a))
+    //    | (a, b)                     => Sequence(TraverseUtils.DoubleElement(a, b))
+    //  }
+    //  //Sequence([a, b])
+    //}
 
-    public Unsequenced : IEnumerable[PathNode]
-    {
-      get
-      {
-        match (this)
-        {
-          | Sequence(lst) => lst
-          | Empty         => Enumerable.Empty()
-          | x             => TraverseUtils.SingleElement(x)
-        }
-      }
-    }
+    //public Unsequenced : IEnumerable[PathNode]
+    //{
+    //  get
+    //  {
+    //    match (this)
+    //    {
+    //      | Sequence(lst) => lst
+    //      | Empty         => Enumerable.Empty()
+    //      | x             => TraverseUtils.SingleElement(x)
+    //    }
+    //  }
+    //}
 
     //public Clone() : PathNode
     //{
@@ -179,21 +179,26 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def get_act(n)
+        match (this)
         {
           | Entry(action = act)
           | Exit(action = act)
           | Action(actions = act) => act.ActionList
           | _                     => Enumerable.Empty()
         }
-
-        match (this)
-        {
-          | Sequence(n) => n.SelectMany(get_act)
-          | n           => get_act(n)
-        }
-
       }
+    }
+
+    public static PathActions(this path : IEnumerable[PathNode]) : IEnumerable[string]
+    {
+
+      path.SelectMany(_.Actions)
+        //match (this)
+        //{
+        //  | Sequence(n) => n.SelectMany(get_act)
+        //  | n           => get_act(n)
+        //}
+
     }
 
   }
@@ -201,14 +206,17 @@ namespace Nemerle.Statechart
   public variant CheckNode
   {
     | Empty
-    | Sequence {nodes : list[CheckNode];}
-    | RegionStates {states : list[FsmState];}
+    | Sequence {nodes : IEnumerable[CheckNode];}
+    | RegionStates {states : IEnumerable[FsmState];}
     | Join {join : PseudoStateNode.Join;tran : StateTransition;}
-    | Guard {tran : list[GuardNode];}
+    | Guard {tran : IEnumerable[GuardNode];}
 
     public static @+(a : CheckNode, b : CheckNode) : CheckNode
     {
-      Sequence([a, b])
+      | (Sequence(a), Sequence(b)) => Sequence(a.Concat(b))
+      | (Sequence(a), b)           => Sequence(a.Append(b))
+      | (a, Sequence(b))           => Sequence(b.AddBefore(a))
+      | (a, b)                     => Sequence(TraverseUtils.DoubleElement(a, b))
     }
 
   }
@@ -251,7 +259,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        Paths.Split()[1].Select(x => x.Path.Path)
+        Paths.Split()[1].SelectMany(x => x.Path.Path)
       }
     }
 

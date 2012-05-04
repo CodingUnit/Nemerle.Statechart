@@ -287,26 +287,26 @@ namespace Nemerle.Statechart
       } else this
     }
 
-    public PathNode : PathNode
+    public PathNode : IEnumerable[PathNode]
     {
       get
       {
         match (this)
         {
-          | Internal(ActionNode = node) => node
+          | Internal(ActionNode = node) => TraverseUtils.SingleElement(node)
           | _                           => Path.Path.Path
         }
       }
     }
 
-    public PathNodeRecursive : PathNode
+    public PathNodeRecursive : IEnumerable[PathNode]
     {
       get
       {
         match (Destination)
         {
           | null               => PathNode
-          | JunctionNode(node) => PathNode + node.Paths
+          | JunctionNode(node) => PathNode.Concat(node.Paths)
           | _                  => PathNode
         }
       }
@@ -334,14 +334,14 @@ namespace Nemerle.Statechart
           def false_paths(p)
           {
             | PathNode.Entry
-            | Exit
-            | _ => false
+            | Exit  => true
+            | _     => false
           }
 
-          !p.Unsequenced.Exists(false_paths) && p.Actions is []
+          !p.Exists(false_paths) && p.PathActions().IsEmpty()
         }
 
-        def path_ok = path_inlined(Path.Path.Path) && Guards is [];
+        def path_ok = path_inlined(Path.Path.Path) && Guards.IsEmpty();
         def targ_ok = match (Destination)
                        {
                          | ForceStateChange                                  => false
@@ -352,11 +352,17 @@ namespace Nemerle.Statechart
       }
     }
 
-    public Guards : list[GuardNode]
+    public Guards : IEnumerable[GuardNode]
     {
       get
       {
-        SourceGuard %:: To.Guards
+        def to = To.Guards;
+        match (SourceGuard)
+        {
+          | Some(g) => to.AddBefore(g)
+          | _       => to
+        }
+        //SourceGuard %:: To.Guards
           //| TransitionTarget.PseudoState(PseudoStateNode.Merge(to = TransitionTarget.JunctionNode(Guards = g)))
           //| TransitionTarget.PseudoState(PseudoStateNode.Junction(Guards = g)) => g.Append(SourceGuard)//SourceGuard %:: g
           //| _                                                                  => Enumerable.Empty().Append(SourceGuard)//SourceGuard %:: []

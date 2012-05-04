@@ -54,11 +54,11 @@ namespace Nemerle.Statechart
     //  //Map(an, inc)
     //}
 
-    public ActionNode : PathNode
+    public ActionNode : IEnumerable[PathNode]
     {
       get
       {
-        PathNode.Sequence(actions.Map(PathNode.Action(_)))
+        actions.Select(PathNode.Action(_))
       }
     }
 
@@ -178,7 +178,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public ThisPath : PathNode
+    public ThisPath : IEnumerable[PathNode]
     {
       get
       {
@@ -186,35 +186,35 @@ namespace Nemerle.Statechart
       }
     }
 
-    public Paths : PathNode
+    public Paths : IEnumerable[PathNode]
     {
       get
       {
-        def path = Fold([], (t, a) => t.Path :: a);
-        PathNode.Sequence(path)
+        TargetParts.SelectMany(_.Path)
+        //Fold(Enumerable.Empty(), (t, a) => a.Concat(t.Path));
       }
     }
 
     [NeedChange(out_path)]
     [NeedChange]
-    public node_path : PathNode = PathNode.Empty();
-    public out_path : PathNode = PathNode.Empty();
+    public node_path : IEnumerable[PathNode] = Enumerable.Empty();
+    public out_path  : IEnumerable[PathNode] = Enumerable.Empty();
 
     public analyser : FsmAnalyser;
     
-    public ThisOutPath : PathNode
+    public ThisOutPath : IEnumerable[PathNode]
     {
       get
       {
-        ThisPath + node_path
+        ThisPath.Concat(node_path)
       }
     }
 
-    public Path : PathNode
+    public Path : IEnumerable[PathNode]
     {
       get
       {
-        node_path + ThisPath + out_path
+        node_path.Concat(ThisPath).Concat(out_path)
       }
     }
 
@@ -262,7 +262,7 @@ namespace Nemerle.Statechart
                 //def st = nst ?? m.state =. st;
               create_junc_tree_node(an, n, aa, lev + 1, st, prevst, els, err)
 
-          | _ => (Target(lev, st, aa.Rev(), prevst, PathNode.Empty(), PathNode.Empty(), an, t, null), err)
+          | _ => (Target(lev, st, aa.Rev(), prevst, Enumerable.Empty(), Enumerable.Empty(), an, t, null), err)
         }
       }
 
@@ -300,12 +300,12 @@ namespace Nemerle.Statechart
 
         | JunctionNode(g, a, t, _, None(), _) => 
             def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
-            (Condition(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), an, g, n, els), err)
+            (Condition(lev, st, [], prevst, Enumerable.Empty(), Enumerable.Empty(), an, g, n, els), err)
 
         | JunctionNode(g, a, t, _, Some(n), _) => 
             def (els, err) = create_junc_tree_node(an, n, aa, lev, st, prevst, els, err);
             def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
-            (Condition(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), an, g, n, els), err)
+            (Condition(lev, st, [], prevst, Enumerable.Empty(), Enumerable.Empty(), an, g, n, els), err)
 
             // if no guards or actions there is error
         //| [] => (null, err)
@@ -334,9 +334,9 @@ namespace Nemerle.Statechart
               def prevst = st ?? prevst;
                 //def st = nst ?? m.state =. st;
               def (n, err) = get_sub_node(t, lev + 1, st, prevst, els, err);
-              (DecisionNode.Condition(lev, st, a %:: [], prevst, PathNode.Empty(), PathNode.Empty(), an, g, n, null), err)
+              (DecisionNode.Condition(lev, st, a %:: [], prevst, Enumerable.Empty(), Enumerable.Empty(), an, g, n, null), err)
 
-          | _ => (Target(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), an, t, null), err)
+          | _ => (Target(lev, st, [], prevst, Enumerable.Empty(), Enumerable.Empty(), an, t, null), err)
         }
       }
 
@@ -404,7 +404,7 @@ namespace Nemerle.Statechart
             def prevst = prevst ?? (t.transition?.From ?? st);
             def (n, err) = create_choice_tree_node(an, n, lev, st, prevst, els, err);
             def (node, err) = get_sub_node(t, lev, st, prevst, els, err);
-            (Condition(lev, st, a, prevst, PathNode.Empty(), PathNode.Empty(), an, g, node, n), err)
+            (Condition(lev, st, a, prevst, Enumerable.Empty(), Enumerable.Empty(), an, g, node, n), err)
 
         | _ => (null, err)
       }
