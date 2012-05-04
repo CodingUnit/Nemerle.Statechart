@@ -118,9 +118,45 @@ namespace Nemerle.Statechart
                                                                 ..$cases
                                                               } 
                                                             }]>);
+
         }
 
       }
+
+      def get_name(e, t)
+      {
+        match (e)
+        {
+          | <[ $(n : name) = $_]> 
+          | <[ $(n : name)($_)]>   => n.Id
+          | _                      => t.Name
+        }
+      }
+
+      def get_expr(e)
+      {
+        | <[ $_ = $_ ]> as e                          
+        | <[ $_($f = $t(_)) ]> with e = <[ $f = $t ]> 
+        | <[ $_($e) ]>                                => e
+        | _                                           => e
+      }
+      
+      def define_tree_parts((t, e, _))
+      {
+        def name = get_name(e, t);
+        def expr = get_expr(e);
+        def type_expr = <[ $(t.Name : usesite)($expr) ]>;
+        def body = if (e is <[]>) <[ Iterator().OfType.[$(t.Name : usesite)]() ]> else <[ Iterator().FilterType(x => match (x) { | $type_expr as t => t | _ => null }) ]>;
+        _ = typeBuilder.DefineWithSource(<[decl: public $($"$(name)Parts" : usesite) : IEnumerable[$(t.Name : usesite)]
+                                              {
+                                                get
+                                                {
+                                                  $body
+                                                }
+                                              } ]>);
+      }
+
+      traversable.Iter(define_tree_parts);
 
       //def get_type(t, a)
       //{
@@ -160,14 +196,8 @@ namespace Nemerle.Statechart
 
       def create_iterator_data(t, e, f)
       {
-        def get_name(e)
-        {
-          | <[ $(n : name) = $_]> 
-          | <[ $(n : name)($_)]>   => n.Id
-          | _                      => t.Name
-        }
 
-        def name = get_name(e);
+        def name = get_name(e, t);
         def name = name.ToLowerCase();
         (t, f, name, e)
       }
