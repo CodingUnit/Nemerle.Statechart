@@ -53,13 +53,13 @@ namespace Nemerle.Statechart
                     | ConcurrentSubRegion(contained_in = r) => Initial(r, st).Create()
                     | _                                     => Initial(this, st).Create()
                   }
-      ChangeInitial(TraverseUtils.SingleElement(init))
+      ChangeInitial([init])
     }
 
     public AddSubState(st : FsmState) : FsmState
     {
       //st.analyser = Analyser;
-      if (sub_states.Exists(x => x.Num == st.Num)) this else ChangeSubStates(sub_states.Append(st))//sub_states = sub_states + [st];
+      if (sub_states.Exists(x => x.Num == st.Num)) this else ChangeSubStates(sub_states.Append(st).NToList())//sub_states = sub_states + [st];
     }
 
     //public DefineTransition(tr : StateTransition) : void
@@ -94,7 +94,7 @@ namespace Nemerle.Statechart
       def (tran, other)   = tr.PartitionType();
       def (intern, other) = other.PartitionType();
       def (init, _)       = other.PartitionType();
-      ChangeInternalTranInitialTransitions(internal_tran.Concat(intern), initial.Concat(init), transitions.Concat(tran))
+      ChangeInternalTranInitialTransitions(internal_tran.Concat(intern).NToList(), initial.Concat(init).NToList(), transitions.Concat(tran).NToList())
           //  | Transition as tr => transitions ::= Transition(this, tr)
     //  | Internal   as tr => internal_tran ::= Internal(this, tr)
     //  | Initial    as tr => initial ::= tr
@@ -130,7 +130,7 @@ namespace Nemerle.Statechart
       def initial           = initial.Exclude(init, (x, y : StateTransition.Initial) => x.Num == y.Num);
       def internal_tran     = internal_tran.Exclude(int_tran, (x, y : StateTransition.Internal) => x.Num == y.Num);
       def transitions       = transitions.Exclude(tran, (x, y : StateTransition.Transition) => x.Num == y.Num);
-      ChangeInternalTranInitialTransitions(internal_tran, initial, transitions)
+      ChangeInternalTranInitialTransitions(internal_tran.NToList(), initial.NToList(), transitions.NToList())
     }
 
     public UpdateTransitions(tr : IEnumerable[StateTransition]) : FsmState
@@ -202,12 +202,12 @@ namespace Nemerle.Statechart
       when (!reference)
       {
         do_activity = st.do_activity |> StateAction.Do(_.action.ActionList, this, _.flags);
-        internal_tran = Internal.Create(this, st.internal_tran);
+        internal_tran = Internal.Create(this, st.internal_tran).NToList();
         entry = st.entry |> StateAction.Entry(_.action.ActionList, this, _.attrib);
         exit = st.exit |> StateAction.Exit(_.action.ActionList, this, _.attrib);
         history = StateHistory.Create(this, st.history);
-        transitions = Transition.Create(this, st.transitions);
-        initial = st.initial.Select(Initial.Create(this, _));
+        transitions = Transition.Create(this, st.transitions).NToList();
+        initial = st.initial.Map(Initial.Create(this, _));
         //def (regs, subst) = st.sub_states.Partition(x => x.regions.HasValue);
         //def regs = regs |> ConcurrentRegion(this, _, _.regions.Value); // TODO: сделать с помощью st_from_node
         //super_state = super;
@@ -484,7 +484,7 @@ namespace Nemerle.Statechart
       match (this)
       {
         | ConcurrentRegion as r => r.ChangeSubRegions(child.Select(_ :> FsmState.ConcurrentSubRegion))
-        | _                     => ChangeSubStates(child)
+        | _                     => ChangeSubStates(child.NToList())
       }
     }
 

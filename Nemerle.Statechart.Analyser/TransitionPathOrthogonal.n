@@ -48,11 +48,11 @@ namespace Nemerle.Statechart
           transition = tran;
           node
     }
-    
+
     TraverseFork(fork : PseudoStateNode.Fork, targets : list[TransitionTarget]) : TransitionDestination
     {
       | (Fork(fork_tran = ftran), t) => 
-      
+
         def st = t |> ToState;
         def reg = st |> PartOfSubRegions;
         def sreg = reg |> Last();
@@ -78,17 +78,19 @@ namespace Nemerle.Statechart
       match (target)
       {
         | Region(ConcurrentRegion(sub_regions = sr)) =>
+
           def init = sr.SelectMany(_.initial);
           def st = init.Map(_.Destination);
           def st = st |> TraverseCompletionTransition(_, to);
           match (st.Find(_ is CheckAfter))
           {
-           | Some(c) => c
-           | _       => to
+          | Some(c) => c
+          | _       => to
           }
+
         | SubRegion(reg = FsmState(join_completion_transitions = (_ :: _) as tr))
         | State(FsmState(join_completion_transitions = (_ :: _) as tr)) => 
-        
+
             def (reg, joined) = match (tr.Head.To)
             {
               | PseudoState(Join(joined_tran = tran, region = reg)) => (reg, tran)
@@ -96,22 +98,30 @@ namespace Nemerle.Statechart
             }
             traverser.Add(tr);
             ForceStateChange(TransitionPostConditions.RegionCompletion(reg, joined), to)
+
         | _ => to// end state
       }
     }
-    
-    TraverseSubRegion(reg : ConcurrentSubRegion, to : TransitionTarget, tran : StateTransition) : TransitionDestination
+
+    TraverseSubRegion(reg : FsmState, to : TransitionTarget, tran : StateTransition) : TransitionDestination
     {
-      def region = reg.contained_in;
-      def st = to.ToState;
-      def omitted = region.RegionsExcept(st); // other omitted regions
-      def initial = omitted |> initial;
-      when (!initial.All(_ is _ :: _)) throw FsmErrorException(FsmError.SubRegionsMustContainInitial(omitted, transition));
-      def init = initial.Flatten();
-      traverser.Add(init |> _ : StateTransition);
-      def target = TraverseTarget(to, tran);
-      def res = SubRegion(reg, target, transition.From);
-      TraverseCompletionTransition(target, res)
+      match (reg)
+      {
+        | ConcurrentSubRegion as reg =>
+
+          def region = reg.contained_in;
+          def st = to.ToState;
+          def omitted = region.RegionsExcept(st); // other omitted regions
+          def initial = omitted |> initial;
+          when (!initial.All(_ is _ :: _)) throw FsmErrorException(FsmError.SubRegionsMustContainInitial(omitted, transition));
+          def init = initial.Flatten();
+          traverser.Add(init |> _ : StateTransition);
+          def target = TraverseTarget(to, tran);
+          def res = SubRegion(reg, target, transition.From.Updated);
+          TraverseCompletionTransition(target, res)
+
+        | _ => null
+      }
     }
 
     TraverseWithinRegionTransition(tran : StateTransition) : TransitionDestination
