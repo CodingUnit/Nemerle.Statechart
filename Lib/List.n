@@ -25,12 +25,12 @@ namespace Nemerle.Statechart
         match (n)
         {
           | head :: _ when pred(head) => acc.Rev()
-          | head :: tail => loop(tail, head :: acc)
-          |_ => acc.Rev()
+          | head :: tail              => loop(tail, head :: acc)
+          |_                          => acc.Rev()
         }
-
       }
-      loop(n, []);
+      
+      loop(n, [])
     }
 
     public SplitFind[T](this n : list[T], pred : T -> bool) : list[T] * list[T]
@@ -197,7 +197,7 @@ namespace Nemerle.Statechart
     /// </summary>
     /// <param name = "lst">список</param>
     /// <returns>результат * оставшиеся элементы</returns>
-    public FindType[T, TRes](this lst : list[T]) : option[TRes] * list[T]
+    public FindTypeRes[T, TRes](this lst : list[T]) : option[TRes] * list[T]
     {
       def loop(lst : list[T], res)
       {
@@ -212,6 +212,23 @@ namespace Nemerle.Statechart
       loop(lst, []);
     }
 
+    /// <summary>
+    /// Find first element corresponds to result type
+    /// </summary>
+    /// <param name = "lst">список</param>
+    /// <returns>результат * оставшиеся элементы</returns>
+    public FindType[T, TRes](this lst : list[T]) : option[TRes]
+    {
+      def loop(lst : list[T])
+      {
+        | (head is TRes) :: _  => Some(head)
+        | _ :: tail            => loop(tail)
+        | _                    => None()
+      }
+      
+      loop(lst)
+    }
+    
     /// <summary>
     /// Find first element corresponds to result type
     /// </summary>
@@ -602,11 +619,7 @@ namespace Nemerle.Statechart
 
     public static @%::[T](opt : option[T], lst : list[T]) : list[T]
     {
-      match (opt)
-      {
-        | Some(v) => v :: lst
-        | _ => lst
-      }
+      if (opt is Some(v)) v :: lst else lst
     }
 
     not_empty_err = "list must be not empty";
@@ -648,7 +661,6 @@ namespace Nemerle.Statechart
 
       loop(lst, lst2)
     }
-
 
     public Map[T, T2, T3](this tuple : T * T2, map : (T * T2) -> T3) : T3
     {
@@ -697,6 +709,20 @@ namespace Nemerle.Statechart
       loop(start)
     }
 
+    public Init[T](len : int, init : int -> T) : IEnumerable[T]
+    {
+      def loop(idx)
+      {
+        if (idx == len) () else 
+        {
+          yield init(idx);
+          loop(idx + 1)
+        }
+      }
+      
+      loop(0)
+    }
+    
     public UnfoldLazy[T, TResult](start : T, generator : T -> option[TResult] * option[T]) : IEnumerable[TResult]
     {
       def loop(next)
@@ -959,22 +985,22 @@ namespace Nemerle.Statechart
       loop(init1, init2, init3)
     }
     
-    public FoldList[T, TAcc1, TAcc2](this lst : IEnumerable[T], init1 : list[TAcc1], init2 : TAcc2, fold : T * TAcc2 -> TAcc1 * TAcc2) : list[TAcc1] * TAcc2
-    {
-      def en = lst.GetEnumerator();
+    //public FoldList[T, TAcc1, TAcc2](this lst : IEnumerable[T], init1 : list[TAcc1], init2 : TAcc2, fold : T * TAcc2 -> TAcc1 * TAcc2) : list[TAcc1] * TAcc2
+    //{
+    //  def en = lst.GetEnumerator();
 
-      def loop(acc1, acc2)
-      {
-        if (en.MoveNext())
-        {
-          def elem = en.Current;
-          def (r, a) = fold(elem, acc2);
-          loop(r :: init1, a)
-        } else (acc1, acc2)
-      }
+    //  def loop(acc1, acc2)
+    //  {
+    //    if (en.MoveNext())
+    //    {
+    //      def elem = en.Current;
+    //      def (r, a) = fold(elem, acc2);
+    //      loop(r :: init1, a)
+    //    } else (acc1, acc2)
+    //  }
 
-      loop(init1, init2)
-    }
+    //  loop(init1, init2)
+    //}
 
     public PushLength[T](this lst : SCG.Stack[T], en : IEnumerable[T]) : int
     {
@@ -1027,9 +1053,9 @@ namespace Nemerle.Statechart
       } else dothrow()
     }
 
-    public IndexOf(this str : string, pred : char -> bool) : int
+    public IndexOf[T](this lst : IEnumerable[T], pred : T -> bool) : int
     {
-      def en = str.GetEnumerator();
+      def en = lst.GetEnumerator();
 
       def loop(i)
       {
@@ -1041,7 +1067,7 @@ namespace Nemerle.Statechart
 
       loop(0)
     }
-
+    
     public Reduce[T, TAcc](this lst : IEnumerable[T], folder : T * T -> T) : T
     {
       def en = lst.GetEnumerator();
@@ -1097,6 +1123,10 @@ namespace Nemerle.Statechart
       loop(en1.Current)
     }
 
+    public OptionFromObj[T](this obj : T) : option[T] where T : class
+    {
+      if (obj == null) None() else Some(obj)
+    }
   }
 
 }

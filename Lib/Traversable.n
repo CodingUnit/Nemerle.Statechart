@@ -24,7 +24,9 @@ namespace Nemerle.Statechart
 
         def is_that_type(ty, tt, type, cont)
         {
-          cont.TryRequire(ty) && tt.TryRequire(type)
+          def is_type = ty.TryRequire(cont);
+          is_type && tt.TryRequire(type)
+          //cont.TryRequire(ty) && tt.TryRequire(type)
         }
 
         def is_enum(ty, tt, t)
@@ -44,8 +46,8 @@ namespace Nemerle.Statechart
         match (f.GetMemType())
         {
           | FixedType.Class(_, [t]) as ty => def ret = if (types.Exists(is_enum(ty, t, _))) TreeType.Enumerable else
-                                              if (types.Exists(is_opt(ty, t, _))) TreeType.Option else TreeType.Unknown;
-                                              if (ret == TreeType.Unknown) a else (f, ret) :: a
+                                             if (types.Exists(is_opt(ty, t, _))) TreeType.Option else TreeType.Unknown;
+                                             if (ret == TreeType.Unknown) a else (f, ret) :: a
           | FixedType.Class as ty         => if (types.Exists(x => ty.TryRequire(x.GetFreshType()))) (f, TreeType.Type) :: a else a
           | _                             => a
         }
@@ -78,7 +80,7 @@ namespace Nemerle.Statechart
       def fields = get_fields();
       def fields_incl = fields.Filter(x => x.attr_func(x => x.Exists(_ is <[ TraverseInclude ]>)));
       def fields = if (fields_incl is []) fields.Exclude(x => x.attr_func(x => x.Exists(_ is <[ TraverseIgnore ]>))); else fields_incl;
-      (f, e, fields.FoldBack([], is_traversable))
+      (f, e, fields.FoldLeft([], is_traversable))
 
     }
 
@@ -146,7 +148,7 @@ namespace Nemerle.Statechart
         def name = get_name(e, t);
         def expr = get_expr(e);
         def type_expr = <[ $(t.Name : usesite)($expr) ]>;
-        def body = if (e is <[]>) <[ Iterator().OfType.[$(t.Name : usesite)]() ]> else <[ Iterator().FilterType(x => match (x) { | $type_expr as t => t | _ => null }) ]>;
+        def body = if (e is <[]>) <[ Iterator().OfType.[$(t.Name : usesite)]() ]> else <[ Iterator().FilterType(x => if (x is $type_expr as t) t else null) ]>;
         _ = typeBuilder.DefineWithSource(<[decl: public $($"$(name)Parts" : usesite) : IEnumerable[$(t.Name : usesite)]
                                               {
                                                 get
@@ -158,55 +160,15 @@ namespace Nemerle.Statechart
 
       traversable.Iter(define_tree_parts);
 
-      //def get_type(t, a)
-      //{
-      //  match (t)
-      //  {
-      //    | <[ All ]>         => a
-      //    | <[ $(x : name) ]> => x.Id :: a
-      //    | _                 => a
-      //  }
-      //}
-
-      //def map_types(t, a)
-      //{
-      //  match (opts.Find(y => y.Name.EndsWith(t)))
-      //  {
-      //    | Some(s) => s :: a
-      //    | _       => a
-      //  }
-      //}
-
       def ttype = typeBuilder.GetFreshType();
-      //def types = expr.FoldBack([], get_type);
-      //def types = types.FoldBack([], map_types);
-      //def types = if (types is []) [typeBuilder] else types;
-
-      //def to_lower(s)
-      //{
-      //  def idx = s.IndexOf(char.IsUpper);
-      //  if (idx == -1) s else 
-      //  {
-      //    def str = s.Substring(0, idx);
-      //    def low = char.ToLower(s[idx]);
-      //    def nstr = s.Substring(idx + 1);
-      //    if (str.IsEmpty()) $"$low$(to_lower(nstr))" else $"$(str)_$low$(to_lower(nstr))"
-      //  }
-      //}
 
       def create_iterator_data(t, e, f)
       {
-
         def name = get_name(e, t);
         def name = name.ToLowerCase();
         (t, f, name, e)
       }
 
-
-      //def traversable = CollectTraverseOpt(typer, typeBuilder, expr);
-      //def traverse = if (traverse is []) opts.Map(x => (x, <[ ]>)) else traverse;
-
-      //def traversable = traverse.Map(get_members(typer, _, _, types));
       def data = traversable.Map(create_iterator_data);
 
 
@@ -266,7 +228,6 @@ namespace Nemerle.Statechart
 
         def run_body = run_body_func(data); 
         def param = <[ parameter: obj : $(ttype : typed) ]> :: vis_types;
-        //def expr = if (exec_expr != null) exec_expr(run_body) else ;
         _ = builder.DefineWithSource(<[ decl: public override Visit(..$param) : $ret_type
                         {
                           $run_body
