@@ -8,6 +8,7 @@ using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
 using Nemerle.Compiler.Parsetree;
+using System.IO;
 
 namespace Nemerle.Statechart
 {
@@ -97,7 +98,7 @@ namespace Nemerle.Statechart
   - completion запускается сразу если нет активности по стандарту (надо задавать флагами если мы не хотим этого)    
   - сложные выражения в guards
   */
-    
+
   module FsmHelper
   {
     Parse(ty : TypeBuilder, body : string, loc : Location) : StateNode.StateMachine
@@ -121,25 +122,41 @@ namespace Nemerle.Statechart
         }
       } else null
     }
-    
+
     public ParseAndGenerate(ty : TypeBuilder, body : PExpr) : void
     {
-    
+
       def parse(val)
       {
         def fsm = Parse(ty, val, body.Location);
         if (fsm != null)
         {
           when (fsm.flags.Debug) assert2(false);
-          def analyser = FsmAnalyser(fsm);
+          def analyser = FsmAnalyser(fsm, ty.Name);
           analyser.Analyse();
-          analyser.Warnings.Iter(Message.Warning);
-          if (!analyser.Error) 
+          def warn = analyser.Warnings;
+          def warn_file = $"$(ty.Name)Warnings.txt";
+          if (!warn.IsEmpty()) 
           {
-            def gen = StaticGenerator(analyser, ty);
-            gen.Generate();
-          } else analyser.Errors.Iter(Message.Error)
-         } else Message.Warning("No Statechart parsed")
+            warn.Iter(Message.Warning);
+            when (fsm.flags.Debug) File.WriteAllLines(warn_file, warn);
+          } else when (fsm.flags.Debug) File.Delete(warn_file);
+          def err_file = $"$(ty.Name)errors.txt";
+          if (analyser.Error)
+          {
+            def err = analyser.Errors;
+            when (fsm.flags.Debug) System.IO.File.WriteAllLines(err_file, err);
+            err.Iter(Message.Error)
+          } else
+          {
+            when (fsm.flags.Debug) File.Delete(err_file);
+            when (!fsm.flags.OnlyAnalyse) 
+            {
+              def gen = StaticGenerator(analyser, ty);
+              gen.Generate()
+            }
+          }
+        } else Message.Warning("No Statechart parsed")
       }
 
       match (body)
@@ -149,5 +166,5 @@ namespace Nemerle.Statechart
       }
     }
   }
-  
+
 }
