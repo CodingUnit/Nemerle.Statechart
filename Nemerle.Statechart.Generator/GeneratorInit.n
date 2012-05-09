@@ -22,7 +22,7 @@ namespace Nemerle.Statechart
         DefineTransBody(i |> _ : StateTransition, GenCtx.Normal());
       }
 
-      def initial = def_initial(analyser.TopState.initial);
+      def initial = def_initial(analyser.TopState.initial); // define initial transition
       def events = analyser.Events |> <[ $_ ]>;
       def states = analyser.LivedNestedStates.Exclude(_.IsTopState) |> Name |> <[ $_ ]>;
       def state_names = $[(st.Name, $"State$(st)"), st in analyser.LivedNestedStates, st.UsedInGenerate && !st.IsTopState && !(st is FsmState.ConcurrentSubRegion)]; // создаем имена состояний      
@@ -84,13 +84,13 @@ namespace Nemerle.Statechart
                     }
 
                     public static ContainsStates : array[string] = array[..$states];
-                    public static ProcessEvents : array[string] = array[..$events];
+                    public static ProcessEvents  : array[string] = array[..$events];
                   }
 
                   ]>;
 
       Define(state_names |> <[decl: $(_[2] : usesite) : State.$(_ : usesite);]>); // create state variables for fast using 
-      Define(dummy.td.GetMembers());
+      Define(dummy.td.GetMembers())
     }
 
     /// <summary>
@@ -195,38 +195,35 @@ namespace Nemerle.Statechart
     {
       def create_comp_expr(st_id)
       {
-        def comp = TopState.Id.Result;
-        def comp = comp.MapIndex((_, i) =>
+        //def comp = TopState.Id.Result;
+        def comp = ListUtils.Init(StatesId.Length, i => <[ cur_id.$($"id$i" : usesite) & id.$($"id$i" : usesite) == id.$($"id$i" : usesite) ]>);
+        def expr = MergeExpr(comp, (x,y) => <[ $x && $y ]>);
         <[
-                                 cur_id.$($"id$i" : usesite) & id.$($"id$i" : usesite) == id.$($"id$i" : usesite)
-        ]>).NToList();
-        def expr = MergeExpr(comp, (x,y) => <[ $x && $y ]> );
-        <[
-        def id = $st_id;
+          def id = $st_id;
           def cur_id = cur_state.get_id();
           $expr
-        ]>;
+        ]>
       }
 
-      def id = TopState.Id;
+      //def id = TopState.Id;
 
       def get_body(st_id)
       {
-        if (id.IsSimple)
+        if (StatesId.IsSimple)
         {
           match (st_id)
           {
             | <[ $(_ : usesite) ]> => <[ cur_state.get_id() & id == id ]>
             | _ => <[
-                def id = $st_id;
+                              def id = $st_id;
                               cur_state.get_id() & id  == id 
                             ]>
           }
         } else
         {
-          def ids = id.Result;
-          def names = ids.MapIndex((_, i) => $"id$i");
-          def mem = if (id.IsStruct)
+          def ids = StatesId;
+          def names = ListUtils.Init(ids.Length, i => $"id$i");
+          def mem = if (ids.IsStruct)
                      {
                        def ids = names |> <[decl: public $(_ : usesite) : uint; ]>;
                        def vars = names.Map(x => <[parameter: $(x : usesite) : uint]>);
@@ -259,7 +256,7 @@ namespace Nemerle.Statechart
                     $(get_body(<[st.get_id()]>))
                 }
             ]>;
-      def (id_type, _, _) = GetId(TopState.Id);
+      def id_type = StateIdType;
       def is_in_state2 = <[decl:
                 public IsInState(id : $id_type) : bool
                 {

@@ -31,46 +31,48 @@ namespace Nemerle.Statechart
       DefineHistoryPaths(type, st); // define history paths
       match (st)
       {
-        | SubMachine as st                   => DefineSubMachine(type, st);
-        | FsmState where (IsTopState = true) => DefineRegions(type);
-        | _                                  => ()
+        | SubMachine as st            => DefineSubMachine(type, st);
+        | FsmState(IsTopState = true) => DefineRegions(type);
+        | _                           => ()
       }
       type
     }
 
     DefineState(builders : list[TypeBuilder], ty : TypeBuilder, st : FsmState) : list[TypeBuilder]
     {
-      def (id_type, expr, _) = GetId(st.Id);
-
-      def type = match (st)
-                  {
-                    | FsmState where (IsTopState = false) => 
-                      <[ variant_option: |  $(st.Name : usesite)
-                        {
-                            public override get_id() : $id_type {$expr}
-
-                            public static Id() : $id_type
-                            {
-                                $expr
-                            }
-
-                            public override ToString() : string
-                            {
-                                $(st.Name)
-                            }
-                        } ]>
-                     | _ => null
-                        
-                  }
       match (st)
       {
-        | Final
-        | State(UsedInGenerate = true)
-        | InlinedSubMachineInstance
-        | InlinedSubMachine
-        | State(IsTopState = false) => 
+        //| Final
+        | FsmState(IsTopState = false, UsedInGenerate = true) => 
+        //| InlinedSubMachineInstance
+        //| InlinedSubMachine => 
+          def id_type = StateIdType;
+          def (expr, _) = GetId(st.Id);
+
+          def type = match (st)
+                      {
+                        | FsmState(IsTopState = false) => 
+                          <[ variant_option: |  $(st.Name : usesite)
+                            {
+                                public override get_id() : $id_type {$expr}
+
+                                public static Id() : $id_type
+                                {
+                                    $expr
+                                }
+
+                                public override ToString() : string
+                                {
+                                    $(st.Name)
+                                }
+                            } ]>
+                        | _ => null
+
+                      }
+
             def type = DefineState(ty, type, st);
             type :: builders
+
         | _ => builders
       }
     }
@@ -86,13 +88,15 @@ namespace Nemerle.Statechart
     DefineStates() : void
     {
       def st = TopState;
-      def (id_type, _, default) = GetId(st.Id);
+      def id_type = StateIdType;
+      def default = StateIdDefaultValue;
+      //def (_, default) = GetId(st.Id);
       def top = <[decl:
                   public variant State
                   {
 
                       public virtual GetCopy(_ : int) : State {this}
-                      public virtual get_id() : $id_type {$default}
+                      public virtual get_id() : $id_type { $default }
 
                       public override ToString() : string
                       {
@@ -100,7 +104,8 @@ namespace Nemerle.Statechart
                       }
                   } ]>;
       def ty = DefineState(ty, top, st);
-      def builders = TopState.Fold(ty :: compile_list, (s, a) => DefineState(a, ty, s), 
+      def builders = TopState.Fold(ty :: compile_list, 
+                                   (s, a) => DefineState(a, ty, s), 
                                    (s, a) => DefineState(a, ty, s), 
                                    null, 
                                    null, 
@@ -108,9 +113,6 @@ namespace Nemerle.Statechart
                                    null, 
                                    (s, a) => DefineState(a, ty, s));
       compile_list = builders;
-      //def builders = builders.Map(x => (x.Name, x));
-      //state_builders = Map(builders);
-      //DefineStates(ty, analyser.TopState);
     }
 
     DefineSubMachine(type : TypeBuilder, st : FsmState.SubMachine) : void
@@ -182,40 +184,40 @@ namespace Nemerle.Statechart
             gen_members ::= <[decl: mutable $(cancel_source : usesite) : CancellationTokenSource; ]>;
             def tok = <[def tok = $(cancel_source : usesite).Token; ]>;
             def (run_body, stop_body) = if (conc)
-                                         {
-                                           def act_run = act.Map(x => (x,$"$name$(x)Action"));
-                                           gen_members += act_run.Map((n,x) => <[decl: $(x : usesite) : Action = () => $($"On$n" : usesite)($(cancel_source : usesite).Token);]>);
-                                           def tasks = act.Map(x => $"$task$x");
-                                           def task_arr = <[decl: mutable $(task : usesite) : array[Task] = array($(tasks.Length));]>;
-                                           gen_members ::= task_arr;
-                                           def stop = if (no_wait) <[ () ]> else <[ Task.WaitAll($(task : usesite)); ]>;
-                                           def tasks = act_run.MapIndex(((_,y), i) => 
+                                        {
+                                          def act_run = act.Map(x => (x,$"$name$(x)Action"));
+                                          gen_members += act_run.Map((n,x) => <[decl: $(x : usesite) : Action = () => $($"On$n" : usesite)($(cancel_source : usesite).Token);]>);
+                                          def tasks = act.Map(x => $"$task$x");
+                                          def task_arr = <[decl: mutable $(task : usesite) : array[Task] = array($(tasks.Length));]>;
+                                          gen_members ::= task_arr;
+                                          def stop = if (no_wait) <[ () ]> else <[ Task.WaitAll($(task : usesite)); ]>;
+                                          def tasks = act_run.MapIndex(((_,y), i) => 
                                                                         if (not_long) <[$(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok, TaskCreationOptions.None, TaskScheduler.Current);]> else
-                                               <[$(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok);]>
+                                              <[$(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok);]>
                                               );
-                                           (<[ $tok;{..$tasks}]>, <[ $stop ]>)
-                                         } else
-                                         {
-                                           def run_act = $"$(actions)Action";
-                                           gen_members ::= <[decl: mutable $(task : usesite) : Task;]>;
-                                           gen_members ::= <[decl: $(run_act : usesite) : Action; ]>;
-                                           init_exprs ::= <[ $(run_act : usesite) = Action($(actions : usesite));]>;;
-                                           def act_body = match (act_list)
-                                                           {
-                                                             | head :: [] => <[ $(head : usesite)($(cancel_source : usesite).Token); ]>
-                                                             | _ => 
-                                                                 def run_acts = act_list |> <[ $(_ : usesite)(tok); ]>;
+                                          (<[ $tok;{..$tasks}]>, <[ $stop ]>)
+                                        } else
+                                        {
+                                          def run_act = $"$(actions)Action";
+                                          gen_members ::= <[decl: mutable $(task : usesite) : Task;]>;
+                                          gen_members ::= <[decl: $(run_act : usesite) : Action; ]>;
+                                          init_exprs ::= <[ $(run_act : usesite) = Action($(actions : usesite));]>;;
+                                          def act_body = match (act_list)
+                                                          {
+                                                            | head :: [] => <[ $(head : usesite)($(cancel_source : usesite).Token); ]>
+                                                            | _ => 
+                                                                def run_acts = act_list |> <[ $(_ : usesite)(tok); ]>;
                                                             <[ 
-                                                                 def tok = $(cancel_source : usesite).Token;
+                                                                def tok = $(cancel_source : usesite).Token;
                                                             {..$run_acts}
                                                             ]>
-                                                           }
-                                           DefineMethod(actions, act_body);
-                                           def run = if (not_long) <[ $(task : usesite) = Task.Factory.StartNew($(run_act : usesite), $(cancel_source : usesite).Token, TaskCreationOptions.None, TaskScheduler.Current); ]> else
-                                                         <[ $(task : usesite) = Task.Factory.StartNew($(run_act : usesite), $(cancel_source : usesite).Token);]>;
-                                           def stop = if (no_wait) <[ () ]> else <[ $(task : usesite).Wait(); ]>;
-                                           (run, stop)
-                                         }
+                                                          }
+                                          DefineMethod(actions, act_body);
+                                          def run = if (not_long) <[ $(task : usesite) = Task.Factory.StartNew($(run_act : usesite), $(cancel_source : usesite).Token, TaskCreationOptions.None, TaskScheduler.Current); ]> else
+                                                        <[ $(task : usesite) = Task.Factory.StartNew($(run_act : usesite), $(cancel_source : usesite).Token);]>;
+                                          def stop = if (no_wait) <[ () ]> else <[ $(task : usesite).Wait(); ]>;
+                                          (run, stop)
+                                        }
             def stop_name = $"$(name)Stop";
             def run_name = $"$(name)Run";
             def run = <[decl: $(run_name : usesite)() : void

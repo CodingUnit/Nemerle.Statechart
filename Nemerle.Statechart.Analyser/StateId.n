@@ -19,23 +19,6 @@ namespace Nemerle.Statechart
   {
     public val : BitArray;
 
-    public IsSimple : bool
-    {
-      get
-      {
-        Length <= 2
-      }
-    }
-
-    public IsStruct : bool
-    {
-      get
-      {
-        def len = Length;
-        len > 2 && len <= 4
-      }
-    }
-
     public Count : int
     {
       get
@@ -62,7 +45,7 @@ namespace Nemerle.Statechart
     {
       id.Or(id2)
     }
-    
+
     public UInt : uint
     {
       get
@@ -75,9 +58,12 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def r1 = Result[0] :> uint;
-        def r2 = Result[1] :> uint;
-        BitUtils.MakeLong(r1, r2)
+        unchecked 
+        {
+          def r1 = Result[0] :> uint;
+          def r2 = Result[1] :> uint;
+          BitUtils.MakeLong(r1, r2)
+        }
       }
     }
 
@@ -101,7 +87,32 @@ namespace Nemerle.Statechart
   {
     analyser : FsmAnalyser;
 
-    count : int
+    public IsSimple : bool
+    {
+      get
+      {
+        Length <= 2
+      }
+    }
+
+    public IsStruct : bool
+    {
+      get
+      {
+        def len = Length;
+        len > 2 && len <= 4
+      }
+    }
+
+    public Length : int 
+    {
+      get
+      {
+        MathUtils.UpperDiv(Count, 32)
+      }
+    }
+
+    Count : int
     {
       get
       {
@@ -109,45 +120,54 @@ namespace Nemerle.Statechart
       }
     }
 
-    public CreateMasks() : FsmState 
+    public CreateMasks() : void
     {
       def st = analyser.TopState;
 
-      def create_num_id_super(s, t)
+      def create_id(t)
       {
-        def id = s.Id | t;
+        def id = BitArray(Count);
+        def num = t.Num;
+        id.Set(num, true);
+        IdType(id)
+      }
+
+      def create_num_id_super(s, t : IdType)
+      {
+        def id = create_id(s);
+        def id = if (t != null) id | t else id;
         s.ChangeId(id)
       }
 
-      def create_num_id(t, s)
+      def create_num_id(t)
       {
-        def id = BitArray(count);
-        def num = t.Num;
-        when (num != 0) id.Set(num, true);
-        def id = IdType(id);
-        def sub = s |> create_num_id_super(_, id);
-        t.ChangeIdSubStates(id, sub)
+        def id  = t.Id;
+        def sub = t.sub_states.Map(create_num_id_super(_, id));
+        t.ChangeSubStates(sub)
       }
 
-      def mark_inlined_inst(t, sub)
+      def mark_inlined_inst(t)
       {
         match (t)
         {
-          | FsmState(cloneFor = FsmState(Id = clone_id, PartOfStateMachine = Some(FsmState(Super = FsmState(Id = inlined_super_id))))) =>
+          | FsmState(CloneFor = null) => null
+          | FsmState(CloneFor = FsmState(Id = clone_id, PartOfStateMachine = Some(FsmState(Super = FsmState(Id = inlined_super_id)))), Id = id) =>
 
-              def id = t.Id;
               def id = (id.val | clone_id.val);
               def id = id & ~inlined_super_id.val;
               def id = IdType(id);
-              t.ChangeIdSubStates(id, sub)
-          | _ => t     
+              t.ChangeId(id)
+
+          | _ => null
         }
       }
 
       // first pass
-      def st = st.ReduceSingle(true, create_num_id);
+      def st = st.LevelOrderMap(create_num_id);
+      analyser.UpdateStateMap(st);
       // second pass
-      st.ReduceSingle(mark_inlined_inst);
+      def st = analyser.TopState.LevelOrderMap(mark_inlined_inst);
+      analyser.UpdateStateMap(st)
     }
 
   }
