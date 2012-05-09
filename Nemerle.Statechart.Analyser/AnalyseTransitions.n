@@ -40,8 +40,17 @@ namespace Nemerle.Statechart
                     check_auto_initial(top, top.sub_states) // initial is first substate
                   else top; // else initial transition is top state
                  else top;
+      
+      //def create_path_from_out(st, _)
+      //{
+      //  def path = StateTransition.Initial(TopState, st).Create();
+      //  def path = path.TraversePath();
+      //  st.ChangePathFromOut(path)
+      //}
+      
+      //UpdateStateMap(top);
+      //def top = top.ReduceSingle(create_path_from_out);
       UpdateStateMap(top);
-      //def map = map.ChangeStates(states.ToArray());
     }
 
     is_crossed_orthogonal(tr : StateTransition, st : FsmState) : bool
@@ -56,8 +65,10 @@ namespace Nemerle.Statechart
       def create_trans(st)
       {
         | FsmState(PartOfSubRegion = Some, sub_states = sub) with trans = st.all_transitions.Exclude(is_crossed_orthogonal(_, st))
+        
         | FsmState(sub_states = sub, all_transitions = trans) => 
-            def sub = sub.Map(x => x.DefineTransitions(trans));
+
+            def sub = sub.Map(x => x.DefineTransitions(trans.Map(t => t.ChangeSource(x).SetNewId())));
             st.ChangeSubStates(sub)
       }
 
@@ -103,7 +114,7 @@ namespace Nemerle.Statechart
       }
 
 
-      def top = TopState.Reduce(check_cross); // check from the top state
+      def top = TopState.ReduceSingle(check_cross); // check from the top state
       UpdateStateMap(top)
     }
 
@@ -194,8 +205,8 @@ namespace Nemerle.Statechart
             def super = if (tran is Initial) st else st.Super;
             match (super.sub_states.FindType())
             {
-              | Some(st)  => t.ChangeState(st)
-              | _         => tr
+              | Some(FsmState.Final as st)  => t.ChangeState(st)
+              | _                           => tr
             }
 
         | PseudoState(node = Terminate(state = null) as node) =>
@@ -355,7 +366,7 @@ namespace Nemerle.Statechart
 
       def check_tran(st, _)
       {
-        def trans = st.all_transitions_with_init.Map(x => x.ChangeTo(x.To.Reduce(junction = check_targets)));
+        def trans = st.all_transitions_with_init.Map(x => x.ChangeTo(x.To.Reduce(junction = check_targets, junction_node = (n, _, _) => CheckJunctionNode(n))));
         st.UpdateTransitions(trans)
       }
 
@@ -396,20 +407,7 @@ namespace Nemerle.Statechart
         st.all_transitions.Iter(check_cross_orthogonal)
       }
       
-      UpdateStateMap(TopState.ReduceSingle(check_tran));
-
-      //def update_states()
-      //{
-      //  def check_target(t, a) 
-      //  {
-      //    t.To.Fold(a, state = (t, a) => t.state :: a, named = (t, a) => t.state :: a, junction_node = (t, a) => t.state :: a)
-      //  }
-
-      //  def st = States.FoldLeft([], (x, a) => x.all_transitions_with_init.FoldLeft(a, check_target));
-      //  statemap.Update(st);
-      //}
-
-      //update_states();
+      UpdateStateMap(TopState.ReduceSingle(check_tran))
     }
 
     RenameTransition(tran : IEnumerable[StateTransition]) : IEnumerable[string * StateTransition]
@@ -433,27 +431,26 @@ namespace Nemerle.Statechart
         traverser = TransitionTraverser(this);
         traverser.Add(TopState.initial);
         traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
+        statemap.Update(traverser.CompletedStates);
         def tran = traverser.Completed;
         UpdateTransitions(tran);
-        statemap.Update(traverser.CompletedStates);
       }
 
       def update_states()
       {
         def dest = trans_paths.SelectMany(x => x.Paths.Map((_, y) => y.Transition.Destination));
-        def tran = dest.SelectMany(_.Transition);
-        UpdateTransitions(tran);
-        def st   = dest.Select(_.ToState).Where(_ != null);
+        //def tran = dest.SelectMany(_.Transition);
+        //UpdateTransitions(tran);
         def hist = dest.OfType.[TransitionDestination.History]().Select(_.state);
         def hist = hist.Select(_.ChangeUsed(true));
 
         def update_hist(s, _)
         {
-          def hist = hist.Where(x => x.state.name == s.name);
+          def hist = hist.Where(x => x.state.Num == s.Num);
           hist.FoldLeft(s, (x, a) => a.UpdateHistory(x))
         }
 
-        statemap.Update(st);
+        //statemap.Update(st);
         def top = TopState.ReduceSingle(update_hist);
         UpdateStateMap(top)
       }
@@ -467,12 +464,13 @@ namespace Nemerle.Statechart
     {
       def determine_used()
       {
-        def empty = empty_states.Select(x => FsmWarning.StateNotUsed(x) : FsmWarning); // warning about all without substates and not lived that is not used
-        def not_used = not_used_transitions.Select(x => FsmWarning.TransitionNotUsed(x) : FsmWarning);
-        empty.Concat(not_used)
+        def empty = empty_states.Select(FsmWarning.StateNotUsed); // warning about all without substates and not lived that is not used
+        def not_used = not_used_transitions.Select(FsmWarning.TransitionNotUsed);
+        AddWarnings(empty);
+        AddWarnings(not_used);
       }
 
-      def warnings = determine_used(); // determine used elements
+      determine_used(); // determine used elements
 
       //def (used_hstates, not_used) = history_states.Partition(_.Used);
       //history_states = used_hstates;
@@ -488,14 +486,13 @@ namespace Nemerle.Statechart
       internal_transitions = int_tran;
       transitions = trans;
       initial_transitions = init;
-      def hist = not_used_history.Select(x => FsmWarning.HistoryNotUsed(x));
-      def warnings = warnings.Concat(hist);
-      AddWarnings(warnings.NToList())
+      def hist = not_used_history.Select(FsmWarning.HistoryNotUsed);
+      AddWarnings(hist)
     }
 
     UpdateInitial() : void
     {
-      def warn = not_used_states_initial_tran |> FsmWarning.TransitionNotUsed(_);
+      def warn = not_used_states_initial_tran.Select(FsmWarning.TransitionNotUsed);
       AddWarnings(warn)
     }
 

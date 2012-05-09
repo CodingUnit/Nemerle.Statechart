@@ -15,13 +15,17 @@ namespace Nemerle.Statechart
 
   [Traversable]
   [Record]
-  public variant DecisionNode
+  public partial variant DecisionNode
   {
     | Condition 
       {
         [NeedChange(body, else_node)] condition : GuardNode;
-        [NeedChange(else_node)] body : DecisionNode;
-        else_node : DecisionNode;
+        
+        [NeedChange(else_node)] 
+        [NeedChange] 
+        body : DecisionNode;
+        
+        else_node : option[DecisionNode];
       }
     | Target 
       {
@@ -37,23 +41,6 @@ namespace Nemerle.Statechart
 
     public this(an : FsmAnalyser) { analyser = an }
 
-    //public SetCopy(n : int) : DecisionNode
-    //{
-    //  //def inc(t, an)
-    //  //{
-    //  //  match (t)
-    //  //  {
-    //  //    | Target(t, d)      => def t = t.SetCopy(n);
-    //  //                           (Target(t, d), an)
-    //  //    | _                 => (this, an)
-    //  //  }
-    //  //}
-
-    //  Reduce(target = o => o.ChangeTarget(o.target.SetCopy(n)))
-    //  //Fold((c, b, e) => Condition(level, state, actions, j.PrevState, j.node_path, j.out_path, c, nb, ne), an) else node, )
-    //  //Map(an, inc)
-    //}
-
     public ActionNode : IEnumerable[PathNode]
     {
       get
@@ -62,119 +49,35 @@ namespace Nemerle.Statechart
       }
     }
 
-    //public Actions : PathNode
-    //{
-    //  get
-    //  {
-    //    //def act = Iterator |> ActionNode;
-    //    //Fold((_, a, b, x) => x.ActionNode + a + b, (a, x) => x.ActionNode + a, (_, _, x) => x.ActionNode, (_, a, x) => x.ActionNode + a);
-    //    //Fold(PathNode.Empty(), (a, _, c) => a + c.ActionNode, (a, e) => a + e.ActionNode, (a, _, _, x) => a + x.ActionNode, (a, _, x) => a + x.ActionNode)
-    //    //PathNode.Sequence(Iterator.Map(_.ActionNode))
-
-    //  }
-    //}
-
-
-    //public FoldThis(cond : GuardNode * DecisionNode * DecisionNode * DecisionNode.Condition -> DecisionNode,
-    //                targ : TransitionTarget * TransitionDestination * DecisionNode.Target -> DecisionNode
-    //                ) : DecisionNode
-    //{
-    //  def xnode(n, nb, ne, ot)
-    //  {
-    //    def n = n ?? ot;
-    //    match (n)
-    //    {
-    //      | Condition as j                  => j.ChangeBodyElseNode(nb, ne)
-    //      | x                               => x
-    //    }
-    //  }
-
-    //  def stack = SCG.Stack();
-
-    //  def loop(e, _)
-    //  {
-    //    match (e)
-    //    {
-    //      | Target(x, d) as t       => def acc = if (targ != null) xnode(targ(x, d, t), null, null, t) else t;
-    //          stack.Push(acc);
-    //          acc
-    //      | Condition(c, _, _) as t => 
-    //          def bacc = stack.Pop();
-    //          def eacc = stack.Pop();
-    //          def acc = if (cond != null) xnode(cond(c, bacc, eacc, t), bacc, eacc, t) else t.ChangeBodyElseNode(bacc, eacc);
-    //          stack.Push(acc);
-    //          acc
-    //    }
-    //  }
-
-    //  Iterator().FoldLeft(null, loop)
-    //}
-
-
-    //public Fold[T](init : T,
-    //              cond : GuardNode * T * T * Condition -> T, 
-    //              targ : TransitionTarget * TransitionDestination * Target -> T) : T
-    //{
-    //  def stack = SCG.Stack();
-
-    //  def loop(e, _)
-    //  {
-    //    match (e)
-    //    {
-    //      | Target(x, d) as t       => def acc = targ(x, d, t);
-    //          stack.Push(acc);
-    //          acc
-    //      | Condition(c, _, _) as t => def bacc = stack.Pop();
-    //          def eacc = stack.Pop();
-    //          def acc = cond(c, bacc, eacc, t);
-    //          stack.Push(acc);
-    //          acc
-    //    }
-    //  }
-
-    //  Iterator().FoldLeft(init, loop)
-    //}
-
-    //public Fold[T](init : T,
-    //              cond : T * GuardNode * Condition -> T, 
-    //              targ : T * TransitionTarget * TransitionDestination * Target -> T 
-    //              ) : T
-    //{
-    //  def loop(e, acc)
-    //  {
-    //    match (e)
-    //    {
-    //      | Target(x, d) as t       => targ(acc, x, d, t)
-    //      | Condition(c, _, _) as t => cond(acc, c, t)
-    //    }
-    //  }
-
-    //  Iterator().FoldLeft(init, loop)
-    //}
-
     public GetChild() : IEnumerable[DecisionNode]
     {
       match (this)
       {
-        | Condition(body = b, else_node = null) => TraverseUtils.SingleElement(b)
-        | Condition(body = b, else_node = els)  => TraverseUtils.DoubleElement(b, els)
-        | Target                                => Enumerable.Empty()
+        | Condition(body = b, else_node = Some(els))  => TraverseUtils.DoubleElement(b, els)
+        | Condition(body = b)                         => TraverseUtils.SingleElement(b)
+        | Target                                      => Enumerable.Empty()
       }
 
     }
 
-    public Rebuild(_child : IEnumerable[DecisionNode]) : DecisionNode
+    public Rebuild(child : IEnumerable[DecisionNode]) : DecisionNode
     {
-      this
+      match (this)
+      {
+        | Condition(else_node = Some) as t => def (a, b) = child.TakeTwo();
+                                              t.ChangeBodyElseNode(a, Some(b))
+                                              
+        | Condition as t                   => t.ChangeBody(child.First())
+        | Target as t                      => t
+      }
     }
     
-    public Guards : list[GuardNode]
+    public Guards : IEnumerable[GuardNode]
     {
       get
       {
-        Fold([], condition = (t, a) => t.condition :: a)
-        //Iterator.FoldLeft([], )
-        //Fold([], (g, a1, a2, _) => g :: a, (a, _, _, _) => a, (a, g, _) => g %:: a)
+        ConditionParts.Select(_.condition)
+        //Fold([], condition = (t, a) => t.condition :: a)
       }
     }
 
@@ -218,11 +121,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    //public Traverse(func : DecisionNode -> void) : void
-    //{
-    //  Iterator.Iter(func)
-    //}
-
     static contains_decision(n : TransitionTarget.JunctionNode) : bool
     {
       match (n.guard)
@@ -233,283 +131,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    static create_junc_tree_node(an : FsmAnalyser,
-                                n : TransitionTarget.JunctionNode, 
-                                aa : list[Actions], 
-                                lev : int, 
-                                st : FsmState, 
-                                prevst : FsmState, 
-                                els : DecisionNode, 
-                                err : list[FsmError]) : DecisionNode * list[FsmError]
-    {
-
-      def get_sub_node(t, aa, lev, st, els, err)
-      {
-        match (t)
-        {
-          | TransitionTarget.PseudoState(Junction(to = n, state = st, type = JunctionType.Junction)) => 
-              def prevst = st;
-                //def st = nst ?? j.state =. st;
-              create_junc_tree_node(an, n, aa, lev + 1, st, prevst, els, err)
-
-          | PseudoState(Junction(to = n, state = st, type = JunctionType.Choice)) => 
-              def prevst = st;
-                //def st = nst ?? c.state =. st;
-              create_choice_tree_node(an, n, lev + 1, st, prevst, els, err)
-
-          | PseudoState(Merge(to = n, state = st)) => 
-              def prevst = st;
-                //def st = nst ?? m.state =. st;
-              create_junc_tree_node(an, n, aa, lev + 1, st, prevst, els, err)
-
-          | _ => (Target(lev, st, aa.Rev(), prevst, Enumerable.Empty(), Enumerable.Empty(), an, t, null), err)
-        }
-      }
-
-      match (n)
-      {
-        | JunctionNode(guard = Else, parent = Junction(type = JunctionType.Junction) as p, next = Some()) => 
-            (null, FsmError.JunctionElseMustBeLast(p) :: err)
-
-        | JunctionNode(Else, a, t, Junction(type = JunctionType.Junction) as p, None(), _) as j => 
-
-            def n = p.Nodes.FilterLazy(_ == j);
-
-              // if same node not contains other previous decision node
-            if (!n.Exists(contains_decision)) 
-            {
-              (null, FsmError.JunctionElseMustAfterAnotherGuard(p) :: err)
-            } else
-            {
-              get_sub_node(t, a %:: aa, lev, st, els, err);
-              //(n, err)//(Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), n), err)
-            }
-
-        | JunctionNode(GuardNode.Empty, None(), _, Junction(type = JunctionType.Junction) as p, _, _) => (null, FsmError.EmptyJunction(p) :: err)
-        | JunctionNode(GuardNode.Empty, None(), _, _, _, _) => (null, err)
-            // if single action node and not decision, taking sub node collecting action
-        | JunctionNode(GuardNode.Empty, Some(a), t, Junction(type = JunctionType.Junction), None(), _) => 
-            get_sub_node(t, a :: aa, lev, st, els, err)
-            // if last action node it is else
-        | JunctionNode(GuardNode.Empty, Some(a), t, _, None(), _) => 
-            get_sub_node(t, a :: aa , lev, st, els, err);
-            //(Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), n), err)
-            // if action have other nodes after it
-        | JunctionNode(GuardNode.Empty, Some(a), _, Junction(type = JunctionType.Junction) as p, _, _) => (null, FsmError.JunctionActionMaybeLast(p, a) :: err);
-        | JunctionNode(GuardNode.Empty, Some(), _, _, _, _) => (null, err)
-
-        | JunctionNode(g, a, t, _, None(), _) => 
-            def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
-            (Condition(lev, st, [], prevst, Enumerable.Empty(), Enumerable.Empty(), an, g, n, els), err)
-
-        | JunctionNode(g, a, t, _, Some(n), _) => 
-            def (els, err) = create_junc_tree_node(an, n, aa, lev, st, prevst, els, err);
-            def (n, err) = get_sub_node(t, a %:: aa, lev, st, els, err);
-            (Condition(lev, st, [], prevst, Enumerable.Empty(), Enumerable.Empty(), an, g, n, els), err)
-
-            // if no guards or actions there is error
-        //| [] => (null, err)
-      }
-    }
-
-    static create_choice_tree_node(an : FsmAnalyser, n : TransitionTarget.JunctionNode, lev : int, st : FsmState, prevst : FsmState, els : DecisionNode, err : list[FsmError]) : DecisionNode * list[FsmError]
-    {
-
-      def get_sub_node(t, lev, st, prevst, els, err)
-      {
-        match (t)
-        {
-            // TODO: разобраться с prevst
-          | TransitionTarget.PseudoState(Junction(to = n, state = st, type = JunctionType.Junction)) => 
-              def prevst = st ?? prevst;
-                //def st = nst ?? j.state =. st;
-              create_junc_tree_node(an, n, [], lev + 1, st, prevst, els, err)
-
-          | PseudoState(Junction(to = n, state = st, type = JunctionType.Choice)) => 
-              def prevst = st ?? prevst;
-                //def st = nst ?? c.state =. st;
-              create_choice_tree_node(an, n, lev + 1, st, prevst, els, err)
-
-          | PseudoState(Merge(to = TransitionTarget.JunctionNode(g, a, t, _, _, _), state = st)) => 
-              def prevst = st ?? prevst;
-                //def st = nst ?? m.state =. st;
-              def (n, err) = get_sub_node(t, lev + 1, st, prevst, els, err);
-              (DecisionNode.Condition(lev, st, a %:: [], prevst, Enumerable.Empty(), Enumerable.Empty(), an, g, n, null), err)
-
-          | _ => (Target(lev, st, [], prevst, Enumerable.Empty(), Enumerable.Empty(), an, t, null), err)
-        }
-      }
-
-
-      match (n)
-      {
-        | JunctionNode(guard = Else, parent = Junction(type = JunctionType.Choice) as p, next = Some()) => 
-            (null, FsmError.ChoiceElseMustBeLast(p) :: err)
-
-        | JunctionNode(Else, _, t, Junction(type = JunctionType.Choice) as p, None(), _) as j => 
-
-            def n = p.Nodes.FilterLazy(_ == j);
-              // if same node not contains other previous decision node
-            if (!n.Exists(contains_decision)) 
-            {
-              (null, FsmError.ChoiceElseMustAfterAnotherGuard(p) :: err)
-            } else
-            {
-              //def a = a %:: [];
-              def (node, err) = get_sub_node(t, lev, st, prevst, els, err);
-                // if new node is in another state
-              if (st != node.state)
-              {
-                                          // cache it, process path before, traverse it with new values of state
-                def prevst = st;
-                def st = node.state;
-                get_sub_node(t, lev, st, prevst, els, err)
-              } else (node, err);
-              //def st = if (st != prevst) st else null;
-              //def prevst = prevst ?? (t.transition?.From ?? st);
-              //(node, err)//(Else(lev, st, a, prevst, PathNode.Empty(), PathNode.Empty(), node), err)
-            }
-
-            // if no guards or actions there is error
-        | JunctionNode(GuardNode.Empty, None(), _, Junction(type = JunctionType.Choice) as p, _, _) => 
-            (null, FsmError.EmptyChoice(p) :: err)
-
-        | JunctionNode(GuardNode.Empty, None(), t, _, None(), _) => 
-            get_sub_node(t, lev, st, prevst, els, err)
-            // if single action node and not decision, taking sub node collecting action
-        | JunctionNode(GuardNode.Empty, Some(), t, Junction(type = JunctionType.Choice), None(), _)  => 
-            get_sub_node(t, lev, st, prevst, els, err)
-            // if last action node it is else
-        | JunctionNode(GuardNode.Empty, Some, t, _, None(), _) =>
-            def (node, err) = get_sub_node(t, lev, st, prevst, els, err);
-                                      // if another pseudostate state 
-            if (st != node.state)
-            {
-              def prevst = st;
-              def st = node.state;
-                                        // cache it, process path before, traverse it with new values of state
-              get_sub_node(t, lev, st, prevst, els, err)
-            } else (node, err);
-            //def st = if (st != prevst) st else null;
-            //def prevst = prevst ?? (t.transition?.From ?? st);
-            //(Else(lev, st, [a], prevst, PathNode.Empty(), PathNode.Empty(), node), err)
-
-            // if action have other nodes after it
-        | JunctionNode(GuardNode.Empty, Some(a), _, Junction(type = JunctionType.Choice) as p, _ ,_) => (null, FsmError.ChoiceActionMaybeLast(p, a) :: err)
-        | JunctionNode(GuardNode.Empty, _, _, _, _, _) => (null, err)
-
-        | JunctionNode(g, a, t, _, Some(n), _) => 
-            def a = a %:: [];
-            def st = if (st != prevst) st else null;
-            def prevst = prevst ?? (t.transition?.From ?? st);
-            def (n, err) = create_choice_tree_node(an, n, lev, st, prevst, els, err);
-            def (node, err) = get_sub_node(t, lev, st, prevst, els, err);
-            (Condition(lev, st, a, prevst, Enumerable.Empty(), Enumerable.Empty(), an, g, node, n), err)
-
-        | _ => (null, err)
-      }
-    }
-
-    public static Create(an : FsmAnalyser, node : PseudoStateNode.Junction) : DecisionNode
-    {
-      def (n, e) = match (node)
-                    {
-                      | PseudoStateNode.Junction(type = JunctionType.Junction) => create_junc_tree_node(an, node.to, [], 0, node.state, null, null, [])
-                      | PseudoStateNode.Junction(type = JunctionType.Choice)   => create_choice_tree_node(an, node.to, 0, node.state, null, null, [])
-                    }
-      an.AddErrors(e);
-      n
-    }
-
-#if 0    
-    public static Create2(an : FsmAnalyser, node : PseudoStateNode.Junction) : DecisionNode
-    {
-      def check_merge(n, acc)
-      {
-        match (n)
-        {
-          | TransitionTarget.PseudoState(Merge(to = TransitionTarget.JunctionNode(g, a, _, _, _, _))) => 
-              //def prevst = st ?? prevst;
-              DecisionNode.Condition(0, null, a %:: [], null, PathNode.Empty(), PathNode.Empty(), an, g, acc, null)
-          | _ => acc
-        }
-      }
-
-      def check_junction(_, a)
-      {
-        a
-      }
-
-      def check_target(t : TransitionTarget)
-      {
-        Target(0, null, [], null, PathNode.Empty(), PathNode.Empty(), an, t, null)
-      }
-
-      def check_junction_node(n : TransitionTarget.JunctionNode, nacc : option[DecisionNode], toacc : DecisionNode)
-      {
-        match (n)
-        {
-          | TransitionTarget.JunctionNode(guard = Else, parent = Junction(type = JunctionType.Junction) as p, next = Some()) => 
-              throw FsmErrorException(FsmError.JunctionElseMustBeLast(p));
-
-          | JunctionNode(Else, _, _, Junction(type = JunctionType.Junction) as p, None(), _) as j => 
-
-              def n = p.Nodes.FilterLazy(_ == j);
-
-              // if same node not contains other previous decision node
-              if (!n.Exists(contains_decision)) 
-              {
-                throw FsmErrorException(FsmError.JunctionElseMustAfterAnotherGuard(p));
-              } else
-              {
-                toacc
-              //(n, err)//(Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), n), err)
-              }
-            // if no guards or actions there is error
-          | JunctionNode(GuardNode.Empty, None(), _, Junction(type = JunctionType.Junction) as p, _, _) => throw FsmErrorException(FsmError.EmptyJunction(p))
-          | JunctionNode(GuardNode.Empty, None(), _, Junction(type = JunctionType.Choice) as p, _, _) => throw FsmErrorException(FsmError.EmptyChoice(p))
-          | JunctionNode(GuardNode.Empty, None(), _, _, _, _) => null
-            // if single action node and not decision, taking sub node collecting action
-          | JunctionNode(GuardNode.Empty, Some, _, Junction(type = JunctionType.Junction), None(), _) => toacc
-            // if last action node it is else
-          | JunctionNode(GuardNode.Empty, Some, _, _, None(), _) => toacc
-            //(Else(lev, st, [], prevst, PathNode.Empty(), PathNode.Empty(), n), err)
-            // if action have other nodes after it
-          | JunctionNode(GuardNode.Empty, Some(a), _, Junction(type = JunctionType.Junction) as p, _, _) =>  throw FsmErrorException(FsmError.JunctionActionMaybeLast(p, a))
-          | JunctionNode(GuardNode.Empty, Some(), _, _, _, _) => null
-          | JunctionNode(g, a, _, _, Some, st) => 
-              def nacc = nacc.WithDefault(null);
-              Condition(0, st, a %:: [], null, PathNode.Empty(), PathNode.Empty(), an, g, toacc, nacc)
-          | _ => null
-        }
-      }
-
-      def check_qual(_, _)
-      {
-        throw InvalidOperationException("targets must be resolved")
-      }
-
-      null
-      //node.to.Fold(null, 
-      //             check_junction_node,
-      //             check_target,
-      //             check_qual, 
-      //             check_target, 
-      //             check_target,
-      //             check_target, 
-      //             check_junction,
-      //             check_target,
-      //             check_merge, 
-      //             check_target 
-      //             )
-      //def (n, e) = match (node)
-      //              {
-      //                | PseudoStateNode.Junction(type = JunctionType.Junction) => create_junc_tree_node(node.to, [], 0, node.state, null, null, [])
-      //                | PseudoStateNode.Junction(type = JunctionType.Choice)   => create_choice_tree_node(node.to, 0, node.state, null, null, [])
-      //              }
-      //(n, analyser.AddErrors(e))
-    }
-#endif
 
   }
 

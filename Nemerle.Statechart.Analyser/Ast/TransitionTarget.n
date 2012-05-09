@@ -90,6 +90,7 @@ namespace Nemerle.Statechart
           node.ToString()
         }
       }
+      
     | State 
       {
         [NeedChange] state : FsmState;
@@ -170,6 +171,7 @@ namespace Nemerle.Statechart
             | State(st) as t => 
                 def st = StateMap.Get($"$parent.$(st.NativeName)");
                 if (st != null) t.ChangeState(st) else this;
+                
             | _ => target.UpdateReference()
           }
         }
@@ -210,11 +212,21 @@ namespace Nemerle.Statechart
         [NeedChange(to)] next : option[JunctionNode];
         [NeedChange] state    : FsmState;
 
+        [NeedChange] decisionTree : DecisionNode;
+        
+        Actions : IEnumerable[PathNode]
+        {
+          get
+          {
+            decisionTree.ActionNode
+          }
+        }
+        
         public static Create(an : FsmAnalyser, st : FsmState, par : PseudoStateNode, to : TargetType.JunctionNode, tran : StateTransition) : JunctionNode
         {
           match (to)
           {
-            | TargetType.JunctionNode(g, a, t, n) => JunctionNode(tran, an, g, a, Create(an, st, tran, t), par, n.Map(x => Create(an, st, par, x, tran)), st)
+            | TargetType.JunctionNode(g, a, t, n) => JunctionNode(tran, an, g, a, Create(an, st, tran, t), par, n.Map(x => Create(an, st, par, x, tran)), st, null)
           } 
         }
 
@@ -266,7 +278,7 @@ namespace Nemerle.Statechart
         | Named       as t                  => Named(tran, state, t)
         | SubMachine(m, s)                  => SubMachine(tran, an, SubMachine(m, null), s)
         | Qualified(parent = p, target = t) => Qualified(tran, an, p, Create(an, state, tran, t))
-        | JunctionNode(g, a, t, n)          => JunctionNode(tran, an, g, a, Create(an, state, tran, t), null, n.Map(x => Create(an, state, tran, x) :> JunctionNode), state)
+        | JunctionNode(g, a, t, n)          => JunctionNode(tran, an, g, a, Create(an, state, tran, t), null, n.Map(x => Create(an, state, tran, x) :> JunctionNode), state, null)
       }
     }
 

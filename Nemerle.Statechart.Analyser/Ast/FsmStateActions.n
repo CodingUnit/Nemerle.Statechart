@@ -60,6 +60,14 @@ namespace Nemerle.Statechart
       }
     }
 
+    public all_runnable_transitions : IEnumerable[StateTransition]
+    {
+      get
+      {
+        all_transitions.Exclude(_.IsCompletion)
+      }
+    }
+    
     public static create_transition_group(tr : IEnumerable[StateTransition]) : IEnumerable[(string * IEnumerable[StateTransition])]
     {
       single_func
@@ -69,6 +77,14 @@ namespace Nemerle.Statechart
       }
     }
 
+    public CloneFor : FsmState
+    {
+      get
+      {
+        if (cloneFor != null) statemap.Get(cloneFor) else null
+      }
+    }
+    
     public HaveFinal : bool
     {
       get
@@ -81,6 +97,14 @@ namespace Nemerle.Statechart
       }
     }
 
+    public FinalSubState : option[FsmState.Final]
+    {
+      get
+      {
+        sub_states.FindType()
+      }
+    }
+    
     public grouped_transitions : IEnumerable[string * IEnumerable[StateTransition]]
     {
       get
@@ -124,6 +148,7 @@ namespace Nemerle.Statechart
       }
     }
 
+    
     public GetHistory(type : StateHistory) : StateHistory
     {
       match (history)
@@ -292,6 +317,14 @@ namespace Nemerle.Statechart
       }
     }
 
+    public Lived : bool
+    {
+      get
+      {
+        lived || clones.Exists(x => x.Updated.Lived)
+      }
+    }
+    
     /// <summary>
     /// Is it Lived state, consider on nesting lived states
     /// </summary>
@@ -327,7 +360,7 @@ namespace Nemerle.Statechart
 
     public SubStatesParticipateIn(hist : StateHistory) : IEnumerable[FsmState]
     {
-      | StateHistory.Deep     => AllLivedSubStates//AllLivedSubStatesNotRegions
+      | StateHistory.Deep     => AllLivedSubStates
       | StateHistory.Shallow  => LivedSubStatesNested
       | _                     => Enumerable.Empty()
     }
@@ -357,12 +390,9 @@ namespace Nemerle.Statechart
       {
         def loop(p)
         {
-          match (p)
-          {
-            | null  => ()
-            | p     => yield p;
-                       loop(p.Super)
-          }
+          | null  => ()
+          | p     => yield p;
+                     loop(p.Super)
         }
 
         loop(Super)
@@ -414,7 +444,7 @@ namespace Nemerle.Statechart
       match (st)
       {
         | StateNode.State(type = StateType.State) as st                => State(st, sub, an, false)
-        | StateNode.State(type = StateType.InlinedSubMachine(t)) as st => InlinedSubMachine(st, sub, an, false, t, 0)
+        | StateNode.State(type = StateType.InlinedSubMachine(t)) as st => InlinedSubMachine(st, sub, an, false, t)
         | StateNode.State(type = StateType.SubRegion) as st            => ConcurrentSubRegion(st, sub, an, false, 0, null)
         | StateNode.State(type = StateType.SubMachine(t)) as st        => SubMachine(st, sub, an, false, t, array[], array[])
         | _                                                            => throw InvalidOperationException("unknown state type")

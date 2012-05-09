@@ -30,7 +30,7 @@ namespace Nemerle.Statechart
     | SubRegion {reg : ConcurrentSubRegion;state : TransitionDestination;from : FsmState;}
     | Fork {reg : ConcurrentRegion;sub_tran : list[StateTransition];}
     | Join {join : PseudoStateNode.Join;}
-    | Final {state : FsmState.Final;sub_region : ConcurrentSubRegion;region : ConcurrentRegion;completion : IEnumerable[StateTransition];}
+    | Final {state : FsmState;sub_region : ConcurrentSubRegion;region : ConcurrentRegion;completion : IEnumerable[StateTransition];}
     | ForceStateChange {nested : TransitionDestination;}
     | HistoryRestore {history : StateHistory;}
     | EventSend {st : FsmState;evt : StateEvent;}
@@ -41,6 +41,32 @@ namespace Nemerle.Statechart
     | ChoiceNode {node : DecisionNode;}
     | TransitionExecute {tran : StateTransition;}
 
+    public override ToString() : string
+    {
+      match (this)
+      {
+        | Unknown                   => "Unknown"
+        | History(st)               => $"History$st"
+        | State(st)                 => $"State$st"
+        | NoStateChange             => "NoStateChange"
+        | Choice(st, ch, els)       => $"Choice $st trans:..$ch else: $els"
+        | Terminate(n)              => $"Terminate$n"
+        | Region(r)                 => $"Region$r"
+        | SubRegion(r, st, fr)      => $"SubRegion: $r state:$st from:$fr"
+        | Fork(r, sub)              => $"Fork: $r to ..$sub"
+        | Join(j)                   => $"Join$j"
+        | Final(st, sub, r, comp)   => $"Final$st sub_reg:$sub reg:$r comp: ..$comp"
+        | ForceStateChange(nest)    => $"ForceStateChange$nest"
+        | HistoryRestore(rest)      => $"HistoryRestore$rest"
+        | EventSend(st, evt)        => $"EventSend$st evt: $evt"
+        | CheckAfter(ch, bef, nest) => $"CheckAfter$ch before:$bef nest:$nest"
+        | JoinedTransition(j, tran) => $"JoinedTransition: $j tran:$tran"
+        | SubMachine(m, st)         => $"SubMachine$m state:$st"
+        | JunctionNode(n)           => $"Junction$n"
+        | ChoiceNode(n)             => $"Choice$n"
+        | TransitionExecute(tr)     => $"TransitionExecute:$tr"
+      }
+    }
     /// <summary>
     /// Concrete State for where transition ends known at compile time
     /// </summary>
@@ -78,8 +104,7 @@ namespace Nemerle.Statechart
           | Fork(_, tr)           
           | Final(_, _, _, tr)     => tr
           | CheckAfter(_, b, n)    => b.Transition.Concat(n.Transition)
-          | JoinedTransition(_, t) 
-          | TransitionExecute(t)   => TraverseUtils.SingleElement(t)
+          | JoinedTransition(_, t) => TraverseUtils.SingleElement(t)
           | _                      => Enumerable.Empty()
         }
       }
@@ -92,17 +117,17 @@ namespace Nemerle.Statechart
         match (this)
         {
           | State(st)
-          | History(StateHistory where (state = st))
-          | Terminate(PseudoStateNode where (state = st))
+          | History(StateHistory(state = st))
+          | Terminate(PseudoStateNode(state = st))
           | Region(st)
           | SubRegion(reg = st)
           | Fork(reg = st)
-          | Join(PseudoStateNode where (state = st))
+          | Join(PseudoStateNode(state = st))
           | Final(state = st)
-          | Choice(st, _, _) => st
+          | Choice(st, _, _)        => st
           | TransitionExecute(tran) => tran.ToState
-          | ForceStateChange(nest) => nest.ToState
-          | _ => null
+          | ForceStateChange(nest)  => nest.ToState
+          | _                       => null
         }
       }
     }

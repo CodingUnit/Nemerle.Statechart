@@ -188,13 +188,21 @@ namespace Nemerle.Statechart
     {
       get
       {
-        states_initial_tran.Exclude(_.Used)
+        def not_used = states_initial_tran.Exclude(_.Used);
+        def exc_used_clones = not_used.Exclude(x => x.clones.Exists(x => x.Updated.Used));
+        exc_used_clones
       }
     }
 
     public mutable initial_transitions : Map[string, StateTransition];
 
-    [Accessor] do_activities : list[StateAction.Do];
+    public DoActivities : IEnumerable[StateAction.Do]
+    {
+      get
+      {
+        States.SelectMany(_.do_activity)
+      }
+    }
 
     public Regions : IEnumerable[FsmState.ConcurrentRegion]
     {
@@ -383,13 +391,13 @@ namespace Nemerle.Statechart
       }
     }
 
-    public PathsFromOut : IEnumerable[StateTransition]
-    {
-      get
-      {
-        States.Select(_.PathFromOut)
-      }
-    }
+    //public PathsFromOut : IEnumerable[StateTransition]
+    //{
+    //  get
+    //  {
+    //    States.Select(_.PathFromOut)
+    //  }
+    //}
 
     public Fsm : StateNode.StateMachine;
 
@@ -484,6 +492,12 @@ namespace Nemerle.Statechart
       }
     }
 
+    public AddWarning(err : FsmWarning) : void
+    {
+      def err = GetWarning(err);
+      Warnings.Add(err);
+    }
+    
     public AddWarnings(err : IEnumerable[FsmWarning]) : void
     {
       def err = GetWarnings(err);
@@ -536,20 +550,23 @@ namespace Nemerle.Statechart
       err.Select(GetWarning)
     }
 
-    public this(fsm : StateNode.StateMachine)
+    public StatesId : StateId;
+    
+    public this(fsm : StateNode.StateMachine, name : string)
     {
       this.Fsm = fsm;
+      Name = name;
       statemap = StateMap(this);
+      StatesId = StateId(this);
     }
 
+    public Name     : string;
     public Errors   : List[string] = List();
     public Warnings : List[string] = List();
 
     FinalizeAnalyse() : void
     {
-      def id = StateId(this);
-      def top = id.CreateMasks();
-      UpdateStateMap(top);
+      StatesId.CreateMasks()
     }
 
     public Analyse() : void
@@ -656,8 +673,8 @@ namespace Nemerle.Statechart
         work_transitions.Values().Concat(initial_transitions.Values()).
           Concat(history_transitions.Values()).
           Concat(history_default_transitions).
-          Concat(special_transitions).
-          Concat(PathsFromOut)
+          Concat(special_transitions)
+          //Concat(PathsFromOut)
       }
     }
 

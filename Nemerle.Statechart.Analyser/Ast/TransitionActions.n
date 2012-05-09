@@ -87,6 +87,9 @@ namespace Nemerle.Statechart
     [NeedChange]
     public Path : TransitionPath;
 
+    [NeedChange]
+    public clones : list[StateTransition] = [];
+    
     [NeedChange(ActualTo)]
     [NeedChange]
     public Destination : TransitionDestination;
@@ -255,7 +258,8 @@ namespace Nemerle.Statechart
           | Final(st)
           | History(StateHistory(state = st))
           | PseudoState(PseudoStateNode(state = st))
-          | State(st) => st
+          | JunctionNode(state = st)
+          | State(st) => st.Updated
           | _         => null
         }
 
@@ -278,15 +282,17 @@ namespace Nemerle.Statechart
 
     public TraversePath(recursive : bool = false) : StateTransition
     {
-      if (Path == null)
-      {
-        def path = TransitionPath(this, analyser, recursive);
-        path.Traverse();
-        def tran = path.Transition;
-        tran.ChangePath(path)
-      } else this
+      def path = TransitionPath(this, analyser, recursive);
+      path.Traverse();
+      def tran = path.Transition;
+      tran.ChangePath(path)
     }
 
+    public SetNewId() : StateTransition
+    {
+      ChangeNum(analyser.statemap.GetNewTransitionId(this))
+    }
+    
     public PathNode : IEnumerable[PathNode]
     {
       get
@@ -481,6 +487,7 @@ namespace Nemerle.Statechart
                 | Final(st)
                 | History(StateHistory(state = st))
                 | PseudoState(PseudoStateNode(state = st))
+                | JunctionNode(state = st)
                 | State(st) => st
                 | _         => null
               }
@@ -520,7 +527,34 @@ namespace Nemerle.Statechart
     /// </summary>
     [NeedChange(omit_guard)]
     [NeedChange]
-    public Used : bool;
+    public used : bool;
+    
+    public Updated : StateTransition
+    {
+      get
+      {
+        def trans = match (this)
+        {
+          | Internal   => Source.Updated.internal_tran
+          | Initial    => Source.Updated.initial
+          | Transition => Source.Updated.transitions
+          | _          => Source.Updated.all_transitions_with_init
+        }
+        match (trans.Find(x => x.Num == Num))
+        {
+          | Some(tr) => tr
+          | _        => null
+        }
+      }
+    }
+    
+    public Used : bool
+    {
+      get
+      {
+        used
+      }
+    }
 
     //public Used : bool
     //{
