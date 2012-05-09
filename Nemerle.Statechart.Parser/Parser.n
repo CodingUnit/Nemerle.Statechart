@@ -206,21 +206,26 @@ namespace Nemerle.Statechart
 
     flags(tok : List[NToken]) : MachineFlags
     {
-      def proc_tok(tok, (flag, errs))
+      def err = List();
+      
+      def proc_tok(tok, flag)
       {
-        def (nflag, err) = match (GetText(tok))
+        def nflag= match (GetText(tok))
                     {
-                      | "debug"                        => (MachineFlag.Debug, None())
-                      | "auto_initial"                 => (MachineFlag.AutoInitial, None())
-                      | "local_default"                => (MachineFlag.LocalDefault, None())
-                      | "transition_completed_events"  => (MachineFlag.TransitionCompleted, None())
-                      | "completion_strict"            => (MachineFlag.CompletionStrict, None())
-                      | x                              => (MachineFlag.None, Some(x))
+                      | "debug"                        => MachineFlag.Debug
+                      | "auto_initial"                 => MachineFlag.AutoInitial
+                      | "local_default"                => MachineFlag.LocalDefault
+                      | "transition_completed_events"  => MachineFlag.TransitionCompleted
+                      | "completion_strict"            => MachineFlag.CompletionStrict
+                      | "only_analyse"                 => MachineFlag.OnlyAnalyse
+                      | x                              => err.Add(x);
+                                                          MachineFlag.None
                     }
-        (nflag |  flag, err %:: errs)
+        nflag |  flag
       }
 
-      MachineFlags(tok.FoldLeft((MachineFlag.None, []), proc_tok));
+      def flags = tok.FoldLeft(MachineFlag.None, proc_tok);
+      MachineFlags(flags, err);
     }
 
     history_deep(tok : NToken, tran : option[StateNode.Transition]) : StateNode
@@ -309,7 +314,7 @@ namespace Nemerle.Statechart
     {
       def pos = nkey.StartPos;
       def name = GetText(name);
-      CreateState(pos, name, [], body.NToList(), StateType.InlinedSubMachine(GetText(type)));
+      CreateState(pos, name, [], body, StateType.InlinedSubMachine(GetText(type)));
     }
 
     statemachine(name : NToken, _ : NToken, type : NToken, tran : List[StateNode.Transition]) : StateNode
