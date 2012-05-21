@@ -33,6 +33,11 @@ namespace Nemerle.Statechart
       loop(n, [])
     }
 
+    public MapListRev[T, T2](this n : IEnumerable[T], mapper : T -> T2) : list[T2]
+    {
+      n.FoldLeft([], (x, a) => mapper(x) :: a)
+    }
+    
     public SplitFind[T](this n : list[T], pred : T -> bool) : list[T] * list[T]
     {      
       def loop(n, acc)
@@ -425,28 +430,28 @@ namespace Nemerle.Statechart
     }
 
 
-    public DuplicatesPartition[T](this lst : list[T], comp : T * T -> int) : list[T] * list[T]
-    {
-      def sorted = lst.Sort(comp);
+    //public DuplicatesPartition[T](this lst : list[T], comp : T * T -> int) : list[T] * list[T]
+    //{
+    //  def sorted = lst.Sort(comp);
 
-      def loop (lst,  acc, res)
-      {
-        def eq(x)
-        {
-          (!acc.IsEmpty() && comp(x, acc.Head) == 0)
-        }
-        match (lst)
-        {
-          | []  => (acc.Rev(), res.Rev())
-          | [x]  => (acc.Rev(), (x :: res).Rev())
-          | x :: ((y :: _) as xs)  =>
-              if (comp(x,  y) == 0 || eq(x)) loop (xs,  x :: acc, res)
-              else loop (xs,  acc, x :: res)
-        }
-      }
+    //  def loop (lst,  acc, res)
+    //  {
+    //    def eq(x)
+    //    {
+    //      (!acc.IsEmpty() && comp(x, acc.Head) == 0)
+    //    }
+    //    match (lst)
+    //    {
+    //      | []  => (acc.Rev(), res.Rev())
+    //      | [x]  => (acc.Rev(), (x :: res).Rev())
+    //      | x :: ((y :: _) as xs)  =>
+    //          if (comp(x,  y) == 0 || eq(x)) loop (xs,  x :: acc, res)
+    //          else loop (xs,  acc, x :: res)
+    //    }
+    //  }
 
-      loop (sorted,  [], [])
-    }
+    //  loop (sorted,  [], [])
+    //}
 
     public DuplicatesPartition[T, TKey](this lst : IEnumerable[T], comp : T -> TKey) : IEnumerable[T] * IEnumerable[T]
     {
@@ -465,7 +470,7 @@ namespace Nemerle.Statechart
           def elem = en.Current;
           if (comparer.Compare(comp(elem1), comp(elem)) == 0) res.Add(elem1); else acc.Add(elem1);
           loop(elem);
-        } else ()
+        } else acc.Add(elem1);
       }
 
       when (en.MoveNext()) loop(en.Current);
@@ -479,7 +484,7 @@ namespace Nemerle.Statechart
         match (lst)
         {
           | head :: tail  => if (pred(head)) loop(tail, subres.Rev() :: res, []) else loop(tail, res, head :: subres)
-          | _  => if (res.IsEmpty()) [] else (subres.Rev() :: res).Rev()
+          | _             => if (res.IsEmpty()) [] else (subres.Rev() :: res).Rev()
         }
       }
 
@@ -498,12 +503,12 @@ namespace Nemerle.Statechart
         if (lst.MoveNext())
         {
           def head = lst.Current;
-          if (pred(head)) res.Add(acc.AsEnumerable()) else 
+          if (pred(head)) res.Add(acc) else 
           {
             acc.Add(head);
           }
           loop()
-        } else ()
+        } else when (res.Count() != 0) res.Add(acc)
 
       }
 
@@ -516,7 +521,7 @@ namespace Nemerle.Statechart
       def loop(lst)
       {
         |  []
-        |  [_]  => true
+        |  [_]                    => true
         |  x :: ((y :: _) as xs)  => if (pred(x, y)) loop(xs) else false
       }
 
@@ -526,7 +531,6 @@ namespace Nemerle.Statechart
     public ElementsEqual[T](this lst : IEnumerable[T], pred : (T * T) -> bool) : bool
     {
       def en = lst.GetEnumerator();
-
 
       def loop(acc)
       {
@@ -540,20 +544,21 @@ namespace Nemerle.Statechart
       if (en.MoveNext()) loop(en.Current) else true
     }
 
-    public ChopLastN[T](this lst : list[T], num : int) : list[T]
+    public ChopLastN[T](this lst : IEnumerable[T], num : int) : IEnumerable[T]
     {
-      def num = lst.Length - num;
-
-      def loop(lst, res, n)
+      def num = lst.Count() - num;
+      def en  = lst.GetEnumerator();
+      
+      def loop(n)
       {
-        match (lst)
+        when (en.MoveNext() && n != 0) 
         {
-          | head :: tail => if (n != 0) loop(tail, head :: res, n - 1) else res.Rev()
-          | _ => res.Rev()
+          yield en.Current;
+          loop(n - 1)
         }
       }
 
-      loop(lst, [], num)
+      loop(num)
     }
 
     public ChopLast[T](this lst : IEnumerable[T]) : IEnumerable[T] where T : class
@@ -1062,6 +1067,21 @@ namespace Nemerle.Statechart
         if (en.MoveNext()) 
         {
           if (pred(en.Current)) i else loop(i + 1)
+        } else -1
+      }
+
+      loop(0)
+    }
+
+    public IndexOf[T](this lst : IEnumerable[T], obj : T) : int where T : class
+    {
+      def en = lst.GetEnumerator();
+
+      def loop(i)
+      {
+        if (en.MoveNext()) 
+        {
+          if (en.Current : object == obj) i else loop(i + 1)
         } else -1
       }
 

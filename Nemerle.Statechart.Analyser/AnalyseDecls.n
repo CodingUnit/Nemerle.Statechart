@@ -5,6 +5,8 @@ using Nemerle.Statechart;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
+using System.Collections;
 
 namespace Nemerle.Statechart
 {
@@ -111,6 +113,23 @@ namespace Nemerle.Statechart
       get
       {
         all_transitions.SelectMany(_.PathNodeRecursive)
+      }
+    }
+
+    public action_node_all : IEnumerable[PathNode]
+    {
+      get
+      {
+        def get_inline(p)
+        {
+          | PathNode.Entry(inline = inl)
+          | Exit(inline = inl)           => inl.Map((x, _) => x)
+          | _                            => Enumerable.Empty()
+        }
+
+
+        def inlined = action_node.SelectMany(get_inline);
+        action_node.Concat(inlined)
       }
     }
 
@@ -495,7 +514,7 @@ namespace Nemerle.Statechart
       def err = GetWarning(err);
       Warnings.Add(err);
     }
-    
+
     public AddWarnings(err : IEnumerable[FsmWarning]) : void
     {
       def err = GetWarnings(err);
@@ -549,7 +568,7 @@ namespace Nemerle.Statechart
     }
 
     public StatesId : StateId;
-    
+
     public this(fsm : StateNode.StateMachine, name : string)
     {
       this.Fsm = fsm;
@@ -564,7 +583,29 @@ namespace Nemerle.Statechart
 
     FinalizeAnalyse() : void
     {
-      StatesId.CreateMasks()
+      StatesId.CreateMasks();
+      def longest = States.Max(x => x.Name.Length);
+      def len = States.Count();
+      def num_len = len.ToString().Length;
+      
+      
+      def create_state_report(st)
+      {
+        | FsmState(Name = n, Id = null, Num = num) with id = IdType(BitArray(len))
+        | FsmState(Name = n, Id = id, Num = num) => 
+        
+            def id_hex = id.Result.Fold("", (x, a) => x.ToString("X8") + a);
+            def id_val = id.val.OfType.[bool]().MapListRev(x => if (x) '1' else '0');
+            def id_val = string(id_val.ToArray());
+            string.Format($<#{0, $longest}: Num = {1, $num_len}, Id = $(id_val) (0x$id_hex) #>, n, num)
+      }
+      
+      
+      when (FsmFlags.Debug) 
+      {
+        def info = TopState.LevelOrderIterator().Map(create_state_report);
+        File.WriteAllLines($"$(Name)statemap.txt", info);
+      }
     }
 
     public Analyse() : void
@@ -580,6 +621,7 @@ namespace Nemerle.Statechart
         CreateTransitions();
         BreakIfError();
         CreateTransitionPaths();
+        CreateHistoryPaths(); // create history paths
         CreateConcurrentRegion();
         UpdateInitial();
         CreateActions();
@@ -588,8 +630,8 @@ namespace Nemerle.Statechart
       catch 
       {
         | x is FsmErrorException => 
-          def err = x.error;
-          when (err != null) AddError(err);
+           def err = x.error;
+           when (err != null) AddError(err);
       }
     }
 

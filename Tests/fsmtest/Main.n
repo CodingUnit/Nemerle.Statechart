@@ -19,6 +19,7 @@ namespace Nemerle.Statechart.Tests {
   {       
     rand : Random = Random(123456789);
     test_events_count = 50000;
+    fsm : FileFsm = FileFsm();
     
     mutable events : list[int];
     
@@ -81,7 +82,7 @@ namespace Nemerle.Statechart.Tests {
       WriteLine("Sending to new lib fsm");
       watch.Reset();
       watch.Start();
-      fsm_evt.Iter(fsm.RunEvent(_));
+      fsm_evt.Iter(fsm.SendEvent);
       watch.Stop();
       def span = watch.Elapsed;
       (span, span2)
@@ -89,7 +90,7 @@ namespace Nemerle.Statechart.Tests {
     
     public IsInStateTest() : void
     {
-      def fsm = FileFsm();
+      
       fsm.DisableDialogs = true;
       
       def do_throw()
@@ -166,17 +167,18 @@ namespace Nemerle.Statechart.Tests {
       is_in_state(Changed());
       fsm.close();
       is_in_state(Exiting());
-      is_in_state(SubMachineExitSave());
+      is_in_state(FileFsm.State.InlinedSubMachineExitSave());
       fsm.yes();
       is_in_state(Overwrite());
       fsm.Cancel();
       is_in_state(Changed());
       fsm.close();
-      is_in_state(SubMachineExitSave());
+      is_in_state(FileFsm.State.InlinedSubMachineExitSave());
       fsm.no();
       when (!fsm.IsTerminated) do_throw()
     }
      
+#if 0    
     CoverTest() : void
     {
       def fsm = PathCoverFsm();
@@ -300,11 +302,12 @@ namespace Nemerle.Statechart.Tests {
       WriteLine("Leaving test.");
       fsm.Terminate();  
     }
-    
+#endif
+
     public Run() : void
     { 
       def (span, span2) = ExtLibDiffTest();
-      CoverTest();
+      //CoverTest();
       WriteLine($"Diff result of process two fsms $test_events_count events");
       WriteLine($"process time: old: $span2, new: $span, diff: {0:F4} times", (span2.Ticks : double) / span.Ticks);
       WriteLine("event send time average: old: {0} ticks, new: {1} ticks", (span2.Ticks : double) / test_events_count, (span.Ticks : double) / test_events_count);
