@@ -206,7 +206,7 @@ namespace Nemerle.Statechart
     | JunctionNode
       {
         guard                 : GuardNode;
-        action                : option[Actions];
+        action                : option[Actions] = None();
         [NeedChange] to       : TransitionTarget;
         parent                : PseudoStateNode;
         [NeedChange(to)] next : option[JunctionNode];
@@ -228,7 +228,7 @@ namespace Nemerle.Statechart
         {
           match (to)
           {
-            | TargetType.JunctionNode(g, a, t, n) => JunctionNode(tran, an, g, a, Create(an, st, tran, t), par, n.Map(x => Create(an, st, par, x, tran)), st, null)
+            | TargetType.JunctionNode(g, a, t, n) => JunctionNode(tran, an, g, a, Create(an, st, tran, t), par, n.Map(x => Create(an, st, par, x, tran)), st, null, JunctionType.Junction)
           } 
         }
 
@@ -247,20 +247,10 @@ namespace Nemerle.Statechart
         //  }
         //}
 
-        UpdateRef() : TransitionTarget
-        {   
-          def nto = to.UpdateReference();
-          def st = base.UpdateReference();
-          match (st)
-          {
-            | JunctionNode as j when (j : object != this || nto : object != to) => j.ChangeTo(nto)//JunctionNode(st, copy, guard, action, nto, parent)
-            | _                                                                 => this
-          }
-        }
-
         override UpdateReference() : TransitionTarget
         {
-          UpdateRef()
+          def nto = to.UpdateReference();
+          ChangeTo(nto)
         }
 
         override ToString() : string
@@ -280,7 +270,7 @@ namespace Nemerle.Statechart
         | Named       as t                  => Named(tran, state, t)
         | SubMachine(m, s)                  => SubMachine(tran, an, SubMachine(m, null), s)
         | Qualified(parent = p, target = t) => Qualified(tran, an, p, Create(an, state, tran, t))
-        | JunctionNode(g, a, t, n)          => JunctionNode(tran, an, g, a, Create(an, state, tran, t), null, n.Map(x => Create(an, state, tran, x) :> JunctionNode), state, null)
+        | JunctionNode(g, a, t, n)          => JunctionNode(tran, an, g, a, Create(an, state, tran, t), null, n.Map(x => Create(an, state, tran, x) :> JunctionNode), state, null, JunctionType.Junction)
       }
     }
 
@@ -336,7 +326,7 @@ namespace Nemerle.Statechart
           | Final(state = st)
           | SubMachine(st, _)
           | JunctionNode(state = st)
-          | State(state = st)  => st
+          | State(state = st)  => st.Updated
           | Named              => null
           | Qualified(_, t)    => t.ToState
         }
