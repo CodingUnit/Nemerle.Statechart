@@ -12,7 +12,7 @@ using Nemerle.Compiler.Parsetree;
 namespace Nemerle.Statechart
 {
   using PseudoStateNode;
-  
+
   /// <summary>
   /// Description of GeneratePseudo.
   /// </summary>
@@ -20,35 +20,40 @@ namespace Nemerle.Statechart
   {
     get_junction_body(node : DecisionNode, ctx : GenCtx) : PExpr
     {
-      
+
       def get_cond(t, b, e)
       {
         def c = t.condition;
         def check = GetGuards([c], ctx);
         def act = GetActions(t.Path, true);
-        if (e is Some(e))
-        <[ 
-           if ($check) 
-           {
-             $act;
-             $b;
-           } else $e
-        ]> else 
-        <[ 
-           when ($check) 
-           {
-             $act;
-             $b;
-           }
-        ]>
+        def body = <[ $act; $b ]>;
+        match (e)
+        {
+          | Some(e)                     => 
+              <[ 
+                if ($check) 
+                {
+                  $body
+                } else $e
+              ]>
+            
+          | _ when c is GuardNode.Empty => body
+          | _                           => 
+             <[ 
+               when ($check) 
+               {
+                $body
+               }
+             ]>
+        }
       }
-      
+
       def get_target(t)
       {
         def d = t.destination;
         GetBody(t.Path, d, d.PostConditions, ctx)
       }
-      
+
       def body = node.Fold(<[ null ]>, get_cond, get_target);
       <[
         {
@@ -58,13 +63,13 @@ namespace Nemerle.Statechart
             }
         }
       ]>
-          
+
     }
 
     get_choice_body(p : DecisionNode, ctx : GenCtx, ret : bool = true) : PExpr
     {
-      
-      
+
+
       def get_body(p, ret = true)
       {
         match (p)
@@ -81,14 +86,14 @@ namespace Nemerle.Statechart
               def check = GetGuards([g], ctx);
               def act = GetActions(p, true);
                   <[ 
-                     when ($check) 
-                     {
-                       $act;
-                       $body
-                     }
+                    when ($check) 
+                    {
+                      $act;
+                      $body
+                    }
                   ]>
 
-            
+
           | Condition(condition = c, body = b, else_node = els, Path = np) =>
               def check = GetGuards([c], ctx);
               def path = GetActions(np, true);
@@ -102,9 +107,9 @@ namespace Nemerle.Statechart
                   }
                   $els
               ]>
-          
+
           | Target(destination = d, Path = p) =>
-         
+
               def dest = GetDestination(d, ctx);
               def jact = GetActions(p, true);
               if (ret)
@@ -127,8 +132,8 @@ namespace Nemerle.Statechart
                     }
                 }
                 ]>
-              }
-                
+    }
+
     DefineHistoryPaths(builder : TypeBuilder, st : FsmState) : void
     {
       def create_body(hist)
@@ -157,7 +162,7 @@ namespace Nemerle.Statechart
             def tran = hist.default.Value;
             <[ fsm.$(tran.Name : usesite)() ]>
           }
-          
+
           def hist  =  st.ParticipateInHistory;
           def name  =  hist |> (_, get_history_run_name(_, _.state.Name)); // create transition names
           def decl  =  name.MapToList((x, y) => <[decl: public override $(y : usesite)(fsm : $(ChartName : usesite)) : State {$(create_body(x))}]>);
@@ -171,9 +176,9 @@ namespace Nemerle.Statechart
             Define(builder, decl)
           }
       }
-      
+
     }
-    
+
     DefineHistory() : void
     {
       def get_run_hist_body(hist)
@@ -185,7 +190,7 @@ namespace Nemerle.Statechart
                     $(name : usesite).$(hname : usesite)(this); else $(DefineTransBody([t], GenCtx.Normal()));
                 ]>
       }
-      
+
       def def_history(h)
       {
         def create_history(hist)
@@ -195,15 +200,15 @@ namespace Nemerle.Statechart
             {
                 $(hist.Name : usesite) = null
             }]>;    
-            def create_default(x)
-            {
-              def tr = x :> StateTransition.Default;
-              [<[decl: $($"$(tr.history)Run" : usesite)() : State {$(get_run_hist_body(tr));} ]>]
-            }
+          def create_default(x)
+          {
+            def tr = x :> StateTransition.Default;
+            [<[decl: $($"$(tr.history)Run" : usesite)() : State {$(get_run_hist_body(tr));} ]>]
+          }
           def default = hist.default.Map(create_default).WithDefault([]);
           [hist_field, clear] + default
         }
-        
+
         def save_body(hist)
         {
           def idx = hist.state.Num;
@@ -211,27 +216,27 @@ namespace Nemerle.Statechart
           {
             | FsmState where (PartOfRegion = Some(r), PartOfSubRegion = Some(sr)) => def name = GetExecStateName(r, GenCtx.Normal());
                 def reg = <[ $name.$($"cur_state$(sr.index)" : usesite); ]>;
-                       <[ $(hist.Name : usesite) = if ($reg != null) $reg.GetCopy($idx) else null ]>
+                      <[ $(hist.Name : usesite) = if ($reg != null) $reg.GetCopy($idx) else null ]>
             | _ => <[ $(hist.Name : usesite) = cur_state.GetCopy($idx);]>
           }
         }
-        
+
         def head = h.First();
         def hist_func =  head.SimpleName;
-        
+
         def body = h.Map(save_body);
             // save history function
         def save =  <[decl: $($"$(hist_func)Save" : usesite)() : void 
             {
               ..$body
             }]>;
-            
+
         def defs = h.SelectMany(create_history);
         def defs = defs.AddBefore(save);
         // default transitions
         Define(defs); // add definition to state class
       }
-      
+
       def def_hist(st)
       {
         when (st.history.HasValue)
@@ -240,25 +245,25 @@ namespace Nemerle.Statechart
           when (!hist.IsEmpty()) def_history(hist);
         }
       }
-      
+
       analyser.LivedNestedStates.Iter(def_hist)
     }
-    
+
     DefinePseudo() : void
     {
       def get_join(j)
       {
         | Join(name = n) => 
-          
+
             def fname = $"join$n";
             <[ decl: mutable $(fname : usesite) : int; ]>
       }
-      
+
       //def get_junction(j)
       //{
       //  | Junction(Name = n, DecisionTree = t) => <[decl: $(n : usesite)() : State {$(get_junction_body(t, GenCtx.Normal()))} ]>
       //}
-      
+
       def pseudo = analyser.PseudoStates;
       def joins = pseudo.FilterType();
       def defs = joins |> get_join(_);
@@ -266,6 +271,6 @@ namespace Nemerle.Statechart
       //def defs = joins + junc;
       Define(defs);
     }
-    
+
   }
 }

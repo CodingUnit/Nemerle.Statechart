@@ -68,7 +68,7 @@ namespace Nemerle.Statechart
       Define([method, evt]);
     }
 
-    static merge_and : PExpr * PExpr -> PExpr = (x, y) => <[$x && $y]>;
+    static merge_and : PExpr * PExpr -> PExpr = (x, y) => <[ $x && $y ]>;
 
     DefineActionEvent(name : IEnumerable[GenAction]) : void
     {
@@ -79,19 +79,20 @@ namespace Nemerle.Statechart
                       {
                         | GenAction(Node = PathNode.Entry(inline = lst), InlinedActions = i) 
                         | GenAction(Node = PathNode.Exit(inline = lst), InlinedActions = i) => 
-                          def i = i.Map(x => (x.ExecExpr, true));
-                          def lst = lst |> (GetActions(_, action_for, false), _[2]);
-                          i + lst
+                            def i = i.Select(x => (x.ExecExpr, false));
+                            def lst = lst.Select((x, y) => (GetActions(x, action_for, false), y));
+                            i.Concat(lst).NToList()
+                            
                         | _ => [(<[ () ]>, false)]
                       }
 
         def (after, before) = inline.Partition((_, x) => x);
-        def after = after.Split()[0];
+        def after  = after.Split()[0];
         def before = before.Split()[0];
           <[
-        {..$before}
-          $act_call;
-          {..$after}
+            {..$before}
+            $act_call;
+            {..$after}
           ]>
       }
 
@@ -116,31 +117,31 @@ namespace Nemerle.Statechart
 
     get_history_run_name(h : StateHistory, x : string) : string
     {
-      | (StateHistory where (state = FsmState where (BothHistories = true), type = t), x) => $"$(t)HistoryFrom$x"
-      | (_, x) => $"HistoryFrom$x"
+      | (StateHistory(state = FsmState(BothHistories = true), type = t), x) => $"$(t)HistoryFrom$x"
+      | (_, x)                                                              => $"HistoryFrom$x"
     }
 
     get_action_call(act : string) : PExpr
     {
       <[
-      def temp =  $(act : usesite);
-      when (temp != null) temp();
+        def temp =  $(act : usesite);
+        when (temp != null) temp();
       ]>;
     }
 
     get_guard_call(act : string) : PExpr
     {
       <[
-      def temp =  $(act : usesite);
-      if (temp != null) temp(); else false
+        def temp =  $(act : usesite);
+        if (temp != null) temp(); else false
       ]>;
     }
 
     get_event_call(act : string) : PExpr
     {
       <[
-      def temp =  $(act : usesite);
-      when (temp != null) temp(this, null);
+        def temp =  $(act : usesite);
+        when (temp != null) temp(this, null);
       ]>;
     }
 

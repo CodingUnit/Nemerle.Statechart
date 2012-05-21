@@ -44,24 +44,22 @@ namespace Nemerle.Statechart
                     }
 
                     // define method for changing state
-                    Switch(st : State) : State
+                    TrySwitch(st : State) : void
                     {
-                        IsEventDeclined = if (st != null)
+                        when (st != null)
                         {
                             cur_state = st;
                             $trans_complete_expr;
-                            false
-                        } else true;
-                        st
+                        }
                     }
 
                     // define method for changing state
-                    SwitchConcrete(st : State) : State
+                    Switch(st : State) : void
                     {
-                        IsEventDeclined = false;
+                        //IsEventDeclined = false;
                         cur_state = st;
                         $trans_complete_expr;
-                        st
+                        //st
                     }
 
                     public IsTerminated : bool
@@ -72,10 +70,10 @@ namespace Nemerle.Statechart
                         }
                     }
 
-                    public IsEventDeclined : bool {get;private set;}
+                    //public IsEventDeclined : bool {get;private set;}
                     public Initiate() : void
                     {
-                        _ = $initial
+                        Switch($initial)
                     }
 
                     public override ToString() : string
@@ -253,7 +251,7 @@ namespace Nemerle.Statechart
       def is_in_state = <[decl:
                 public IsInState(st : State) : bool
                 {
-                    $(get_body(<[st.get_id()]>))
+                  IsInState(st.get_id())
                 }
             ]>;
       def id_type = StateIdType;
@@ -278,11 +276,11 @@ namespace Nemerle.Statechart
       InitActionNames();
 
       //tran_events = analyser.Events.;
-      events = analyser.Events;
+      events = analyser.Events.NToList();
       events_call = Map(events |> (_, <[ cur_state.$(_ : usesite)(this) ]>));
-      history_paths = analyser.HistoryPaths.Select(x => (x.Name, GenAction.CreateActions(x.Path, action_for)));
-      history_transitions = analyser.history_transitions.Select((x, y) => (x, GenAction.CreateActions(y.PathNode, action_for)));
-      history_def_transitions = analyser.history_default_transitions.Select(x => (x.Name, GenAction.CreateActions(x.PathNode, action_for)));
+      history_paths = analyser.HistoryPaths.Map(x => (x.Name, GenAction.CreateActions(x.Path, action_for)));
+      history_transitions = analyser.history_transitions.Map((x, y) => (x, GenAction.CreateActions(y.PathNode, action_for)));
+      history_def_transitions = analyser.history_default_transitions.Map(x => (x.Name, GenAction.CreateActions(x.PathNode, action_for)));
     }
 
     InitActionNames() : void
@@ -290,7 +288,7 @@ namespace Nemerle.Statechart
       def action_for_name(macros)
       {
         |  <[ $_($name) ]>  => name.ToString()
-        | _  => macros.ToString()
+        | _                 => macros.ToString()
       }
 
       def class_decls  =  ty.GetParsedMembers(false);
@@ -316,14 +314,16 @@ namespace Nemerle.Statechart
       def guard = guard + decl;
       def guard = guard.RemoveDuplicatesSort(((k1, _), (k2, _))  => k1.CompareTo(k2));
       guard_for = Map(guard);
-      def acts = analyser.action_node.Filter(x => 
-                                               {
-                                                 | PathNode.ClearHistory
-                                                 | PathNode.RunDoActivity
-                                                 | PathNode.StopDoActivity => false
-                                                 | _                       => true
-                                               });
-      def acts = acts.SelectMany(x => GenAction.GetActions(x, action_for));
+      
+      
+      def acts = analyser.action_node_all;
+      def acts = acts.Filter(x => {
+                                    | PathNode.ClearHistory
+                                    | PathNode.RunDoActivity
+                                    | PathNode.StopDoActivity => false
+                                    | _                       => true
+                                  });
+      def acts = acts.SelectMany(GenAction.GetActions(_, action_for));
       def acts = acts.RemoveDuplicatesSort(_.action);
       actions = acts;
     }

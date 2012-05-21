@@ -157,7 +157,9 @@ namespace Nemerle.Statechart
       match (node)
       {      
         | Entry(action = act)
-        | Exit(action = act) => inlined_actions = create_act_name(act, Action(act), decl_map)
+        | Exit(action = act) => //def inl = inl.Map((x, _) => x);
+                                inlined_actions = create_act_name(act, Action(act), decl_map);
+                                              //inlined_actions = CreateActions(inl, decl_map).Concat(act).NToList();
         | _                  => ()
       }
     }
@@ -168,8 +170,8 @@ namespace Nemerle.Statechart
       match (node)
       {
         | PathNode.Action(act)                          => create_act_name(act, node, map)
-        | Entry(action = StateAction.Entry(state = st)) => TraverseUtils.SingleElement(GenAction($"$(st)Entry", node, map))
-        | Exit(action = StateAction.Exit(state = st))   => TraverseUtils.SingleElement(GenAction($"$(st)Exit", node, map))
+        | Entry(state = st)                             => TraverseUtils.SingleElement(GenAction($"$(st)Entry", node, map))
+        | Exit(state = st)                              => TraverseUtils.SingleElement(GenAction($"$(st)Exit", node, map))
         //| Sequence(lst)                               => lst.SelectMany(CreateActions(_, map))
         | RunDoActivity as n        
         | StopDoActivity as n                           => TraverseUtils.SingleElement(GenAction(n.ToString(), node, map))
@@ -188,15 +190,13 @@ namespace Nemerle.Statechart
       match (node)
       {
         | PathNode.Action(act)                                 => create_act_name(act, node, map)
-        | Entry(action = StateAction.Entry(state = st) as act) => GenAction($"$(st)Entry", node, map) :: create_act_name(act, Action(act), map)
-        | Exit(action = StateAction.Exit(state = st) as act)   => GenAction($"$(st)Exit", node, map) :: create_act_name(act, Action(act), map)
+        | Entry(act, _, st)                                    => GenAction($"$(st)Entry", node, map) :: create_act_name(act, Action(act), map)
+        | Exit(act, _, st)                                     => GenAction($"$(st)Exit", node, map)  :: create_act_name(act, Action(act), map)
         ///| Sequence(lst)                                        => lst.SelectMany(CreateActions(_, map))
         | RunDoActivity as n
         | StopDoActivity as n                                  => TraverseUtils.SingleElement(GenAction(n.ToString(), node, map))
         | _                                                    => Enumerable.Empty()
-    }
-    
-    
+      }
     }
     
     public CreateEndName() : void
@@ -214,7 +214,7 @@ namespace Nemerle.Statechart
 
     static create_act_name(act : Actions, node : PathNode, map : Map[string, string]) : list[GenAction]
     {      
-      def names = act.ActionList.Select(x => (x, $"$(x)Action"));
+      def names = act.actions.Select(x => (x, $"$(x)Action"));
       names.Map(GenAction(_, _, node, map))
     }
 
@@ -222,6 +222,12 @@ namespace Nemerle.Statechart
       
   public partial class StaticGenerator
   {
+    public static GetExecStateName(st : string, ctx : GenCtx) : PExpr
+    {
+      def name = $"State$st";
+      if (ctx.IsInEventHandler) <[ $(st : usesite)() ]> else <[ $(name : usesite) ]>
+    }
+    
     public static GetExecStateName(st : FsmState, ctx : GenCtx) : PExpr
     {
       def name = $"State$st";
@@ -240,7 +246,7 @@ namespace Nemerle.Statechart
     {
       def implicit = node.All(x => x is Exit || x is Entry);//node is Exit || node is Entry;
       node.PathActions().IsEmpty() && !implicit
-    }    
+    }
         
     public static GetHistoryClear(hist : IEnumerable[StateHistory]) : PExpr
     {
@@ -268,10 +274,10 @@ namespace Nemerle.Statechart
         | ClearHistory(hist)  => GetHistoryClear(hist)
         | SaveHistory(hist) => if (supress_inline) <[ () ]> else
                                {
-                                 match (hist.Filter(x => x.Used))
+                                 match (hist.Select(_.Updated).Filter(_.Used))
                                  {
-                                   | StateHistory where (SimpleName = n) :: _ => <[ $($"$(n)Save" : usesite)() ]>
-                                   | _ => <[ () ]>
+                                   | StateHistory(SimpleName = n) :: _ => <[ $($"$(n)Save" : usesite)() ]>
+                                   | _                                 => <[ () ]>
                                  }
                                }
         | RunDoActivity as n
@@ -282,8 +288,8 @@ namespace Nemerle.Statechart
             def reg_exit = GetSubRegionsExit(st);
             <[ $reg_state.$(reg_exit : usesite)(this) ]>
         | _  => def act =  GenAction.CreateActions(n, map);
-            def act = act |> end_name;
-            def acts = act |> <[$(_ : usesite)();]>;
+                def act = act |> end_name;
+                def acts = act |> <[$(_ : usesite)();]>;
                 <[ {..$acts} ]>
       }
       
@@ -306,18 +312,18 @@ namespace Nemerle.Statechart
         | SubRegion
         | Region
         | State => if (st != null) 
-                   if (ctx.IsInEventHandler) <[ fsm.SwitchConcrete($body) ]> else
-                    <[ SwitchConcrete($body) ]> else 
-                    if (ctx.IsInEventHandler) <[ fsm.Switch($body) ]> else <[ Switch($body) ]>
+                   if (ctx.IsInEventHandler) <[ fsm.Switch($body) ]> else
+                    <[ Switch($body) ]> else 
+                    if (ctx.IsInEventHandler) <[ fsm.TrySwitch($body) ]> else <[ TrySwitch($body) ]>
         | Terminate => <[ _ = $body; null]>
         | Join
         | Final(region = FsmState(HaveFinal = true))
         | TransitionExecute
         | JunctionNode
         | NoStateChange => body
-        | _ => if (st != null)  if (ctx.IsInEventHandler) <[ fsm.SwitchConcrete($body) ]> else
-                    <[ SwitchConcrete($body) ]> else 
-                    if (ctx.IsInEventHandler) <[ def st = $body;fsm.Switch(st) ]> else <[ def st = $body;Switch(st) ]>
+        | _ => if (st != null)  if (ctx.IsInEventHandler) <[ fsm.Switch($body) ]> else
+                    <[ Switch($body) ]> else 
+                    if (ctx.IsInEventHandler) <[ def st = $body;fsm.TrySwitch(st) ]> else <[ def st = $body;TrySwitch(st) ]>
       }
     }
       
