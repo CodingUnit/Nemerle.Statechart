@@ -119,7 +119,12 @@ namespace Nemerle.Statechart
     {
       def get_body(e)
       {
-        <[ TrySwitch($(events_call.Get(e.name)));]>
+        <[ 
+           lock (this)
+           {
+             TrySwitch($(events_call.Get(e.name)));
+           }
+        ]>
       }
 
       def decl_events = events;
@@ -133,8 +138,8 @@ namespace Nemerle.Statechart
       def (hiden, defs) = events.Partition(_.IsDeclared);
       def def_events = events.Map(x => (x, x.Declared));
       def hiden = hiden.Filter(x => !method_decls.Contains(x.name));
-      def hiden = hiden |> <[decl: private $(_.name : usesite)() : void {$(get_body(_))} ]>;
-      def defs = (defs |> <[decl: public $(_.name : usesite)() : void {$(get_body(_))} ]>) + hiden;
+      def hiden = hiden.Select(x => <[decl: private $(x.name : usesite)() : void {$(get_body(x))} ]>);
+      def defs  = defs.Select(x => <[decl: public $(x.name : usesite)() : void {$(get_body(x))} ]>).Concat(hiden);
 
       def evts = def_events.Map((x, y) => <[case: | Event.$(x.name : usesite) => this.$(y : usesite)();]>);
       Define(<[ decl:

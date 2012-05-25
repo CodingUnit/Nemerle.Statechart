@@ -7,6 +7,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Compiler.Parsetree;
 using Nemerle.Statechart;
+using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using System.Threading;
 
 namespace Nemerle.Statechart
 {
@@ -40,17 +43,17 @@ namespace Nemerle.Statechart
                         // constructor body
                         {..$state_init_expr}
                         {..$init_exprs}
-                        $cons_expr
+                        $cons_expr;
                     }
 
                     // define method for changing state
                     TrySwitch(st : State) : void
                     {
-                        when (st != null)
-                        {
-                            cur_state = st;
-                            $trans_complete_expr;
-                        }
+                       when (st != null)
+                       {
+                         cur_state = st;
+                         $trans_complete_expr;
+                       }
                     }
 
                     // define method for changing state
@@ -63,15 +66,40 @@ namespace Nemerle.Statechart
 
                     public IsTerminated : bool
                     {
-                        get
-                        {
-                            cur_state == null
-                        }
+                      get
+                      {
+                        cur_state == null
+                      }
                     }
 
+                    QueueThread() : void
+                    {
+                      while (!IsTerminated)
+                      {
+                        mutable item;
+                        if (queue.TryDequeue(out item) && item : object != null)
+                        {
+                          SendEvent(item)
+                        } else 
+                        {
+                          _ = reset_event.Reset();
+                          _ = reset_event.WaitOne()
+                        }
+                      }
+                    }
+                    
+                    public PostEvent(evt : Event) : void
+                    {
+                      queue.Enqueue(evt);
+                      _ = reset_event.Set();
+                    }
+                    
                     //public IsEventDeclined : bool {get;private set;}
                     public Initiate() : void
                     {
+                        queue_thread = Thread(QueueThread);
+                        _ = reset_event.Reset();
+                        queue_thread.Start();
                         Switch($initial)
                     }
 
@@ -82,6 +110,10 @@ namespace Nemerle.Statechart
 
                     public static ContainsStates : array[string] = array[..$states];
                     public static ProcessEvents  : array[string] = array[..$events];
+                    
+                    mutable queue_thread : Thread;
+                    queue : ConcurrentQueue[Event] = ConcurrentQueue();
+                    reset_event : ManualResetEvent = ManualResetEvent(false);
                   }
 
                   ]>;
@@ -107,68 +139,41 @@ namespace Nemerle.Statechart
 
     DefineTerminate() : void
     {
-      def stop_activity(act)
+      def stop_activity(st, act)
       {
-        | StateAction.Do(Name = name) =>
+        def name = act.GetName(st);
         <[
-            when ($($"$(name)CancelSource" : usesite) != null) $($"$(name)Stop" : usesite)();
+          when ($($"$(name)CancelSource" : usesite) != null) $($"$(name)Stop" : usesite)();
         ]>
       }
 
-      def get_task_name(act)
+      def get_task_name(st, act)
       {
-        | StateAction.Do(Name = name) => $"$(name)Task";
+        def name = act.GetName(st);
+        $"$(name)Task";
       }
 
-      def get_wait(act, res)
+      def get_wait(st, act)
       {
-        | ([head], []) =>
-            def r = match (head)
-                     {
-                       |  StateAction.Do(Concurrently = conc) as act =>
-                           def task = get_task_name(act);
-                           if (conc) <[ def tasks = $(task : usesite);]> else <[ def tasks = array[$(task : usesite)]; ]>
-                     }
-            r :: res
-        | (head :: tail, []) =>
-            def r = match (head)
-                     {
-                       |  StateAction.Do(Concurrently = conc) as act =>
-                           def task = get_task_name(act);
-                           if (conc) <[ def tasks = $(task : usesite).NToList();]> else <[ def tasks = $(task : usesite) :: []; ]>
-                     }
-            get_wait(tail, r :: res)
-        | (head :: tail, _) =>
-            def r = match (head)
-                     {
-                       | StateAction.Do(Concurrently = conc) as act=>
-                           def task = get_task_name(act);
-                           if (conc) <[ def tasks = tasks + $(task : usesite).NToList();]> else <[ def tasks = $(task : usesite) :: tasks; ]>
-                     }
-            get_wait(tail, r :: res)
-        | (_, _) => res.Rev()
+        match (act)
+        {
+          | StateAction.Do(Concurrently = conc) =>
+              def task = get_task_name(st, act);
+              if (conc) <[ tasks.Add($(task : usesite)) ]> else <[ tasks.Add($(task : usesite)) ]>
+        }
       }
 
-      def tasks = analyser.DoActivities.Filter(x => !x.NoWaitCancel);
-      def wait_tasks = get_wait(tasks, []);
+      def tasks = analyser.DoActivities.Exclude((_, x) => x.NoWaitCancel);
+      def wait_tasks = tasks.Map(get_wait);
+      //def wait_tasks = <[ def tasks = List(); { ..$wait_tasks } ]>;
       def stop_body = analyser.DoActivities |> stop_activity(_);
       def stop_body = match (wait_tasks)
                        {
-                         | [] => stop_body
-                         | [task] =>
-                             [<[  $task;
-                                try
-                                {
-                                    {..$stop_body}
-                                    System.Threading.Tasks.Task.WaitAll(tasks.FilterToArray(_ != null));
-                                }
-                                catch
-                                {
-                                  | _ is AggregateException => ()
-                                }
-                              ]>]
-                         | lst => lst +
-                                  [<[ try
+                         | []  => <[ {..$stop_body} ]>
+                         | lst =>   def tasks = <[ def tasks = List(); {..$lst} ]>;
+                                      <[ 
+                                      $tasks;
+                                      try
                                       {
                                           {..$stop_body}
                                           System.Threading.Tasks.Task.WaitAll(tasks.FilterToArray(_ != null));
@@ -177,12 +182,14 @@ namespace Nemerle.Statechart
                                       {
                                         | _ is AggregateException => ()
                                       }
-                                    ]>];
+                                    ]>
                        }
       def terminate = <[ decl: public Terminate() : void
                         {
-                          {..$stop_body}
+                          $stop_body;
                           cur_state = null;
+                          _ = reset_event.Set();
+                          queue_thread.Join();
                         }
                       ]>;
       Define(terminate);
@@ -196,7 +203,7 @@ namespace Nemerle.Statechart
         def comp = ListUtils.Init(StatesId.Length, i => <[ cur_id.$($"id$i" : usesite) & id.$($"id$i" : usesite) == id.$($"id$i" : usesite) ]>);
         def expr = MergeExpr(comp, (x,y) => <[ $x && $y ]>);
         <[
-          def id = $st_id;
+        def id = $st_id;
           def cur_id = cur_state.get_id();
           $expr
         ]>
@@ -212,7 +219,7 @@ namespace Nemerle.Statechart
           {
             | <[ $(_ : usesite) ]> => <[ cur_state.get_id() & id == id ]>
             | _ => <[
-                              def id = $st_id;
+                def id = $st_id;
                               cur_state.get_id() & id  == id 
                             ]>
           }
@@ -313,14 +320,14 @@ namespace Nemerle.Statechart
       def guard = guard + decl;
       def guard = guard.RemoveDuplicatesSort(((k1, _), (k2, _))  => k1.CompareTo(k2));
       guard_for = Map(guard);
-      
+
       def acts = analyser.action_node_all;
       def acts = acts.Filter(x => {
-                                    | PathNode.ClearHistory
-                                    | PathNode.RunDoActivity
-                                    | PathNode.StopDoActivity => false
-                                    | _                       => true
-                                  });
+                               | PathNode.ClearHistory
+                               | PathNode.RunDoActivity
+                               | PathNode.StopDoActivity => false
+                               | _                       => true
+                             });
       def acts = acts.SelectMany(GenAction.GetActions(_, action_for));
       def acts = acts.RemoveDuplicatesSort(_.action);
       actions = acts;
