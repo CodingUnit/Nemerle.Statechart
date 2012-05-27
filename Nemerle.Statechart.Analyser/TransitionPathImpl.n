@@ -56,51 +56,45 @@ namespace Nemerle.Statechart
       FindPath(st.Super, dest, TraverseUtils.SingleElement(st), TraverseUtils.SingleElement(dest_st))
     }
 
-    //static AddAction(nodes : PathNode, act : option[Actions]) : IEnumerable[PathNode]
-    //{
-    //  | (n, Some(act))  => TraverseUtils.DoubleElement(n, Action(act))
-    //  | (n, _)          => TraverseUtils.SingleElement(n)
-    //}
-
     static AddAction(nodes : IEnumerable[PathNode], act : option[Actions]) : IEnumerable[PathNode]
     {
       | (n, Some(act))  => n.Append(Action(act))
       | (n, _)          => n
     }
 
-    static EntryNodeCreate(nodes : IEnumerable[FsmState]) : IEnumerable[PathNode]
+    static EntryNodeCreate(nodes : IEnumerable[FsmState]) : list[PathNode]
     {
-      def entering_state(st)
+      def entering_state(st, a)
       {
-        | FsmState(do_activity = do_act) => 
+        match (st)
+        {
+        | FsmState(do_activity = do_act, entry = en) => 
           def act = Actions(st.entry.SelectMany(_.actions).NToList());
-          Entry(act, do_act.Map(x => (RunDoActivity(x, st), true)), st.Updated)
+          def inl = do_act.Map(x => (RunDoActivity(x, st), true));
+          if (!en.IsEmpty() || !inl.IsEmpty()) Entry(act, inl, st.Updated) :: a else a
+        }
       }
 
 
-      nodes.Select(entering_state)
-      //Sequence(entry)
+      nodes.FoldBack([], entering_state)
     }
 
     static GetExitNode(st : FsmState) : PathNode
     {
-        //def exit = st.exit.Select(Exit);
       def do_act = st.do_activity.Map(StopDoActivity(_, st));
       def inline = if (st.history.HasValue) SaveHistory(st.history.Value) :: do_act; else do_act;
       def inline = inline.Map(x => (x, false));
       def act = Actions(st.exit.SelectMany(_.actions).NToList());
-      Exit(act, inline, st)
-        //| StateAction.Exit(state = FsmState(do_activity = act, history = TwoOption(HasValue = true) as h)) =>
-        //    Exit(st, (SaveHistory(h.Value), false) :: act.Map(x => (StopDoActivity(x), false)))
-
-        //| Exit(state = FsmState(do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)))
+      if (!st.exit.IsEmpty() || !inline.IsEmpty()) Exit(act, inline, st) else Empty()
     }
 
-    public ExitNodeCreate(nodes : IEnumerable[FsmState]) : IEnumerable[PathNode]
+    public ExitNodeCreate(nodes : IEnumerable[FsmState]) : list[PathNode]
     {
 
-      def exiting_state(st)
+      def exiting_state(st : FsmState, a)
       {
+        match (st)
+        {
         | FsmState.ConcurrentRegion(exit = e) as r => 
             def get_source()
             {
@@ -121,32 +115,32 @@ namespace Nemerle.Statechart
 
             if (e.IsEmpty()) 
             {
-              TraverseUtils.SingleElement(node)
+              node :: a
             } else 
             {
-              TraverseUtils.DoubleElement(GetExitNode(r), node)
+              match (GetExitNode(r))
+              {
+                | Empty => node :: a
+                | p     => node :: p :: a
+              }
             }
-
-        | _ => TraverseUtils.SingleElement(GetExitNode(st))
+          
+        | _ => match (GetExitNode(st))
+               {
+                 | Empty => a
+                 | x     => x :: a
+               }
+        }
       }
 
-      nodes.SelectMany(exiting_state)
+      nodes.FoldBack([], exiting_state)
     }
 
     public static ExitNodeCreate(src : FsmState, nodes : IEnumerable[FsmState]) : IEnumerable[PathNode]
     {
-      //def get_exit(st)
-      //{
-      //  | StateAction.Exit(state = FsmState(do_activity = act, history = TwoOption(HasValue = true) as h))=>
-      //      Exit(st, (SaveHistory(h.Value), false) :: act.Map(x => (StopDoActivity(x), false)));
-
-      //  | Exit(state = FsmState(do_activity = act)) => Exit(st, act.Map(x => (StopDoActivity(x), false)));
-      //}
-
       def exiting_state(st)
       {
         | FsmState.ConcurrentRegion(exit = e) as r => 
-            //def (reg, src, last) = get_source();
             def regs = r.RegionsExcept(src);
             def node = RegionExit(regs, r);
             if (e.IsEmpty()) TraverseUtils.SingleElement(node) else TraverseUtils.DoubleElement(GetExitNode(st), node)
@@ -197,7 +191,7 @@ namespace Nemerle.Statechart
 
     DefPath(src : FsmState, dest : FsmState, local : bool = true, skip : FsmState = null) : void
     {
-      def node = GetPath(src, dest, local, skip);
+      def node = GetPath(src.Updated, dest.Updated, local, skip);
       AddNode(node)
     }
 
@@ -206,11 +200,8 @@ namespace Nemerle.Statechart
       if (src == null || dest == null) Enumerable.Empty() else
       {
         def (ex, en) = if (local) FindPath(src, dest, Enumerable.Empty(), Enumerable.Empty()) else FindLCA(src, dest);
-        def ex = match (ex)
-                  {
-                    | head :: tail when (head == skip) => tail
-                    | _                                => ex
-                  }
+        def ex = if (ex.IsEmpty()) ex else 
+                  if (ex.First().Num == skip.Num) ex.Skip(1) else ex;
         NodesCreate(ex, en)
       }
     }
