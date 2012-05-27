@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using Nemerle.Statechart.Tests;
+using Nemerle.Statechart;
 
 namespace fsm_test
 {
@@ -44,7 +45,7 @@ namespace fsm_test
 
     NewEntry() : void 
     {
-      form.CaptionChange("program_name - [document]")
+      form.CaptionChange("program_name - [new document]")
     }
 
     ChangedEntry() : void 
@@ -54,38 +55,49 @@ namespace fsm_test
 
     SavedEntry() : void 
     {
-      form.CaptionChange("program_name - [new document]")
+      form.CaptionChange("program_name - [document]")
     }
 
+    mutable exit : bool = false;
+    
+    ForceClose() : void
+    {
+      exit = true;
+      form.Close();
+    }
+    
     Closing(_ : object, evt : FormClosingEventArgs) : void
     {
-      fsm.close();
-      when (!fsm.IsTerminated) evt.Cancel = true;
+      when (!exit)
+      {
+        fsm.Exit();
+        evt.Cancel = true;
+      }
     }
     
     init() : void 
     {
-      Form.NewHandler +=  (_, _)  => fsm.NewFile();
-      Form.OpenHandler +=  (_, _)  => fsm.Open();
-      Form.SaveHandler +=  (_, _)  => fsm.Save();
-      Form.ChangeHandler +=  (_, _)  => fsm.Change();
-      Form.SaveAsHandler +=  (_, _)  => fsm.save_as();
-      Form.FormClosing += Closing;
-      
-      fsm.SaveEnaAction += form.SaveEna;
-      fsm.SaveDisAction += form.SaveDis;
-      fsm.SaveAsEnaAction += form.SaveAsEna;
-      fsm.SaveAllDisAction += form.SaveAllDis;
-      fsm.SavedEntry += SavedEntry;
-      fsm.WaitingEntry+= WaitingEntry;
-      fsm.NewEntry += NewEntry;
-      fsm.ChangedEntry += ChangedEntry;
-      fsm.SaveDialog = Form.SaveDlg;
-      fsm.OpenDialog = Form.OpenDlg;
+      Form.NewHandler         += _ => fsm.New();
+      Form.OpenHandler        += _ => fsm.Open();
+      Form.SaveHandler        += _ => fsm.Save();
+      Form.ChangeHandler      += _ => fsm.Change();
+      Form.SaveAsHandler      += _ => fsm.SaveAs();
+      Form.FormClosing        += Closing;
+      fsm.SaveEnaAction       += form.SaveEna;
+      fsm.SaveDisAction       += form.SaveDis;
+      fsm.SaveAsEnaAction     += form.SaveAsEna;
+      fsm.SaveAllDisAction    += form.SaveAllDis;
+      fsm.SavedEntry          += SavedEntry;
+      fsm.WaitingEntry        += WaitingEntry;
+      fsm.NewEntry            += NewEntry;
+      fsm.ChangedEntry        += ChangedEntry;
+      fsm.SaveDialog          = Form.SaveDlg;
+      fsm.OpenDialog          = Form.OpenDlg;
+      fsm.ForceExitAction     += ForceClose;
       fsm.TransitionCompleted += fsm_TransitionCompleted;
-      fsm.NewDialog = () => MessageBox.Show("New file", "New file", MessageBoxButtons.OKCancel) == DialogResult.OK;
-      fsm.OpenFileAction = file => MessageBox.Show($"Opening file $file", "Opening file", MessageBoxButtons.OKCancel) == DialogResult.OK;
-      fsm.SaveFileAction = file => MessageBox.Show($"File $file saved", "Saving file", MessageBoxButtons.OKCancel) == DialogResult.OK;
+      fsm.NewDialog           = _ => MessageBox.Show("New file", "New file", MessageBoxButtons.OKCancel) == DialogResult.OK;
+      fsm.OpenFileAction      = file => MessageBox.Show($"Opening file $file", "Opening file", MessageBoxButtons.OKCancel) == DialogResult.OK;
+      fsm.SaveFileAction      = file => MessageBox.Show($"File $file saved", "Saving file", MessageBoxButtons.OKCancel) == DialogResult.OK;
       
       fsm.Initiate();
       UpdateState()
@@ -93,7 +105,7 @@ namespace fsm_test
 
     UpdateState() : void 
     {
-      Form.SetState(fsm.ToString(), fsm.LastSaved)
+      Form.SetState(if (fsm.IsTerminated) "Terminated" else fsm.ToString(), fsm.LastSaved)
     }
 
     fsm_TransitionCompleted(_ : object, _ : EventArgs) : void 

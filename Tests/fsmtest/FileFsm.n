@@ -7,149 +7,56 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using Nemerle.Statechart;
-using System.Threading;
 
 namespace Nemerle.Statechart.Tests
 {  
 
   [statechart(<#
 
-  flags : auto_initial transition_completed_events debug;
+  flags : auto_initial transition_completed_events;
 
   state FileWorking
   {
-    close => Exiting;
+    NewFile   => NeedSaving;
+    FileSaved => Saved;
+    Exited / ForceExit => $0;
 
-    state Files
+    state NotNeedSaving
     {
-      (H*)
-      NewFile => Processing;
-      Open    => Opening;
+        entry / SaveDis;
 
-      state Waiting
-      {
-        entry / SaveAllDis CaptionProgName;
-        exit  / SaveAsEna;
-      }
-
-      state Opened
-      {
-        save_as => Saving.SaveAs;
-
-        state NotSaved
+        state Waiting
         {
-          entry / SaveEna;
-
-          state New
-          {
-            entry / CaptionFile LastFileEmpty SaveAsEna;
-            Save => Saving.SaveAs;
-          }
-
-          state Changed
-          {
-            entry / CaptionChanged;
-            Save => Saving.Overwrite;
-          }
+            entry / SaveAllDis CaptionProgName;
         }
-        
+
         state Saved
         {
-          entry / SaveDis CaptionFileName LastFileCur;
-          Save   => @;
-          Change => Changed;
+            entry / CaptionFileName LastFileCur SaveAsEna;
+            Change => Changed;
         }
-        
-      }
     }
 
-    state Processing
+    state NeedSaving
     {
-      _      => Saved;
-      Cancel => Files.H;
+        entry / SaveEna;
 
-      state CreateNew
-      {
-        _ => Opened;
-
-        statemachine CreateNewSave : FileDialogs
+        state New
         {
-          _ => NewDialog;
+            entry / CaptionFile LastFileEmpty SaveAsEna;
         }
 
-        state NewDialog
+        state Changed
         {
-          [NoWait] do / ViewNewDialog;
-          ok    / LoadData => $0;
+            entry / CaptionChanged;
         }
-
-      }
-
-      new statemachine Saving : FileDialogs
-      {
-
-        0 => {
-               in_state(NotSaved) => WantSave;
-               else               => $0;
-             }
-
-        state WantSave
-        {
-          [NoWait] do / ViewWantToSave;
-          yes => {
-                    in_state(New) => SaveAs;
-                    else          => Overwrite;
-                 }
-          no  => $0;
-        }
-
-        state SaveAs
-        {
-          [NoWait] do / ViewSaveAsDialog;
-          ok    => (save_junc);
-        }
-
-        state Overwrite
-        {
-          [NoWait] do / ViewOverwrite;
-          no  => SaveAs;
-          yes => (save_junc);
-        }
-
-        merge save_junc / save => $0;
-      }
-
-      state Opening
-      {
-        statemachine OpenSave : FileDialogs
-        {
-          _ => OpenDialog;
-        }
-
-        state OpenDialog
-        {
-          [NoWait] do / ViewOpenDialog;
-          ok    / LoadData => $0;
-        }
-
-      }
-
-      state Exiting
-      {
-        statemachine ExitSave : FileDialogs
-        {
-          _ / Exit => X;
-        }
-
-      }
     }
+    
   }
   #>
   )]
   public class FileFsm
   {
-
-
     LastFileCur() : void
     {
       LastSaved = CurFile;
@@ -169,69 +76,128 @@ namespace Nemerle.Statechart.Tests
       CurOverwrite = "Want to overwrite file?";
     }
 
-    ViewOpenDialog(_ : CancellationToken) : void
+    ViewOpenDialog() : bool
     {
-      when (!DisableDialogs)
+      OpenDialog.ShowDialog() == DialogResult.OK;
+    }
+
+    ViewSaveAsDialog() : DialogResult
+    {
+      SaveDialog.ShowDialog();
+    }
+
+    ViewNewDialog() : bool
+    {
+      NewDialog == null || NewDialog()
+    }
+
+    ОткрытиеДиалога() : bool
+    {
+      res:
+        {
+          when (DoSaving()) 
+            when (ViewOpenDialog())
+            {
+              CurFile = OpenDialog.FileName;
+              res(OnOpenFileAction())
+            }
+          false
+        }
+    }
+
+    OnOpenFileAction() : bool
+    {
+      OpenFileAction == null || OpenFileAction(CurFile)
+    }
+
+    OnNewFileAction() : bool
+    {
+      NewFileAction == null || NewFileAction()
+    }
+
+    НовыйДиалог() : bool
+    {
+      res:
+        {
+          when (DoSaving()) 
+            when (ViewNewDialog()) res(OnNewFileAction());
+          false
+        }
+    }
+
+    SaveCurrentFile() : bool
+    {
+      SaveFileAction == null || SaveFileAction(CurFile)
+    }
+
+    ViewOverwrite() : DialogResult
+    {
+      MessageBox.Show(CurOverwrite, "Warning", MessageBoxButtons.YesNoCancel);
+    }
+
+    ViewWantToSave() : DialogResult
+    {
+      MessageBox.Show(CurWantToSave, "Warning", MessageBoxButtons.YesNoCancel);
+    }
+
+    SaveAsDialog() : bool
+    {
+      SaveDialog.FileName = CurFile;
+      def res = ViewSaveAsDialog();
+      if (res == DialogResult.OK)
       {
-        def res = OpenDialog.ShowDialog();
-        process_res(res)
+        CurFile = SaveDialog.FileName;
+        SaveCurrentFile()
+      }
+      else false
+    }
+
+    DoSaveFile() : bool
+    {
+      if (IsNewFile)
+      {
+        SaveAsDialog()
+      }
+      else
+      {
+        match (ViewOverwrite())
+        {
+          | Yes => CurFile = LastSaved;
+                   SaveCurrentFile()
+          | No  => SaveAsDialog()
+          | _   => false
+        }
       }
     }
 
-    ViewSaveAsDialog(_ : CancellationToken) : void
+    DoSaving() : bool
     {
-      when (!DisableDialogs)
+      if (IsNeedSave)
       {
-        def res = SaveDialog.ShowDialog();
-        process_res(res)
-      }
-    }
-
-    ViewNewDialog(_ : CancellationToken) : void
-    {
-      when (NewDialog != null) 
-      {
-        def res = NewDialog();
-        process_res(if (res) DialogResult.OK else DialogResult.Cancel)
-      }
-    }
-
-    process_res(res : DialogResult) : void
-    {
-      | Yes    => yes()
-      | Cancel => Cancel()
-      | No     => no()
-      | OK     => ok()
-      | _      => ()
-    }
-
-    ViewOverwrite(_ : CancellationToken) : void
-    {
-      when (!DisableDialogs)
-      {
-        def res = MessageBox.Show(CurOverwrite, "Warning", MessageBoxButtons.YesNoCancel);
-        process_res(res)
-      }
-    }
-
-    ViewWantToSave(_ : CancellationToken) : void
-    {
-      when (!DisableDialogs)
-      {
-        def res = MessageBox.Show(CurWantToSave, "Warning", MessageBoxButtons.YesNoCancel);
-        process_res(res)
-      }
+        match (ViewWantToSave())
+        {
+          | Yes    => DoSaveFile()
+          | No     => true
+          | _      => false
+        }
+      } else true
     }
 
     public IsNewFile : bool
     {
       get
       {
-        IsInState(State.New())
+        IsInState(State.New());
       }
     }
 
-    public DisableDialogs : bool {get;set;}
+    public IsNeedSave : bool
+    {
+      get
+      {
+        IsInState(State.NeedSaving());
+      }
+    }
 
     public OpenDialog : OpenFileDialog {get;set;}
     public SaveDialog : SaveFileDialog {get;set;}
@@ -239,11 +205,40 @@ namespace Nemerle.Statechart.Tests
 
     public LastSaved : string {get;private set;}
     public CurFile : string {get;private set;}
+    public NewFileAction  : void -> bool {get;set;}
     public OpenFileAction : string -> bool {get;set;}
     public SaveFileAction : string -> bool {get;set;}
     public CurWantToSave : string {get;set;}
     public CurOverwrite : string {get;set;}
 
-  }
+    check_save(func : void -> bool) : void
+    {
+      when (func()) FileSaved()
+    }
 
+    public Open() : void
+    {
+      check_save(ОткрытиеДиалога)
+    }
+
+    public Save() : void
+    {
+      check_save(DoSaveFile)
+    }
+
+    public SaveAs() : void
+    {
+      check_save(SaveAsDialog)
+    }
+
+    public Exit() : void
+    {
+      when (DoSaving()) Exited()
+    }
+
+    public New() : void
+    {
+      when (НовыйДиалог()) NewFile()
+    }
+  }
 }

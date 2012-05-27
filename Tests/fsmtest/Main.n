@@ -10,7 +10,6 @@ using Nemerle.Statechart;
 
 namespace Nemerle.Statechart.Tests {
 
-  using OldFileFsmN;
   using FileFsm;
   using FileFsm.Event;
   using FileFsm.State;
@@ -43,11 +42,9 @@ namespace Nemerle.Statechart.Tests {
       {               
         match (evt)
         {
-          | "New" => Event.NewFile
-          | "Open" => Event.OpenFile
-          | "Save" => Event.Save
-          | "Change" => Event.Change
-          | _ => Event.Change
+          | "New"    => Event.NewFile
+          | "Save"   => Event.FileSaved
+          | _        => Event.Change
         }
       }
 
@@ -55,17 +52,16 @@ namespace Nemerle.Statechart.Tests {
       {
         match (evt)
         {
-          | "New" => EventID.NewFile
+          | "New"  => EventID.NewFile
           | "Open" => EventID.OpenFile
           | "Save" => EventID.SaveFile
-          | "Change" 
-          |  _ => EventID.Changed
+          |  _     => EventID.Changed
         }
       }
       
       WriteLine($"Creating $test_events_count events...");
       CreateEvents(test_events_count);
-      def fsm = OldFileFsmN();
+      def fsm = FileFsm();
       def old_fsm = OldFileFsm();
       def ev = array["New", "Open", "Save", "Change"]; 
       def events = events.Map(x => ev[x]);
@@ -91,7 +87,7 @@ namespace Nemerle.Statechart.Tests {
     public IsInStateTest() : void
     {
       
-      fsm.DisableDialogs = true;
+      //fsm.DisableDialogs = true;
       
       def do_throw()
       {
@@ -110,71 +106,25 @@ namespace Nemerle.Statechart.Tests {
       
       fsm.Initiate();
       is_in_state(Waiting());
-      is_in_state(Files());
+      is_in_state(FileWorking());
       fsm.NewFile();
-      is_in_state(NewDialog());
-      fsm.Cancel();
-      is_in_state(Waiting());
-      fsm.NewFile();
-      is_in_state(NewDialog());
-      fsm.ok();
       is_in_state(New());
-      is_in_state(NotSaved());
+      is_in_state(NeedSaving());
       fsm.Change();
       is_in_state(New());
-      fsm.Save();
-      is_in_state(SaveAs());
-      fsm.Cancel();
-      is_in_state(New());
-      fsm.Save();
-      is_in_state(SaveAs());
-      fsm.ok();
+      fsm.FileSaved();
       is_in_state(Saved());
-      is_in_state(Opened());
+      fsm.FileSaved();
+      is_in_state(Saved());
+      is_in_state(NotNeedSaving());
       fsm.Change();
       is_in_state(Changed());
       not_in_state(Waiting());
-      fsm.Save();
-      is_in_state(Overwrite());
-      is_in_state(InlinedSubMachineSaving());
-      fsm.Cancel();
-      is_in_state(Changed());
-      fsm.Save();
-      is_in_state(Overwrite());
-      is_in_state(InlinedSubMachineSaving());
-      fsm.no();
-      is_in_state(SaveAs());
-      fsm.Cancel();
-      is_in_state(Changed());
-      fsm.Save();
-      is_in_state(Overwrite());
-      fsm.yes();
-      is_in_state(Saved());
-      fsm.Open();
-      is_in_state(Opening());
-      is_in_state(OpenDialog());
-      fsm.Cancel();
-      is_in_state(Saved());
-      fsm.Open();
-      is_in_state(Opening());
-      fsm.ok();
-      is_in_state(Saved());
-      fsm.Open();
-      is_in_state(Opening());
-      fsm.ok();
+      fsm.FileSaved();
       is_in_state(Saved());
       fsm.Change();
       is_in_state(Changed());
-      fsm.close();
-      is_in_state(Exiting());
-      is_in_state(FileFsm.State.InlinedSubMachineExitSave());
-      fsm.yes();
-      is_in_state(Overwrite());
-      fsm.Cancel();
-      is_in_state(Changed());
-      fsm.close();
-      is_in_state(FileFsm.State.InlinedSubMachineExitSave());
-      fsm.no();
+      fsm.Exited();
       when (!fsm.IsTerminated) do_throw()
     }
      
