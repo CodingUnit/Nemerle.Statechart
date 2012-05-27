@@ -77,7 +77,7 @@ namespace Nemerle.Statechart
                       while (!IsTerminated)
                       {
                         mutable item;
-                        if (queue.TryDequeue(out item) && item : object != null)
+                        if (queue.TryDequeue(out item))
                         {
                           SendEvent(item)
                         } else 
@@ -99,8 +99,8 @@ namespace Nemerle.Statechart
                     {
                         queue_thread = Thread(QueueThread);
                         _ = reset_event.Reset();
+                        Switch($initial);
                         queue_thread.Start();
-                        Switch($initial)
                     }
 
                     public override ToString() : string
@@ -143,54 +143,18 @@ namespace Nemerle.Statechart
       {
         def name = act.GetName(st);
         <[
-          when ($($"$(name)CancelSource" : usesite) != null) $($"$(name)Stop" : usesite)();
+          $($"$(name)Stop" : usesite)();
         ]>
       }
 
-      def get_task_name(st, act)
-      {
-        def name = act.GetName(st);
-        $"$(name)Task";
-      }
-
-      def get_wait(st, act)
-      {
-        match (act)
-        {
-          | StateAction.Do(Concurrently = conc) =>
-              def task = get_task_name(st, act);
-              if (conc) <[ tasks.Add($(task : usesite)) ]> else <[ tasks.Add($(task : usesite)) ]>
-        }
-      }
-
-      def tasks = analyser.DoActivities.Exclude((_, x) => x.NoWaitCancel);
-      def wait_tasks = tasks.Map(get_wait);
-      //def wait_tasks = <[ def tasks = List(); { ..$wait_tasks } ]>;
       def stop_body = analyser.DoActivities |> stop_activity(_);
-      def stop_body = match (wait_tasks)
-                       {
-                         | []  => <[ {..$stop_body} ]>
-                         | lst =>   def tasks = <[ def tasks = List(); {..$lst} ]>;
-                                      <[ 
-                                      $tasks;
-                                      try
-                                      {
-                                          {..$stop_body}
-                                          System.Threading.Tasks.Task.WaitAll(tasks.FilterToArray(_ != null));
-                                      }
-                                      catch
-                                      {
-                                        | _ is AggregateException => ()
-                                      }
-                                    ]>
-                       }
       def terminate = <[ decl: public Terminate() : void
-                        {
-                          $stop_body;
-                          cur_state = null;
-                          _ = reset_event.Set();
-                          queue_thread.Join();
-                        }
+                         {
+                           {..$stop_body}
+                           cur_state = null;
+                           _ = reset_event.Set();
+                           when (Thread.CurrentThread != queue_thread : object) queue_thread.Join();
+                         }
                       ]>;
       Define(terminate);
     }
@@ -203,7 +167,7 @@ namespace Nemerle.Statechart
         def comp = ListUtils.Init(StatesId.Length, i => <[ cur_id.$($"id$i" : usesite) & id.$($"id$i" : usesite) == id.$($"id$i" : usesite) ]>);
         def expr = MergeExpr(comp, (x,y) => <[ $x && $y ]>);
         <[
-        def id = $st_id;
+          def id = $st_id;
           def cur_id = cur_state.get_id();
           $expr
         ]>
