@@ -1,0 +1,159 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  using PseudoStateAstNode;
+  using FsmState;
+  using PseudoStateNode;
+  using ListUtils;
+
+  /// <summary>
+  /// Description of TransitionTargetImpl.
+  /// </summary>
+  public partial variant TransitionTarget
+  {
+    
+        
+    public static Create(an : FsmAnalyser, state : FsmState, target : TargetType) : TransitionTarget
+    {
+      match (target)
+      {
+        | PseudoState as t                  => PseudoState(state, t)
+        | History     as t                  => History(state, t)
+        | Final                             => TransitionTarget.Final(an, null)
+        | State       as t                  => State(an, t)
+        | Named       as t                  => Named(state, t)
+        | SubMachine(m, s)                  => SubMachine(an, SubMachine(m, null), s)
+        | Qualified(parent = p, target = t) => Qualified(an, p, Create(an, state, t))
+        | JunctionNode(g, a, t, n)          => JunctionNode(an, g, a, Create(an, state, t), null, n.Map(x => Create(an, state, x) :> JunctionNode), state, null, JunctionType.Junction)
+      }
+    }
+
+    public CompareTo(target : TransitionTarget) : int
+    {
+      CompareTo(this, target)
+    }
+
+    public static CompareTo(t1 : TransitionTarget, target : TransitionTarget) : int
+    {
+      | (History(h1), History(h2))                            => h1.Name.CompareTo(h2.Name)
+      | (Final(st1), Final(st2))                              => st1.Name.CompareTo(st2.Name)
+      | (PseudoState(n1), PseudoState(n2))                    => n1.ToString().CompareTo(n2.ToString())
+      | (State(st1), State(st2))                              => st1.Name.CompareTo(st2.Name)
+      | (SubMachine(m, s), SubMachine(m2, s2)) when (m == m2) => s.CompareTo(s2)
+      | (Qualified(p, t), Qualified(p2, t2)) when (p == p2)   => t.CompareTo(t2)
+      | _                                                     => -1
+    }
+
+    public static @==(a : TransitionTarget, b : TransitionTarget) : bool
+    {
+      | (History(h1), History(h2))             => h1 == h2
+      | (State(st1), State(st2))
+      | (Final(st1), Final(st2))               => st1 == st2
+      | (PseudoState(n1), PseudoState(n2))     => n1 == n2
+      | (Named(st, n), Named(st2, n2))         => st == st2 && n == n2
+      | (Qualified(p, t), Qualified(p2, t2))   => p == p2 && t == t2
+      | (SubMachine(m, s), SubMachine(m2, s2)) => m == m2 && s == s2
+      | _                                      => false
+    }
+
+    public PartOfSubRegion : option[ConcurrentSubRegion]
+    {
+      get
+      {
+        match (ToState)
+        {
+          | null => None()
+          | ConcurrentSubRegion as st => Some(st)
+          | st => st.PartOfSubRegion
+        }
+      }
+    }
+
+    public ToState : FsmState
+    {
+      get
+      {
+        match (this)
+        {
+          | PseudoState(PseudoStateNode(state = st))
+          | History(StateHistory(state = st))
+          | Final(state = st)
+          | SubMachine(st, _)
+          | JunctionNode(state = st)
+          | State(state = st)  => st.Updated
+          | Named              => null
+          | Qualified(_, t)    => t.ToState
+        }
+      }
+    }
+
+    //public transition : StateTransition;
+
+    //public SetCopy(ncopy : int) : TransitionTarget
+    //{
+    //  Reduce(pseudo_state = t => t.ChangeNode(t.node.ChangeCopy(ncopy)), 
+    //         merge = (t, _) => t.ChangeNode(t.node.ChangeCopy(ncopy)), 
+    //         junction = (t, _) => t.ChangeNode(t.node.ChangeCopy(ncopy)))
+    //}
+
+    public Guards : IEnumerable[GuardNode]
+    {
+      get
+      {
+        JunctionNodeParts.Select(_.guard)
+      }
+    }
+
+    public Rebuild(child : IEnumerable[TransitionTarget]) : TransitionTarget
+    {
+      match (this)
+      {
+        | TransitionTarget.Qualified as t => t.ChangeTarget(child.First())
+        | PseudoState(Merge as p) as t    => t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
+        | PseudoState(Junction as p) as t => t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
+        | JunctionNode(next = Some) as t  => def (f, s) = child.TakeTwo();
+            t.ChangeNextTo(if (s != null) Some(s :> JunctionNode) else None(), f)
+        | JunctionNode as t               => def f = child.First();
+                                            t.ChangeTo(f);
+        | _                               => this
+      }
+    }
+
+    public GetChild() : IEnumerable[TransitionTarget]
+    {
+      match (this)
+      {
+        | JunctionNode(to = to, next = Some(n)) => TraverseUtils.DoubleElement(to, n)
+        | PseudoState(Merge(to = n))
+        | PseudoState(Junction(to = n))
+        | JunctionNode(to =  n)
+        | Qualified(_, n)                       => TraverseUtils.SingleElement(n)
+        | _                                     => Enumerable.Empty()
+      }
+    }
+
+    public virtual UpdateReference() : TransitionTarget
+    {
+      this
+    }
+
+    public StateMap : StateMap
+    {
+      get
+      {
+        analyser.statemap
+      }
+    }
+
+    public analyser : FsmAnalyser;
+    
+  }
+}

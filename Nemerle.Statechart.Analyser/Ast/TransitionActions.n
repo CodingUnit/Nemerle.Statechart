@@ -22,27 +22,23 @@ namespace Nemerle.Statechart
       this.analyser = an
     }
 
-    public this(st : FsmState, tran : StateNode.Transition, to : FsmState)
+    public this(st : FsmState, tran : StateNode.Transition)
     {
       this(st.analyser);
       From = st;
+      Source = st;
       node = tran;
       when (tran != null)
       {
         guard = tran.guard;
         action = tran.action;
       }
-      To = TransitionTarget.State(this, st.analyser, to);
-      Source = st;
+      To = if (tran.to != null) TransitionTarget.Create(st.analyser, st, tran.to) else null
     }
-
-    public this(st : FsmState, tran : StateNode.Transition)
+    
+    public this(st : FsmState, to : FsmState)
     {
-      this(st.analyser);
-      From = st;
-      node = tran;
-      To = if (tran.to != null) TransitionTarget.Create(st.analyser, st, this, tran.to) else null;
-      Source = st;
+      this(st, TransitionTarget.State(st.analyser, to))
     }
 
     public this(st : FsmState, to : TransitionTarget)
@@ -395,11 +391,11 @@ namespace Nemerle.Statechart
     }
 
     /// !!! mutable
-    public TargetTraverse(func : TransitionTarget -> TransitionTarget, manual_rebuild : bool = false) : StateTransition
+    public TargetTraverse(func : TransitionTarget * StateTransition -> TransitionTarget, manual_rebuild : bool = false) : StateTransition
     {
       if (To != null) 
       {
-        def to = To.ReduceSingle(manual_rebuild, (p, _) => func(p));
+        def to = To.ReduceSingle(manual_rebuild, (p, _) => func(p, this));
         ChangeTo(to)
       } else this
     }

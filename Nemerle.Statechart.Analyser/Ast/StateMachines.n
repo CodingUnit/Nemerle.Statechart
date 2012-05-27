@@ -16,20 +16,20 @@ namespace Nemerle.Statechart
   {
         // inst : accumulated base state machine
         // ret : instance and base state machine accumulator
-       public static InitInline(this st : FsmState.InlinedSubMachineInstance, inst : list[FsmState]) : FsmState * list[FsmState]
-        {
-          | (FsmState.InlinedSubMachineInstance(instance_of = instance_of, name = name, transitions = transitions, Num = cur_num, Super = super), _) => 
-          
+    public static InitInline(this st : FsmState.InlinedSubMachineInstance, inst : list[FsmState]) : FsmState * list[FsmState]
+    {
+      | (FsmState.InlinedSubMachineInstance(instance_of = instance_of, name = name, transitions = transitions, Num = cur_num, Super = super), _) => 
+
           def find_inst   = inst.Find(x => x.Num == instance_of.Num).ObjFromOption();
           def instance_of = instance_of.Updated;
           def base_inst   = (find_inst ?? instance_of) :> FsmState.InlinedSubMachine;
-          
+
           def num         = base_inst.NCopy + 1; // increment copy number
 
           def copy_state(st, sub)
           {
             def st = st.ChangeCloneFor(st);
-            
+
             def st = match (st, instance_of)
             {
               | (FsmState.Final, _)                                    => st
@@ -37,28 +37,28 @@ namespace Nemerle.Statechart
               | (FsmState(Num = n), FsmState(Num = n2)) when (n == n2) => st.ChangeNameTransitionsSuperStateNum(name, transitions, super, cur_num)
               | _                                                      => st.ChangeCopyNum(num).SetNewId() // set new identificator for state
             }
-            
+
             def change_sub_states(sub : FsmState)
             {
               def sub = sub.ChangeSuperState(st);
               if (sub is FsmState.Final) sub.SetNewId() else sub
             }
-            
+
             def sub    = sub.Map(change_sub_states);
-            
+
             def init   = st.initial.Map(x => x.ChangeFromSource(st, st).SetNewId());
             def tran   = st.transitions.Map(x => x.ChangeFromSource(st, st).SetNewId());
             def intern = st.internal_tran.Map(x => x.ChangeFromSource(st, st).SetNewId());
             def hist   = st.history.Map(_.ChangeState(st));
-            def en     = st.entry;//.Map(_.ChangeState(st));
-            def ex     = st.exit;//.Map(_.ChangeState(st));
+            def en     = st.entry;
+            def ex     = st.exit;
             st.ChangeTransitionsSubStatesHistoryInitialEntryExitInternalTran(tran, sub, hist, init,  en, ex, intern)
           }
 
           def st          = instance_of.ReduceSingle(true, copy_state); // copy state and its content, changing references accordingly
           def new_st      = st.AllStates.ToArray(); // take all states in new sm copy
           def old_st      = instance_of.AllStates.ToArray();
-          
+
           def retarget_transitions(s, _)
           {
             def find_state(st)
@@ -70,8 +70,10 @@ namespace Nemerle.Statechart
               }
             }
 
-            def check_target(tar)
+            def check_target(tar, _)
             {
+              match (tar)
+              {
               | TransitionTarget.State(st) as t                       => t.ChangeState(find_state(st))
               | Qualified(_, State(st) as t)                          => t.ChangeState(find_state(st))
               | JunctionNode(state = st) as t                         => t.ChangeState(find_state(st))
@@ -81,9 +83,10 @@ namespace Nemerle.Statechart
                     | Final as st => t.ChangeState(st)
                     | _           => null
                   }
-                  
+
               | PseudoState(PseudoStateNode(state = st) as node) as t => t.ChangeNode(node.ChangeState(find_state(st)))
               | _                                                     => null
+            }
             }
 
             def check_tran(tr)
@@ -95,17 +98,17 @@ namespace Nemerle.Statechart
             def hist     = s.history.Map(x => x.ChangeDefault(x.default.Map(check_tran)));
             s.ChangeHistory(hist)
           }
-          
+
           def st           = st.ReduceSingle(retarget_transitions); // retarget transitions to new place state
           def new_st       = st.AllStates.ToArray(); // take all states in new sm copy
-          
+
           def update_base_inst(s, _)
           {
             def check_tran(tr, ntran)
             {
               tr.ZipLazy(ntran).Map((i, n) => i.ChangeClones(n :: i.clones));
             }
-            
+
             match (new_st.Find(o => o.cloneFor.Num == s.Num))
             {
               | Some(st) => // // if it is state machine instance don't touch external transitions
@@ -113,19 +116,19 @@ namespace Nemerle.Statechart
                             def int_trans = check_tran(s.internal_tran, st.internal_tran);
                             def init      = check_tran(s.initial, st.initial);
                             s.ChangeClonesInitialInternalTranTransitions(st :: s.clones, init, int_trans, trans)
-                            
+
               | _        => throw InvalidOperationException("unknown state machine state")
             }
           }
-          
+
           def base_inst   = base_inst.ReduceSingle(update_base_inst); // updating base instance clones information
-          
+
           // if have processed base sm type exclude it
           def inst = if (find_inst != null) inst.Exclude(x => x.Num == base_inst.Num) else inst;
           // updates state map
           (st, base_inst :: inst) // add base sm type to accumulator
-           
-        }
+
+    }
 
   }
 }

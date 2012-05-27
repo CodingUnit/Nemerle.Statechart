@@ -10,6 +10,7 @@ using Nemerle.Utility;
 using System.ComponentModel;
 using System.Collections.Generic;
 using System.Linq;
+using System.Windows.Forms;
 
 namespace Nemerle.Statechart
 {
@@ -49,8 +50,38 @@ namespace Nemerle.Statechart
     Utils.CreateAssign(obj, expr)
   }
 
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Method)]
+  macro FormSync(type : TypeBuilder, meth : ClassMember.Function, params expr : array[PExpr])
+  {
+    Utils.FormSyncCreate(type, meth, expr)
+  }
+
+  public module FormUtils
+  {
+    
+    public Sync(this form : Form, act : Action) : void
+    {
+      if (form.InvokeRequired) _ = form.Invoke(act) else act()
+    }
+
+    public Sync[T](this form : Form, act : Func[T]) : T
+    {
+      if (form.InvokeRequired) form.Invoke(act) :> T else act()
+    }
+    
+  }
+  
   module Utils
   {
+
+    public FormSyncCreate(_ : TypeBuilder, meth : ClassMember.Function, expr : array[PExpr]) : void
+    {
+      match (expr.NToList())
+      {
+        | []        => meth.Body = <[ this.Sync(() => { $(meth.Body) }) ]>
+        | head :: _ => meth.Body = <[ $head.Sync(() => { $(meth.Body) }) ]>
+      }
+    }
 
     public attr_func(this f : IField, func : list[PExpr] -> bool) : bool
     {
