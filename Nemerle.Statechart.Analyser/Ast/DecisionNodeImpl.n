@@ -44,21 +44,33 @@ namespace Nemerle.Statechart
       {
         match (n)
         {
-          | TransitionTarget.JunctionNode(guard = g, action = a, parent = p) => DecisionNode.Condition(g, a.ToList(), toacc, nacc, p)
+          | TransitionTarget.JunctionNode(guard = g, action = a, parent = p, state = st) => 
+            def toacc = match (toacc)
+                        {
+                          | DecisionNode.Target as t => t.ChangeState(st)
+                          | x                        => x
+                        }
+            def nacc = match (nacc)
+                       {
+                         | Some(DecisionNode.Target as t) => Some(t.ChangeState(st))
+                         | x                              => x
+                       }
+            DecisionNode.Condition(g, a.ToList(), toacc, nacc, p, st)
         }
       }
 
       n.Fold(null, 
-             create_junction_node,
-             create_target,
-             (_, a) => a,
              create_target,
              create_target,
              create_target,
              create_junction,
              create_merge,
              create_target,
-             create_target)
+             create_target,
+             (_, a) => a,
+             create_target,
+             create_junction_node,
+             )
 
     }
 
@@ -77,7 +89,6 @@ namespace Nemerle.Statechart
             an.AddError(FsmError.JunctionActionMaybeLast(p, a))
 
         | Condition(Empty, _, Some, PseudoStateNode.Junction(type = t) as p)
-        //| Condition(body = DecisionNode.Condition(GuardNode.Empty, _, _, PseudoStateNode.Junction(type = t) as p)) 
         | Condition(body = DecisionNode.Condition(Else, _, _, PseudoStateNode.Junction(type = t) as p)) => 
             an.AddError(if (t == JunctionType.Junction) FsmError.JunctionElseMustAfterAnotherGuard(p) else FsmError.ChoiceElseMustAfterAnotherGuard(p))
 
@@ -96,7 +107,7 @@ namespace Nemerle.Statechart
             def els  = add_act(els, a);
             n.ChangeBodyActionsElseNode(body, [], Some(els))
 
-        | DecisionNode.Condition(actions = a, body = b, else_node = None, type = JunctionType.Junction) as n => 
+        | DecisionNode.Condition(actions = a, body = b, type = JunctionType.Junction) as n => 
             def body = add_act(b, a);
             n.ChangeBodyActions(body, [])
 
