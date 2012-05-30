@@ -20,14 +20,14 @@ namespace Nemerle.Statechart
 
     CheckInitialTransitions() : void
     {
-      def check_auto_initial(st, sub)
+      def check_auto_initial(st, _)
       {
         match (st)
         {
           | FsmState.Final 
           | ConcurrentRegion => st
-          | FsmState(initial = init) when init.IsEmpty() && !sub.IsEmpty() with head = sub.First() =>
-              if (head is FsmState.Final) st else st.DefineInitial(head);
+          | FsmState(initial = [], sub_states = head :: _) =>
+              if (head is FsmState.Final) st else st.DefineInitial(head)
           | _ => null
         }
       }
@@ -83,7 +83,7 @@ namespace Nemerle.Statechart
         match (tr)
         {
           | _ :: []  => st // if not have group exit
-          | StateTransition(Guard = Some()) as head :: tail  => 
+          | StateTransition(Guard = Some) as head :: tail  => 
               def (path, end) = tail.SplitFind(x => x.Guard.IsNone); // get all include last without GuardNode
               def tr = head.ChangeParentCrossed(path);
               def path = path.Map(_.ChangeCrossFor(true));
@@ -198,13 +198,13 @@ namespace Nemerle.Statechart
     {
       match (tr)
       {
-        | TransitionTarget.Final(state = null) as t =>
-            def super = if (tran is Initial) st else st.Super;
-            match (super.sub_states.FindType())
-            {
-              | Some(FsmState.Final as st)  => t.ChangeState(st)
-              | _                           => tr
-            }
+        //| TransitionTarget.Final(state = null) as t =>
+        //    def super = if (tran is Initial) st else st.Super;
+        //    match (super.sub_states.FindType())
+        //    {
+        //      | Some(FsmState.Final as st)  => t.ChangeState(st)
+        //      | _                           => tr
+        //    }
 
         | PseudoState(node = Terminate(state = null) as node) =>
             match (PseudoStates.Filter(_ is PseudoStateNode.Terminate))
@@ -239,7 +239,7 @@ namespace Nemerle.Statechart
                   def m = m.Scan(); // scan external sub machine for states
                   when (!m.ref_sub_states.Contains(n)) AddError(FsmError.SubMachineStateNotFound(m, n));
                   TransitionTarget.SubMachine(this, m, n)
-              | (null, _) => AddError(FsmError.UnknownState(tran.From, FsmState.State(st.Name), tran));
+              | (null, _) => AddError(FsmError.UnknownState(tran.From, FsmState.State(st.Name, this), tran));
                              t
               | (st, t) => resolve_targets(st, t, tran)
             }

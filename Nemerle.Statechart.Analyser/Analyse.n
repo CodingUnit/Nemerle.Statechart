@@ -29,19 +29,35 @@ namespace Nemerle.Statechart
       def state = Fsm.state.ChangeName(FsmState.TopStateName);
       def top = state.Fold(null, 
                            (s, sb) => FsmState.CreateState(s, sb, this),
-                           (s, sr) => FsmState.ConcurrentRegion(s, sr.Select(_ :> FsmState.ConcurrentSubRegion), this),
+                           (s, sr) => FsmState.ConcurrentRegion(s, sr.Map(_ :> FsmState.ConcurrentSubRegion), this),
                            (s, _)  => FsmState.Final(s, this),
                            null);
-      //def top = top.CreateIterator(); // cache iterator
-    //def topState = FsmState.State(Fsm.state, null, this, false); // create statemachine from top state
+                           
       UpdateStateMap(top, true);
-      //UpdateStateMap(null, true)
+      def map_st  = statemap.States;
+      def name_st = statemap.namemap;
+      when (map_st.Length != name_st.Count()) // if name and statemap not equal
+      {
+        def map_st = map_st.MapToList(_.Name);
+        def name_st = name_st.Map(_.Key);
+        def map = map_st.Exclude(name_st);//.Exists(_ == x));
+        def name = name_st.Exclude(map_st);
+        throw InvalidOperationException($"Statemap and names map not equal. New states in statemap ..$map. New states in namemap ..$name)");
+      }
     }
 
     InitStateMap() : void
     {
-      def CheckAddFinalState()
-      {
+      InitStatechart();
+      
+      
+      CreateHistoryStates();
+      when (Error) throw FsmErrorException();
+      RenameDuplicates()
+    }
+
+    CheckAddFinalState() : void
+    {
         def is_top(st)
         {
           def super = st.Super; 
@@ -56,15 +72,11 @@ namespace Nemerle.Statechart
           {
             | (TransitionTarget.Final, _) when (is_top(st))=> 
                 def term = PseudoStateNode.Terminate(TopState, 0, this);
-            //TopState.pseudo_states ::= term;
                 (TransitionTarget.PseudoState(this, term), a)
+                
             | (Final as t, Initial) with super = st
             | (Final as t, _) with super = st.Super =>
-                def fst = FsmState.Final(super, this, true);
-                //def super = super.AddSubState(fst);
-                //def an = an.ChangeStatemap(an.statemap.Add(super));
-            //st.ChangeSuper();
-            //def fst = fst.ChangeSuperState(super);
+                def fst = FsmState.Final(super, this, true).SetNewId();
                 (t.ChangeState(fst), fst :: a)
           }
         }
@@ -78,13 +90,6 @@ namespace Nemerle.Statechart
           }
         }
 
-        //def final = st.all_transitions_with_init.FoldLeft(acc, (x, a) => x.To.FoldThis(a, null, null, null, null, check_target(_, x, _), null, null, null, null, null).Map((a, b) => {x.To = a;b}));
-        //def acc = acc.Concat(final);
-        //match (final.Find(x => x.super_state.name == st.name))
-        //{
-        //  | Some(head) => (st.ChangeSubStates(sub.Concat(TraverseUtils.SingleElement(head))), final)
-        //  | _         => (st, final)
-        //}
         def check_tran(x, (tr, a))
         {
           def (to, fin) = x.To.Reduce(a, final = check_target(_, x, _));
@@ -96,23 +101,17 @@ namespace Nemerle.Statechart
         {
           def (tran, fin) = s.transitions.FoldBack(([], a), check_tran);
           def (init, fin) = s.initial.FoldBack(([], fin), check_tran);
-          def st = s.ChangeTransitionsInitial(tran, init);
+          def st          = s.ChangeTransitionsInitial(tran, init);
           (st, fin)
         }
 
         def (top, final) = TopState.ReduceSingle([], check_state);
         // check to add final state
-        top.ReduceSingle(true, check_final(final, _, _));
-      }
-
-      InitStatechart();
-      def top = CheckAddFinalState();
-      UpdateStateMap(top); // update state map
-      CreateHistoryStates();
-      when (Error) throw FsmErrorException();
-      RenameDuplicates()
+        def final = final.RemoveDuplicatesSort(x : FsmState => x.Super.Num);
+        def top = top.ReduceSingle(true, check_final(final, _, _));
+        UpdateStateMap(top); // update state map
     }
-
+    
     public UpdateStateMap(st : IEnumerable[FsmState]) : void
     {
       statemap.Update(st)
@@ -125,33 +124,15 @@ namespace Nemerle.Statechart
       when (upd_ref) 
       {
         def top = TopState.ReduceSingle((x, _) => x.UpdateReference());
-        statemap.Update(top);
+        statemap.Update(top)
       }
     }
 
-    //InitStates() : void
-    //{
-    //  //def init_states(st, pos)
-    //  //{
-    //  //  st.hierarchy_pos = pos;
-    //  //  st.SubStates.Iter(init_states(_, pos + 1)); // init sub states
-    //  //}
-    //  //init_states(TopState, 0); // init state map
-    //  //states = statemap.States.NToList();
-    //}
-
     RenameDuplicates() : void
     {
-      def do_rename(st, n)
-      {
-        st.ChangeCopyNum(n)
-      }
-
       def rename_group(st)
       {
-        //def (head :: _) = st;
-        //def map = map.Rem(head);
-        st.MapIndex(do_rename)
+        st.MapIndex(_.ChangeCopyNum(_))
       }
 
       def dups = States.NToList().Duplicates(FsmState.NameComparer);
@@ -196,7 +177,7 @@ namespace Nemerle.Statechart
 
     CreateActions() : void
     {
-      def check_do(st : FsmState, act)
+      def check_do(st, act)
       {
         def check(act)
         {
@@ -243,5 +224,34 @@ namespace Nemerle.Statechart
       UpdateStateMap(top); // update tree with instanced state machines
       UpdateStateMap(base_sm_types.SelectMany(_.AllStates)); // update base sm types and its contents
     }
+    
+    public Analyse() : void
+    {
+      try
+      {
+        CheckParseErrors();
+        InitStateMap();
+        CheckTransitions();
+        CheckAddFinalState(); // check add final states from transitions declaration
+        CreateSubMachines();
+        CreateHierarchy(); // create hierarchy
+        CheckInitialTransitions();
+        CreateTransitions();
+        BreakIfError();
+        CreateTransitionPaths();
+        CreateHistoryPaths(); // create history paths
+        CreateConcurrentRegion();
+        UpdateInitial();
+        CreateActions();
+        FinalizeAnalyse();
+      }
+      catch 
+      {
+        | x is FsmErrorException => 
+           def err = x.error;
+           when (err != null) AddError(err);
+      }
+    }
+    
   }
 }
