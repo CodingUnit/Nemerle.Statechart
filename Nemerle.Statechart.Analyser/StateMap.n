@@ -26,11 +26,11 @@ namespace Nemerle.Statechart
 
     public GetNewStateId(state : FsmState) : int
     {
-      match (namemap.Get(state.Name))
+      match (namemap.Get(state.NativeName))
       {
         | Some(num) => num
         | _         => def num = GetNextStateNum();
-                      namemap[state.Name] = num;
+                      namemap[state.NativeName] = num;
                       num
       }
     }
@@ -41,8 +41,8 @@ namespace Nemerle.Statechart
       {
         | Some(num) => num
         | _         => def num = GetNextTransitionNum();
-                       tranmap[tran.Name] = num;
-                       num
+                      tranmap[tran.Name] = num;
+                      num
       }
     }
 
@@ -52,21 +52,21 @@ namespace Nemerle.Statechart
     [Accessor]
     mutable transition_num : int;
 
-    GetNextStateNum() : int
+    public GetNextStateNum() : int
     {
       def num = state_num;
       state_num++;
       num
     }
 
-    GetNextTransitionNum() : int
+    public GetNextTransitionNum() : int
     {
       def num = transition_num;
       transition_num++;
       num
     }
 
-    public States : IEnumerable[FsmState]
+    public States : array[FsmState]
     {
       get
       {
@@ -88,7 +88,16 @@ namespace Nemerle.Statechart
 
     public Get(state : FsmState) : FsmState
     {
-      Get(state.Num)
+      if (state == null) null else
+      {
+        def num = state.Num;
+        def st = if (num == -1) Get(state.NativeName) else Get(num);
+        match (st)
+        {
+          | null => throw InvalidOperationException($"state is not correctly mapped $state")
+          | st   => st
+        }
+      }
     }
 
     public Get(state : list[string]) : FsmState
@@ -98,29 +107,25 @@ namespace Nemerle.Statechart
         string.Join(".", n)
       }
 
-      def get_loop(st, lst, path, err)
+      def get_loop(st, lst, path)
       {
-        match (st, lst, path)
-        {
-          | (st, head :: tail, p) => 
+        | (st, head :: tail, p) => 
               def path = head :: p;
               match (get_all_state(st, head), tail)
               {
-                | (x, _)   when x.IsEmpty()     => (null, FsmError.StateNotFound(State(merge_name(path.Rev()))) :: err)
-                | (st, []) when st.IsSingle()   => (st.First(), err)
-                | (st, _)  when st.IsSingle()   => get_loop(st.First().sub_states, tail, path, err)
-                | (lst, _)                      => (null, FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev()))) :: err)
+                | ([], _)    => Analyser.AddError(FsmError.StateNotFound(State(merge_name(path.Rev()), Analyser))); null
+                | ([st], []) => st
+                | ([st], _)  => get_loop(st.sub_states, tail, path)
+                | (lst, _)   => Analyser.AddError(FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev()), Analyser)));
+                                null
               }
-          | _                                   => (null, err)
-        }
+        | _                => null
       }
 
-      def (st, err) = get_loop(states, state, [], []);
-      Analyser.AddErrors(err);
-      st
+      get_loop(states.NToList(), state, [])
     }
 
-    get_all_state(map : IEnumerable[FsmState], state : string) : IEnumerable[FsmState]
+    get_all_state(map : IEnumerable[FsmState], state : string) : list[FsmState]
     {
       def name = state ?? FsmState.TopStateName;
       def (name, sub_name) = if (name != FsmState.TopStateName) 
@@ -129,7 +134,7 @@ namespace Nemerle.Statechart
                                 if (sub != null) (name.GetSub('['), sub) else (name, null)
                               } else (name, null);
       def name = if (sub_name != null) $"$(name)SubRegion$sub_name" else name;
-      map.Where(x => x.NativeName == name)
+      map.Filter(x => x.NativeName == name)
     }
 
 
@@ -152,11 +157,12 @@ namespace Nemerle.Statechart
       }
     }
 
-    public Update(st : IEnumerable[FsmState], manual_rebuild : bool = false) : void
+
+    public Update(st : IEnumerable[FsmState], top : FsmState = null) : void
     {
       def check_name(n, _)
       {
-        match (st.Find(x => x.Num == n.Num))
+        match (st.Find(_.StateEquals(n)))
         {
           | Some(n) => n
               // if no new state use old
@@ -164,25 +170,31 @@ namespace Nemerle.Statechart
         }
       }
 
-      def top = Top.ReduceSingle(manual_rebuild, check_name); // replace old states with new ones
+      def top = Top ?? top;
+      def top = top.ReduceSingle(check_name); // replace old states with new ones
       Update(top)
     }
 
     public Update(top : FsmState) : void
     {
       // if top is not top state, but some child
-      if (TopNum != -1 && top.Num != Top.Num)
+      if (Top != null && Top.Num != -1 && top.Num != Top.Num)
       {
         Update(TraverseUtils.SingleElement(top))
       } else
         when (top != Top)
         {
-          when (TopNum == -1)
+          if (TopNum == -1) // if not set number
           {
-            TopNum = top.Num
+            def st = top.LevelOrderMap(x => x.ChangeNum(GetNextStateNum())).ToArray();
+            TopNum = 0;
+            st.Iter(x => namemap[x.NativeName] = x.Num);
+            Update(st, top)
+          } else
+          {
+            def st = top.AllStates;
+            states = st.OrderBy(_.Num).ToArray()
           }
-          def st = top.AllStates;
-          states = st.OrderBy(_.Num).ToArray();
         }
     }
 
@@ -200,7 +212,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (TopNum != -1) states[TopNum] else null
+        if (Count == 0) null else states[0]
       }
     }
   }

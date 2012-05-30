@@ -21,9 +21,9 @@ namespace Nemerle.Statechart
   {
     | State
       {
-        this(name : string)
+        this(name : string, an : FsmAnalyser)
         {
-          this(StateNode.State(name), null, null, true)
+           base(StateNode.State(name), null, an, true)
         }
 
       }
@@ -54,9 +54,9 @@ namespace Nemerle.Statechart
         [NeedChange(index)] 
         contained_in : ConcurrentRegion;
 
-        this(st : StateNode.State, an : FsmAnalyser)
+        this(st : StateNode.State, sub : IEnumerable[FsmState], an : FsmAnalyser)
         {
-          base(st, null, an, false)
+          base(st, sub, an, false)
         }
 
       }
@@ -66,10 +66,10 @@ namespace Nemerle.Statechart
         [NeedChange]
         sub_regions : list[ConcurrentSubRegion] = [];
 
-        this(state : StateNode.State, sr : IEnumerable[FsmState.ConcurrentSubRegion], an : FsmAnalyser)
+        this(state : StateNode.State, sr : list[FsmState.ConcurrentSubRegion], an : FsmAnalyser)
         {
           base(state, [], an, false);
-          sub_regions = sr.MapIndex((x, i) => x.ChangeContainedInIndex(this, i)).NToList();
+          sub_regions = sr.MapIndex((x, i) => x.ChangeContainedInIndex(this, i));
         }
 
           /// <summary>
@@ -187,6 +187,7 @@ namespace Nemerle.Statechart
 
     | InlinedSubMachineInstance
       {
+        [NeedChange]
         instance_of : InlinedSubMachine;
 
       }
@@ -232,7 +233,7 @@ namespace Nemerle.Statechart
           def fsm = analyser.States.FilterType();
           match (fsm.Find(x => x.type == type))
           {
-            | Some(InlinedSubMachine as f) => InlinedSubMachineInstance ^& (instance_of = f)
+            | Some(InlinedSubMachine as f) => InlinedSubMachineInstance(st, f)
             | _                            => st
           }
         }
