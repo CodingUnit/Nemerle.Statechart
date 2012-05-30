@@ -214,10 +214,15 @@ namespace Nemerle.Statechart
           def idx = hist.state.Num;
           match (hist.state)
           {
-            | FsmState where (PartOfRegion = Some(r), PartOfSubRegion = Some(sr)) => def name = GetExecStateName(r, GenCtx.Normal());
+            | FsmState(PartOfRegion = Some(r), PartOfSubRegion = Some(sr)) => 
+                def name = GetExecStateName(r, GenCtx.Normal());
                 def reg = <[ $name.$($"cur_state$(sr.index)" : usesite); ]>;
-                      <[ $(hist.Name : usesite) = if ($reg != null) $reg.GetCopy($idx) else null ]>
-            | _ => <[ $(hist.Name : usesite) = cur_state.GetCopy($idx);]>
+                <[ $(hist.Name : usesite) = if ($reg != null) $reg.GetCopy($idx) else null ]>
+                
+                // in case where deal with concurrent states
+            | _ => if (hist.SubStatesParticipateInHistory.Exists(_ is FsmState.ConcurrentRegion)) <[ $(hist.Name : usesite) = cur_state.GetCopy($idx);]> else
+                   // in normal case
+                   <[ $(hist.Name : usesite) = cur_state; ]>
           }
         }
 
