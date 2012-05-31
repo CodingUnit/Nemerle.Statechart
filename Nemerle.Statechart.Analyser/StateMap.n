@@ -24,14 +24,16 @@ namespace Nemerle.Statechart
     public namemap : Hashtable[string, int] = Nemerle.Collections.Hashtable();
     public tranmap : Hashtable[string, int] = Nemerle.Collections.Hashtable();
 
+    mutable super_map : array[int] = array[];
+    
     public GetNewStateId(state : FsmState) : int
     {
       match (namemap.Get(state.NativeName))
       {
         | Some(num) => num
         | _         => def num = GetNextStateNum();
-                      namemap[state.NativeName] = num;
-                      num
+                       namemap[state.NativeName] = num;
+                       num
       }
     }
 
@@ -41,8 +43,8 @@ namespace Nemerle.Statechart
       {
         | Some(num) => num
         | _         => def num = GetNextTransitionNum();
-                      tranmap[tran.Name] = num;
-                      num
+                       tranmap[tran.Name] = num;
+                       num
       }
     }
 
@@ -146,7 +148,7 @@ namespace Nemerle.Statechart
 
     public Get(num : int) : FsmState
     {
-      states[num]
+      if (num != -1) states[num] else null
     }
 
     public Item[index : int] : FsmState
@@ -160,6 +162,7 @@ namespace Nemerle.Statechart
 
     public Update(st : IEnumerable[FsmState], top : FsmState = null) : void
     {
+      
       def check_name(n, _)
       {
         match (st.Find(_.StateEquals(n)))
@@ -175,8 +178,25 @@ namespace Nemerle.Statechart
       Update(top)
     }
 
+    //public DefineState(st : FsmState, super : FsmState) : void
+    //{
+    //  super_map[st.Num] = super.Num
+    //}
+    
     public Update(top : FsmState) : void
     {
+      
+      def check_super(s)
+      {
+        Enumerable.Repeat(s.Num, s.sub_states.Length)
+      }
+      
+      def check_new_super(s)
+      {
+        def num = s.Num;
+        s.sub_states.Iter(x => super_map[x.Num] = num)
+      }
+      
       // if top is not top state, but some child
       if (Top != null && Top.Num != -1 && top.Num != Top.Num)
       {
@@ -193,11 +213,29 @@ namespace Nemerle.Statechart
           } else
           {
             def st = top.AllStates;
-            states = st.OrderBy(_.Num).ToArray()
+            states = st.OrderBy(_.Num).ToArray();
+            // update super state map
+            // if new map
+            if (super_map.Length != states.Length)
+            {
+              // create new map
+              def supers = states.SelectMany(check_super);
+              super_map = supers.AddBefore(-1).ToArray();
+            } else
+            {
+              // else update
+              states.Iter(check_new_super)
+            }
           }
         }
     }
 
+    public Super(st : FsmState) : FsmState
+    {
+      def num = st.Num;
+      if (num != -1) Get(super_map[num]) else null
+    }
+    
     public Count : int
     {
       get

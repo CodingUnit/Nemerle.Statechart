@@ -18,7 +18,7 @@ namespace Nemerle.Statechart
         // ret : instance and base state machine accumulator
     public static InitInline(this st : FsmState.InlinedSubMachineInstance, inst : list[FsmState]) : FsmState * list[FsmState]
     {
-      | (FsmState.InlinedSubMachineInstance(instance_of = instance_of, name = name, transitions = transitions, Num = cur_num, Super = super), _) => 
+      | (FsmState.InlinedSubMachineInstance(instance_of = instance_of, name = name, transitions = transitions, Num = cur_num), _) => 
 
           def find_inst   = inst.Find(x => x.Num == instance_of.Num).ObjFromOption();
           def instance_of = instance_of.Updated;
@@ -34,14 +34,15 @@ namespace Nemerle.Statechart
             {
               | (FsmState.Final, _)                                    => st
                                                                           // change name, number and transitions to outer world to this instance
-              | (FsmState(Num = n), FsmState(Num = n2)) when (n == n2) => st.ChangeNameTransitionsSuperStateNum(name, transitions, super, cur_num)
+              | (FsmState(Num = n), FsmState(Num = n2)) when (n == n2) => st.ChangeNameTransitionsNum(name, transitions, cur_num)
               | _                                                      => st.ChangeCopyNum(num).SetNewId() // set new identificator for state
             }
 
             def change_sub_states(sub : FsmState)
             {
-              def sub = sub.ChangeSuperState(st);
-              if (sub is FsmState.Final) sub.SetNewId() else sub
+              // if final state change it name to super state and set new id
+              | Final as sub => sub.ChangeName(FsmState.Final.GetName(st.Name)).SetNewId()
+              | _            => sub
             }
 
             def sub    = sub.Map(change_sub_states);
@@ -70,31 +71,22 @@ namespace Nemerle.Statechart
               }
             }
 
-            def check_target(tar, _)
+            def check_target(tar)
             {
-              match (tar)
-              {
               | TransitionTarget.State(st) as t                       => t.ChangeState(find_state(st))
               | Qualified(_, State(st) as t)                          => t.ChangeState(find_state(st))
               | JunctionNode(state = st) as t                         => t.ChangeState(find_state(st))
-              | Final(st) as t                                        => 
-                  match (find_state(st))
-                  {
-                    | Final as st => t.ChangeState(st)
-                    | _           => null
-                  }
-
+              | Final(st) as t                                        => t.ChangeState(find_state(st))
               | PseudoState(PseudoStateNode(state = st) as node) as t => t.ChangeNode(node.ChangeState(find_state(st)))
               | _                                                     => null
-            }
             }
 
             def check_tran(tr)
             {
-              tr.TargetTraverse(check_target)
+              tr.TargetTraverse((x, _) => check_target(x))
             }
 
-            def s        = s.TraverseTargets(check_target);
+            def s        = s.TraverseTargets((x, _) => check_target(x));
             def hist     = s.history.Map(x => x.ChangeDefault(x.default.Map(check_tran)));
             s.ChangeHistory(hist)
           }

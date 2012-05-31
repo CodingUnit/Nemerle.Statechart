@@ -76,17 +76,18 @@ namespace Nemerle.Statechart
                 
             | (Final as t, Initial) with super = st
             | (Final as t, _) with super = st.Super =>
-                def fst = FsmState.Final(super, this, true).SetNewId();
-                (t.ChangeState(fst), fst :: a)
+                def fst = FsmState.Final(super.Name, this, true).SetNewId();
+                //statemap.DefineState(fst, super);
+                (t.ChangeState(fst), (super, fst) :: a)
           }
         }
 
         def check_final(f, st, sub)
         {
-          match (f.Find(x => x.Super.Num == st.Num))
+          match (f.Find((x, _) => x.Num == st.Num))
           {
-            | Some(final) => st.ChangeSubStates(sub.Append(final).NToList())
-            | _           => null
+            | Some((_, final)) => st.ChangeSubStates(sub.Append(final).NToList())
+            | _                => null
           }
         }
 
@@ -107,7 +108,6 @@ namespace Nemerle.Statechart
 
         def (top, final) = TopState.ReduceSingle([], check_state);
         // check to add final state
-        def final = final.RemoveDuplicatesSort(x : FsmState => x.Super.Num);
         def top = top.ReduceSingle(true, check_final(final, _, _));
         UpdateStateMap(top); // update state map
     }
@@ -207,7 +207,7 @@ namespace Nemerle.Statechart
 
       def set_hierarchy_pos(st)
       {
-        def sub = st.sub_states.Map(x => x.ChangeCalcHierarchyPosSuperStates(st.calc_hierarchy_pos + 1, st :: st.super_states));
+        def sub = st.sub_states.Map(x => x.ChangeCalcHierarchyPos(st.calc_hierarchy_pos + 1));//, st :: st.super_states
         st.ChangeSubStates(sub)
       }
 
