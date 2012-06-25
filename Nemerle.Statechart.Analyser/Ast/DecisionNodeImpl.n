@@ -44,18 +44,18 @@ namespace Nemerle.Statechart
       {
         match (n)
         {
-          | TransitionTarget.JunctionNode(guard = g, action = a, parent = p, state = st) => 
-            def toacc = match (toacc)
-                        {
-                          | DecisionNode.Target as t => t.ChangeState(st)
-                          | x                        => x
-                        }
-            def nacc = match (nacc)
-                       {
-                         | Some(DecisionNode.Target as t) => Some(t.ChangeState(st))
-                         | x                              => x
-                       }
-            DecisionNode.Condition(g, a.ToList(), toacc, nacc, p, st)
+          | TransitionTarget.JunctionNode(guard = g, action = a) => 
+            //def toacc = match (toacc)
+            //            {
+            //              | DecisionNode.Target as t => t.ChangeState(st)
+            //              | x                        => x
+            //            }
+            //def nacc = match (nacc)
+            //           {
+            //             | Some(DecisionNode.Target as t) => Some(t.ChangeState(st))
+            //             | x                              => x
+            //           }
+            DecisionNode.Condition(g, a.ToList(), toacc, nacc)
         }
       }
 
@@ -74,23 +74,23 @@ namespace Nemerle.Statechart
 
     }
 
-    public static create_junc_tree_node(an : FsmAnalyser, n : TransitionTarget.JunctionNode) : DecisionNode
+    public static create_junc_tree_node(an : FsmAnalyser, p : PseudoStateNode.Junction) : DecisionNode
     {
 
       def check_node_decision(n : DecisionNode)
       {
-        | DecisionNode.Condition(condition = Else, parent = PseudoStateNode.Junction(type = JunctionType.Junction) as p, else_node = Some) => 
-            an.AddError(FsmError.JunctionElseMustBeLast(p))
+        | DecisionNode.Condition(condition = Else, else_node = Some) => 
+            an.AddError(if (p.type == JunctionType.Junction) FsmError.JunctionElseMustBeLast(p) else FsmError.ChoiceElseMustBeLast(p))
 
-        | Condition(condition = Empty, actions = [], parent = PseudoStateNode.Junction(type = JunctionType.Junction) as p) => 
-            an.AddError(FsmError.EmptyJunction(p))
+        | Condition(condition = Empty, actions = []) => 
+            an.AddError(if (p.type == JunctionType.Junction) FsmError.EmptyJunction(p) else FsmError.EmptyChoice(p))
 
-        | Condition(condition = GuardNode.Empty, actions = _ :: _ as a, parent = Junction(type = JunctionType.Junction) as p, else_node = Some) => 
-            an.AddError(FsmError.JunctionActionMaybeLast(p, a))
+        | Condition(condition = GuardNode.Empty, actions = _ :: _ as a, else_node = Some) => 
+            an.AddError(if (p.type == JunctionType.Junction) FsmError.JunctionActionMaybeLast(p, a) else FsmError.ChoiceActionMaybeLast(p, a))
 
-        | Condition(Empty, _, Some, PseudoStateNode.Junction(type = t) as p)
-        | Condition(body = DecisionNode.Condition(Else, _, _, PseudoStateNode.Junction(type = t) as p)) => 
-            an.AddError(if (t == JunctionType.Junction) FsmError.JunctionElseMustAfterAnotherGuard(p) else FsmError.ChoiceElseMustAfterAnotherGuard(p))
+        | Condition(Empty, _, Some)
+        | Condition(body = DecisionNode.Condition(Else, _, _)) => 
+            an.AddError(if (p.type == JunctionType.Junction) FsmError.JunctionElseMustAfterAnotherGuard(p) else FsmError.ChoiceElseMustAfterAnotherGuard(p))
 
         | _ => ()
       }
@@ -137,7 +137,7 @@ namespace Nemerle.Statechart
         }
       }
 
-      def tree  = create_decision_tree(n); // create decision tree
+      def tree  = create_decision_tree(p.to); // create decision tree
       def tree  = tree.Reduce(true, merge_tree_node, merge_tree_target); // merge tree nodes
       def old_nodes = tree.LevelOrderIterator();
       old_nodes.Iter(check_node_decision);
@@ -250,7 +250,7 @@ namespace Nemerle.Statechart
 
     public static Create(an : FsmAnalyser, node : PseudoStateNode.Junction) : DecisionNode
     {
-      create_junc_tree_node(an, node.to)
+      create_junc_tree_node(an, node)
     }
 
   }
