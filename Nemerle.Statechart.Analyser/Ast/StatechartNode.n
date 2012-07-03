@@ -52,30 +52,39 @@ namespace Nemerle.Statechart
   }
 
   [Record]
-  public variant StateHistory
+  public class StateHistory
   {
-    | Shallow
-    | Deep
     
-    public this(st : FsmState,  hist : StateNode.History, reference : bool = false)
+    public this(an : FsmAnalyser, hist : StateNode.History, reference : bool = false)
     {
-      this(st.analyser);
+      this(an);
       history = hist;
-      state = if (hist.state != null) FsmState.State(hist.state, null, analyser, true); else st;
+      //state = if (hist.state != null) FsmState.State(hist.state, null, analyser, true); else st;
       type = hist.type;
       this.reference = reference;
-      default = history.default |> StateTransition.Default(state, this, _).Create();
+      default = history.default |> StateTransition.Default(this, _).Create();
     }
 
     public history : StateNode.History;
     
+    public state : FsmState
+    {
+      get
+      {
+        StateMap.ParentFor(Num)
+      }
+    }
+    
     [NeedChange]
     public default : option[StateTransition];
     
-    [NeedChange(default)]
-    [NeedChange] public state : FsmState;
+    [NeedChange]
+    public Num : int;
+    
+    //[NeedChange(default)]
+    //[NeedChange] public state : FsmState;
     public type : HistoryType;
-    [NeedChange(state)] [NeedChange] public reference : bool;
+    [NeedChange] public reference : bool;
 
     [NeedChange] public Used : bool;
 
@@ -100,18 +109,18 @@ namespace Nemerle.Statechart
     //  Used = hist.Used;
     //}
 
-    public static Create(st : FsmState, hist : TwoOption[StateNode.History], href : bool = false) : TwoOption[StateHistory]
+    public static Create(hist : TwoOption[StateNode.History], href : bool = false) : TwoOption[StateHistory]
     {      
-      hist.Map(Create(st, _, href))
+      hist.Map(Create(_, href))
     }
 
-    public static Create(st : FsmState, hist : StateNode.History, href : bool = false) : StateHistory
+    public static Create(an : FsmAnalyser, hist : StateNode.History, href : bool = false) : StateHistory
     {
       match (hist)
       {
-        | StateNode.History(type = HistoryType.Deep)    => StateHistory.Deep(st, hist, href)
-        | StateNode.History(type = HistoryType.Shallow) => StateHistory.Shallow(st, hist, href)
-        | _                                             => null
+        | StateNode.History(type = HistoryType.Deep)    => StateHistory(an, hist, href)
+        | StateNode.History(type = HistoryType.Shallow) => StateHistory(an, hist, href)
+        | _                                             => throw InvalidOperationException("Unknown history node")
       }
     }
 
@@ -120,9 +129,9 @@ namespace Nemerle.Statechart
     public static  @==(a : StateHistory, b : StateHistory) : bool
     {
       | (null, null)  => true
-      | (a, null)  => a : object  ==  null
-      | (null, b)  => b : object  ==  null
-      | (_, _)  => a.Name == b.Name && a.type == b.type && a.state == b.state
+      | (a, null)     => a : object  ==  null
+      | (null, b)     => b : object  ==  null
+      | (_, _)        => a.Num == b.Num//a.Name == b.Name && a.type == b.type && a.state == b.state
     }
 
     public static @!=(a : StateHistory, b : StateHistory) : bool
@@ -130,35 +139,27 @@ namespace Nemerle.Statechart
        !(@==(a, b))
     }
 
-    public BothHistories : bool
+    
+    public BothHistories(st : FsmState) : bool
     {
-      get
-      {
-        state.BothHistories
-      }
+        st.BothHistories
     }
 
-    public Name : string
+    public Name(st : FsmState) : string
     {
-      get
-      {
         def type = match (type)
                     {
-                      | Deep     => "Deep"
-                      | Shallow  => "Shallow"
-                      | None     => ""
+                      | HistoryType.Deep     => "Deep"
+                      | Shallow              => "Shallow"
+                      | None                 => ""
                     }
 
-        if (state.Updated.history.IsOne) $"$(state)History" else $"$(state)$(type)History"
-      }
+        if (st.Updated.history.IsOne) $"$(st)History" else $"$(st)$(type)History"
     }
 
-    public SimpleName : string
+    public SimpleName(st : FsmState) : string
     {
-      get
-      {
-        $"$(state)History"
-      }
+        $"$(st)History"
     }
 
     public override ToString() : string
@@ -166,29 +167,23 @@ namespace Nemerle.Statechart
       Name
     }
 
-    public SubStatesParticipateInHistory : IEnumerable[FsmState]
+    public SubStatesParticipateInHistory(st : FsmState) : IEnumerable[FsmState]
     {
-      get
-      {
-        state.Updated.SubStatesParticipateIn(this)
-      }
+        st.Updated.SubStatesParticipateIn(this)
     }
 
-    public SubStatesParticipateInHistoryIndirect : IEnumerable[FsmState]
+    public SubStatesParticipateInHistoryIndirect(st : FsmState) : IEnumerable[FsmState]
     {
-      get
-      {
-        state.Updated.SubStatesParticipateIn(this)
-      }
+        st.Updated.SubStatesParticipateIn(this)
     }
 
-    public Updated : StateHistory
-    {
-      get
-      {
-        state.Updated.GetHistory(this)
-      }
-    }
+    //public Updated : StateHistory
+    //{
+    //  get
+    //  {
+    //    state.Updated.GetHistory(this)
+    //  }
+    //}
     
     public UpdateReference() : StateHistory
     {
