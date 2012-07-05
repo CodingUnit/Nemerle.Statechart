@@ -84,10 +84,10 @@ namespace Nemerle.Statechart
           this.node = PseudoStateNode.Create(an, node.node);
         }
 
-        override UpdateReference() : TransitionTarget
-        {
-          ChangeNode(node.UpdateReference())
-        }
+        //override UpdateReference() : TransitionTarget
+        //{
+        //  ChangeNode(node.UpdateReference())
+        //}
 
         override ToString() : string
         {
@@ -97,13 +97,22 @@ namespace Nemerle.Statechart
       
     | State 
       {
-        [NeedChange] state : FsmState;
-
-        override UpdateReference() : TransitionTarget
+        private state_num : FsmState;
+        
+        state : FsmState
         {
-          def st = StateMap.Get(state);
-          ChangeState(st)
+          get
+          {
+            StateMap.Get(state_num)
+          }
         }
+
+        
+        //override UpdateReference() : TransitionTarget
+        //{
+        //  def st = StateMap.Get(state);
+        //  ChangeState(st)
+        //}
 
         Name : string
         {
@@ -155,9 +164,9 @@ namespace Nemerle.Statechart
           Name
         }
 
-        this(st : FsmState, type : TargetType.Named)
+        this(an : FsmAnalyser, type : TargetType.Named)
         {
-          base(st.analyser);
+          base(an);
           state = st;//CreateState(type.parent, [], null);
           name = type.name;
         }
@@ -171,14 +180,14 @@ namespace Nemerle.Statechart
 
         override UpdateReference() : TransitionTarget
         {
-          match (target)
-          {
-            | State(st) as t => 
-                def st = StateMap.Get($"$parent.$(st.NativeName)");
-                if (st != null) t.ChangeState(st) else this;
+          //match (target)
+          //{
+          //  | State(state = st) as t => 
+          //      def st = StateMap.Get($"$parent.$(st.NativeName)");
+          //      if (st != null) t.ChangeState(st) else this;
                 
-            | _ => target.UpdateReference()
-          }
+            target.UpdateReference()
+//          }
         }
 
         override ToString() : string
@@ -217,8 +226,16 @@ namespace Nemerle.Statechart
         //parent                    : PseudoStateNode;
         [NeedChange(to)] next     : option[JunctionNode];
         //[NeedChange] state        : FsmState;
-
+        [NeedChange] Num          : int;
         [NeedChange] decisionTree : DecisionNode;
+        
+        state                     : FsmState
+        {
+          get
+          {
+            StateMap.ParentFor(Num)
+          }
+        }
         
         type                      : JunctionType;
         
@@ -230,11 +247,11 @@ namespace Nemerle.Statechart
           }
         }
         
-        public static Create(an : FsmAnalyser, to : TargetType.JunctionNode) : JunctionNode
+        public static Create(an : FsmAnalyser, num : int, to : TargetType.JunctionNode) : JunctionNode
         {
           match (to)
           {
-            | TargetType.JunctionNode(g, a, t, n) => JunctionNode(an, g, a, Create(an, t), n.Map(x => Create(an, x)), JunctionType.Junction)
+            | TargetType.JunctionNode(g, a, t, n) => JunctionNode(an, g, a, Create(an, t), n.Map(Create(an, num, _)), num, null, JunctionType.Junction)
           } 
         }
 
@@ -259,14 +276,17 @@ namespace Nemerle.Statechart
           ChangeTo(nto)
         }
 
-        public static GetName(state : FsmState) : string
+        public Name : string
         {
-          $"JunctionNode$state"
+          get
+          {
+            $"JunctionNode$state"
+          }
         }
         
         override ToString() : string
         {
-          "JunctionNode"
+          Name
         }
         
       }
