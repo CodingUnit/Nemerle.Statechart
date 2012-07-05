@@ -1,0 +1,168 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  [Record]
+  public class StateHistory
+  {
+    
+    public this(an : FsmAnalyser, hist : StateNode.History, reference : bool = false)
+    {
+      this(an);
+      history = hist;
+      //state = if (hist.state != null) FsmState.State(hist.state, null, analyser, true); else st;
+      type = hist.type;
+      this.reference = reference;
+      default = history.default |> StateTransition.Default(this, _).Create();
+    }
+
+    public history : StateNode.History;
+    
+    public state : FsmState
+    {
+      get
+      {
+        StateMap.ParentFor(Num)
+      }
+    }
+    
+    [NeedChange]
+    public default : option[StateTransition];
+    
+    [NeedChange]
+    public Num : int;
+    
+    //[NeedChange(default)]
+    //[NeedChange] public state : FsmState;
+    public type : HistoryType;
+    [NeedChange] public reference : bool;
+
+    [NeedChange] public Used : bool;
+
+    public analyser : FsmAnalyser;
+    
+    public StateMap : StateMap
+    {
+      get
+      {
+        analyser.statemap
+      }
+    }
+    
+    public this(an : FsmAnalyser) { analyser = an }
+    //public this(hist : StateHistory, clone : bool = false, ncopy : int = 0)
+    //{
+    //  history = hist.history;
+    //  default = if (clone) hist.default.Map(x => x.Clone(ncopy) :> StateTransition.Default) else hist.default;
+    //  state = hist.state;
+    //  type = hist.type;
+    //  reference = hist.reference;
+    //  Used = hist.Used;
+    //}
+
+    public static Create(hist : TwoOption[StateNode.History], href : bool = false) : TwoOption[StateHistory]
+    {      
+      hist.Map(Create(_, href))
+    }
+
+    public static Create(an : FsmAnalyser, hist : StateNode.History, href : bool = false) : StateHistory
+    {
+      match (hist)
+      {
+        | StateNode.History(type = HistoryType.Deep)    => StateHistory(an, hist, href)
+        | StateNode.History(type = HistoryType.Shallow) => StateHistory(an, hist, href)
+        | _                                             => throw InvalidOperationException("Unknown history node")
+      }
+    }
+
+    //[Accessor] clone_for : StateHistory;
+
+    public static  @==(a : StateHistory, b : StateHistory) : bool
+    {
+      | (null, null)  => true
+      | (a, null)     => a : object  ==  null
+      | (null, b)     => b : object  ==  null
+      | (_, _)        => a.Num == b.Num//a.Name == b.Name && a.type == b.type && a.state == b.state
+    }
+
+    public static @!=(a : StateHistory, b : StateHistory) : bool
+    {
+       !(@==(a, b))
+    }
+
+    
+    public BothHistories(st : FsmState) : bool
+    {
+        st.BothHistories
+    }
+
+    public Name : string
+    {
+      get
+      {
+        def type = match (type)
+                    {
+                      | HistoryType.Deep     => "Deep"
+                      | Shallow              => "Shallow"
+                      | None                 => ""
+                    }
+
+        if (state.history.IsOne) $"$(state)History" else $"$(state)$(type)History"
+      }
+    }
+
+    public SimpleName : string
+    {
+      get
+      {
+        $"$(state)History"
+      }
+    }
+
+    public override ToString() : string
+    {
+      Name
+    }
+
+    public SubStatesParticipateInHistory : IEnumerable[FsmState]
+    {
+      get
+      {
+        state.SubStatesParticipateIn(this)
+      }
+    }
+
+    //public SubStatesParticipateInHistoryIndirect : IEnumerable[FsmState]
+    //{
+    //    st.Updated.SubStatesParticipateIn(this)
+    //}
+
+    //public Updated : StateHistory
+    //{
+    //  get
+    //  {
+    //    state.Updated.GetHistory(this)
+    //  }
+    //}
+    
+    public UpdateReference() : StateHistory
+    {
+      def st = StateMap.Get(state);
+      def hist = if (history.reference)
+                  {
+                    state.GetHistory(this);
+                  } else this;
+
+      def default = default.Map(_.UpdateReference());
+      hist.ChangeStateDefault(st, default)
+    }
+
+  }
+}

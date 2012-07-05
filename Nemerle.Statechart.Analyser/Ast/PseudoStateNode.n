@@ -86,11 +86,11 @@ namespace Nemerle.Statechart
           }
         }
 
-        override UpdateReference() : PseudoStateNode
-        {
-          def st = ChangeTo(to.UpdateReference() :> TransitionTarget.JunctionNode);
-          st.UpdateReference()
-        }
+        //override UpdateReference() : PseudoStateNode
+        //{
+        //  def st = ChangeTo(to.UpdateReference() :> TransitionTarget.JunctionNode);
+        //  st.UpdateReference()
+        //}
 
         override ToString() : string
         {
@@ -104,24 +104,24 @@ namespace Nemerle.Statechart
         name : string;
         [NeedChange] to : TransitionTarget.JunctionNode;
 
-        this(an : FsmAnalyser, st : FsmState, n : string, node : TargetType.JunctionNode)
+        this(an : FsmAnalyser, n : string, node : TargetType.JunctionNode)
         {
-          base(st, 0, an);
+          base(0, StateMap.GetNextGlobalNum(), an);
           this.to = TransitionTarget.JunctionNode.Create(an, node);//lst |> JunctionNode(st, tran, _, this);
           name = n;
         }
 
-        public override UpdateReference() : PseudoStateNode
-        {
-          def nnode = to.UpdateReference();
-          def st = base.UpdateReference();
+        //public override UpdateReference() : PseudoStateNode
+        //{
+        //  def nnode = to.UpdateReference();
+        //  def st = base.UpdateReference();
 
-          match (st, nnode)
-          {
-            | (Merge as j, TransitionTarget.JunctionNode as to) => j.ChangeTo(to)//Merge(x.state, copy, name, nnode :> TransitionTarget.JunctionNode)
-            | (_, _)                                            => this
-          }
-        }
+        //  match (st, nnode)
+        //  {
+        //    | (Merge as j, TransitionTarget.JunctionNode as to) => j.ChangeTo(to)//Merge(x.state, copy, name, nnode :> TransitionTarget.JunctionNode)
+        //    | (_, _)                                            => this
+        //  }
+        //}
 
         Name : string
         {
@@ -138,20 +138,20 @@ namespace Nemerle.Statechart
       }
     | Fork 
       {
-        [NeedChange] target : list[TransitionTarget] = [];
-        [NeedChange] fork_tran : list[StateTransition] = [];
+        [NeedChange] target    : list[TransitionTarget] = [];
+        [NeedChange] fork_tran : list[StateTransition]  = [];
 
-        override UpdateReference() : PseudoStateNode
-        { 
-          // TODO: сделать через Lazy создание нового списк только в случае если есть новые элементы
-          def st = base.UpdateReference();
-          match (st)
-          {
-            | Fork as j => def target = target.Map(_.UpdateReference());
-                          j.ChangeTarget(target)//(Fork(st, copy, target, fork_tran), an)
-            | _         => this
-          }
-        }
+        //override UpdateReference() : PseudoStateNode
+        //{ 
+        //  // TODO: сделать через Lazy создание нового списк только в случае если есть новые элементы
+        //  def st = base.UpdateReference();
+        //  match (st)
+        //  {
+        //    | Fork as j => def target = target.Map(_.UpdateReference());
+        //                   j.ChangeTarget(target)//(Fork(st, copy, target, fork_tran), an)
+        //    | _         => this
+        //  }
+        //}
 
         Name : string
         {
@@ -181,8 +181,8 @@ namespace Nemerle.Statechart
           {
             match (joined_tran)
             {
-              | [] => null
-              | StateTransition where (Trigger = t) :: _ => t
+              | []                                => null
+              | StateTransition(Trigger = t) :: _ => t
             }
           }
         }
@@ -200,16 +200,16 @@ namespace Nemerle.Statechart
           Name
         }
 
-        override UpdateReference() : PseudoStateNode
-        {
-          def tar = target?.UpdateReference();
-          def st = base.UpdateReference();
-          match (st)
-          {
-            | Join as j => j.ChangeTarget(tar)//Join(state, copy, name, tar, region, joined_tran, transition)
-            | _         => this
-          }
-        }
+        //override UpdateReference() : PseudoStateNode
+        //{
+        //  def tar = target?.UpdateReference();
+        //  def st = base.UpdateReference();
+        //  match (st)
+        //  {
+        //    | Join as j => j.ChangeTarget(tar)//Join(state, copy, name, tar, region, joined_tran, transition)
+        //    | _         => this
+        //  }
+        //}
 
       }
     | EntryPoint
@@ -249,12 +249,12 @@ namespace Nemerle.Statechart
             Junction(an, state, name, node, JunctionType.Choice)
 
         | Junction(name = n, node = nn, type = tp)   => Junction(an, state, n, nn, tp)
-        | Merge(name = n, node = node)    => Merge(an, state, n, node)
-        | Fork(target = lst)              => Fork(0, an, lst |> TransitionTarget.Create(an, _))
-        | Join(name = n, target = t)      => Join(0, an, n, TransitionTarget.Create(an, t), null, null, null)
-        | EntryPoint                      => EntryPoint(0, an)
-        | ExitPoint                       => ExitPoint(0, an)
-        | Terminate                       => Terminate(0, an)
+        | Merge(name = n, node = node)    => Merge(an, n, node)
+        | Fork(target = lst)              => Fork(0, StateMap.GetNextGlobalNum(), an, lst |> TransitionTarget.Create(an, _))
+        | Join(name = n, target = t)      => Join(0, StateMap.GetNextGlobalNum(), an, n, TransitionTarget.Create(an, t), null, null, null)
+        | EntryPoint                      => EntryPoint(0, StateMap.GetNextGlobalNum(), an)
+        | ExitPoint                       => ExitPoint(0, StateMap.GetNextGlobalNum(), an)
+        | Terminate                       => Terminate(0, StateMap.GetNextGlobalNum(), an)
       }
 
     }
@@ -268,7 +268,13 @@ namespace Nemerle.Statechart
     }
 
     //[NeedChange]
-    //public state : FsmState;
+    public state : FsmState
+    {
+      get
+      {
+        StateMap.ParentFor(Num)
+      }
+    }
 
     //[RecordIgnore] [Accessor] cloneFor : PseudoStateNode;
     [NeedChange]

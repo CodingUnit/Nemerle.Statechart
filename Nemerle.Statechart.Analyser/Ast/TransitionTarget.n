@@ -22,20 +22,25 @@ namespace Nemerle.Statechart
     [TraverseIgnore]
     | Nowhere
     
+    | Reference 
+      { 
+        state : FsmState; 
+        target : TransitionTarget; 
+        
+        override UpdateReference() : TransitionTarget
+        {
+          match (target)
+          {
+            | History(h) => def h = state.Updated.GetHistory(h);
+                            History(analyser, h)
+                            
+            | t          => t.UpdateReference()
+          }
+        }
+      }
     | History 
       {
         [NeedChange] history : StateHistory;
-
-        override UpdateReference() : TransitionTarget
-        {
-          def hist = if (history.reference) 
-          {
-            def st = StateMap.Get(history.state);
-            st.GetHistory(history)
-          } else history;
-          def hist = hist.UpdateReference();
-          ChangeHistory(hist)
-        }
 
         override ToString() : string
         {
@@ -45,7 +50,7 @@ namespace Nemerle.Statechart
         this(an : FsmAnalyser, type : TargetType.History)
         {
           base(an);
-          history = StateHistory.Create(st, type.history, true)
+          history = StateHistory.Create(an, type.history, true)
         }
       }
       
