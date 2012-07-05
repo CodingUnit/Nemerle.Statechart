@@ -13,14 +13,14 @@ namespace Nemerle.Statechart
   public class StateHistory
   {
     
-    public this(an : FsmAnalyser, hist : StateNode.History, reference : bool = false)
+    public this(st : FsmState, hist : StateNode.History, reference : bool = false)
     {
-      this(an);
+      this(st.analyser);
       history = hist;
       //state = if (hist.state != null) FsmState.State(hist.state, null, analyser, true); else st;
       type = hist.type;
       this.reference = reference;
-      default = history.default |> StateTransition.Default(this, _).Create();
+      default = history.default |> StateTransition.Default(st, this, _).Create();
     }
 
     public history : StateNode.History;
@@ -67,17 +67,17 @@ namespace Nemerle.Statechart
     //  Used = hist.Used;
     //}
 
-    public static Create(an : FsmAnalyser, hist : TwoOption[StateNode.History], href : bool = false) : TwoOption[StateHistory]
+    public static Create(st : FsmState, hist : TwoOption[StateNode.History], href : bool = false) : TwoOption[StateHistory]
     {      
-      hist.Map(Create(an, _, href))
+      hist.Map(Create(st, _, href))
     }
 
-    public static Create(an : FsmAnalyser, hist : StateNode.History, href : bool = false) : StateHistory
+    public static Create(st : FsmState, hist : StateNode.History, href : bool = false) : StateHistory
     {
       match (hist)
       {
-        | StateNode.History(type = HistoryType.Deep)    => StateHistory(an, hist, href)
-        | StateNode.History(type = HistoryType.Shallow) => StateHistory(an, hist, href)
+        | StateNode.History(type = HistoryType.Deep)    => StateHistory(st, hist, href)
+        | StateNode.History(type = HistoryType.Shallow) => StateHistory(st, hist, href)
         | _                                             => throw InvalidOperationException("Unknown history node")
       }
     }
@@ -139,6 +139,10 @@ namespace Nemerle.Statechart
       }
     }
 
+    public ChangeState(st : FsmState) : void
+    {
+      analyser.statemap.ParentFor(Num, st)
+    }
     //public SubStatesParticipateInHistoryIndirect : IEnumerable[FsmState]
     //{
     //    st.Updated.SubStatesParticipateIn(this)
@@ -154,14 +158,13 @@ namespace Nemerle.Statechart
     
     public UpdateReference() : StateHistory
     {
-      def st = StateMap.Get(state);
       def hist = if (history.reference)
-                  {
-                    state.GetHistory(this);
-                  } else this;
+                 {
+                   state.GetHistory(this)
+                 } else this;
 
       def default = default.Map(_.UpdateReference());
-      hist.ChangeStateDefault(st, default)
+      hist.ChangeDefault(default)
     }
 
   }

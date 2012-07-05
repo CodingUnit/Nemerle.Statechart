@@ -47,13 +47,20 @@ namespace Nemerle.Statechart
 
             def sub    = sub.Map(change_sub_states);
 
-            def init   = st.initial.Map(x => x.ChangeFromSource(st, st).SetNewId());
-            def tran   = st.transitions.Map(x => x.ChangeFromSource(st, st).SetNewId());
-            def intern = st.internal_tran.Map(x => x.ChangeFromSource(st, st).SetNewId());
-            def hist   = st.history.Map(_.ChangeState(st));
+            def change_from_source(tr)
+            {
+              def s =  tr.ChangeSourceNum(st).SetNewId(); 
+              s.From = st; 
+              s
+            }
+            
+            def init   = st.initial.Map(change_from_source);
+            def tran   = st.transitions.Map(change_from_source);
+            def intern = st.internal_tran.Map(change_from_source);
+            st.history.Iter(_.ChangeState(st));
             def en     = st.entry;
             def ex     = st.exit;
-            st.ChangeTransitionsSubStatesHistoryInitialEntryExitInternalTran(tran, sub, hist, init,  en, ex, intern)
+            st.ChangeTransitionsSubStatesInitialEntryExitInternalTran(tran, sub, init,  en, ex, intern)
           }
 
           def st          = instance_of.ReduceSingle(true, copy_state); // copy state and its content, changing references accordingly
@@ -73,10 +80,11 @@ namespace Nemerle.Statechart
 
             def check_target(tar)
             {
-              | TransitionTarget.State(st) as t                       => t.ChangeState(find_state(st))
-              | Qualified(_, State(st) as t)                          => t.ChangeState(find_state(st))
+              | TransitionTarget.State(state = st) as t               => t.ChangeState(find_state(st))
+              | Qualified(_, State(state = st) as t)                  => t.ChangeState(find_state(st))
               | Final(st) as t                                        => t.ChangeState(find_state(st))
-              | PseudoState(PseudoStateNode(state = st) as node) as t => t.ChangeNode(node.ChangeState(find_state(st)))
+              | PseudoState(PseudoStateNode(state = st) as node) as t => node.ChangeState(find_state(st)); 
+                                                                         t
               | _                                                     => null
             }
 

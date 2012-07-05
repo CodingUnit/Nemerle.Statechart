@@ -26,14 +26,14 @@ namespace Nemerle.Statechart
     {
       this(st.analyser);
       From = st;
-      Source = st;
+      SourceNum = st;
       node = tran;
       when (tran != null)
       {
         guard = tran.guard;
         action = tran.action;
       }
-      To = if (tran.to != null) TransitionTarget.Create(st.analyser, st, tran.to) else TransitionTarget.Nowhere(analyser);
+      To = if (tran.to != null) TransitionTarget.Create(st.analyser, tran.to) else TransitionTarget.Nowhere(analyser);
     }
     
     public this(st : FsmState, to : FsmState)
@@ -46,7 +46,7 @@ namespace Nemerle.Statechart
       this(st.analyser);
       From = st;
       To = to;
-      Source = st;
+      SourceNum = st;
     }
 
     public node : StateNode.Transition;
@@ -60,7 +60,7 @@ namespace Nemerle.Statechart
       To = tran.To;
       omit_guard = tran.omit_guard;
       ParentCrossed = tran.ParentCrossed;
-      Source = tran.Source;
+      SourceNum = tran.SourceNum;
       Local = tran.Local;
       //ImplicitFrom = tran.ImplicitFrom;
     }
@@ -68,10 +68,18 @@ namespace Nemerle.Statechart
     [NeedChange]
     public Num : int;
 
-    [NeedChange(Source)]
-    [NeedChange(To, Source)]
-    [NeedChange]
-    public From : FsmState;
+    public From : FsmState
+    {
+      get
+      {
+        Statemap.ParentFor(Num)
+      }
+      set
+      {
+        Statemap.ParentFor(Num, value)
+      }
+    }
+    
     [NeedChange]
     public guard : option[GuardNode] = None();
     [NeedChange]
@@ -236,8 +244,8 @@ namespace Nemerle.Statechart
       {
         match (To)
         {
-          | TransitionTarget.State(st)  => st
-          | _                           => null
+          | TransitionTarget.State(state = st)  => st
+          | _                                   => null
         }
       }
     }
@@ -270,9 +278,18 @@ namespace Nemerle.Statechart
     /// From determines beginning state from which follow out transition
     /// Source as a rule is nested state or same as From, if From not have sub states
     /// </remarks>
-    [NeedChange]
-    public Source : FsmState;
+    public Source : FsmState
+    {
+      get
+      {
+        Statemap.Get(SourceNum)
+      }
+    }
 
+    [NeedChange(To)]
+    [NeedChange]
+    SourceNum : FsmState;
+    
     [NeedChange]
     public Local : bool;
 
@@ -382,10 +399,10 @@ namespace Nemerle.Statechart
 
     public UpdateReference() : StateTransition
     {
-      def from = if (From != null) Statemap.Get(From) else null;
+      //def from = if (From != null) Statemap.Get(From) else null;
       def source = if (Source != null) Statemap.Get(Source) else null;
       def to = To.ReduceSingle((x, _) => x.UpdateReference());
-      ChangeFromToSource(from, to, source)
+      ChangeSourceNumTo(source, to)
     }
 
     /// !!! mutable
@@ -481,8 +498,8 @@ namespace Nemerle.Statechart
                 | Final(st)
                 | History(StateHistory(state = st))
                 | PseudoState(PseudoStateNode(state = st))
-                | State(st) => st
-                | _         => null
+                | State(state = st) => st
+                | _                 => null
               }
           | TransitionDestination.State when ActualTo != null => ActualTo
           | State(st) => st
@@ -528,10 +545,10 @@ namespace Nemerle.Statechart
       {
         def trans = match (this)
         {
-          | Internal   => Source.Updated.internal_tran
-          | Initial    => Source.Updated.initial
-          | Transition => Source.Updated.transitions
-          | _          => Source.Updated.all_transitions_with_init
+          | Internal   => Source.internal_tran
+          | Initial    => Source.initial
+          | Transition => Source.transitions
+          | _          => Source.all_transitions_with_init
         }
         match (trans.Find(x => x.Num == Num))
         {
