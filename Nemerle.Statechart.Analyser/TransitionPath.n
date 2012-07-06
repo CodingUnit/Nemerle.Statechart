@@ -76,27 +76,34 @@ namespace Nemerle.Statechart
           def init_path = path;
           //path = Empty();
 
-          def create_tree_node(t)
+          def create_tree_node(t, pst)
           {
-              | DecisionNode.Condition(state = st, PrevState = pst) =>
+            match (t)
+            {
+              | DecisionNode.Condition(state = st) =>
                 def node_path = GetPath(pst, st, true, jst);
-                t.ChangeNodePathOutPath(node_path, Enumerable.Empty())
+                (t.ChangeNodePathOutPath(node_path, Enumerable.Empty()), st)
+              }
           }
 
-          def create_targ_tree(t)
+          def create_targ_tree(t, pst)
           {
-            | DecisionNode.Target(target = tar, state = st, PrevState = pst) as t =>
+            match (t)
+            {
+            | DecisionNode.Target(target = tar, state = st) as t =>
 
                 path = init_path;
                 def node_path = GetPath(pst, st, true, jst);
                 DefPath(st, tar.ToState, true, jst);
                 def dest = TraverseTargetReg(tar, tran);
                 def out_path = path.Path;
-                t.ChangeDestinationOutPathNodePath(dest, out_path, node_path)
+                (t.ChangeDestinationOutPathNodePath(dest, out_path, node_path), st)
+              }
+                
           }
 
           traverser?.Log($"\nTraversing choice node $j");
-          def dest_tree = t.Reduce((t, _, _) => create_tree_node(t), create_targ_tree);
+          def (dest_tree, _) = t.Reduce(j.state, (t, _, _, a) => create_tree_node(t, a), create_targ_tree);
           path = init_path;
           ChoiceNode(dest_tree)
     }
@@ -243,9 +250,9 @@ namespace Nemerle.Statechart
           def st = tran.ToState;
           when (st == null) throw FsmErrorException(FsmError.DefaultTransitionMustGoToState(tran, hist));
           transition = tran.ChangeUsed(true);
-          match (hist, st.history.Value.Find(_ is StateHistory.Deep))
+          match (hist, st.history.Value.Find(x => x.type == HistoryType.Deep))
           {
-            | (StateHistory.Deep, Some(StateHistory.Deep(default = t) as h)) =>
+            | (StateHistory(type = HistoryType.Deep), Some(StateHistory(default = t, type = HistoryType.Deep) as h)) =>
                 when (t is Some(tr)) traverser?.Add(tr);
                 History(h)
 
@@ -264,7 +271,7 @@ namespace Nemerle.Statechart
     {
       | History(From = from, Source = src, history = hist, ToState = st) =>
 
-          def tran = if (tran.Source == null) tran.ChangeSource(tran.From) else tran;
+          def tran = if (tran.Source == null) tran.ChangeSourceNum(tran.From) else tran;
           DefPath(src, from, tran); // unwind path from Source up to transition begining (From)
           transition = tran.ChangeUsed(true);
           if (st is ConcurrentRegion) HistoryRestore(hist) 
