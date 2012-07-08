@@ -13,13 +13,13 @@ namespace Nemerle.Statechart
   public class StateHistory
   {
     
-    public this(st : FsmState, hist : StateNode.History, reference : bool = false)
+    public this(st : FsmState, num : int, hist : StateNode.History)
     {
       this(st.analyser);
       history = hist;
+      Num = num;
       //state = if (hist.state != null) FsmState.State(hist.state, null, analyser, true); else st;
       type = hist.type;
-      this.reference = reference;
       default = history.default |> StateTransition.Default(st, this, _).Create();
     }
 
@@ -42,7 +42,7 @@ namespace Nemerle.Statechart
     //[NeedChange(default)]
     //[NeedChange] public state : FsmState;
     public type : HistoryType;
-    [NeedChange] public reference : bool;
+    //[NeedChange] public reference : bool;
 
     [NeedChange] public Used : bool;
 
@@ -67,29 +67,21 @@ namespace Nemerle.Statechart
     //  Used = hist.Used;
     //}
 
-    public static Create(st : FsmState, hist : TwoOption[StateNode.History], href : bool = false) : TwoOption[StateHistory]
-    {      
-      hist.Map(Create(st, _, href))
+    public static Create(st : FsmState, num : int, hist : TwoOption[StateNode.History]) : TwoOption[StateHistory]
+    {
+      hist.Map(Create(st, num, _))
     }
 
-    public static Create(st : FsmState, hist : StateNode.History, href : bool = false) : StateHistory
+    public static Create(st : FsmState, num : int, hist : StateNode.History) : StateHistory
     {
-      match (hist)
-      {
-        | StateNode.History(type = HistoryType.Deep)    => StateHistory(st, hist, href)
-        | StateNode.History(type = HistoryType.Shallow) => StateHistory(st, hist, href)
-        | _                                             => throw InvalidOperationException("Unknown history node")
-      }
+      StateHistory(st, num, hist)
     }
 
     //[Accessor] clone_for : StateHistory;
 
-    public static  @==(a : StateHistory, b : StateHistory) : bool
+    public static @==(a : StateHistory, b : StateHistory) : bool
     {
-      | (null, null)  => true
-      | (a, null)     => a : object  ==  null
-      | (null, b)     => b : object  ==  null
-      | (_, _)        => a.Num == b.Num//a.Name == b.Name && a.type == b.type && a.state == b.state
+      a.Num == b.Num//a.Name == b.Name && a.type == b.type && a.state == b.state
     }
 
     public static @!=(a : StateHistory, b : StateHistory) : bool
@@ -148,23 +140,20 @@ namespace Nemerle.Statechart
     //    st.Updated.SubStatesParticipateIn(this)
     //}
 
-    //public Updated : StateHistory
-    //{
-    //  get
-    //  {
-    //    state.Updated.GetHistory(this)
-    //  }
-    //}
+    public Updated : StateHistory
+    {
+      get
+      {
+        state.GetHistory(this)
+      }
+    }
     
     public UpdateReference(st : FsmState) : StateHistory
     {
-      def hist = if (history.reference)
-                 {
-                   state.GetHistory(this)
-                 } else this;
-      ChangeState(st);
-      def default = default.Map(_.UpdateReference());
-      hist.ChangeDefault(default)
+      //def hist = if (history.reference) state.GetHistory(this) else this;
+      //ChangeState(st);
+      def default = default.Map(_.UpdateReference(st));
+      ChangeDefault(default)
     }
 
   }

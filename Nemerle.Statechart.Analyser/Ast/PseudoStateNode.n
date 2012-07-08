@@ -19,14 +19,14 @@ namespace Nemerle.Statechart
       {
         [NeedChange] name : string;
         [NeedChange] to : TransitionTarget.JunctionNode;
-        [TraverseIgnore] parent : Junction;
+        //[TraverseIgnore] parent : Junction;
         type : JunctionType;
 
-        this(st : FsmState, n : string, node : TargetType.JunctionNode, type : JunctionType)
+        this(st : FsmState, num : int, n : string, node : TargetType.JunctionNode, type : JunctionType)
         {
           def an =st.analyser;
-          base(0, an.statemap.GetNextGlobalNum(), an);
-          this.to = TransitionTarget.JunctionNode.Create(st, Num, node);//lst |> JunctionNode(st, tran, _, this);
+          base(0, num, an);
+          this.to = TransitionTarget.JunctionNode.Create(st, num, node);//lst |> JunctionNode(st, tran, _, this);
           name = n;
           this.type = type;
         }
@@ -62,13 +62,13 @@ namespace Nemerle.Statechart
           }
         }
 
-        IsTop : bool 
-        {
-          get
-          {
-            parent == null
-          }
-        }
+        //IsTop : bool 
+        //{
+        //  get
+        //  {
+        //    parent == null
+        //  }
+        //}
 
         Actions : IEnumerable[PathNode]
         {
@@ -232,8 +232,7 @@ namespace Nemerle.Statechart
         }
       }
 
-
-    public static Create(st : FsmState, pseudo : PseudoStateAstNode) : PseudoStateNode
+    public static Create(st : FsmState,  pseudo : PseudoStateAstNode, num : int = -1) : PseudoStateNode
     {
       def an = st.analyser;
       match (pseudo)
@@ -241,23 +240,20 @@ namespace Nemerle.Statechart
         | Junction(null, node, JunctionType.Junction) => 
             def num = an.NextJunctionNum();
             def name = $"Unnamed$num";
-            Junction(st, name, node, JunctionType.Junction)
+            Junction(st, num, name, node, JunctionType.Junction)
 
         | Junction(null, node, JunctionType.Choice) => 
             def num = an.NextChoiceNum();
             def name = $"Unnamed$num";
-            //j.ChangeName(name)
-            Junction(st, name, node, JunctionType.Choice)
+            Junction(st, num, name, node, JunctionType.Choice)
 
-        | Junction(name = n, node = nn, type = tp)   => Junction(st, n, nn, tp)
+        | Junction(name = n, node = nn, type = tp)   => Junction(st, num, n, nn, tp)
         | Merge(name = n, node = node)    => Merge(st, n, node)
-        | Fork(target = lst)              => def num = an.statemap.GetNextGlobalNum();
-                                             Fork(0, num, an, lst |> TransitionTarget.Create(st, num, _), [])
-        | Join(name = n, target = t)      => def num = an.statemap.GetNextGlobalNum();
-                                             Join(0, num, an, n, TransitionTarget.Create(st, num, t), null, null, null)
-        | EntryPoint                      => EntryPoint(0, an.statemap.GetNextGlobalNum(), an)
-        | ExitPoint                       => ExitPoint(0, an.statemap.GetNextGlobalNum(), an)
-        | Terminate                       => Terminate(0, an.statemap.GetNextGlobalNum(), an)
+        | Fork(target = lst)              => Fork(0, num, an, lst |> TransitionTarget.Create(st, num, _), [])
+        | Join(name = n, target = t)      => Join(0, num, an, n, TransitionTarget.Create(st, num, t), null, null, null)
+        | EntryPoint                      => EntryPoint(0, num, an)
+        | ExitPoint                       => ExitPoint(0, num, an)
+        | Terminate                       => Terminate(0, num, an)
       }
 
     }
@@ -306,7 +302,7 @@ namespace Nemerle.Statechart
 
     public static @==(a : PseudoStateNode, b : PseudoStateNode) : bool
     {
-      | (PseudoStateNode(Num = num), PseudoStateNode(Num = num2)) => num == num2
+      a.Num == b.Num
     }
 
     public analyser : FsmAnalyser;
@@ -319,10 +315,6 @@ namespace Nemerle.Statechart
       }
     }
     
-    public virtual UpdateReference(_ : FsmState) : PseudoStateNode
-    {
-      this
-    }
   }
 
 

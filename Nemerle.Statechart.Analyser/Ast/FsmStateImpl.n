@@ -26,16 +26,12 @@ namespace Nemerle.Statechart
 
     public virtual UpdateReference() : FsmState
     {
-      //def super  = statemap.Get(super_state) ?? super_state;
-      //sub_states.Map(x => x.);
-                 
-      //def super = if (super.AstName == null) super.ChangeName(TopStateName) else super;
-      def init = initial.Map(_.UpdateReference());
-      def tran = transitions.Map(_.UpdateReference());
-      def int_tran = internal_tran.Map(_.UpdateReference());
-      def hist   = history.Value.Map(_.UpdateReference(this));
-      //def pseudo = pseudo_states.Map(_.UpdateReference());
       statemap.UpdateRefsToParent(this, ChildNodes);
+      def init     = initial.Map(_.UpdateReference(this));
+      def tran     = transitions.Map(_.UpdateReference(this));
+      def int_tran = internal_tran.Map(_.UpdateReference(this));
+      def hist     = history.Value.Map(_.UpdateReference(this));
+      //def pseudo = pseudo_states.Map(_.UpdateReference());
       ChangeHistoryInitialInternalTranTransitions(TwoOption.FromList(hist), init, int_tran, tran)
     }
 
@@ -129,36 +125,30 @@ namespace Nemerle.Statechart
       analyser = an;
     }
 
-    public this(name : string, analyser : FsmAnalyser, reference : bool = false)
+    public this(name : string, analyser : FsmAnalyser)
     {
       //super : FsmState, 
       this(analyser);
       this.name = name;
       //this.super_state = super;
-      this.reference = reference;
+      //this.reference = reference;
       //Num = statemap.GetNewStateId(this)
     }
 
-    public this(st : StateNode.State, sub : IEnumerable[FsmState], analyser : FsmAnalyser, reference : bool = false)
+    public this(st : StateNode.State, sub : IEnumerable[FsmState], analyser : FsmAnalyser)
     {
       this(analyser);
       state = st;
       name = st.name;
-      this.reference = reference || state.reference;
-      //def st_from_node(n)
-      //{
-      //  | StateNode.State(type = SubMachine) => SubMachine(n, this)
-      //  | State(type = InlinedSubMachine)    => InlinedSubMachine(n, this)
-      //  | _                                  => FsmState.State(n, this, false)
-      //}
+      //this.reference = reference || state.reference;
       
-      when (!reference)
-      {
+      //when (!reference)
+      //{
         do_activity = st.do_activity |> StateAction.Do(_.action.actions, _.flags);
         internal_tran = Internal.Create(this, st.internal_tran).NToList();
         entry = st.entry |> StateAction.Entry(_.action.actions, _.attrib);
         exit = st.exit |> StateAction.Exit(_.action.actions, _.attrib);
-        history = StateHistory.Create(this, st.history);
+        history = StateHistory.Create(this, statemap.GetNextGlobalNum(), st.history);
         transitions = Transition.Create(this, st.transitions).NToList();
         initial = st.initial.Map(Initial.Create(this, _));
         //def (regs, subst) = st.sub_states.Partition(x => x.regions.HasValue);
@@ -167,8 +157,8 @@ namespace Nemerle.Statechart
         //def subst = (subst |> st_from_node(_)) + regs;
         //sub_states = subst.Sort((x, y) => x.source_pos - y.source_pos);
         sub_states = sub.NToList();//.Map(_.ChangeSuperState(this));
-        pseudo_states = st.pseudo_states |> PseudoStateNode.Create(this, _.node)
-      }
+        pseudo_states = st.pseudo_states |> PseudoStateNode.Create(this, _.node, analyser.statemap.GetNextGlobalNum())
+      //}
       //Num = statemap.GetNewStateId(this)
     }
 
@@ -177,9 +167,11 @@ namespace Nemerle.Statechart
     {
       get
       {
+        def tran = all_transitions_with_init.Select(_.Num);
         def pseudo = pseudo_states.Select(_.Num);
         def hist   = history.Value.Select(_.Num);
-        pseudo.Concat(hist)
+        def default = history.Value.FoldLeft([], (x, a) => if (x.default is Some(t)) t.Num :: a else a);
+        pseudo.Concat(hist).Concat(tran).Concat(default)
       }
     }
     

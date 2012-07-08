@@ -19,22 +19,23 @@ namespace Nemerle.Statechart
   /// </summary>
   public partial variant TransitionTarget
   {
-    
-        
+
     public static Create(st : FsmState, num : int, target : TargetType) : TransitionTarget
     {
       def an = st.analyser;
-      match (target)
-      {
-        | PseudoState as t                  => PseudoState(st, t)
-        | History     as t                  => History(st, t)
-        | Final                             => TransitionTarget.Final(an, null)
-        | State       as t                  => State(an, t)
-        | Named       as t                  => Named(st, t)
-        | SubMachine(m, s)                  => SubMachine(an, SubMachine(m, null), s)
-        | Qualified(parent = p, target = t) => Qualified(an, p, Create(st, num, t))
-        | JunctionNode(g, a, t, n)          => JunctionNode(an, g, a, Create(st, num, t), n.Map(x => Create(st, num, x) :> JunctionNode), num, null, JunctionType.Junction)
-      }
+
+      def targ = match (target)
+                  {
+                    | PseudoState as t                  => PseudoState(st, t)
+                    | History     as t                  => History(st, t)
+                    | Final                             => TransitionTarget.Final(an, null)
+                    | State       as t                  => State(an, t)
+                    | Named       as t                  => Named(st, t)
+                    | SubMachine(m, s)                  => SubMachine(an, SubMachine(m, null), s)
+                    | Qualified(parent = p, target = t) => Qualified(an, p, Create(st, num, t))
+                    | JunctionNode(g, a, t, n)          => JunctionNode(an, g, a, Create(st, num, t), n.Map(x => Create(st, num, x) :> JunctionNode), -1, null, JunctionType.Junction)
+                  }
+      Reference(an, st, targ)
     }
 
     public CompareTo(target : TransitionTarget) : int
@@ -48,7 +49,7 @@ namespace Nemerle.Statechart
       | (Final(st1), Final(st2))                              => st1.Name.CompareTo(st2.Name)
       | (PseudoState(n1), PseudoState(n2))                    => n1.ToString().CompareTo(n2.ToString())
       | (State(st1), State(st2))                              => st1.Name.CompareTo(st2.Name)
-      | (SubMachine(m, s), SubMachine(m2, s2)) when (m == m2) => s.CompareTo(s2)
+      | (SubMachine(machine = m, state = s), SubMachine(machine = m2, state = s2)) when (m == m2) => s.CompareTo(s2)
       | (Qualified(p, t), Qualified(p2, t2)) when (p == p2)   => t.CompareTo(t2)
       | _                                                     => -1
     }
@@ -61,7 +62,7 @@ namespace Nemerle.Statechart
       | (PseudoState(n1), PseudoState(n2))     => n1 == n2
       | (Named(st, n), Named(st2, n2))         => st == st2 && n == n2
       | (Qualified(p, t), Qualified(p2, t2))   => p == p2 && t == t2
-      | (SubMachine(m, s), SubMachine(m2, s2)) => m == m2 && s == s2
+      | (SubMachine(machine = m, state = s), SubMachine(machine = m2, state = s2)) => m == m2 && s == s2
       | _                                      => false
     }
 
@@ -87,7 +88,7 @@ namespace Nemerle.Statechart
           | PseudoState(PseudoStateNode(state = st))
           | History(StateHistory(state = st))
           | Final(state = st)
-          | SubMachine(st, _)
+          | SubMachine(machine = st)
           | JunctionNode(state = st)
           | Reference(st, _)      
           | State(state = st)  => st
@@ -157,6 +158,6 @@ namespace Nemerle.Statechart
     }
 
     public analyser : FsmAnalyser;
-    
+
   }
 }
