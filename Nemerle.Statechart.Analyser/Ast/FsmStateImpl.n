@@ -20,7 +20,7 @@ namespace Nemerle.Statechart
   /// Description of FsmStateImpl.
   /// </summary>
   [Traversable]
-  public partial variant FsmState
+  public partial variant FsmState : IdObject
   {
     public override ToString() : string { Name }
 
@@ -162,16 +162,36 @@ namespace Nemerle.Statechart
       //Num = statemap.GetNewStateId(this)
     }
 
+    public NestedObjects : IEnumerable[IdObject]
+    {
+      get
+      {
+        def trans = all_transitions_with_init;
+        def obj = trans.Concat(pseudo_states.Select(_ : IdObject));
+        def obj = obj.Concat(trans.SelectMany(_.TargetIdObjects));
+        def obj = obj.Concat(history.Value);
+        def default = history.Value.FoldLeft([], (x, a) => if (x.default is Some(t)) t :: a else a);
+        obj.Concat(default)
+      }
+    }
+
+    public ChildObjects : IEnumerable[IdObject]
+    {
+      get
+      {
+        def trans = all_transitions_with_init;
+        def obj = trans.Concat(pseudo_states.Select(_ : IdObject));
+        def obj = obj.Concat(history.Value);
+        def default = history.Value.FoldLeft([], (x, a) => if (x.default is Some(t)) t :: a else a);
+        obj.Concat(default)
+      }
+    }
     
     ChildNodes : IEnumerable[int]
     {
       get
       {
-        def tran = all_transitions_with_init.Select(_.Num);
-        def pseudo = pseudo_states.Select(_.Num);
-        def hist   = history.Value.Select(_.Num);
-        def default = history.Value.FoldLeft([], (x, a) => if (x.default is Some(t)) t.Num :: a else a);
-        pseudo.Concat(hist).Concat(tran).Concat(default)
+        ChildObjects.Select(_.Num)
       }
     }
     

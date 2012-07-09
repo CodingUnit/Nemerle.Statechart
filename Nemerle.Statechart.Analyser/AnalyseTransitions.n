@@ -206,31 +206,26 @@ namespace Nemerle.Statechart
             statemap.ParentFor(p.Num, st);
             p
 
-        | Junction(name = n) as j  =>  def junc = pseudo.FilterType();
+        | Junction(name = n) as j  => def junc = pseudo.FilterType();
                                       match (junc.Find(x => x.name == n))
                                       {
                                         | Some(PseudoStateNode.Junction as j) => j
                                         | _                                   => AddError(FsmError.UnknownTarget(tran, targ));
-                                                                                  j
+                                                                                 j
                                       }
-        | Merge(name = n) as j    =>   def merge = pseudo.FilterType();
+        | Merge(name = n) as j    =>  def merge = pseudo.FilterType();
                                       match (merge.Find(x => x.name == n))
                                       {
                                         | Some(PseudoStateNode.Merge as j) => j
                                         | _                                => AddError(FsmError.UnknownTarget(tran, targ)); j
                                       }
         | Join(name = n) as j     => def join = pseudo.FilterType();
-                                    match (join.Find(x => x.name == n))
-                                    {
-                                      | Some(PseudoStateNode.Join as j) => j
-                                      | _                                => AddError(FsmError.UnknownTarget(tran, targ)); j
-                                    }
-        | Terminate               => match (st.pseudo_states.FindType())
-            {
-              | Some(PseudoStateNode.Terminate as p) => p
-              | _                                    => p
-            }
-
+                                     match (join.Find(x => x.name == n))
+                                     {
+                                       | Some(PseudoStateNode.Join as j) => j
+                                       | _                               => AddError(FsmError.UnknownTarget(tran, targ)); j
+                                     }
+        | p                        => p
       }
     }
 
@@ -245,15 +240,7 @@ namespace Nemerle.Statechart
         //      | Some(FsmState.Final as st)  => t.ChangeState(st)
         //      | _                           => tr
         //    }
-
-        | Reference(st, t) => def st = st.Updated;
-                              def t = match (t)
-                              {
-                                | PseudoState(p) as t                    => t.ChangeNode(check_pseudo(st, p, t, tran))
-                                | History(h)  as t                       => t.ChangeHistory(st.GetHistory(h))
-                                | _                                      => t
-                              }
-                              resolve_targets(st, t, tran)
+        | History(h) as t     => t.ChangeHistory(st.GetHistory(h))
         | PseudoState(node = Terminate(state = null) as node) as p =>
             match (PseudoStates.Filter(_ is PseudoStateNode.Terminate))
             {
@@ -287,10 +274,14 @@ namespace Nemerle.Statechart
                   def m = m.Scan(); // scan external sub machine for states
                   when (!m.ref_sub_states.Contains(n)) AddError(FsmError.SubMachineStateNotFound(m, n));
                   TransitionTarget.SubMachine(this, m, n)
+                  
               | (null, _) => AddError(FsmError.UnknownTarget(tran, tr));
                             t
               | (st, t) => resolve_targets(st, t, tran)
             }
+        | PseudoState(p) as t => def t = t.ChangeNode(check_pseudo(st, p, t, tran));
+                                 resolve_targets(st, t, tran)
+
         | t  => t
       }
     }

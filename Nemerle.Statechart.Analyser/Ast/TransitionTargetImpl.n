@@ -19,23 +19,28 @@ namespace Nemerle.Statechart
   /// </summary>
   public partial variant TransitionTarget
   {
+    
+    public IdObjects : IEnumerable[IdObject]
+    {
+      get
+      {
+        Fold([], pseudo_state = (p, a) => p.node :: a)
+      }
+    }
 
-    public static Create(st : FsmState, num : int, target : TargetType, not_ref : bool = false) : TransitionTarget
+    public static Create(st : FsmState, target : TargetType) : TransitionTarget
     {
       def an = st.analyser;
-
       match (target)
       {
-        | PseudoState as t when (not_ref)   => PseudoState(st, t)
-        | History     as t when (not_ref)   => History(st, t)
-        | PseudoState as t                  => Reference(an, st, PseudoState(st, t))
-        | History     as t                  => Reference(an, st, History(st, t))
+        | PseudoState as t                  => PseudoState(st, t)
+        | History     as t                  => History(st, t)
         | Final                             => TransitionTarget.Final(an, null)
         | State       as t                  => State(an, t)
         | Named       as t                  => Named(st, t)
         | SubMachine(m, s)                  => SubMachine(an, SubMachine(m, null), s)
-        | Qualified(parent = p, target = t) => Qualified(an, p, Create(st, num, t, true))
-        | JunctionNode(g, a, t, n)          => JunctionNode(an, g, a, Create(st, num, t), n.Map(x => Create(st, num, x) :> JunctionNode), -1, null, JunctionType.Junction)
+        | Qualified(parent = p, target = t) => Qualified(an, p, Create(st, t))
+        | JunctionNode(g, a, t, n)          => JunctionNode(an, g, a, Create(st, t), n.Map(x => Create(st, x) :> JunctionNode), null, JunctionType.Junction)
       }
     }
 
@@ -90,12 +95,9 @@ namespace Nemerle.Statechart
           | History(StateHistory(state = st))
           | Final(state = st)
           | SubMachine(machine = st)
-          | JunctionNode(state = st)
-          | Reference(st, _)      
           | State(state = st)  => st
-          | Nowhere
-          | Named              => null
           | Qualified(_, t)    => t.ToState
+          | _                  => null
         }
       }
     }

@@ -22,31 +22,6 @@ namespace Nemerle.Statechart
     [TraverseIgnore]
     | Nowhere
     
-    | Reference 
-      { 
-        [NeedChange(target)]
-        [NeedChange]
-        state : FsmState; 
-        target : TransitionTarget; 
-        
-        override ToString() : string
-        {
-          $"Reference$(state).$(target)"
-        }
-
-        override UpdateReference(st : FsmState) : TransitionTarget
-        {
-          def targ = target.UpdateReference(st);
-          ChangeStateTarget(st, targ)
-          //match (target)
-          //{
-          //  | History(h) => def h = state.Updated.GetHistory(h);
-          //                  History(analyser, h)
-                            
-          //  | t          => t.UpdateReference(st)
-          //}
-        }
-      }
     | History 
       {
         [NeedChange] history : StateHistory;
@@ -240,16 +215,7 @@ namespace Nemerle.Statechart
         //parent                    : PseudoStateNode;
         [NeedChange(to)] next     : option[JunctionNode];
         //[NeedChange] state        : FsmState;
-        [NeedChange] Num          : int;
         [NeedChange] decisionTree : DecisionNode;
-        
-        state                     : FsmState
-        {
-          get
-          {
-            StateMap.ParentFor(Num)
-          }
-        }
         
         type                      : JunctionType;
         
@@ -261,12 +227,12 @@ namespace Nemerle.Statechart
           }
         }
         
-        public static Create(st : FsmState, num : int, to : TargetType.JunctionNode) : JunctionNode
+        public static Create(st : FsmState, to : TargetType.JunctionNode) : JunctionNode
         {
           def an = st.analyser;
           match (to)
           {
-            | TargetType.JunctionNode(g, a, t, n) => JunctionNode(an, g, a, Create(st, num, t), n.Map(Create(st, num, _)), num, null, JunctionType.Junction)
+            | TargetType.JunctionNode(g, a, t, n) => JunctionNode(an, g, a, Create(st, t), n.Map(Create(st, _)), null, JunctionType.Junction)
           } 
         }
 
@@ -291,17 +257,14 @@ namespace Nemerle.Statechart
         //  ChangeTo(nto)
         //}
 
-        public Name : string
+        public GetName(state : FsmState) : string
         {
-          get
-          {
             $"JunctionNode$state"
-          }
         }
         
         override ToString() : string
         {
-          Name
+          "$(type) JunctionNode [$guard] / $action => $to"
         }
         
       }

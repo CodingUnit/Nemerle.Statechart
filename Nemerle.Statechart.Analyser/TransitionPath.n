@@ -111,12 +111,12 @@ namespace Nemerle.Statechart
     TraverseJunction(j : PseudoStateNode.Junction, tran : StateTransition) : TransitionDestination
     {
       //| (PseudoStateNode.Junction(to = jn), _) =>
-        TraverseJunctionNode(j.to, tran)
+        TraverseJunctionNode(j.to, tran, j)
     }
 
-    TraverseJunctionNode(j : TransitionTarget.JunctionNode) : TransitionDestination
+    TraverseJunctionNode(j : TransitionTarget.JunctionNode, junc : PseudoStateNode.Junction) : TransitionDestination
     {
-      | JunctionNode(decisionTree = t, state = jst) =>
+      | (JunctionNode(decisionTree = t), PseudoStateNode.Junction(state = jst)) =>
 
           def init_path = path;
 
@@ -137,15 +137,14 @@ namespace Nemerle.Statechart
 
     }
 
-    TraverseJunctionNode(j : TransitionTarget.JunctionNode, tran : StateTransition) : TransitionDestination
+    TraverseJunctionNode(j : TransitionTarget.JunctionNode, tran : StateTransition, junc : PseudoStateNode.Junction) : TransitionDestination
     {
-      | (JunctionNode(state = jst), _) =>
-      
+          def jst = junc.state;
           DefPath(tran.From, jst);
           def exit = ExitNodeCreate(TraverseUtils.SingleElement(jst));
           AddNode(exit);
           def path = TransitionPath(tran, analyser, recursive);
-          path.TraverseJunctionNode(j);
+          path.TraverseJunctionNode(j, junc);
     }
 
     TraverseMerge(j : PseudoStateNode.Merge, tr : StateTransition) : TransitionDestination
@@ -315,13 +314,12 @@ namespace Nemerle.Statechart
     {
       match (to)
       {
-        | State(state = st)         => TraverseStateTarget(st)
+        | State(state = st) => TraverseStateTarget(st)
           // if target is orthogonal state
         | Final(st)         => TraverseFinal(st.Updated) // process final node
         | History(st)       => TraverseHistory(st) // process history node
         | PseudoState(st)   => TraversePseudo(st, tr)
         | SubMachine(m, s)  => TraverseSubMachine(m, s)
-        | JunctionNode as t => TraverseJunctionNode(t, tr)
         | _                 => Unknown()
       }
     }
