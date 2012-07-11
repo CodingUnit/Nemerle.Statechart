@@ -229,7 +229,16 @@ namespace Nemerle.Statechart
       }
     }
 
-    resolve_targets(st : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
+    UpdateTargetReference(tr : StateTransition, st : FsmState) : StateTransition
+    {
+      //def from = if (From != null) Statemap.Get(From) else null;
+      def source = if (tr.Source != null) st else null;
+      def to = tr.To.ReduceSingle(true, (x, _) => ResolveTargets(st, x, tr));
+      //st.TraverseTargets(, true); // first pass named and qualified
+      tr.ChangeSourceNumTo(source, to)
+    }
+
+    ResolveTargets(st : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
     {
       match (tr)
       {
@@ -240,8 +249,11 @@ namespace Nemerle.Statechart
         //      | Some(FsmState.Final as st)  => t.ChangeState(st)
         //      | _                           => tr
         //    }
+        | State(st_num) as t => def st = st_num.Updated;
+                                t.ChangeStateNum(st)
+
         | History(h) as t     => t.ChangeHistory(st.GetHistory(h))
-        | PseudoState(node = Terminate(state = null) as node) as p =>
+        | PseudoState(node = Terminate as node) as p =>
             match (PseudoStates.Filter(_ is PseudoStateNode.Terminate))
             {
               | []     => p.ChangeNode(node)//TransitionTarget.PseudoState(this, node)
@@ -250,7 +262,7 @@ namespace Nemerle.Statechart
                           tr
             }
 
-        | PseudoState(node = Join(state = null, name = n)) =>
+        | PseudoState(node = Join(name = n)) =>
             match (PseudoStates.FilterType())
             {
               | [] => AddError(FsmError.UnknownNode(tran));
@@ -265,7 +277,7 @@ namespace Nemerle.Statechart
             }
 
         | Named as t => def t = get_named(t, tran);
-                        resolve_targets(st, t, tran)
+                        ResolveTargets(st, t, tran)
         | Qualified(parent = st, target = t) => 
             def st = statemap.Get(st);
             match (st, t)
@@ -277,7 +289,7 @@ namespace Nemerle.Statechart
                   
               | (null, _) => AddError(FsmError.UnknownTarget(tran, tr));
                             t
-              | (st, t) => resolve_targets(st, t, tran)
+              | (st, t) => ResolveTargets(st, t, tran)
             }
         | PseudoState(p) as t => t.ChangeNode(check_pseudo(st, p, t, tran))
 
@@ -430,11 +442,11 @@ namespace Nemerle.Statechart
         when (is_crossed_orthogonal(tr, tr.Source)) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr));
       }
 
-      def check_tran(st, _)
-      {
-        st.TraverseTargets(resolve_targets(st, _, _), true); // first pass named and qualified
+      //def check_tran(st, _)
+      //{
+        //st.TraverseTargets(resolve_targets(st, _, _), true); // first pass named and qualified
         //st.TraverseTargets(resolve_targets(st, _, _)) // second pass final
-      }
+      //}
 
       foreach (st in States)
       {
@@ -442,7 +454,7 @@ namespace Nemerle.Statechart
         st.all_transitions.Iter(check_cross_orthogonal)
       }
 
-      UpdateStateMap(TopState.ReduceSingle(check_tran))
+      //UpdateStateMap(TopState.ReduceSingle(check_tran))
     }
 
     RenameTransition(tran : IEnumerable[StateTransition]) : IEnumerable[string * StateTransition]
