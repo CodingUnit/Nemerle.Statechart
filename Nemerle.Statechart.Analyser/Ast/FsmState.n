@@ -39,30 +39,32 @@ namespace Nemerle.Statechart
           base(state.state, Enumerable.Empty(), an)
         }
 
-        public static GetName(super : string) : string
-        {
-          $"$(super)Final"
-        }
-        
-        new this(super : string, an : FsmAnalyser)
-        {
-          base(GetName(super), an)
-        }
-
       }
 
     | ConcurrentSubRegion
       {
-        index : int;
-
-        [TraverseIgnore] 
-        [NeedChange(index)] 
-        contained_in : ConcurrentRegion;
-
-        this(st : StateNode.State, sub : IEnumerable[FsmState], an : FsmAnalyser)
+        index : int
         {
-          base(st, sub, an)
+          get
+          {
+            contained_in.sub_regions.IndexOf(x => x.Num == Num)
+          }
         }
+
+        //[TraverseIgnore] 
+        //[NeedChange(index)] 
+        contained_in : ConcurrentRegion
+        {
+          get
+          {
+            Super :> ConcurrentRegion
+          }
+        }
+
+        //this(st : StateNode.State, sub : IEnumerable[FsmState], an : FsmAnalyser)
+        //{
+        //  base(st, sub, an)
+        //}
 
       }
 
@@ -74,7 +76,7 @@ namespace Nemerle.Statechart
         this(state : StateNode.State, sr : list[FsmState.ConcurrentSubRegion], an : FsmAnalyser)
         {
           base(state, [], an);
-          sub_regions = sr.MapIndex((x, i) => x.ChangeContainedInIndex(this, i));
+          sub_regions = sr;//.MapIndex((x, i) => x.ChangeIndex(i));
         }
 
           /// <summary>
@@ -193,8 +195,15 @@ namespace Nemerle.Statechart
     | InlinedSubMachineInstance
       {
         [NeedChange]
-        instance_of : InlinedSubMachine;
+        instance_of_num : InlinedSubMachine;
 
+        instance_of : InlinedSubMachine
+        {
+          get
+          {
+            instance_of_num.Updated :> InlinedSubMachine
+          }
+        }
       }
     | SubMachine
       {
@@ -238,7 +247,7 @@ namespace Nemerle.Statechart
           def fsm = analyser.States.FilterType();
           match (fsm.Find(x => x.type == type))
           {
-            | Some(InlinedSubMachine as f) => InlinedSubMachineInstance ^& (instance_of = f)
+            | Some(InlinedSubMachine as f) => InlinedSubMachineInstance ^& (instance_of_num = f)
             | _                            => st
           }
         }

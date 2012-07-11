@@ -21,8 +21,7 @@ namespace Nemerle.Statechart
       | (FsmState.InlinedSubMachineInstance(instance_of = instance_of, name = name, transitions = transitions, Num = cur_num), _) => 
 
           def find_inst   = inst.Find(x => x.Num == instance_of.Num).ObjFromOption();
-          def instance_of = instance_of.Updated;
-          def base_inst   = (find_inst ?? instance_of) :> FsmState.InlinedSubMachine;
+          def base_inst   = find_inst :> FsmState.InlinedSubMachine ?? instance_of;
 
           def num         = base_inst.NCopy + 1; // increment copy number
 
@@ -41,26 +40,21 @@ namespace Nemerle.Statechart
             def change_sub_states(sub : FsmState)
             {
               // if final state change it name to super state and set new id
-              | Final as sub => sub.ChangeName(FsmState.Final.GetName(st.Name)).SetNewId()
-              | _            => sub
+              if (sub is FsmState.Final) sub.SetNewId() else sub
             }
 
             def sub    = sub.Map(change_sub_states);
 
             def change_from_source(tr)
             {
-              def s =  tr.ChangeSourceNum(st).SetNewId(); 
-              s.From = st; 
-              s
+              tr.SetNewId() 
             }
             
             def init   = st.initial.Map(change_from_source);
             def tran   = st.transitions.Map(change_from_source);
             def intern = st.internal_tran.Map(change_from_source);
-            st.history.Iter(_.ChangeState(st));
-            def en     = st.entry;
-            def ex     = st.exit;
-            st.ChangeTransitionsSubStatesInitialEntryExitInternalTran(tran, sub, init,  en, ex, intern)
+            //st.history.Iter(_.ChangeState(st));
+            st.ChangeTransitionsSubStatesInitialInternalTran(tran, sub, init, intern)
           }
 
           def st          = instance_of.ReduceSingle(true, copy_state); // copy state and its content, changing references accordingly
@@ -83,8 +77,8 @@ namespace Nemerle.Statechart
               | TransitionTarget.State(state = st) as t               => t.ChangeState(find_state(st))
               | Qualified(_, State(state = st) as t)                  => t.ChangeState(find_state(st))
               | Final(st) as t                                        => t.ChangeStateNum(find_state(st))
-              | PseudoState(PseudoStateNode(state = st) as node) as t => node.ChangeState(find_state(st)); 
-                                                                         t
+              //| PseudoState(PseudoStateNode(state = st) as node) as t => node.ChangeState(find_state(st)); 
+                                                                         //t
               | _                                                     => null
             }
 
@@ -120,6 +114,7 @@ namespace Nemerle.Statechart
             }
           }
 
+          // TODO: решить проблемы с клонами, они должны быть только на уровне инстанций fsm, в ID и не более
           def base_inst   = base_inst.ReduceSingle(update_base_inst); // updating base instance clones information
 
           // if have processed base sm type exclude it
