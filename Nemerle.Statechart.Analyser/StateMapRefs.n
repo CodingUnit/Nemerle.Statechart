@@ -17,8 +17,6 @@ namespace Nemerle.Statechart
     
     UpdateHistoryReference(hist : StateHistory, st : FsmState) : StateHistory
     {
-      //def hist = if (history.reference) state.GetHistory(this) else this;
-      //ChangeState(st);
       def default = hist.default.Map(UpdateTargetReference(_, st));
       hist.ChangeDefault(default)
     }
@@ -39,8 +37,6 @@ namespace Nemerle.Statechart
       def tran     = st.transitions.Map(UpdateTargetReference(_, st));
       def int_tran = st.internal_tran.Map(UpdateTargetReference(_, st));
       def hist     = st.history.Map(UpdateHistoryReference(_, st));
-      //TraverseTargets(resolve_targets(st, _, _), true); // first pass named and qualified
-      //def pseudo = pseudo_states.Map(_.UpdateReference());
       st.ChangeHistoryInitialInternalTranTransitions(hist, init, int_tran, tran)
     }
 
@@ -108,13 +104,6 @@ namespace Nemerle.Statechart
     {
       match (tr)
       {
-        //| TransitionTarget.Final(state = null) as t =>
-        //    def super = if (tran is Initial) st else st.Super;
-        //    match (super.sub_states.FindType())
-        //    {
-        //      | Some(FsmState.Final as st)  => t.ChangeState(st)
-        //      | _                           => tr
-        //    }
         | State(st_num) as t => def st = st_num.Updated;
                                 t.ChangeStateNum(st)
 
@@ -163,58 +152,6 @@ namespace Nemerle.Statechart
       }
     }
     
-    CheckAddFinalState(top : FsmState) : FsmState
-    {
-        //def is_top(st)
-        //{
-        //  def super = st.Super; 
-        //// check if state is top or state is sub of top and don't have transitions
-        //  super == null || (super.Super == null && super.this_transitions.IsEmpty())
-        //}
-
-        def check_target(st, t, tran, a)
-        {
-          match (t, tran)
-          {
-            //| (TransitionTarget.Final, _) when (is_top(st)) => 
-            //    def term = PseudoStateNode.Terminate(0, statemap.GetNextGlobalNum(), this);
-            //    (TransitionTarget.PseudoState(this, term), null :: a)
-                // TODO: check later for need of termination of fsm if we reach final state
-            | (TransitionTarget.Final as t, StateTransition.Initial) with super = st
-            | (Final as t, _) with super = st.Super => (t, super :: a)
-          }
-        }
-
-        def check_final(f, st, sub)
-        {
-          if (st.HaveFinal) st else
-          match (f.Find(x => x.Num == st.Num))
-          {
-            | Some => def fin = FsmState.Final(Analyser).SetNewId();
-                      st.ChangeSubStates(sub.Append(fin).NToList())
-            | _    => null
-          }
-        }
-
-        def check_tran(st, (x, (tr, a)))
-        {
-          def (to, fin) = x.To.Reduce(a, final = check_target(st, _, x, _));
-          def tran = x.ChangeTo(to);
-          (tran :: tr, fin)
-        }
-
-        def check_state(s, _, a)
-        {
-          def (tran, fin) = s.transitions.FoldBack(([], a), check_tran(s, _));
-          def (init, fin) = s.initial.FoldBack(([], fin), check_tran(s, _));
-          def st          = s.ChangeTransitionsInitial(tran, init);
-          (st, fin)
-        }
-
-        def (top, final) = top.ReduceSingle([], check_state);
-        // check to add final state
-        top.ReduceSingle(true, check_final(final, _, _))
-    }
     
   }
 }

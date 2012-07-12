@@ -64,6 +64,52 @@ namespace Nemerle.Statechart
       //}
     }
 
+    CheckAddFinalState() : void
+    {
+        def check_target(st, t, tran, a)
+        {
+          match (t, tran)
+          {
+            //| (TransitionTarget.Final, _) when (is_top(st)) => 
+            //    def term = PseudoStateNode.Terminate(0, statemap.GetNextGlobalNum(), this);
+            //    (TransitionTarget.PseudoState(this, term), null :: a)
+                // TODO: check later for need of termination of fsm if we reach final state
+            | (TransitionTarget.Final as t, StateTransition.Initial) with super = st
+            | (Final as t, _) with super = st.Super => (t, super :: a)
+          }
+        }
+
+        def check_final(f, st, sub)
+        {
+          if (st.HaveFinal) st else
+          match (f.Find(x => x.Num == st.Num))
+          {
+            | Some => def fin = FsmState.Final(this).SetNewId();
+                      st.ChangeSubStates(sub.Append(fin).NToList())
+            | _    => null
+          }
+        }
+
+        def check_tran(st, (x, (tr, a)))
+        {
+          def (to, fin) = x.To.Reduce(a, final = check_target(st, _, x, _));
+          def tran = x.ChangeTo(to);
+          (tran :: tr, fin)
+        }
+
+        def check_state(s, _, a)
+        {
+          def (tran, fin) = s.transitions.FoldBack(([], a), check_tran(s, _));
+          def (init, fin) = s.initial.FoldBack(([], fin), check_tran(s, _));
+          def st          = s.ChangeTransitionsInitial(tran, init);
+          (st, fin)
+        }
+
+        def (top, final) = TopState.ReduceSingle([], check_state);
+        // check to add final state
+        UpdateStateMap(top.ReduceSingle(true, check_final(final, _, _)))
+    }
+    
     RenameDuplicates() : void
     {
       def rename_group(st)
@@ -169,6 +215,7 @@ namespace Nemerle.Statechart
         CheckParseErrors();
         InitStateMap();
         CheckTransitions();
+        CheckAddFinalState();
         CreateSubMachines();
         CreateHierarchy(); // create hierarchy
         CheckInitialTransitions();
