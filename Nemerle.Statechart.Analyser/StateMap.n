@@ -15,7 +15,7 @@ namespace Nemerle.Statechart
   using FsmState;
 
   [Record]
-  public class StateMap
+  public partial class StateMap
   {
     mutable states : array[FsmState] = array[];
 
@@ -212,10 +212,10 @@ namespace Nemerle.Statechart
     public Update(top : FsmState) : void
     {
       
-      def check_super(s)
-      {
-        Enumerable.Repeat(s.Num, s.sub_states.Length)
-      }
+      //def check_super(s)
+      //{
+      //  Enumerable.Repeat(s.Num, s.sub_states.Length)
+      //}
       
       //def check_new_super(s)
       //{
@@ -234,26 +234,42 @@ namespace Nemerle.Statechart
           {
             def st = top.LevelOrderMap(x => x.ChangeNum(GetNextStateNum())).ToArray();
             TopNum = 0;
-            st.Iter(x => namemap[x.NativeName] = x.Num);
+            
             Update(st, top)
           } else
           {
             def st = top.AllStates;
             states = st.OrderBy(_.Num).ToArray();
+            
             // update super state map
             // if new map
             when (super_map.Length != states.Length)
             {
               // create new map
-              def supers = states.SelectMany(check_super);
+              def supers = states.SelectMany(x => x.sub_states.Map(y => (y, x)));
+              def supers = supers.OrderBy((s, _) => s.Num).Select((_, s) => s.Num);
               super_map = supers.AddBefore(-1).ToArray();
-            }// else
+              def top = top.ReduceSingle((x, _) => UpdateStateReference(x));
+              st.Iter(x => namemap[x.NativeName] = x.Num);
+              def top = CheckAddFinalState(top);
+              //def top = top.ReduceSingle((x, _) => UpdateStateReference(x));
+              Update(top);
+            }
             //{
             //  // else update
             //  states.Iter(check_new_super)
             //}
           }
         }
+        
+      when (States.Length != namemap.Count()) // if name and statemap not equal
+      {
+        def map_st = States.MapToList(_.Name);
+        def name_st = namemap.Map(_.Key);
+        def map = map_st.Exclude(name_st);//.Exists(_ == x));
+        def name = name_st.Exclude(map_st);
+        throw InvalidOperationException($"Statemap and names map not equal. New states in statemap ..$map. New states in namemap ..$name)");
+      }
     }
 
     public Super(st : FsmState) : FsmState
