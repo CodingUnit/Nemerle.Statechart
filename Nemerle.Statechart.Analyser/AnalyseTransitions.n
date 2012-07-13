@@ -32,7 +32,7 @@ namespace Nemerle.Statechart
         }
       }
 
-      States.Iter(x=> check_duplicates(x.initial));  // check duplicates
+      States.Iter(x => check_duplicates(x.initial));  // check duplicates
       def top = if (FsmFlags.AutoInitial) TopState.ReduceSingle(check_auto_initial) else TopState;
 
       def top = if (top.initial.IsEmpty()) // if not have initial transition in top state
@@ -138,7 +138,7 @@ namespace Nemerle.Statechart
         }
 
         def ordinary = tr.Exclude(x => x is Initial || x.IsCompletion);
-        def dups = ordinary.Duplicates(_.Guard); // find duplicates with same guards and same triggers
+        def dups = ordinary.NToList().Duplicates(StateTransition.GuardComparer); // find duplicates with same guards and same triggers
         if (!dups.IsEmpty())
         {
           AddError(FsmError.DuplicateTransition(dups))
@@ -147,7 +147,7 @@ namespace Nemerle.Statechart
           def (intern, other) = tr.PartitionLazy(_ is Internal);
           def begin_and_end_eq = other.NToList().Group((x, y) => x.From.CompareTo(y.From) - x.To.CompareTo(y.To)).Select(x => x.AsEnumerable());
           def begin_and_end_eq = begin_and_end_eq.Where(_.IsMoreThanOne());
-          def merged = begin_and_end_eq.Append(intern.Select(_ : StateTransition));
+          def merged = begin_and_end_eq.Append(intern);
           merged.Iter(check_begin_and_ends)
         }
       }
@@ -297,8 +297,7 @@ namespace Nemerle.Statechart
 
       def check_tran(st, _)
       {
-        def trans = st.all_transitions_with_init.Map(x => x.ChangeTo(x.To.Reduce(true, junction = check_targets)));
-        st.UpdateTransitions(trans)
+        st.TraverseTargets(check_targets, true)
       }
 
       //States.Map(check_tran);
