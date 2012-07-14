@@ -415,6 +415,11 @@ namespace Nemerle.Statechart
       lst.Map(_ : T) + lst2.Map(_ : T)
     }
 
+    public static @+[T](this lst : IEnumerable[T], lst2 : IEnumerable[T]) : IEnumerable[T]
+    {
+      lst.Concat(lst2)
+    }
+    
     /// <summary>
     /// Returns duplicates according to comparator
     /// </summary>
@@ -1143,6 +1148,29 @@ namespace Nemerle.Statechart
       if (opt is Some(o)) o else null
     }
     
+    public MakeArrayMap[T](this arr : IEnumerable[T], arr2 : IEnumerable[T], max_elements : int, num_func : T -> int) : array[T]
+    {
+      def en1 = arr.GetEnumerator();
+      def en2 = arr2.GetEnumerator();
+      mutable lst = array(max_elements);
+      
+      def loop(max)
+      {
+        def res1 = en1.MoveNext();
+        def res2 = en2.MoveNext();
+        if (!res1 && !res2) max else
+        {
+          when (!res1 || !res2) throw ArgumentException("Enumerables must have equal size");
+          def num = num_func(en1.Current);
+          lst[num] = en2.Current;
+          loop(Math.Max(num, max))
+        }
+      }
+      
+      def max = loop(0);
+      Array.Resize(ref lst, max + 1);
+      lst
+    }
   }
 
 }

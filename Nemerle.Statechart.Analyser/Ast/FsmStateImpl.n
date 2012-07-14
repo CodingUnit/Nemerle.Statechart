@@ -7,14 +7,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-
 using SCG = System.Collections.Generic;
 
 namespace Nemerle.Statechart
 {
   using StateTransition;
   using PseudoStateNode;
-
+  using ListUtils;
 
   /// <summary>
   /// Description of FsmStateImpl.
@@ -24,6 +23,51 @@ namespace Nemerle.Statechart
   {
     public override ToString() : string { Name }
 
+    public GetCopy(copy : int) : FsmState
+    {
+      def get_copy(st, _)
+      {
+        def num = statemap.GetNextStateNum();
+        def int_tran = st.internal_tran.Map(_.SetNewId());
+        def hist = st.history.Map(_.ChangeNum(statemap.GetNextGlobalNum()));
+        def trans = st.transitions.Map(_.SetNewId());
+        def init  = st.initial.Map(_.SetNewId());
+        def pseudo = st.pseudo_states.Map(_.ChangeNum(statemap.GetNextGlobalNum()));
+        st.ChangeNumHistoryPseudoStatesCloneForInitialInternalTranTransitionsCopyNum(num, hist, pseudo, st, init, int_tran, trans, copy)
+      }
+
+      def st = ReduceSingle(get_copy);
+
+      def old_pseudo  = AllPseudo;
+      def new_pseudo  = st.AllPseudo;
+
+      def pseudo_id_map = old_pseudo.MakeArrayMap(new_pseudo, statemap.GlobalId, _.Num);
+      def states_id_map = AllStates.MakeArrayMap(st.AllStates, statemap.StateNum, _.Num);
+
+      def retarget_transitions(s, _)
+      {
+        def check_target(tar)
+        {
+          | TransitionTarget.State(st) as t        => t.ChangeStateNum(states_id_map[st.Num])
+              //| Qualified(_, State(state = st) as t)                  => t.ChangeStateNum(find_state(st))
+              //| Final(st) as t                         => t.ChangeStateNum(find_state(st))
+          | PseudoState(node) as t                 => t.ChangeNode(pseudo_id_map[node.Num]); 
+                                                                        //t
+          | _                                      => null
+        }
+
+        def check_tran(tr)
+        {
+          tr.TargetTraverse((x, _) => check_target(x))
+        }
+
+        def s        = s.TraverseTargets((x, _) => check_target(x));
+        def hist     = s.history.Map(_.ChangeDefault(check_tran));
+        s.ChangeHistory(hist)
+      }
+
+      st.ReduceSingle(retarget_transitions); // retarget transitions to new place state
+    }
 
     //public FormatName() : void
     //{
@@ -52,10 +96,10 @@ namespace Nemerle.Statechart
       def (tran : IEnumerable[StateTransition.Transition], other)   = tr.PartitionType();
       def (intern : IEnumerable[StateTransition.Internal], other)   = other.PartitionType();
       def (init : IEnumerable[StateTransition.Initial], _)          = other.PartitionType();
-      def intern = internal_tran.Concat(intern.Select(_ : StateTransition));
-      def init = initial.Concat(init.Select(_ : StateTransition));
-      def tran = transitions.Concat(tran.Select(_ : StateTransition));
-      ChangeInternalTranInitialTransitions(intern.NToList(), init.NToList(), tran.NToList())
+      def intern = internal_tran + intern.Select(_ : StateTransition);
+      def init = initial + init.Select(_ : StateTransition);
+      def tran = transitions + tran.Select(_ : StateTransition);
+      ChangeTransitionsInitialInternalTran(tran.NToList(), init.NToList(), intern.NToList())
     }
 
     public Updated : FsmState
@@ -66,7 +110,7 @@ namespace Nemerle.Statechart
         //if (Num == -1) this else statemap[Num]
       }
     }
-    
+
     public DeleteTransitions(tr : IEnumerable[StateTransition]) : FsmState
     {
       def (tran, other)     = tr.PartitionType();
@@ -75,7 +119,7 @@ namespace Nemerle.Statechart
       def initial           = initial.Exclude(init, (x, y : StateTransition.Initial) => x.Num == y.Num);
       def internal_tran     = internal_tran.Exclude(int_tran, (x, y : StateTransition.Internal) => x.Num == y.Num);
       def transitions       = transitions.Exclude(tran, (x, y : StateTransition.Transition) => x.Num == y.Num);
-      ChangeInternalTranInitialTransitions(internal_tran.NToList(), initial.NToList(), transitions.NToList())
+      ChangeTransitionsInitialInternalTran(transitions.NToList(), initial.NToList(), internal_tran.NToList())
     }
 
     public UpdateTransitions(tr : IEnumerable[StateTransition]) : FsmState
@@ -96,7 +140,7 @@ namespace Nemerle.Statechart
       def init = initial.Map(find(_, init.Select(_ : StateTransition)));
       def tran = transitions.Map(find(_, tran.Select(_ : StateTransition)));
       def int_tran = int_tran.Map(find(_, int_tran.Select(_ : StateTransition)));
-      ChangeInternalTranInitialTransitions(int_tran, init, tran)
+      ChangeTransitionsInitialInternalTran(tran, init, int_tran)
     }
 
     public TraverseTargets(func : TransitionTarget * StateTransition -> TransitionTarget, manual_rebuild : bool = false) : FsmState
@@ -104,9 +148,9 @@ namespace Nemerle.Statechart
       def init = initial.Map(_.TargetTraverse(func, manual_rebuild));
       def tran = transitions.Map(_.TargetTraverse(func, manual_rebuild));
       def int_tran = internal_tran.Map(_.TargetTraverse(func, manual_rebuild));
-      ChangeInternalTranInitialTransitions(int_tran, init, tran)
+      ChangeTransitionsInitialInternalTran(tran, init, int_tran)
     }
-    
+
     public TraverseTransitions() : FsmState
     {
       def paths = TransitionPaths(this);
@@ -135,23 +179,23 @@ namespace Nemerle.Statechart
       state = st;
       name = st.name;
       //this.reference = reference || state.reference;
-      
+
       //when (!reference)
       //{
-        do_activity = st.do_activity |> StateAction.Do(_.action.actions, _.flags);
-        internal_tran = Internal.Create(this, st.internal_tran).NToList();
-        entry = st.entry |> StateAction.Entry(_.action.actions, _.attrib);
-        exit = st.exit |> StateAction.Exit(_.action.actions, _.attrib);
-        history = StateHistory.Create(this, st.history);
-        transitions = Transition.Create(this, st.transitions).NToList();
-        initial = st.initial.Map(Initial.Create(this, _));
+      do_activity = st.do_activity |> StateAction.Do(_.action.actions, _.flags);
+      internal_tran = Internal.Create(this, st.internal_tran).NToList();
+      entry = st.entry |> StateAction.Entry(_.action.actions, _.attrib);
+      exit = st.exit |> StateAction.Exit(_.action.actions, _.attrib);
+      history = PseudoStateNode.History.Create(this, st.history);
+      transitions = Transition.Create(this, st.transitions).NToList();
+      initial = st.initial.Map(Initial.Create(this, _));
         //def (regs, subst) = st.sub_states.Partition(x => x.regions.HasValue);
         //def regs = regs |> ConcurrentRegion(this, _, _.regions.Value); // TODO: сделать с помощью st_from_node
         //super_state = super;
         //def subst = (subst |> st_from_node(_)) + regs;
         //sub_states = subst.Sort((x, y) => x.source_pos - y.source_pos);
-        sub_states = sub.NToList();//.Map(_.ChangeSuperState(this));
-        pseudo_states = st.pseudo_states |> PseudoStateNode.Create(this, _.node, analyser.statemap.GetNextGlobalNum())
+      sub_states = sub.NToList();//.Map(_.ChangeSuperState(this));
+      pseudo_states = st.pseudo_states |> PseudoStateNode.Create(this, _.node, analyser.statemap.GetNextGlobalNum())
       //}
       //Num = statemap.GetNewStateId(this)
     }
@@ -160,12 +204,16 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def trans = all_transitions_with_init;
-        def obj = trans.Concat(pseudo_states.Select(_ : IdObject));
-        def obj = obj.Concat(trans.SelectMany(_.TargetIdObjects));
-        def obj = obj.Concat(history.Value);
-        def default = history.Value.FoldLeft([], (x, a) => if (x.default is Some(t)) t :: a else a);
-        obj.Concat(default)
+        def obj = all_transitions_with_init.SelectMany(_.TargetIdObjects);
+        all_transitions_with_init + ChildPseudo + DefaultTransitions + obj
+      }
+    }
+
+    public ChildPseudo : IEnumerable[PseudoStateNode]
+    {
+      get
+      {
+        history.Value + pseudo_states
       }
     }
 
@@ -173,14 +221,18 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def trans = all_transitions_with_init;
-        def obj = trans.Concat(pseudo_states.Select(_ : IdObject));
-        def obj = obj.Concat(history.Value);
-        def default = history.Value.FoldLeft([], (x, a) => if (x.default is Some(t)) t :: a else a);
-        obj.Concat(default)
+        all_transitions_with_init + ChildPseudo + DefaultTransitions
       }
     }
-    
+
+    public DefaultTransitions : IEnumerable[StateTransition]
+    {
+      get
+      {
+        history.Value.FoldLeft([], (x, a) => if (x.default is Some(t)) t :: a else a);
+      }
+    }
+
     public ChildNodes : IEnumerable[int]
     {
       get
@@ -188,19 +240,19 @@ namespace Nemerle.Statechart
         ChildObjects.Select(_.Num)
       }
     }
-    
+
     public SetNum(num : int) : FsmState
     {
       def st = ChangeNum(num);
       statemap.UpdateRefsToParent(st, ChildNodes);
       st
     }
-    
+
     public SetNewId() : FsmState
     {
       SetNum(statemap.GetNextStateNum())
     }
-    
+
     //// copy constructor
     //public this(st : FsmState)
     //{
@@ -243,7 +295,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    
+
     public hierarchy_pos : int
     {
       get
@@ -369,7 +421,15 @@ namespace Nemerle.Statechart
       }
     }
 
-    public AllHistory : IEnumerable[StateHistory]
+    public AllPseudo  : IEnumerable[PseudoStateNode]
+    {
+      get
+      {
+        AllSubStates.SelectMany(_.ChildPseudo)
+      }
+    }
+
+    public AllHistory : IEnumerable[PseudoStateNode.History]
     {
       get
       {
@@ -447,7 +507,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public UpdateHistory(hist : StateHistory) : FsmState
+    public UpdateHistory(hist : PseudoStateNode.History) : FsmState
     {
       def hist = history.Map(x => if (x.type == hist.type) hist else x);
       ChangeHistory(hist)
