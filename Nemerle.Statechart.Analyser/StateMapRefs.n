@@ -44,7 +44,14 @@ namespace Nemerle.Statechart
     {
       //def from = if (From != null) Statemap.Get(From) else null;
       def source = if (tr.Source != null) st else null;
-      def to = tr.To.ReduceSingle(true, (x, _) => ResolveTargets(st, x, tr));
+      
+      def recursive_traverse(prev)
+      {
+        def to = prev.ReduceSingle(true, (x, _) => ResolveTargets(st, x, tr));
+        if (to != prev : object) recursive_traverse(to) else to
+      }
+      
+      def to = recursive_traverse(tr.To);
       //st.TraverseTargets(, true); // first pass named and qualified
       tr.ChangeSourceNumTo(source, to)
     }
@@ -75,7 +82,7 @@ namespace Nemerle.Statechart
         | EntryPoint
         | ExitPoint =>
             ParentFor(p.Num, st);
-            p
+            null
         | History as t             => st.GetHistory(t)
         | Junction(name = n) as j  => def junc = pseudo.FilterType();
                                       match (junc.Find(x => x.name == n))
@@ -96,39 +103,31 @@ namespace Nemerle.Statechart
                                        | Some(PseudoStateNode.Join as j) => j
                                        | _                               => Analyser.AddError(FsmError.UnknownTarget(tran, targ)); j
                                      }
-        | p                        => p
+        | Terminate as node =>
+            match (Analyser.PseudoStates.Filter(_ is PseudoStateNode.Terminate))
+            {
+              | []     => node//TransitionTarget.PseudoState(this, node)
+              | [node] => node//TransitionTarget.PseudoState(this, term)
+              | _      => Analyser.AddError(FsmError.UnknownTerminateTransition(tran));
+                          null
+            }
+                                     
+        | _ => null
       }
-    }
+    }        
     
+    CheckedResolve(tar : TransitionTarget, old : TransitionTarget) : TransitionTarget
+    {
+      tar ?? old
+    }
+
+    // TODO: решить проблему с двойным обходом узлов до разрешения и после
     ResolveTargets(st : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
     {
       match (tr)
       {
         | State(st_num) as t => def st = st_num.Updated;
                                 t.ChangeStateNum(st)
-
-        | PseudoState(node = Terminate as node) as p =>
-            match (Analyser.PseudoStates.Filter(_ is PseudoStateNode.Terminate))
-            {
-              | []     => p.ChangeNode(node)//TransitionTarget.PseudoState(this, node)
-              | [node] => p.ChangeNode(node)//TransitionTarget.PseudoState(this, term)
-              | _      => Analyser.AddError(FsmError.UnknownTerminateTransition(tran));
-                          tr
-            }
-
-        | PseudoState(node = Join(name = n)) =>
-            match (Analyser.PseudoStates.FilterType())
-            {
-              | [] => Analyser.AddError(FsmError.UnknownNode(tran));
-                      null
-              | joins =>
-                  match (joins.Find(x : PseudoStateNode.Join => x.name == n))
-                  {
-                    | Some(j) => TransitionTarget.PseudoState(Analyser, j)
-                    | _       => Analyser.AddError(FsmError.UnknownNode(tran));
-                                tr
-                  }
-            }
 
         | Named as t => def t = GetNamed(t, tran);
                         ResolveTargets(st, t, tran)
@@ -143,11 +142,12 @@ namespace Nemerle.Statechart
                   
               | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
                              t
-              | (st, t) => ResolveTargets(st, t, tran)
+              | (st, t)   => ResolveTargets(st, t, tran)
             }
-        | PseudoState(p) as t => t.ChangeNode(CheckPseudo(st, p, t, tran))
-
-        | t  => t
+        | PseudoState(p) as t => def np = CheckPseudo(st, p, t, tran);
+                                 if (np == null) null else t.ChangeNode(np) 
+                                 
+        | _                   => null
       }
     }
     
