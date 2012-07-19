@@ -19,11 +19,11 @@ namespace Nemerle.Statechart
 /// </summary>
   public partial variant DecisionNode
   {
-    public static create_decision_tree(n : TransitionTarget.JunctionNode) : DecisionNode
+    public static create_decision_tree(n : TransitionTarget.PseudoState) : DecisionNode
     {
       def create_target(n : TransitionTarget)
       {
-        DecisionNode.Target(n, [])
+        DecisionNode.Target(n, [], n.analyser.statemap.GetNextGlobalNum())
       }
 
       def create_junction(n, a)
@@ -44,18 +44,7 @@ namespace Nemerle.Statechart
       {
         match (n)
         {
-          | TransitionTarget.JunctionNode(guard = g, action = a) => 
-            //def toacc = match (toacc)
-            //            {
-            //              | DecisionNode.Target as t => t.ChangeState(st)
-            //              | x                        => x
-            //            }
-            //def nacc = match (nacc)
-            //           {
-            //             | Some(DecisionNode.Target as t) => Some(t.ChangeState(st))
-            //             | x                              => x
-            //           }
-            DecisionNode.Condition(g, a.ToList(), toacc, nacc, n)
+          | TransitionTarget.JunctionNode(guard = g, action = a) => DecisionNode.Condition(g, n.analyser.statemap.GetNextGlobalNum(), a.ToList(), toacc, nacc, n)
         }
       }
 
@@ -73,9 +62,6 @@ namespace Nemerle.Statechart
              
        create_states(tree);
        tree
-      
-      
-             
     }
 
     public static create_states(tar : DecisionNode) : void
@@ -107,7 +93,7 @@ namespace Nemerle.Statechart
       tar.LevelOrderIterator().Iter(check_node);
     }
     
-    public static create_junc_tree_node(an : FsmAnalyser, p : PseudoStateNode.Junction) : DecisionNode
+    public static create_junc_tree_node(an : FsmAnalyser, p : TransitionTarget.PseudoState) : DecisionNode
     {
 
       def check_node_decision(n : DecisionNode)
@@ -171,7 +157,7 @@ namespace Nemerle.Statechart
       }
 
       
-      def tree  = create_decision_tree(p.to); // create decision tree
+      def tree  = create_decision_tree(p); // create decision tree
       def tree  = tree.Reduce(true, merge_tree_node, merge_tree_target); // merge tree nodes
       def old_nodes = tree.LevelOrderIterator();
       old_nodes.Iter(check_node_decision);
@@ -282,7 +268,7 @@ namespace Nemerle.Statechart
         }
 #endif
 
-    public static Create(an : FsmAnalyser, node : PseudoStateNode.Junction) : DecisionNode
+    public static Create(an : FsmAnalyser, node : TransitionTarget.PseudoState) : DecisionNode
     {
       create_junc_tree_node(an, node)
     }
