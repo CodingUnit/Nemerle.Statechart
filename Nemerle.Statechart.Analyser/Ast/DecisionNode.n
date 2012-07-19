@@ -15,7 +15,7 @@ namespace Nemerle.Statechart
 
   [Traversable]
   [Record]
-  public partial variant DecisionNode
+  public partial variant DecisionNode : IdObject
   {
     | Condition 
       {
@@ -27,13 +27,15 @@ namespace Nemerle.Statechart
         [NeedChange] 
         body : DecisionNode;
         
+        
+        
         else_node : option[DecisionNode];
         //[TraverseIgnore]
         //parent : PseudoStateNode;
         
-        this(cond : GuardNode, act : list[Actions], body : DecisionNode, els : option[DecisionNode])//, par : PseudoStateNode)
+        this(cond : GuardNode, act : list[Actions], body : DecisionNode, els : option[DecisionNode], tar : TransitionTarget)//, par : PseudoStateNode)
         {
-          base(act);
+          base(act, tar);
           condition = cond;
           this.body = body;
           this.else_node = els;
@@ -42,25 +44,26 @@ namespace Nemerle.Statechart
       }
     | Target 
       {
-        [NeedChange] target : TransitionTarget;
+        //[NeedChange] target : TransitionTarget;
         [NeedChange(node_path, out_path)] [NeedChange] destination : TransitionDestination;
 
         this(targ : TransitionTarget, act : list[Actions])
         {
-          base(act);
-          target = targ;
+          base(act, targ)
         }
         
       }
 
-      public this(act : list[Actions])
+      public this(act : list[Actions], tar : TransitionTarget)
       {
         //state = st;
+        target = tar;
         actions = act;
       }
       
     [NeedChange]
-    public Num : int;
+    [Accessor]
+    public num : int;
     
     //public level : int;
     //[NeedChange]
@@ -69,6 +72,10 @@ namespace Nemerle.Statechart
       get
       {
         analyser.statemap.ParentFor(Num)
+      }
+      set
+      {
+        analyser.statemap.ParentFor(Num, value)
       }
     }
     
@@ -121,11 +128,11 @@ namespace Nemerle.Statechart
     {
       match (this)
       {
-        | Condition(else_node = Some) as t => def (a, b) = child.TakeTwo();
-                                              t.ChangeBodyElseNode(a, Some(b))
+        | Condition(else_node = Some as n) as t => def (a, b) = child.TakeTwo();
+                                                   t.ChangeBodyElseNode(a, n.ChangeValue(b))
                                               
-        | Condition as t                   => t.ChangeBody(child.First())
-        | Target as t                      => t
+        | Condition as t                        => t.ChangeBody(child.First())
+        | Target as t                           => t
       }
     }
     
@@ -146,6 +153,8 @@ namespace Nemerle.Statechart
       }
     }
 
+    public target : TransitionTarget;
+    
     public Paths : IEnumerable[PathNode]
     {
       get
@@ -160,13 +169,14 @@ namespace Nemerle.Statechart
     public node_path : IEnumerable[PathNode] = Enumerable.Empty();
     public out_path  : IEnumerable[PathNode] = Enumerable.Empty();
 
+    
     //public analyser : FsmAnalyser;
     
     public ThisOutPath : IEnumerable[PathNode]
     {
       get
       {
-        ThisPath.Concat(node_path)
+        ThisPath + node_path
       }
     }
 
@@ -174,7 +184,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        node_path.Concat(ThisPath).Concat(out_path)
+        node_path + ThisPath + out_path
       }
     }
 

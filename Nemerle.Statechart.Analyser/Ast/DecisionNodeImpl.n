@@ -55,11 +55,11 @@ namespace Nemerle.Statechart
             //             | Some(DecisionNode.Target as t) => Some(t.ChangeState(st))
             //             | x                              => x
             //           }
-            DecisionNode.Condition(g, a.ToList(), toacc, nacc)
+            DecisionNode.Condition(g, a.ToList(), toacc, nacc, n)
         }
       }
 
-      n.Fold(null, 
+      def tree = n.Fold(null, 
              create_target,
              create_target,
              create_junction,
@@ -69,10 +69,44 @@ namespace Nemerle.Statechart
              null,
              create_target,
              create_junction_node,
-             )
-
+             );
+             
+       create_states(tree);
+       tree
+      
+      
+             
     }
 
+    public static create_states(tar : DecisionNode) : void
+    {
+      def check_state(n)
+      {
+        | DecisionNode(target = TransitionTarget.PseudoState(PseudoStateNode(state = st))) as t => t.state = st
+        | _                                                                                     => ()
+      }
+
+      def check_node(n)
+      {
+        def set_state(n, st)
+        {
+          match (n)
+          {
+            | DecisionNode.Condition(state = null) as t
+            | DecisionNode.Target(state = null) as t    => t.state = st
+            | _                                         => ()
+          }
+        }
+        
+        def child = n.GetChild();
+        child.Iter(set_state(_, n.state));
+      }
+      
+      //list[TransitionTarget * FsmState]
+      tar.Iterator().Iter(check_state);
+      tar.LevelOrderIterator().Iter(check_node);
+    }
+    
     public static create_junc_tree_node(an : FsmAnalyser, p : PseudoStateNode.Junction) : DecisionNode
     {
 
@@ -136,6 +170,7 @@ namespace Nemerle.Statechart
         }
       }
 
+      
       def tree  = create_decision_tree(p.to); // create decision tree
       def tree  = tree.Reduce(true, merge_tree_node, merge_tree_target); // merge tree nodes
       def old_nodes = tree.LevelOrderIterator();
