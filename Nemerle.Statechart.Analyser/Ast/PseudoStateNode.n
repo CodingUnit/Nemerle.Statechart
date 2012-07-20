@@ -160,7 +160,7 @@ namespace Nemerle.Statechart
 
     | Junction
       {
-        [NeedChange] name : string;
+        [NeedChange] native_name : string;
         [NeedChange] to : TransitionTarget.JunctionNode;
         //[TraverseIgnore] parent : Junction;
         type : JunctionType;
@@ -174,7 +174,15 @@ namespace Nemerle.Statechart
         {
           get
           {
-            name.StartsWith("Unnamed")
+            native_name == null
+          }
+        }
+        
+        name : string
+        {
+          get
+          {
+            if (native_name != null) native_name else "Unnamed"
           }
         }
         
@@ -183,7 +191,7 @@ namespace Nemerle.Statechart
           def an =st.analyser;
           base(0, num, an);
           this.to = TransitionTarget.JunctionNode.Create(st, node);//lst |> JunctionNode(st, tran, _, this);
-          name = n;
+          native_name = n;
           this.type = type;
         }
 
@@ -206,16 +214,24 @@ namespace Nemerle.Statechart
           }
         } 
 
-        Name : string
+        TypeName : string
         {
           get
           {
             match (type)
             {
-              | Junction => $"Junction$name$copy_name"
-              | Choice   => $"Choice$name$copy_name"
-              | Merge    => $"Merge$name$copy_name"
+              | Junction => "Junction"
+              | Choice   => "Choice"
+              | Merge    => "Merge"
             }
+          }
+        }
+        
+        Name : string
+        {
+          get
+          {
+            $"$name$TypeName$copy_name"
           }
         }
 
@@ -366,16 +382,13 @@ namespace Nemerle.Statechart
         | History(n)                                  => History.Create(st, num, n)
         | Junction(null, node, JunctionType.Junction) => 
             def num = an.NextJunctionNum();
-            def name = $"Unnamed$num";
-            Junction(st, num, name, node, JunctionType.Junction)
+            Junction(st, num, null, node, JunctionType.Junction)
 
         | Junction(null, node, JunctionType.Choice) => 
             def num = an.NextChoiceNum();
-            def name = $"Unnamed$num";
-            Junction(st, num, name, node, JunctionType.Choice)
+            Junction(st, num, null, node, JunctionType.Choice)
 
         | Junction(name = n, node = nn, type = tp)   => Junction(st, num, n, nn, tp)
-        | Merge(name = n, node = node)               => Merge(st, n, node)
         | Fork(target = lst)                         => Fork(0, num, an, lst |> TransitionTarget.Create(st, _), [])
         | Join(name = n, target = t)                 => Join(0, num, an, n, TransitionTarget.Create(st, t), null, null, null)
         | EntryPoint                                 => EntryPoint(0, num, an)
@@ -422,7 +435,6 @@ namespace Nemerle.Statechart
         match (this)
         {
           | Join(name = n) 
-          | Merge(name = n)
           | Junction(name = n) => Some(n)
           | _                  => None()
         }
