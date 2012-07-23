@@ -1,0 +1,114 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Collections;
+
+namespace Nemerle.Statechart
+{
+
+  [Record]
+  class NodeReference
+  {
+    public Num : int;
+    public SourceChange  : void -> FsmState;
+    public DestChange    : void -> FsmState;
+    public SourceVersion : void -> IVersioned;
+    public DestVersion   : void -> IVersioned;
+
+  }
+
+  public interface IVersioned
+  {
+    Version : uint {get;}
+  }
+
+  /// <summary>
+  /// Description of ChangeManager.
+  /// </summary>
+  class ChangeManager
+  {
+    mutable changes    : BitArray;
+    analyser           : FsmAnalyser;
+    mutable references : array[list[NodeReference]] = array[];
+
+    public this(an : FsmAnalyser) 
+    {
+      this.analyser = an
+    }
+
+    statemap : StateMap
+    {
+      get
+      {
+        analyser.statemap
+      }
+    }
+
+    public StateMapChanged() : void
+    {
+      def num = statemap.GlobalId;
+      when (num != references.Length)
+      {
+        Array.Resize(ref references, num);
+        def ch = BitArray(num);
+        changes.OfType.[bool]().IterI(ch.Set);
+        changes = ch
+      }
+    }
+
+    public static throw_err () : void
+    {
+      throw InvalidOperationException("more than one modification detected!");
+    }
+
+    public Add(obj : int) : void
+    {
+
+      def refs = references[obj];
+      when (refs != null) 
+      {
+        changes.Set(obj, true);
+      }
+    }
+
+    public CreateReference(reference : NodeReference) : void
+    {
+      def refs = references[reference.Num];
+      def refs = if (refs != null) reference :: refs
+                  else reference :: [];
+      references[reference.Num] = refs
+    }
+
+    public CheckChange() : void
+    {
+      def check(refs)
+      {
+        def change(rf, a)
+        {
+          match (rf.SourceVersion(), rf.DestVersion())
+          {
+            | (x, y) when (x.Version > y.Version) => rf.DestChange() :: a
+            | (x, y) when (x.Version < y.Version) => rf.SourceChange() :: a
+            | _                                   => a
+          }
+        }
+
+        refs.FoldLeft([], change);
+      }
+      
+      //statemap.States.Map();
+      def refs = references.FilterI((_, i) => changes[i]);
+      def st = refs.SelectMany(check);
+      statemap.Update(st)
+    }
+
+  }
+
+
+
+}
