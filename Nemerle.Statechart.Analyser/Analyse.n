@@ -75,18 +75,28 @@ namespace Nemerle.Statechart
             //    (TransitionTarget.PseudoState(this, term), null :: a)
                 // TODO: check later for need of termination of fsm if we reach final state
             | (TransitionTarget.Final as t, StateTransition.Initial) with super = st
-            | (Final as t, _) with super = st.Super => (t, super :: a)
+            | (Final as t, _) with super = st.Super => 
+              match (a.Find((x, _) => x.Num == super.Num))
+              {
+                | Some((_, fin)) => def t = t.ChangeStateNum(fin);
+                                    (t, a)
+                | _              => def fin = FsmState.Final(this);
+                                    def fin = fin.SetNewId();
+                                    def t = t.ChangeStateNum(fin);
+                                    (t, (super, fin) :: a)
+              }
+              
+              
           }
         }
 
         def check_final(f, st, sub)
         {
           if (st.HaveFinal) st else
-          match (f.Find(x => x.Num == st.Num))
+          match (f.Find((x, _) => x.Num == st.Num))
           {
-            | Some => def fin = FsmState.Final(this).SetNewId();
-                      st.ChangeSubStates(sub.Append(fin).NToList())
-            | _    => null
+            | Some((_, fin)) => st.ChangeSubStates(sub.Append(fin).NToList())
+            | _              => null
           }
         }
 

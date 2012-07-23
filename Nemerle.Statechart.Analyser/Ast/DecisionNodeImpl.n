@@ -14,16 +14,16 @@ namespace Nemerle.Statechart
   using PseudoStateNode;
   using GuardNode;
 
-/// <summary>
-/// Description of DecisionNodeImpl.
-/// </summary>
+  /// <summary>
+  /// Description of DecisionNodeImpl.
+  /// </summary>
   public partial variant DecisionNode
   {
     public static create_decision_tree(n : TransitionTarget.PseudoState) : DecisionNode
     {
       def create_target(n : TransitionTarget)
       {
-        DecisionNode.Target([], n, n.analyser.statemap.GetNextGlobalNum())
+        DecisionNode.Target(n.analyser, [], n, n.analyser.statemap.GetNextGlobalNum())
       }
 
       def create_junction(n, a)
@@ -40,7 +40,7 @@ namespace Nemerle.Statechart
       {
         match (n)
         {
-          | TransitionTarget.JunctionNode(guard = g, action = a) => DecisionNode.Condition(g, n.analyser.statemap.GetNextGlobalNum(), a.ToList(), toacc, nacc)
+          | TransitionTarget.JunctionNode(guard = g, action = a) => DecisionNode.Condition(n.analyser, g, n.analyser.statemap.GetNextGlobalNum(), a.ToList(), toacc, nacc)
         }
       }
 
@@ -105,7 +105,7 @@ namespace Nemerle.Statechart
 
       def add_act(x, a)
       {
-        x.ChangeActions((a + x.actions).NToList())
+        x.ChangeActions(a.Concat(x.actions).NToList())
       }
 
       def create_actions(n)
@@ -136,22 +136,13 @@ namespace Nemerle.Statechart
         n
       }
 
-      def update_nodes(n, _, old, newn)
-      {
-        match (old.IndexOf(n))
-        {
-          | -1 => throw InvalidOperationException("invalid decision tree")
-          | n  => newn[n]
-        }
-      }
-
-
       def tree  = create_decision_tree(target); // create decision tree
       def tree  = tree.Reduce(true, merge_tree_node, merge_tree_target); // merge tree nodes
       def old_nodes = tree.LevelOrderIterator();
       old_nodes.Iter(check_node_decision);
-      def new_nodes = tree.LevelOrderMap(create_actions).ToArray();
-      tree.ReduceSingle(update_nodes(_, _, old_nodes, new_nodes))
+      def new_nodes = tree.LevelOrderMap(create_actions);
+      def node_map = old_nodes.MakeArrayMap(new_nodes, an.statemap.GlobalId, _.Num);
+      tree.ReduceSingle((x, _) => node_map[x.Num])
     }
 
         #if 0 
