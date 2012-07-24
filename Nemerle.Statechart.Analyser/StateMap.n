@@ -21,9 +21,6 @@ namespace Nemerle.Statechart
 
     public Analyser : FsmAnalyser;
 
-    //public namemap : Hashtable[string, int] = Nemerle.Collections.Hashtable();
-    //public tranmap : Hashtable[string, int] = Nemerle.Collections.Hashtable();
-
     mutable super_map : array[int] = array[];
     
     mutable parents_map : Hashtable[int, int] = Nemerle.Collections.Hashtable();
@@ -63,17 +60,14 @@ namespace Nemerle.Statechart
     //}
 
     [Accessor]
-    mutable state_num : int;
-
-    [Accessor]
     mutable global_id : int;
 
-    public GetNextStateNum() : int
-    {
-      def num = state_num;
-      state_num++;
-      num
-    }
+    //public GetNextStateNum() : int
+    //{
+    //  def num = state_num;
+    //  state_num++;
+    //  num
+    //}
 
     public UpdateRefsToParent(parent : FsmState, nodes : IEnumerable[int]) : void
     {
@@ -185,7 +179,18 @@ namespace Nemerle.Statechart
       }
     }
 
+    public ChangeMan : ChangeManager;
+    
+    public AddChange(obj : int) : void
+    {
+      ChangeMan.Add(obj)
+    }
 
+    public CreateReference(reference : NodeReference) : void
+    {
+      ChangeMan.CreateReference(reference)
+    }
+    
     public Update(st : IEnumerable[FsmState], top : FsmState = null) : void
     {
       
@@ -228,17 +233,17 @@ namespace Nemerle.Statechart
       {
         Update(TraverseUtils.SingleElement(top))
       } else
-        when (top != Top)
+        when (top : object != Top)
         {
           if (TopNum == -1) // if not set number
           {
-            def st = top.LevelOrderMap(x => x.ChangeNum(GetNextStateNum())).ToArray();
+            def st = top.LevelOrderMap(x => x.ChangeNum(GetNextGlobalNum())).ToArray();
             TopNum = 0;
             Update(st, top)
           } else
           {
             def st = top.AllStates;
-            states = st.MakeArrayMap(st, state_num, _.Num);//OrderBy(_.Num).ToArray();
+            states = st.MakeArrayMap(st, global_id, _.Num);//OrderBy(_.Num).ToArray();
             
             // update super state map
             // if new map
@@ -246,12 +251,14 @@ namespace Nemerle.Statechart
             {
               // create new super state map
               def supers = States.SelectMany(x => x.sub_states.Select(y => (y.Num, x.Num))).AddBefore((0, -1));
-              super_map = supers.MakeArrayMap(state_num);//OrderBy((s, _) => s.Num).Select((_, s) => s.Num);
+              super_map = supers.MakeArrayMap(global_id);//OrderBy((s, _) => s.Num).Select((_, s) => s.Num);
               //super_map = supers.AddBefore(-1).ToArray();
               def top = top.ReduceSingle((x, _) => UpdateStateReference(x)); // update references in tree
               //st.Iter(x => namemap[x.NativeName] = x.Num); // update
               Update(top)
             }
+            
+            ChangeMan.CheckChange()
           }
         }
         

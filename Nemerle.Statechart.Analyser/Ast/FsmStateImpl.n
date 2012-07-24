@@ -18,6 +18,7 @@ namespace Nemerle.Statechart
   /// <summary>
   /// Description of FsmStateImpl.
   /// </summary>
+  [RefNode]
   [Traversable]
   public partial variant FsmState : IdObject
   {
@@ -27,7 +28,7 @@ namespace Nemerle.Statechart
     {
       def get_copy(st, _)
       {
-        def num = statemap.GetNextStateNum();
+        def num = statemap.GetNextGlobalNum();
         def int_tran = st.internal_tran.Map(_.SetNewId());
         def hist = st.history.Map(_.ChangeNumCopy(statemap.GetNextGlobalNum(), copy));
         def trans = st.transitions.Map(_.SetNewId());
@@ -42,13 +43,13 @@ namespace Nemerle.Statechart
       def new_pseudo  = st.AllPseudo;
 
       def pseudo_id_map = old_pseudo.MakeArrayMap(new_pseudo, statemap.GlobalId, _.Num);
-      def states_id_map = AllStates.MakeArrayMap(st.AllStates, statemap.StateNum, _.Num);
+      def states_id_map = AllStates.MakeArrayMap(st.AllStates, statemap.GlobalId, _.Num);
 
       def retarget_transitions(s, _)
       {
         def check_target(tar)
         {
-          | TransitionTarget.State(st) as t              => t.ChangeStateNum(states_id_map[st.Num])
+          | TransitionTarget.State(st) as t              => t.ChangeState(states_id_map[st.Num])
               //| Qualified(_, State(state = st) as t)                  => t.ChangeStateNum(find_state(st))
               //| Final(st) as t                         => t.ChangeStateNum(find_state(st))          
           | PseudoState(Junction(IsUnnamed = true)) as t => t.ChangeNode(p => p.ChangeNumCopy(statemap.GetNextGlobalNum(), copy))
@@ -146,10 +147,7 @@ namespace Nemerle.Statechart
 
     public TraverseTargets(func : TransitionTarget * StateTransition -> TransitionTarget, manual_rebuild : bool = false) : FsmState
     {
-      def init = initial.Map(_.TargetTraverse(func, manual_rebuild));
-      def tran = transitions.Map(_.TargetTraverse(func, manual_rebuild));
-      def int_tran = internal_tran.Map(_.TargetTraverse(func, manual_rebuild));
-      ChangeTransitionsInitialInternalTran(tran, init, int_tran)
+      TransitionMap(_.TargetTraverse(func, manual_rebuild))
     }
 
     public TraverseTransitions() : FsmState
@@ -159,6 +157,14 @@ namespace Nemerle.Statechart
       UpdateTransitions(trans).ChangePaths(paths)
     }
 
+    public TransitionMap(tran_func : StateTransition -> StateTransition) : FsmState
+    {
+      def init = initial.Map(tran_func);
+      def tran = transitions.Map(tran_func);
+      def int_tran = internal_tran.Map(tran_func);
+      ChangeTransitionsInitialInternalTran(tran, init, int_tran)
+    }
+    
     public this(an : FsmAnalyser)
     {
       analyser = an;
@@ -251,9 +257,26 @@ namespace Nemerle.Statechart
 
     public SetNewId() : FsmState
     {
-      SetNum(statemap.GetNextStateNum())
+      SetNum(statemap.GetNextGlobalNum())
     }
 
+    public ChangeHistory(h : PseudoStateNode.History) : FsmState
+    {
+      def check_hist(hist)
+      {
+        if (hist.Num == h.Num)
+        {
+          h
+        } else hist
+      }
+      
+      HistoryMap(check_hist)
+    }
+    
+    public HistoryMap(hist : PseudoStateNode.History -> PseudoStateNode.History) : FsmState
+    {
+      ChangeHistory(history.Map(hist))
+    }
     //// copy constructor
     //public this(st : FsmState)
     //{

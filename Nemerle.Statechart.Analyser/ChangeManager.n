@@ -12,25 +12,21 @@ namespace Nemerle.Statechart
 {
 
   [Record]
-  class NodeReference
+  public class NodeReference
   {
-    public Num : int;
-    public SourceChange  : void -> FsmState;
-    public DestChange    : void -> FsmState;
-    public SourceVersion : void -> IVersioned;
-    public DestVersion   : void -> IVersioned;
-
-  }
-
-  public interface IVersioned
-  {
-    Version : uint {get;}
+    public Num           : int;
+    public Source        : FsmState;
+    public Dest          : FsmState;
+    public SourceChange  : FsmState * FsmState -> FsmState;
+    public DestChange    : FsmState * FsmState -> FsmState;
+    public SourceVersion : FsmState -> uint;
+    public DestVersion   : FsmState -> uint;
   }
 
   /// <summary>
   /// Description of ChangeManager.
   /// </summary>
-  class ChangeManager
+  public class ChangeManager
   {
     mutable changes    : BitArray;
     analyser           : FsmAnalyser;
@@ -61,7 +57,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public static throw_err () : void
+    public static throw_err() : void
     {
       throw InvalidOperationException("more than one modification detected!");
     }
@@ -90,15 +86,25 @@ namespace Nemerle.Statechart
       {
         def change(rf, a)
         {
-          match (rf.SourceVersion(), rf.DestVersion())
+          def src = match (a.Find(x => x == rf.Source))
           {
-            | (x, y) when (x.Version > y.Version) => rf.DestChange() :: a
-            | (x, y) when (x.Version < y.Version) => rf.SourceChange() :: a
-            | _                                   => a
+            | Some(st) => st
+            | _        => rf.Source.Updated
+          }
+          def dest = match (a.Find(x => x == rf.Dest))
+          {
+            | Some(st) => st
+            | _        => rf.Dest.Updated
+          }
+          match (rf.SourceVersion(src), rf.DestVersion(dest))
+          {
+            | (x, y) when (x > y) => rf.DestChange(src, dest)  :: a
+            | (x, y) when (x < y) => rf.SourceChange(src, dest) :: a
+            | _                   => a
           }
         }
 
-        refs.FoldLeft([], change);
+        refs.FoldLeft([], change)
       }
       
       //statemap.States.Map();

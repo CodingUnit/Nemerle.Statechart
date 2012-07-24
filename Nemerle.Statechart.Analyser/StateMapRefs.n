@@ -47,7 +47,7 @@ namespace Nemerle.Statechart
       // recursive resolve targets until tree is completed and no modification needed
       def recursive_traverse(prev)
       {
-        def to = prev.ReduceSingle(true, (x, _) => ResolveTargets(st, x, tr));
+        def to = prev.ReduceSingle(true, (x, _) => ResolveTargets(st, st, x, tr));
         if (to != prev : object) recursive_traverse(to) else to
       }
       
@@ -71,7 +71,7 @@ namespace Nemerle.Statechart
       }
     }
     
-    CheckPseudo(st : FsmState, p : PseudoStateNode, targ : TransitionTarget, tran : StateTransition) : PseudoStateNode
+    CheckPseudo(st : FsmState, res : FsmState, p : PseudoStateNode, targ : TransitionTarget, tran : StateTransition) : PseudoStateNode
     {
       def pseudo = Analyser.PseudoStates;
       match (p)
@@ -82,7 +82,15 @@ namespace Nemerle.Statechart
         | ExitPoint =>
             ParentFor(p.Num, st);
             null
-        | History as t             => st.GetHistory(t)
+        | History as t             => def hist = res.GetHistory(t);
+                                      ChangeMan.CreateReference(NodeReference(hist.Num, res, st, 
+                                                                              (s, d) => s.ChangeHistory(TransitionTarget.PseudoState.GetHistory(d, tran)), 
+                                                                              (s, d) => TransitionTarget.PseudoState.SetHistory(d, tran, s.GetHistory(t)), 
+                                                                               x => x.GetHistory(t).version, 
+                                                                               x => TransitionTarget.PseudoState.GetHistory(x, tran).version));
+                                      ChangeMan.Add(hist.Num);
+                                      null
+                                      
         | Junction(name = n) as j  => def junc = pseudo.FilterType();
                                       match (junc.Find(x => x.name == n))
                                       {
@@ -109,17 +117,23 @@ namespace Nemerle.Statechart
     }        
     
     // TODO: решить проблему с двойным обходом узлов до разрешения и после
-    ResolveTargets(st : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
+    ResolveTargets(st : FsmState, res : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
     {
       match (tr)
       {
-        | State(state = st) as t => t.ChangeStateNum(st)
+        | State(state = FsmState(Num = n) as cst)    => def cst = cst.Updated;
+                                                        ChangeMan.CreateReference(NodeReference(n, cst, st, (_, d) => TransitionTarget.State.GetState(d, tran), 
+                                                                                                            (s, d) => TransitionTarget.State.SetState(d, tran, s), 
+                                                                                                            _.version, 
+                                                                                                            x => TransitionTarget.State.GetState(x, tran).version));
+                                                        ChangeMan.Add(cst.Num);
+                                                        null
 
         | Named as t => def t = GetNamed(t, tran);
-                        ResolveTargets(st, t, tran)
-        | Qualified(parent = st, target = t) => 
-            def st = Get(st);
-            match (st, t)
+                        ResolveTargets(st, st, t, tran)
+        | Qualified(parent = res, target = t) => 
+            def res = Get(res);
+            match (res, t)
             {
               | (FsmState.SubMachine as m, TransitionTarget.State(state = FsmState(Name = n))) =>
                   def m = m.Scan(); // scan external sub machine for states
@@ -128,9 +142,9 @@ namespace Nemerle.Statechart
                   
               | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
                              t
-              | (st, t)   => ResolveTargets(st, t, tran)
+              | (res, t)  => ResolveTargets(st, res, t, tran)
             }
-        | PseudoState(p) as t => def np = CheckPseudo(st, p, t, tran);
+        | PseudoState(p) as t => def np = CheckPseudo(st, res, p, t, tran);
                                  if (np == null) null else t.ChangeNode(np) 
                                  
         | _                   => null

@@ -47,6 +47,20 @@ namespace Nemerle.Statechart
       {
         [NeedChange] node : PseudoStateNode;
 
+        public static GetHistory(st : FsmState, tran : StateTransition) : PseudoStateNode.History
+        {
+          match (st.TransitionByNum(tran.Num).To)
+          {
+            | PseudoState(PseudoStateNode.History as node) => node
+            | _                                            => null
+          }
+        }
+        
+        public static SetHistory(st : FsmState, tran : StateTransition, hist : PseudoStateNode.History) : FsmState
+        {
+          st.TransitionByNumChange(tran.Num, tr => tr.ChangeTo((tr.To :> PseudoState).ChangeNode(hist)))
+        }
+        
         JunctionPseudo : PseudoStateNode.Junction
         {
           get
@@ -69,22 +83,35 @@ namespace Nemerle.Statechart
 
         override ToString() : string
         {
-          $"$(base.ToString())-$node"
+          $"$(base.ToString())$node"
         }
       }
       
     | State 
       {
         [NeedChange]
-        state_num : FsmState;
+        state : FsmState;
         
-        state : FsmState
+        public static SetState(st : FsmState, tran : StateTransition, nst : FsmState) : FsmState
         {
-          get
+          st.TransitionByNumChange(tran.Num, tr => tr.ChangeTo((tr.To :> State).ChangeState(nst)))
+        }
+        
+        public static GetState(st : FsmState, tran : StateTransition) : FsmState
+        {
+          match (st.TransitionByNum(tran.Num).To)
           {
-            state_num.Updated
+            | State(st) => st
+            | _         => null
           }
         }
+        //state : FsmState
+        //{
+        //  get
+        //  {
+        //    state_num.Updated
+        //  }
+        //}
 
         Name : string
         {
@@ -102,7 +129,7 @@ namespace Nemerle.Statechart
         this(an : FsmAnalyser, type : TargetType.State)
         {
           base(an);
-          state_num = FsmState.State(type.state, Enumerable.Empty(), an);
+          state = FsmState.State(type.state, Enumerable.Empty(), an);
         }
 
         
