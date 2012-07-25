@@ -163,12 +163,19 @@ namespace Nemerle.Statechart
       char.ToLower(s[0]).ToString() + s.Substring(1);
     }
     
-    public CreateConstrBody(type : string, pars : list[string * string * string], parms : list[string * string]) : PExpr
+    public CreateConstrBody(type : string, pars : list[string * string * string], parms : list[string * string], extra : list[string * PExpr]) : PExpr
     {
       
-      def inst_par((f, ep, p), pars)
+      def inst_par((f, ep, p), pars, extra)
       {
         def ep = StrToLower(ep);
+        
+        def extra = if (extra != null) match (extra.Find((x, _) => x == ep))
+        {
+          | Some((_, e)) => <[$(ep : usesite) = $e ]>
+          | _            => null
+        } else null;
+        if (extra != null) extra else
         match (pars.Find((x, _) => f == x))
         {
           | Some((_, n)) => <[ $(ep : usesite) = $(n : usesite) ]>
@@ -176,7 +183,9 @@ namespace Nemerle.Statechart
         }
       }
 
-      def expr = pars.Map(inst_par(_, parms));
+      
+      def expr = pars.Map(inst_par(_, parms, extra));
+      //def expr = if (extra != null) expr + extra else expr;
       <[ $(type : usesite)(..$expr) ]>
     }
 
@@ -188,6 +197,8 @@ namespace Nemerle.Statechart
       //  f.attr_func(x => x.Exists(_ is <[ RecordIgnore ]>) && !x.Exists(_ is <[ NeedChange ]>))
       //}
 
+      def have_version = typebuilder.GetFields().Exists(x => x.Name == "version");
+      
       def def_constr(cur_type, fields)
       {
         //def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -196,7 +207,8 @@ namespace Nemerle.Statechart
         //def pars = fields.Map(x => StrToLower(x.Name));
         //def parms = unseq(parms);
         //def parms = parms.Map(split);
-        CreateConstrBody(cur_type.Name, fields, parms)
+        def extra = if (have_version) ("version", <[ version + 1 ]>) :: [] else null;
+        CreateConstrBody(cur_type.Name, fields, parms, extra)
       }
 
       def def_opts(o)
@@ -204,6 +216,7 @@ namespace Nemerle.Statechart
         //def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy;
         def fields = GetChangeFields(o);//o.GetFields(opt);
         def match_fields = fields.Exclude(x => parms.Exists((y, _) => y == x.Name));
+        def match_fields = if (have_version) match_fields.Exclude(x => x.Name == "version"); else match_fields;
               //def fields = fields.Exclude(have_record_ignore);
         def names = match_fields.Map(x => <[ $(x.Name : usesite) = $(StrToLower(x.Name) : usesite) ]>);
         def fields = fields.Map(x => (x.Name, StrToLower(x.Name), StrToLower(x.Name)));

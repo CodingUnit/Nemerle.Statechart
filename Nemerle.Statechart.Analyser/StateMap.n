@@ -96,7 +96,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public this(an : FsmAnalyser) { Analyser = an; TopNum = -1 }
+    public this(an : FsmAnalyser) { Analyser = an; TopNum = -1; ChangeMan = ChangeManager(an) }
 
     public Contains(state : FsmState) : bool
     {
@@ -144,7 +144,7 @@ namespace Nemerle.Statechart
         | _                => null
       }
 
-      get_loop(states.NToList(), state, [])
+      get_loop(States.NToList(), state, [])
     }
 
     get_all_state(map : IEnumerable[FsmState], state : string) : list[FsmState]
@@ -193,6 +193,13 @@ namespace Nemerle.Statechart
     
     public Update(st : IEnumerable[FsmState], top : FsmState = null) : void
     {
+      UpdateInternal(st, top);
+      def st = ChangeMan.CheckChange();
+      UpdateInternal(st)
+    }
+    
+    UpdateInternal(st : IEnumerable[FsmState], top : FsmState = null) : void
+    {
       
       def check_name(n, _)
       {
@@ -206,7 +213,7 @@ namespace Nemerle.Statechart
 
       def top = Top ?? top;
       def top = top.ReduceSingle(check_name); // replace old states with new ones
-      Update(top)
+      UpdateInternal(top)
     }
 
     //public DefineState(st : FsmState, super : FsmState) : void
@@ -215,6 +222,13 @@ namespace Nemerle.Statechart
     //}
     
     public Update(top : FsmState) : void
+    {
+      UpdateInternal(top);
+      def st = ChangeMan.CheckChange();
+      UpdateInternal(st)
+    }
+    
+    UpdateInternal(top : FsmState) : void
     {
       
       //def check_super(s)
@@ -231,20 +245,20 @@ namespace Nemerle.Statechart
       // if top is not top state, but some child
       if (Top != null && Top.Num != -1 && top.Num != Top.Num)
       {
-        Update(TraverseUtils.SingleElement(top))
+        UpdateInternal(TraverseUtils.SingleElement(top))
       } else
         when (top : object != Top)
         {
           if (TopNum == -1) // if not set number
           {
             def st = top.LevelOrderMap(x => x.ChangeNum(GetNextGlobalNum())).ToArray();
-            TopNum = 0;
-            Update(st, top)
+            TopNum = st.First().Num;
+            UpdateInternal(st, top)
           } else
           {
             def st = top.AllStates;
             states = st.MakeArrayMap(st, global_id, _.Num);//OrderBy(_.Num).ToArray();
-            
+            ChangeMan.StateMapChanged();
             // update super state map
             // if new map
             when (super_map.Length != states.Length)
@@ -255,10 +269,11 @@ namespace Nemerle.Statechart
               //super_map = supers.AddBefore(-1).ToArray();
               def top = top.ReduceSingle((x, _) => UpdateStateReference(x)); // update references in tree
               //st.Iter(x => namemap[x.NativeName] = x.Num); // update
-              Update(top)
+              UpdateInternal(top)
             }
             
-            ChangeMan.CheckChange()
+            
+            
           }
         }
         
@@ -292,7 +307,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (Count == 0) null else states[0]
+        if (Count == 0) null else states[TopNum]
       }
     }
   }
