@@ -28,9 +28,8 @@ namespace Nemerle.Statechart
   /// </summary>
   public class ChangeManager
   {
-    mutable changes    : BitArray;
-    analyser           : FsmAnalyser;
-    mutable references : array[list[NodeReference]] = array[];
+    changes    : array[list[FsmState -> FsmState]] = array[];
+    analyser   : FsmAnalyser;
 
     public this(an : FsmAnalyser) 
     {
@@ -45,11 +44,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    public HaveReference(num : int) : bool
-    {
-      references[num] != null
-    }
-    
     public StateMapChanged() : void
     {
       def num = statemap.GlobalId;
@@ -67,55 +61,13 @@ namespace Nemerle.Statechart
       throw InvalidOperationException("more than one modification detected!");
     }
 
-    public Add(obj : int) : void
+    public Add(obj : FsmState -> FsmState) : void
     {
-      def refs = references[obj];
-      when (refs != null) 
-      {
-        changes.Set(obj, true);
-      }
+        changes.Add(obj)
     }
 
-    public CreateReference(reference : NodeReference) : void
+    public CheckChange() : void
     {
-      def refs = references[reference.Num];
-      def refs = if (refs != null) reference :: refs
-                  else reference :: [];
-      references[reference.Num] = refs
-    }
-
-    public CheckChange() : list[FsmState]
-    {
-      def check(refs)
-      {
-        def change(rf, a)
-        {
-          def src = match (a.Find(x => x == rf.Source))
-          {
-            | Some(st) => st
-            | _        => rf.Source.Updated
-          }
-          def dest = match (a.Find(x => x == rf.Dest))
-          {
-            | Some(st) => st
-            | _        => rf.Dest.Updated
-          }
-          match (rf.SourceVersion(src), rf.DestVersion(dest))
-          {
-            | (x, y) when (x > y) => rf.DestChange(src, dest)  :: a
-            | (x, y) when (x < y) => rf.SourceChange(src, dest) :: a
-            | _                   => a
-          }
-        }
-
-        refs.FoldLeft([], change)
-      }
-      
-      //statemap.States.Map();
-      def refs = references.FilterI((_, i) => changes[i]);
-      def st = refs.SelectMany(check).NToList();
-      changes.SetAll(false);
-      st
     }
 
   }
