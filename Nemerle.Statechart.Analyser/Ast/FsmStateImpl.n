@@ -49,11 +49,12 @@ namespace Nemerle.Statechart
       {
         def check_target(tar)
         {
-          | TransitionTarget.State(st) as t              => t.ChangeState(states_id_map[st.Num])
+          | TransitionTarget.State(st) as t              => t.ChangeValue(t.value.Fix(states_id_map[st.Id].Num))
               //| Qualified(_, State(state = st) as t)                  => t.ChangeStateNum(find_state(st))
               //| Final(st) as t                         => t.ChangeStateNum(find_state(st))          
-          | PseudoState(Junction(IsUnnamed = true)) as t => t.ChangeNode(p => p.ChangeNumCopy(statemap.GetNextGlobalNum(), copy))
-          | PseudoState(node) as t                       => t.ChangeNode(pseudo_id_map[node.Num]); 
+          // TODO: copy unnamed junctions to states
+          //| PseudoState(ReferenceNode(Value = Junction(IsUnnamed = true))) as t => t.ChangeNode(p => p.ChangeNumCopy(statemap.GetNextGlobalNum(), copy))
+          | PseudoState(ReferenceNode(Value = node)) as t                       => t.ChangeNode(t.node.Fix(pseudo_id_map[node.Num].Num)); 
                                                                         //t
           | _                                            => null
         }
@@ -228,7 +229,7 @@ namespace Nemerle.Statechart
     
     public PseudoMap(func : PseudoStateNode -> PseudoStateNode) : FsmState
     {
-      def st = HistoryMap(x => if (x is PseudoStateNode.History as x) func(x) :> PseudoStateNode.History else x);
+      def st = HistoryMap(x => func(x) :> PseudoStateNode.History);
       ChangePseudoStates(st.pseudo_states.Map(func))
       //def pseudo = ChildPseudo.Select(func);
     }
@@ -425,7 +426,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        completion_transitions.Where(x => x.To is TransitionTarget.PseudoState(Join()))
+        completion_transitions.Where(x => x.To is TransitionTarget.PseudoState(ReferenceNode(Value = Join)))
       }
     }
 

@@ -24,7 +24,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        PseudoStateParts.Select(_.node)
+        PseudoStateParts.Select(_.value)
         //Fold([], pseudo_state = (p, a) => p.node :: a)
       }
     }
@@ -39,7 +39,7 @@ namespace Nemerle.Statechart
         | Final                             => TransitionTarget.Final(an, null)
         | State       as t                  => State(an, t)
         | Named       as t                  => Named(st, t)
-        | SubMachine(m, s)                  => SubMachine(an, SubMachine(m, null), s)
+        | SubMachine(_m, s)                 => SubMachine(an, null, s)//SubMachine(m, null), s)
         | Qualified(parent = p, target = t) => Qualified(an, p, Create(st, t))
         | JunctionNode(g, a, t, n)          => JunctionNode(an, g, a, Create(st, t), n.Map(x => Create(st, x) :> JunctionNode), null, JunctionType.Junction)
       }
@@ -53,25 +53,25 @@ namespace Nemerle.Statechart
     public static CompareTo(t1 : TransitionTarget, target : TransitionTarget) : int
     {
       //| (History(h1), History(h2))                            => h1.Name.CompareTo(h2.Name)
-      | (Final(st1), Final(st2))                              => st1.Name.CompareTo(st2.Name)
-      | (PseudoState(n1), PseudoState(n2))                    => n1.ToString().CompareTo(n2.ToString())
-      | (State(st1), State(st2))                              => st1.Name.CompareTo(st2.Name)
-      | (SubMachine(machine = m, state = s), SubMachine(machine = m2, state = s2)) when (m == m2) => s.CompareTo(s2)
+      | (Final(state = st1), Final(state = st2))                              => st1.Name.CompareTo(st2.Name)
+      | (PseudoState(value = n1), PseudoState(value = n2))                    => n1.ToString().CompareTo(n2.ToString())
+      | (State(state = st1), State(state = st2))                              => st1.Name.CompareTo(st2.Name)
+      | (SubMachine(machine = m, state = s), SubMachine(machine = m2, state = s2)) when (m.Value == m2.Value) => s.CompareTo(s2)
       | (Qualified(p, t), Qualified(p2, t2)) when (p == p2)   => t.CompareTo(t2)
       | _                                                     => -1
     }
 
-    public static @==(a : TransitionTarget, b : TransitionTarget) : bool
-    {
-      //| (History(h1), History(h2))             => h1 == h2
-      | (State(st1), State(st2))
-      | (Final(st1), Final(st2))               => st1 == st2
-      | (PseudoState(n1), PseudoState(n2))     => n1 == n2
-      | (Named(st, n), Named(st2, n2))         => st == st2 && n == n2
-      | (Qualified(p, t), Qualified(p2, t2))   => p == p2 && t == t2
-      | (SubMachine(machine = m, state = s), SubMachine(machine = m2, state = s2)) => m == m2 && s == s2
-      | _                                      => false
-    }
+    //public static @==(a : TransitionTarget, b : TransitionTarget) : bool
+    //{
+    //  //| (History(h1), History(h2))             => h1 == h2
+    //  | (State(st1), State(st2))
+    //  | (Final(st1), Final(st2))               => st1 == st2
+    //  | (PseudoState(n1), PseudoState(n2))     => n1 == n2
+    //  | (Named(st, n), Named(st2, n2))         => st == st2 && n == n2
+    //  | (Qualified(p, t), Qualified(p2, t2))   => p == p2 && t == t2
+    //  | (SubMachine(machine = m, state = s), SubMachine(machine = m2, state = s2)) => m == m2 && s == s2
+    //  | _                                      => false
+    //}
 
     public PartOfSubRegion : option[ConcurrentSubRegion]
     {
@@ -79,9 +79,9 @@ namespace Nemerle.Statechart
       {
         match (ToState)
         {
-          | null => None()
+          | null                      => None()
           | ConcurrentSubRegion as st => Some(st)
-          | st => st.PartOfSubRegion
+          | st                        => st.PartOfSubRegion
         }
       }
     }
@@ -92,10 +92,10 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | PseudoState(PseudoStateNode(state = st))
+          | PseudoState(value = PseudoStateNode(state = st))
           //| History(PseudoStateNode.History(state = st))
           | Final(state = st)
-          | SubMachine(machine = st)
+          //| SubMachine(machine = st)
           | State(state = st)  => st
           | Qualified(_, t)    => t.ToState
           | _                  => null
@@ -124,7 +124,7 @@ namespace Nemerle.Statechart
     {
       match (this)
       {
-        | PseudoState(Junction as p) as t       => t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
+        //| PseudoState(value = Junction as p) as t       => t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
         | JunctionNode(next = Some as nt) as t  => def (f, s) = child.TakeTwo();
                                                    t.ChangeNextTo(nt.ChangeValue(s :> JunctionNode), f)
         | JunctionNode as t                     => def f = child.First();
@@ -138,7 +138,7 @@ namespace Nemerle.Statechart
       match (this)
       {
         | JunctionNode(to = to, next = Some(n)) => TraverseUtils.DoubleElement(to, n)
-        | PseudoState(Junction(to = n))
+        | PseudoState(value = Junction(to = n))
         | JunctionNode(to =  n)                 => TraverseUtils.SingleElement(n)
         | _                                     => Enumerable.Empty()
       }

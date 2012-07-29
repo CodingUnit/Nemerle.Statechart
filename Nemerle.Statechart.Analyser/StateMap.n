@@ -35,39 +35,9 @@ namespace Nemerle.Statechart
       parents_map[num] = st.Num
     }
     
-    //public GetNewStateId() : int
-    //{
-    //  //match (namemap.Get(state.NativeName))
-    //  //{
-    //    //| Some(num) => num
-    //    //| _         => 
-    //    GetNextStateNum();
-    //    //               namemap[state.NativeName] = num;
-    //    //               num
-    //  //}
-    //}
-
-    //public GetNewTransitionId() : int
-    //{
-    //  //match (tranmap.Get(tran.Name))
-    //  //{
-    //    //| Some(num) => num
-    //    //| _         => 
-    //  //}
-    //  def num = GetNextGlobalNum();
-    //  //tranmap[tran.Name] = num;
-    //  num
-    //}
 
     [Accessor]
     mutable global_id : int;
-
-    //public GetNextStateNum() : int
-    //{
-    //  def num = state_num;
-    //  state_num++;
-    //  num
-    //}
 
     public UpdateRefsToParent(parent : FsmState, nodes : IEnumerable[int]) : void
     {
@@ -92,6 +62,7 @@ namespace Nemerle.Statechart
     {
       get
       {
+        Update();
         states.FilterToArray(_ != null)
       }
     }
@@ -162,12 +133,14 @@ namespace Nemerle.Statechart
 
     public Get(state : string) : FsmState
     {
+      Update();
       def st = state.SplitToList('.');
       Get(st)
     }
 
     public Get(num : int) : FsmState
     {
+      Update();
       if (num != -1) states[num] else null
     }
 
@@ -235,7 +208,6 @@ namespace Nemerle.Statechart
       //  def num = s.Num;
       //  s.sub_states.Iter(x => super_map[x.Num] = num)
       //}
-      
       // if top is not top state, but some child
       if (Top != null && Top.Num != -1 && top.Num != Top.Num)
       {
@@ -253,20 +225,21 @@ namespace Nemerle.Statechart
             def st = top.AllStates;
             states = st.MakeArrayMap(st, global_id, _.Num);//OrderBy(_.Num).ToArray();
             ChangeMan.StateMapChanged();
+            def new_st = super_map.Length != states.Length;
             // update super state map
             // if new map
-            when (super_map.Length != states.Length)
+            when (new_st)
             {
               // create new super state map
               def supers = States.SelectMany(x => x.sub_states.Select(y => (y.Num, x.Num))).AddBefore((0, -1));
               super_map = supers.MakeArrayMap(global_id);//OrderBy((s, _) => s.Num).Select((_, s) => s.Num);
               //super_map = supers.AddBefore(-1).ToArray();
+            }
+            when (new_st || ChangeMan.NewReferences)
+            {
               def top = top.ReduceSingle((x, _) => UpdateStateReference(x)); // update references in tree
-              //st.Iter(x => namemap[x.NativeName] = x.Num); // update
               UpdateInternal(top)
             }
-            
-            
             
           }
         }

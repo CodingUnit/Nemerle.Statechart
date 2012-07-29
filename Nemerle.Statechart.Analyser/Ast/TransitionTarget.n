@@ -24,7 +24,15 @@ namespace Nemerle.Statechart
 
     | Final
       {
-        [NeedChange] state : ReferenceNode[FsmState];
+        [NeedChange] value : ReferenceNode[FsmState];
+        
+        state : FsmState
+        {
+          get
+          {
+            value.Value
+          }
+        }
         
         override ToString() : string
         {
@@ -33,30 +41,38 @@ namespace Nemerle.Statechart
 
       }
       
-    [Traverse(junction(node = PseudoStateNode.Junction(_)))]
+    [Traverse(junction(value = PseudoStateNode.Junction(_)))]
     //[Traverse(merge(node = PseudoStateNode.Merge(_)))]
     | PseudoState
       {
         [NeedChange] node : ReferenceNode[PseudoStateNode];
 
-        //JunctionPseudo : PseudoStateNode.Junction
-        //{
-        //  get
-        //  {
-        //    if (node.Value is PseudoStateNode.Junction as t) t else null
-        //  }
-        //}
-        
-        ChangeNode(pseudo : PseudoStateNode -> PseudoStateNode) : PseudoState
+        value : PseudoStateNode
         {
-          ChangeNode(pseudo(node))
+          get
+          {
+            node.Value
+          }
         }
+        
+        JunctionPseudo : PseudoStateNode.Junction
+        {
+          get
+          {
+            if (node.Value is PseudoStateNode.Junction as t) t else null
+          }
+        }
+        
+        //ChangeNode(pseudo : PseudoStateNode -> PseudoStateNode) : PseudoState
+        //{
+        //  ChangeNode(pseudo(node./))
+        //}
         
         this(st : FsmState, node : TargetType.PseudoState)
         {
           def an = st.analyser;
           base(an);
-          this.node = PseudoStateNode.Create(st, node.node);
+          this.node = StateMap.CreatePseudoRef(PseudoStateNode.Create(st, node.node));
         }
 
         override ToString() : string
@@ -68,21 +84,29 @@ namespace Nemerle.Statechart
     | State 
       {
         [NeedChange]
-        state : ReferenceNode[FsmState];
-        
-        public static SetState(st : FsmState, tran : StateTransition, nst : FsmState) : FsmState
+        value : ReferenceNode[FsmState];
+
+        state : FsmState
         {
-          st.TransitionByNumChange(tran.Num, tr => tr.ChangeTo((tr.To :> State).ChangeState(nst)))
-        }
-        
-        public static GetState(st : FsmState, tran : StateTransition) : FsmState
-        {
-          match (st.TransitionByNum(tran.Num).To)
+          get
           {
-            | State(st) => st
-            | _         => null
+            value.Value
           }
         }
+        
+        //public static SetState(st : FsmState, tran : StateTransition, nst : FsmState) : FsmState
+        //{
+        //  st.TransitionByNumChange(tran.Num, tr => tr.ChangeTo((tr.To :> State).ChangeState(nst)))
+        //}
+        
+        //public static GetState(st : FsmState, tran : StateTransition) : FsmState
+        //{
+        //  match (st.TransitionByNum(tran.Num).To)
+        //  {
+        //    | State(st) => st
+        //    | _         => null
+        //  }
+        //}
         //state : FsmState
         //{
         //  get
@@ -107,7 +131,7 @@ namespace Nemerle.Statechart
         this(an : FsmAnalyser, type : TargetType.State)
         {
           base(an);
-          state = FsmState.State(type.state, Enumerable.Empty(), an);
+          value = StateMap.CreateStateRef(FsmState.State(type.state, Enumerable.Empty(), an));
         }
 
         
