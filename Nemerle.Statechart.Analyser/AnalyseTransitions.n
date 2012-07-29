@@ -55,7 +55,7 @@ namespace Nemerle.Statechart
 
     is_crossed_orthogonal(tr : StateTransition, st : FsmState) : bool
     {
-      | (StateTransition(To = TransitionTarget.State(state = FsmState(PartOfRegion = Some(r), PartOfSubRegion = Some(sr)))),
+      | (StateTransition(To = TransitionTarget.State(state = ReferenceNode(Value = FsmState(PartOfRegion = Some(r), PartOfSubRegion = Some(sr))))),
                         FsmState(PartOfRegion = Some(r2), PartOfSubRegion = Some(sr2))) when r.Num == r2.Num => sr2.Num != sr.Num
       | _ => false
     }
@@ -201,17 +201,16 @@ namespace Nemerle.Statechart
                   //j.joined_tran = tr;
                   //j.region = reg;
 
-                  def j = j.ChangeRegionJoinedTranTransition(reg, tr, tran);
                   //j.transition = tran;
                   /// !!! mutable
-                  def tr = tr.Select(x => x.ChangeTo(TransitionTarget.PseudoState(this, j)));
+                  tr.Iter(x => x.ToPseudo.SetValue(x => (x :> PseudoStateNode.Join).ChangeRegionJoinedTranTransition(reg, tr, tran)));
+                } else 
+                {
                   AddError(FsmError.JoinTransitionMustLeaveRegion(j, tr));
-                  tr
-                } else Enumerable.Empty();
+                }
               } else 
               {
                 AddError(FsmError.JoinTransitionMustHaveSameTrigger(j, tr));
-                Enumerable.Empty()
               }
         }
       }
@@ -220,21 +219,20 @@ namespace Nemerle.Statechart
       {
         match (t)
         {
-          | StateTransition(To = TransitionTarget.PseudoState(Join as j)) => (j, t) :: lst
-          | _                                                             => lst
+          | StateTransition(To = TransitionTarget.PseudoState(ReferenceNode(Value = Join as j))) => (j, t) :: lst
+          | _                                                                                      => lst
         }
       }
 
       def join_tran = States.SelectMany(x => x.all_transitions_with_init.FoldLeft([], get_join));
       def jtrans = join_tran.GroupBy(x => x[0].name);
       def jtrans = jtrans.Select(x => (x.First()[0], x.Values()));
-      def trans= jtrans.SelectMany((x, y) => check_join(x, y));
-      UpdateTransitions(trans)
+      jtrans.Iter((x, y) => check_join(x, y));
     }
 
     create_fork_transitions() : void
     {
-      def check_fork(tr, f, atrans)
+      def check_fork(tr, f)
       {
         match (f)
         {
@@ -248,21 +246,18 @@ namespace Nemerle.Statechart
                 def dups = sreg.Duplicates((x, y) => x.index - y.index);
                 if (dups.Length != 0) 
                 {
-                  AddError(FsmError.ForkMustGoToSeparateRegion(f));
-                  atrans
+                  AddError(FsmError.ForkMustGoToSeparateRegion(f))
                 } else
                 {
                   def reg = sreg.Head.contained_in;
                   def sub_trans = t |> StateTransition.Create(reg, null, _, f);
                   def sub_trans = sub_trans.Map(x => x.ChangeLocal(true));
               /// !!! mutable
-                  def tr = tr.ChangeTo(TransitionTarget.PseudoState(this, f.ChangeForkTran(sub_trans)));
-                  tr :: atrans
+                  tr.ToPseudo.SetValue(x => (x :> PseudoStateNode.Fork).ChangeForkTran(sub_trans))
                 }
               } else
               {
                 AddError(FsmError.ForkMustGoToRegion(f));
-                atrans
               }
         }
       }
@@ -271,38 +266,37 @@ namespace Nemerle.Statechart
       {
         match (t)
         {
-          | StateTransition(To = TransitionTarget.PseudoState(Fork as f)) => (t, f) :: lst
-          | _                                                             => lst
+          | StateTransition(To = TransitionTarget.PseudoState(ReferenceNode(Value = Fork as f))) => (t, f) :: lst
+          | _                                                                                    => lst
         }
       }
 
       def tran = States.SelectMany(x => x.all_transitions_with_init.FoldLeft([], get_fork));
-      def tran = tran.FoldLeft([], ((x, y), a) => check_fork(x, y, a));
-      UpdateTransitions(tran)
+      tran.Iter(check_fork);
+      statemap.Update();
     }
   /// <summary>
   /// Creating Transitions
   /// </summary>
     CreateTransitions() : void
     {
-      def check_targets(node, _)
+      def check_targets(node)
       {
         match (node)
         {
-          | TransitionTarget.PseudoState(node = PseudoStateNode.Junction as n) as node => def tree = CheckJunction(node);
-                                                                                          node.ChangeNode(n.ChangeDecisionTree(tree))
-          | _                                                                          => null
+          | TransitionTarget.PseudoState(ReferenceNode(Value = PseudoStateNode.Junction) as node) as t => def tree = CheckJunction(t);
+                                                                                                          node.SetValue(x => (x :> PseudoStateNode.Junction).ChangeDecisionTree(tree))
+          | _                                                                                          => ()
         }
 
       }
 
-      def check_tran(st, _)
+      def check_tran(st)
       {
-        st.TraverseTargets(check_targets, true)
+        st.all_transitions_with_init.Iter(x => check_targets(x.To))
       }
 
-      //States.Map(check_tran);
-      UpdateStateMap(TopState.ReduceSingle(check_tran));
+      States.Iter(check_tran);
       create_join_transitions(); // creating join transitions
       create_fork_transitions(); // creating fork transitions
       CreateSuperStateTransitions(); // create parent transitions
