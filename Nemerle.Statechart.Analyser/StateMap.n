@@ -156,10 +156,27 @@ namespace Nemerle.Statechart
     
     public Update(st : IEnumerable[FsmState], top : FsmState = null) : void
     {
-	  BeginUpdate();
+	    BeginUpdate();
       UpdateInternal(st, top);
-      Update();
-	  EndUpdate();
+      UpdateReferences();
+      Update(true);
+	    EndUpdate();
+    }
+    
+    UpdateReferences() : void
+    {
+      when (new_states || ChangeMan.NewReferences)
+      {
+			  def recursive_update(st)
+			  {
+				  def newst = st.ReduceSingle((x, _) => UpdateStateReference(x)); // update references in tree
+				  Update();
+				  if (newst : object != st) recursive_update(newst) else newst
+			  }
+              
+			  def top = recursive_update(Top);
+        UpdateInternal(top)
+      }
     }
     
     UpdateInternal(st : IEnumerable[FsmState], top : FsmState = null) : void
@@ -187,16 +204,20 @@ namespace Nemerle.Statechart
     
     public Update(top : FsmState) : void
     {
-	  BeginUpdate();
+	    BeginUpdate();
       UpdateInternal(top);
-      Update();
-	  EndUpdate();
+      UpdateReferences();
+      Update(true);
+	    EndUpdate();
     }
     
-    public Update() : void
+    public Update(force : bool = false) : void
     {
-      def st = ChangeMan.CheckChange();
-      UpdateInternal(st)  
+	    when (force || !Updating)
+	    {
+		    def st = ChangeMan.CheckChange();
+		    UpdateInternal(st)
+      }	  
     }
     
 	mutable Updating : bool;
@@ -231,20 +252,15 @@ namespace Nemerle.Statechart
             def st = top.AllStates;
             states = st.MakeArrayMap(st, global_id, _.Num);//OrderBy(_.Num).ToArray();
             ChangeMan.StateMapChanged();
-            def new_st = super_map.Length != states.Length;
+            new_states = super_map.Length != states.Length;
             // update super state map
             // if new map
-            when (new_st)
+            when (new_states)
             {
               // create new super state map
               def supers = States.SelectMany(x => x.sub_states.Select(y => (y.Num, x.Num))).AddBefore((0, -1));
               super_map = supers.MakeArrayMap(global_id);//OrderBy((s, _) => s.Num).Select((_, s) => s.Num);
               //super_map = supers.AddBefore(-1).ToArray();
-            }
-            when (new_st || ChangeMan.NewReferences)
-            {
-              def top = top.ReduceSingle((x, _) => UpdateStateReference(x)); // update references in tree
-              UpdateInternal(top)
             }
             
           }
@@ -260,6 +276,8 @@ namespace Nemerle.Statechart
       //}
     }
 
+    mutable new_states : bool;
+    
     public Super(st : FsmState) : FsmState
     {
       def num = st.Num;

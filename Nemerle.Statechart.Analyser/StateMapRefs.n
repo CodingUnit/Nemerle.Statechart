@@ -40,15 +40,8 @@ namespace Nemerle.Statechart
     UpdateTargetReference(tr : StateTransition, st : FsmState) : StateTransition
     {
       def source = if (tr.Source != null) st else null;
-
-      // recursive resolve targets until tree is completed and no modification needed
-      def recursive_traverse(prev)
-      {
-        def to = prev.ReduceSingle(true, (x, _) => ResolveTargets(st, st, x, tr));
-        if (to != prev : object) recursive_traverse(to) else to
-      }
-
-      def to = recursive_traverse(tr.To);
+	  
+      def to = tr.To.ReduceSingle(true, (x, _) => ResolveTargets(st, st, x, tr));
       tr.ChangeSourceNumTo(source, to)
     }
 
@@ -94,8 +87,8 @@ namespace Nemerle.Statechart
             np.Fix(j.Num)
         | History as t       => def hist = res.GetHistory(t);
                                 np.Fix(hist.Num)
-        | Junction(name = null) as j => ChangeMan.Add(st.Super.Num, x => x.AddPseudo(j));
-                                        np.Fix(j.Num)
+        | Junction(IsUnnamed = true) as j => ChangeMan.Add(st.Super.Num, x => x.AddPseudo(j));
+                                             np.Fix(j.Num)
         | Junction(name = n) => match (GetNode(n, _ => Analyser.AddError(FsmError.UnknownTarget(tran, targ))))
                                 {
                                   | Some(Junction as j) => np.Fix(j.Num)
@@ -121,7 +114,7 @@ namespace Nemerle.Statechart
     {
       def statemap = val.analyser.statemap;
       val.analyser.statemap.ChangeMan.NewReferences = true;
-      def node = ReferenceNode(val, -1, val.analyser, x => statemap.Get(x), statemap.ChangeMan.Add);
+      def node = ReferenceNode(val, -1, val.analyser, statemap.Get, statemap.ChangeMan.Add);
       if (fix) node.Fix(val.Num) else node
     }
     
