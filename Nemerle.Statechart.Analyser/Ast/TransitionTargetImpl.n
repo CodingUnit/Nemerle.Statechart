@@ -29,13 +29,28 @@ namespace Nemerle.Statechart
       }
     }
 
+    public static CreateStateRef(val : FsmState, fix : bool = false) : ReferenceNode[FsmState]
+    {
+      def statemap = val.analyser.statemap;
+      val.analyser.statemap.NewReferences = true;
+      def node = ReferenceNode(val, -1, val.analyser, statemap.Get, statemap.ChangeMan.Add);
+      if (fix) node.Fix(val.Num) else node
+    }
+    
+    public static CreatePseudoRef(val : PseudoStateNode, fix : bool = false) : ReferenceNode[PseudoStateNode]
+    {
+      def statemap = val.analyser.statemap;
+      val.analyser.statemap.NewReferences = true;
+      def node = ReferenceNode(val, -1, val.analyser, x => statemap.ParentFor(x).GetPseudo(x), (i, x) => statemap.ChangeMan.Add(statemap.ParentFor(i).Num, y => y.ChangePseudo(i, x)));
+      if (fix) node.Fix(val.Num) else node
+    }
+    
     public static Create(st : FsmState, target : TargetType) : TransitionTarget
     {
       def an = st.analyser;
       match (target)
       {
         | PseudoState as t                  => PseudoState(st, t)
-        //| History     as t                  => History(st, t)
         | Final                             => TransitionTarget.Final(an, null)
         | State       as t                  => State(an, t)
         | Named       as t                  => Named(st, t)
@@ -52,7 +67,6 @@ namespace Nemerle.Statechart
 
     public static CompareTo(t1 : TransitionTarget, target : TransitionTarget) : int
     {
-      //| (History(h1), History(h2))                            => h1.Name.CompareTo(h2.Name)
       | (Final(state = st1), Final(state = st2))                              => st1.Name.CompareTo(st2.Name)
       | (PseudoState(value = n1), PseudoState(value = n2))                    => n1.ToString().CompareTo(n2.ToString())
       | (State(state = st1), State(state = st2))                              => st1.Name.CompareTo(st2.Name)

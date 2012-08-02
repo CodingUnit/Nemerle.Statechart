@@ -23,16 +23,14 @@ namespace Nemerle.Statechart
     public DestVersion   : FsmState -> uint;
   }
 
-/// <summary>
-/// Description of ChangeManager.
-/// </summary>
+  /// <summary>
+  /// Description of ChangeManager.
+  /// </summary>
   public class ChangeManager
   {
     mutable changes    : array[list[FsmState -> FsmState]] = array[];
     analyser   : FsmAnalyser;
 
-    public NewReferences : bool {get;set;}
-    
     public this(an : FsmAnalyser) 
     {
       this.analyser = an
@@ -55,33 +53,61 @@ namespace Nemerle.Statechart
       }
     }
 
+    public GetIfChanged(st : FsmState) : FsmState
+    {
+      if (st == null) null else 
+      {
+        def ch = changes[st.Num];
+        if (ch != null && !ch.IsEmpty()) 
+        {
+          ch.FoldLeft(st, (x, a) => x(a))
+        } else st
+      }
+    }
+
     public Add(num : int, obj : FsmState -> FsmState) : void
     {
       def ch = changes[num];
       def ch = if (ch != null) obj :: ch else obj :: [];
       changes[num] = ch;
+      have_changes = true;
     }
 
+    [Accessor]
+    mutable have_changes : bool;
+    
     public CheckChange() : list[FsmState]
     {
-      def check(ch, i)
+      def check(i, ch, a)
       {
-        def st = statemap.Get(i);
 
-        def change(uf, a)
+
+        //def change(uf, a)
+        //{
+        //  //def src = match (a.Find(x => x.Num == i))
+        //  //           {
+        //  //             | Some(st) => st
+        //  //             | _        => st
+        //  //           }
+        //  //uf(src) :: a
+        //  uf(a)
+        //}
+
+        if (ch != null) 
         {
-          def src = match (a.Find(x => x.Num == i))
-                     {
-                       | Some(st) => st
-                       | _        => st
-                     }
-          uf(src) :: a
-        }
-
-        ch.FoldLeft([], change)
+          def st = statemap.Get(i);
+          changes[i] = null; // clear changes
+          st :: a
+          //ch.FoldLeft(st, (x, a) => x(a)) :: a // do accumulate changes
+        } else a
       }
 
-      changes.SelectMany(check).NToList()
+      if (have_changes) 
+      {
+        def st = changes.FoldI([], check);
+        have_changes = false;
+        st
+      } else []
     }
 
   }

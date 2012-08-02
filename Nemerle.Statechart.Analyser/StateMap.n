@@ -22,19 +22,23 @@ namespace Nemerle.Statechart
     public Analyser : FsmAnalyser;
 
     mutable super_map : array[int] = array[];
-    
+
     mutable parents_map : Hashtable[int, int] = Nemerle.Collections.Hashtable();
-    
+
     public ParentFor(num : int) : FsmState
     {
-      if (parents_map.ContainsKey(num)) states[parents_map[num]] else null
+      if (parents_map.ContainsKey(num)) 
+      {
+        def st = states[parents_map[num]];
+        ChangeMan.GetIfChanged(st)
+      } else null
     }
-    
+
     public ParentFor(num : int, st : FsmState) : void
     {
       parents_map[num] = st.Num
     }
-    
+
 
     [Accessor]
     mutable global_id : int;
@@ -43,14 +47,14 @@ namespace Nemerle.Statechart
     {
       nodes.Iter(x => parents_map[x] = parent.Num)
     }
-    
+
     public GetNumOfNode(parent : FsmState) : int
     {
       def num = GetNextGlobalNum();
       parents_map[parent.Num] = num;
       num
     }
-    
+
     public GetNextGlobalNum() : int
     {
       def num = global_id;
@@ -107,7 +111,7 @@ namespace Nemerle.Statechart
               match (get_all_state(st, head), tail)
               {
                 | ([], _)    => Analyser.AddError(FsmError.StateNotFound(State(merge_name(path.Rev()), Analyser))); null
-                | ([st], []) => st
+                | ([st], []) => ChangeMan.GetIfChanged(st)
                 | ([st], _)  => get_loop(st.sub_states, tail, path)
                 | (lst, _)   => Analyser.AddError(FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev()), Analyser)));
                                 null
@@ -141,7 +145,7 @@ namespace Nemerle.Statechart
     public Get(num : int) : FsmState
     {
       Update();
-      if (num != -1) states[num] else null
+      if (num != -1) ChangeMan.GetIfChanged(states[num]) else null
     }
 
     public Item[index : int] : FsmState
@@ -153,35 +157,35 @@ namespace Nemerle.Statechart
     }
 
     public ChangeMan : ChangeManager;
-    
+
     public Update(st : IEnumerable[FsmState], top : FsmState = null) : void
     {
-	    BeginUpdate();
+      BeginUpdate();
       UpdateInternal(st, top);
-      UpdateReferences();
-      Update(true);
-	    EndUpdate();
+      //UpdateReferences();
+      //Update(true);
+      EndUpdate();
     }
-    
-    UpdateReferences() : void
-    {
-      when (new_states || ChangeMan.NewReferences)
-      {
-			  def recursive_update(st)
-			  {
-				  def newst = st.ReduceSingle((x, _) => UpdateStateReference(x)); // update references in tree
-				  Update();
-				  if (newst : object != st) recursive_update(newst) else newst
-			  }
-              
-			  def top = recursive_update(Top);
-        UpdateInternal(top)
-      }
-    }
-    
+
+    //UpdateReferences() : void
+    //{
+    //  when (new_states || ChangeMan.NewReferences)
+    //  {
+      // def recursive_update(st)
+      // {
+
+        //  Update();
+        //  if (newst : object != st) recursive_update(newst) else newst
+      // }
+
+      // def top = recursive_update(Top);
+    //    UpdateInternal(top)
+    //  }
+    //}
+
     UpdateInternal(st : IEnumerable[FsmState], top : FsmState = null) : void
     {
-      
+
       def check_name(n, _)
       {
         match (st.Find(_.StateEquals(n)))
@@ -201,40 +205,39 @@ namespace Nemerle.Statechart
     //{
     //  super_map[st.Num] = super.Num
     //}
-    
+
     public Update(top : FsmState) : void
     {
-	    BeginUpdate();
+      BeginUpdate();
       UpdateInternal(top);
-      UpdateReferences();
-      Update(true);
-	    EndUpdate();
+      //UpdateReferences();
+      EndUpdate();
     }
-    
+
     public Update(force : bool = false) : void
     {
-	    when (force || !Updating)
-	    {
-		    def st = ChangeMan.CheckChange();
-		    UpdateInternal(st)
+      when (force || !Updating)
+      {
+        def st = ChangeMan.CheckChange();
+        if (st.IsEmpty()) () else UpdateInternal(st)
       }	  
     }
-    
-	mutable Updating : bool;
 
-	BeginUpdate() : void
-	{
-		Updating = true;
-	}
+    mutable Updating : bool;
 
-	EndUpdate() : void
-	{
-		Updating = false;
-	}
+    BeginUpdate() : void
+    {
+      Updating = true;
+    }
+
+    EndUpdate() : void
+    {
+      Updating = false;
+    }
 
     UpdateInternal(top : FsmState) : void
     {
-      
+
       // if top is not top state, but some child
       if (Top != null && Top.Num != -1 && top.Num != Top.Num)
       {
@@ -253,6 +256,7 @@ namespace Nemerle.Statechart
             states = st.MakeArrayMap(st, global_id, _.Num);//OrderBy(_.Num).ToArray();
             ChangeMan.StateMapChanged();
             new_states = super_map.Length != states.Length;
+            Update(true);
             // update super state map
             // if new map
             when (new_states)
@@ -260,12 +264,18 @@ namespace Nemerle.Statechart
               // create new super state map
               def supers = States.SelectMany(x => x.sub_states.Select(y => (y.Num, x.Num))).AddBefore((0, -1));
               super_map = supers.MakeArrayMap(global_id);//OrderBy((s, _) => s.Num).Select((_, s) => s.Num);
+              States.Iter(x => UpdateRefsToParent(x, x.ChildNodes));
               //super_map = supers.AddBefore(-1).ToArray();
             }
-            
+            when (new_states || NewReferences)
+            {
+              def st = top.ReduceSingle((x, _) => UpdateStateReference(x)); // update references in tree
+              NewReferences = false;
+              UpdateInternal(st)
+            }
           }
         }
-        
+
       //when (States.Length != namemap.Count()) // if name and statemap not equal
       //{
       //  def map_st = States.MapToList(_.Name);
@@ -277,13 +287,13 @@ namespace Nemerle.Statechart
     }
 
     mutable new_states : bool;
-    
+
     public Super(st : FsmState) : FsmState
     {
       def num = st.Num;
       if (num != -1) Get(super_map[num]) else null
     }
-    
+
     public Count : int
     {
       get
