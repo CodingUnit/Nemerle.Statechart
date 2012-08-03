@@ -27,8 +27,12 @@ namespace Nemerle.Statechart
     {
       if (super_map.Length > num) 
       {
-        def st = states[super_map[num]];
-        ChangeMan.GetChanged(st)
+        def num = super_map[num];
+        if (num == -1) null else
+        {
+          def st = states[num];
+          ChangeMan.GetChanged(st)
+        }
       } else null
     }
 
@@ -36,7 +40,7 @@ namespace Nemerle.Statechart
     {
       when (super_map.Length <= num)
       {
-        Array.Resize(ref super_map, num * 2);
+        Array.Resize(ref super_map, num + 1);
       }
       super_map[num] = st.Num
     }
@@ -219,16 +223,17 @@ namespace Nemerle.Statechart
           } else
           {
             def st = top.AllStates;
+            def len = states.Length;
             states = st.MakeArrayMap(st, global_id, _.Num);//OrderBy(_.Num).ToArray();
             ChangeMan.StateMapChanged();
-            def new_states = super_map.Length != states.Length;
             Update(true);
+            def new_states = len != states.Length; // 
             // update super state map
             // if new map
-            when (new_states)
+            when (super_map.Length < global_id)
             {
               // create new super state map
-              def supers = States.SelectMany(x => x.AllChilds.Select(y => (y, x.Num))).AddBefore((0, -1));
+              def supers = States.SelectMany(x => x.AllChilds.Select(y => (y, x.Num))).AddBefore((TopNum, -1));
               super_map = supers.MakeArrayMap(global_id);
             }
             when (new_states || NewReferences)
