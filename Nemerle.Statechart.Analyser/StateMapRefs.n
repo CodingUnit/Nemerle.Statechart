@@ -30,28 +30,32 @@ namespace Nemerle.Statechart
             | Some(FsmState.InlinedSubMachine as f) => UpdateStateReference(st.Instance(f))
             | _                                     => st
           }
-      | _ => 
+      | _ =>
 
       def st = st.TransitionMap(UpdateTargetReference(_, st));
       st.HistoryMap(UpdateHistoryReference(_, st))
     }
 
+    ResolveTarget(st : FsmState, targ : TransitionTarget, tr : StateTransition) : TransitionTarget
+    {
+      targ.ReduceSingle(true, ResolveTargets(st, st, _, tr, _))
+    }
+
     UpdateTargetReference(tr : StateTransition, st : FsmState) : StateTransition
     {
       def source = if (tr.Source != null) st else null;
-	  
+
       def recursive_resolve(prev)
       {
-        def to = prev.ReduceSingle(true, (x, _) => ResolveTargets(st, st, x, tr));
+        def to = ResolveTarget(st, prev, tr);
         if (to : object != prev) recursive_resolve(to) else to
       }
-      
-      
+
       tr.ChangeSourceNumTo(source, recursive_resolve(tr.To))
     }
 
     public NewReferences : bool {get;set;}
-    
+
     GetNamed(tar : TransitionTarget.Named, tr : StateTransition) : TransitionTarget
     {
       match (tar)
@@ -73,7 +77,7 @@ namespace Nemerle.Statechart
     //  def num = st.Num;
     //  st.AllChilds.Iter(x => super_map[x] = num)
     //}
-    
+
     GetNode[T](name : string, err : int -> void) : option[T] where T : PseudoStateNode
     {
       def pseudo = Analyser.PseudoStates.FilterType();
@@ -85,32 +89,52 @@ namespace Nemerle.Statechart
         | _      => err(2);None()
       }
     }
-    
-    CheckPseudo(st : FsmState, res : FsmState, np : ReferenceNode[PseudoStateNode], targ : TransitionTarget, tran : StateTransition) : ReferenceNode[PseudoStateNode]
+
+    SuperForPseudo(st : FsmState, tran : StateTransition) : FsmState
     {
-      if (np.IsFixed) null else
+      if (tran is StateTransition.Initial) st else st.Super
+    }
+
+    CheckPseudo(st : FsmState, res : FsmState, np : ReferenceNode[PseudoStateNode], targ : TransitionTarget, tran : StateTransition, ch : IEnumerable[TransitionTarget]) : ReferenceNode[PseudoStateNode]
+    {
+      if (np.IsFixed)
+      {
+        if (np.NeedNormalize)
+        {
+          TransitionTarget.CreatePseudoRef(np.Value, true)
+        } else null
+      } else
       match (np.Value)
       {
-        | Fork as j => 
+        | Fork as j =>
         //| EntryPoint
         //| ExitPoint =>
             //ParentFor(p.Num, st);
             //st.Super
-            ParentFor(j.Num, st.Super);
-            ChangeMan.Add(st.Super.Num, x => x.AddPseudo(j));
+            def st = SuperForPseudo(st, tran);
+            ParentFor(j.Num, st);
+            ChangeMan.Add(st.Num, x => x.AddPseudo(j));
             np.Fix(j.Num)
-            
+
         | History as t       => def hist = res.GetHistory(t);
                                 np.Fix(hist.Num)
-                                
-        | Junction(IsUnnamed = true) as j => ParentFor(j.Num, st.Super);
-                                             ChangeMan.Add(st.Super.Num, x => x.AddPseudo(j));
+
+        | Junction(IsUnnamed = true) as j =>
+                                             def st = SuperForPseudo(st, tran);
+                                             ParentFor(j.Num, st);
+                                             def j = j.ChangeTo(ch.First() :> TransitionTarget.JunctionNode); // update childs resolved
+                                             ChangeMan.Add(st.Num, x => x.AddPseudo(j)); // add to super state
                                              np.Fix(j.Num)
-                                             
+
         | Junction(name = n) => match (GetNode(n, _ => Analyser.AddError(FsmError.UnknownTarget(tran, targ))))
                                 {
                                   | Some(null)          => np
-                                  | Some(Junction as j) => np.Fix(j.Num)
+                                  | Some(Junction as j) => // update childs resolved
+                                                           //ChangeMan.Add(st.Super.Num, x => x.AddPseudo(j));
+                                                           np.Fix(j.Num); // fix target
+                                                           //def tar = ResolveTarget(st, j.to, tran) :> TransitionTarget.JunctionNode;
+                                                           //fixed.SetValue(j => (j :> PseudoStateNode.Junction).ChangeTo(tar));
+                                                           //fixed// update junction in state to updated value
                                   | _                   => np
                                 }
         | Join(name = n)     => match (GetNode(n, _ => Analyser.AddError(FsmError.UnknownTarget(tran, targ))))
@@ -118,23 +142,24 @@ namespace Nemerle.Statechart
                                   | Some(null)      => np
                                   | Some(Join as j) => np.Fix(j.Num)
                                   | _               => np
-                                } 
+                                }
         | Terminate as t     => match (GetNode(null, n => when (n == 2) Analyser.AddError(FsmError.UnknownTerminateTransition(tran))))
                                 {
                                   | Some(null)           => def t = t.ChangeNum(GetNextGlobalNum());
-                                                            ParentFor(t.Num, st.Super);
-                                                            ChangeMan.Add(st.Super.Num, x => x.AddPseudo(t));
+                                                            def st = SuperForPseudo(st, tran);
+                                                            ParentFor(t.Num, st);
+                                                            ChangeMan.Add(st.Num, x => x.AddPseudo(t));
                                                             np.Fix(t.Num)
                                   | Some(Terminate as t) => np.Fix(t.Num)//TransitionTarget.PseudoState(this, node)
                                   | _                    => np
                                 }
         | _                  => null
       }
-    }        
+    }
 
-    
+
     // TODO: решить проблему с двойным обходом узлов до разрешения и после
-    ResolveTargets(st : FsmState, res : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
+    ResolveTargets(st : FsmState, res : FsmState, tr : TransitionTarget, tran : StateTransition, ch : IEnumerable[TransitionTarget]) : TransitionTarget
     {
       match (tr)
       {
@@ -142,8 +167,8 @@ namespace Nemerle.Statechart
                                                                   t.ChangeValue(r.Fix(cst.Num))
 
         | Named as t => def t = GetNamed(t, tran);
-                        ResolveTargets(st, st, t, tran)
-        | Qualified(parent = res, target = t) => 
+                        ResolveTargets(st, st, t, tran, ch)
+        | Qualified(parent = res, target = t) =>
             def res = Get(res);
             match (res, t)
             {
@@ -154,10 +179,10 @@ namespace Nemerle.Statechart
 
               | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
                              t
-              | (res, t)  => ResolveTargets(st, res, t, tran)
+              | (res, t)  => ResolveTargets(st, res, t, tran, ch)
             }
-        | PseudoState(p) as t => def np = CheckPseudo(st, res, p, t, tran);
-                                 if (np == null) null else t.ChangeNode(np) 
+        | PseudoState(p) as t => def np = CheckPseudo(st, res, p, t, tran, ch);
+                                 if (np == null) null else t.ChangeNode(np)
 
         | _                   => null
       }

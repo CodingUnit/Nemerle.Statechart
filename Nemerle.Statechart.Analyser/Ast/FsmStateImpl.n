@@ -24,7 +24,7 @@ namespace Nemerle.Statechart
   {
     public override ToString() : string { Name }
 
-    public GetCopy(copy : int) : FsmState
+    public GetCopy(to : FsmState, copy : int) : FsmState
     {
       def get_copy(st, _)
       {
@@ -44,19 +44,20 @@ namespace Nemerle.Statechart
 
       def pseudo_id_map = old_pseudo.MakeArrayMap(new_pseudo, statemap.GlobalId, _.Num);
       def states_id_map = AllStates.MakeArrayMap(st.AllStates, statemap.GlobalId, _.Num);
-
+      states_id_map[Num] = to;
+      
       def retarget_transitions(s, _)
       {
         def check_target(tar)
         {
-          | TransitionTarget.State(st) as t              => t.ChangeValue(t.value.Fix(states_id_map[st.Id].Num))
+          | TransitionTarget.State(st) as t               => t.ChangeValue(t.value.Fix(states_id_map[st.Id].Num))
               //| Qualified(_, State(state = st) as t)                  => t.ChangeStateNum(find_state(st))
               //| Final(st) as t                         => t.ChangeStateNum(find_state(st))          
           // TODO: copy unnamed junctions to states
           //| PseudoState(ReferenceNode(Value = Junction(IsUnnamed = true))) as t => t.ChangeNode(p => p.ChangeNumCopy(statemap.GetNextGlobalNum(), copy))
-          | PseudoState(ReferenceNode(Value = node)) as t                       => t.ChangeNode(t.node.Fix(pseudo_id_map[node.Num].Num)); 
+          | PseudoState(ReferenceNode(Value = node)) as t => t.ChangeNode(TransitionTarget.CreatePseudoRef(states_id_map[node.state.Num], pseudo_id_map[node.Num]))//t.node.Fix(pseudo_id_map[node.Num].Num)) 
                                                                         //t
-          | _                                            => null
+          | _                                             => null
         }
 
         def check_tran(tr)

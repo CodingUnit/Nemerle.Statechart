@@ -33,15 +33,23 @@ namespace Nemerle.Statechart
     {
       def statemap = val.analyser.statemap;
       val.analyser.statemap.NewReferences = true;
-      def node = ReferenceNode(val, -1, val.analyser, statemap.Get, statemap.ChangeMan.Add);
+      def node = ReferenceNode(val, -1, val.analyser, statemap.Get, statemap.ChangeMan.Add, false);
       if (fix) node.Fix(val.Num) else node
+    }
+
+    public static CreatePseudoRef(st : FsmState, val : PseudoStateNode) : ReferenceNode[PseudoStateNode]
+    {
+      def statemap = st.analyser.statemap;
+      val.analyser.statemap.NewReferences = true;
+      def num = st.Num;
+      ReferenceNode(val, val.Num, val.analyser, x => statemap.Get(num).GetPseudo(x), (i, x) => statemap.ChangeMan.Add(st.Num, y => y.ChangePseudo(i, x)), true)
     }
     
     public static CreatePseudoRef(val : PseudoStateNode, fix : bool = false) : ReferenceNode[PseudoStateNode]
     {
       def statemap = val.analyser.statemap;
       val.analyser.statemap.NewReferences = true;
-      def node = ReferenceNode(val, -1, val.analyser, x => statemap.ParentFor(x).GetPseudo(x), (i, x) => statemap.ChangeMan.Add(statemap.ParentFor(i).Num, y => y.ChangePseudo(i, x)));
+      def node = ReferenceNode(val, -1, val.analyser, x => statemap.ParentFor(x).GetPseudo(x), (i, x) => statemap.ChangeMan.Add(statemap.ParentFor(i).Num, y => y.ChangePseudo(i, x)), false);
       if (fix) node.Fix(val.Num) else node
     }
     
@@ -138,7 +146,8 @@ namespace Nemerle.Statechart
     {
       match (this)
       {
-        //| PseudoState(value = Junction as p) as t       => t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
+        | PseudoState(raw_value = Junction) as t => t.node.SetValue(j => (j :> PseudoStateNode.Junction).ChangeTo(child.First() :> JunctionNode));
+                                                    this// t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
         | JunctionNode(next = Some as nt) as t  => def (f, s) = child.TakeTwo();
                                                    t.ChangeNextTo(nt.ChangeValue(s :> JunctionNode), f)
         | JunctionNode as t                     => def f = child.First();
