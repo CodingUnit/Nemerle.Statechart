@@ -197,7 +197,9 @@ namespace Nemerle.Statechart
       //  f.attr_func(x => x.Exists(_ is <[ RecordIgnore ]>) && !x.Exists(_ is <[ NeedChange ]>))
       //}
 
-      def have_version = typebuilder.GetFields().Exists(x => x.Name == "version");
+      def fields = typebuilder.GetFields();
+      def have_version = fields.Exists(x => x.Name == "version");
+      def iter_exist = fields.Exists(x => x.Name == "cached_iter");
       
       def def_constr(cur_type, fields)
       {
@@ -207,7 +209,10 @@ namespace Nemerle.Statechart
         //def pars = fields.Map(x => StrToLower(x.Name));
         //def parms = unseq(parms);
         //def parms = parms.Map(split);
-        def extra = if (have_version) ("version", <[ version + 1 ]>) :: [] else null;
+        def extra = [];
+        def extra = if (have_version) ("version", <[ version + 1 ]>) :: extra else extra;
+        def extra = if (iter_exist) ("cached_iter", <[ null ]>) :: extra else extra;
+        def extra = if (extra is []) null else extra;
         CreateConstrBody(cur_type.Name, fields, parms, extra)
       }
 
@@ -217,6 +222,7 @@ namespace Nemerle.Statechart
         def fields = GetChangeFields(o);//o.GetFields(opt);
         def match_fields = fields.Exclude(x => parms.Exists((y, _) => y == x.Name));
         def match_fields = if (have_version) match_fields.Exclude(x => x.Name == "version"); else match_fields;
+        def match_fields = if (iter_exist) match_fields.Exclude(x => x.Name == "cached_iter"); else match_fields;
               //def fields = fields.Exclude(have_record_ignore);
         def names = match_fields.Map(x => <[ $(x.Name : usesite) = $(StrToLower(x.Name) : usesite) ]>);
         def fields = fields.Map(x => (x.Name, StrToLower(x.Name), StrToLower(x.Name)));
