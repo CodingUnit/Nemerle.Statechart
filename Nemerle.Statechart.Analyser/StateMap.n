@@ -23,8 +23,10 @@ namespace Nemerle.Statechart
 
     mutable super_map : array[int] = array[];
 
-    state_tree : SimpleTree[FsmState];
-    tree       : SimpleTree[FsmNode];
+    [Accessor]
+    mutable state_tree : SimpleTreeNode[FsmState];
+    [Accessor]
+    mutable tree       : SimpleTreeNode[FsmNode];
     
     public ParentFor(num : int) : FsmState
     {
@@ -178,6 +180,24 @@ namespace Nemerle.Statechart
       UpdateInternal(top)
     }
 
+    public Init(state : StateNode.State) : void
+    {
+      def create_node(s, sb : IEnumerable[_] = null) : SimpleTreeNode[_]
+      {
+        def node = SimpleTreeNode(s);
+        when (sb != null) node.Children.AddRange(sb);
+        node 
+      }
+      
+      def top = state.Fold(null, 
+                      (s, sb) => create_node(FsmState.CreateState(s, Analyser), sb),
+                      (s, sr) => create_node(FsmState.ConcurrentRegion(s, Analyser), sr),
+                      (s, _)  => create_node(FsmState.Final(s, Analyser)),
+                      null);
+       
+      state_tree = top
+    }
+    
     public Update(top : FsmState) : void
     {
       BeginUpdate();

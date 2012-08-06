@@ -21,23 +21,19 @@ namespace Nemerle.Statechart
       statemap.GetNextGlobalNum()
     }
     
-    UpdateTransitions(tran : IEnumerable[StateTransition]) : void
-    {
-      def group = tran.GroupBy(x => x.Source.Num);
-      def st = group.Map(x => statemap[x.Key].UpdateTransitions(x));
-      statemap.Update(st)
-    }
+    //UpdateTransitions(tran : IEnumerable[StateTransition]) : void
+    //{
+    //  def group = tran.GroupBy(x => x.Source.Num);
+    //  def st = group.Map(x => statemap[x.Key].UpdateTransitions(x));
+    //  statemap.Update(st)
+    //}
 
     InitStatechart() : void
     {
       def state = Fsm.state.ChangeName(FsmState.TopStateName);
-      def top = state.Fold(null, 
-                           (s, sb) => FsmState.CreateState(s, sb, this),
-                           (s, sr) => FsmState.ConcurrentRegion(s, sr.Map(_ :> FsmState.ConcurrentSubRegion), this),
-                           (s, _)  => FsmState.Final(s, this),
-                           null);
-                           
-      UpdateStateMap(top);
+        
+      statemap.Init(state);
+      //UpdateStateMap(top);
       
       
     }
@@ -70,59 +66,91 @@ namespace Nemerle.Statechart
 
     CheckAddFinalState() : void
     {
-        def check_target(st, t, tran, a)
+        def check_target(st, tran) : void
         {
-          match (t, tran)
+          def to = tran.To;
+          match (to, tran)
           {
             //| (TransitionTarget.Final, _) when (is_top(st)) => 
             //    def term = PseudoStateNode.Terminate(0, statemap.GetNextGlobalNum(), this);
             //    (TransitionTarget.PseudoState(this, term), null :: a)
                 // TODO: check later for need of termination of fsm if we reach final state
             | (TransitionTarget.Final as t, StateTransition.Initial) with super = st
-            | (Final as t, _) with super = st.Super => 
-              match (a.Find((x, _) => x.Num == super.Num))
-              {
-                | Some((_, fin)) => def t = t.ChangeValue(TransitionTarget.CreateStateRef(fin, true));
-                                    (t, a)
-                | _              => def fin = FsmState.Final(this);
-                                    def fin = fin.SetNewId();
-                                    def rf = TransitionTarget.CreateStateRef(fin, true);
-                                    def t = t.ChangeValue(rf);
-                                    (t, (super, fin) :: a)
-              }
+            | (Final as t, _) with super = st.Parent => 
+                match (super.Children.Find(x => x.Value is FsmState.Final))
+                {
+                  | null => def fin = FsmState.Final(this);
+                            def fin = fin.SetNewId();
+                            def node = super.Children.Add(SimpleTreeNode(fin));
+                            t.value.Value = FsmNode.State(node)
+                          
+                  | fin  => t.value.Value = FsmNode.State(fin)
+                }
+             | _ => ()
+              //match (a.Find((x, _) => x.Num == super.Num))
+              //{
+              //  | Some((_, fin)) => def t = t.ChangeValue(TransitionTarget.CreateStateRef(fin, true));
+              //                      (t, a)
+              //  | _              => def fin = FsmState.Final(this);
+              //                      def fin = fin.SetNewId();
+              //                      def rf = TransitionTarget.CreateStateRef(fin, true);
+              //                      def t = t.ChangeValue(rf);
+              //                      (t, (super, fin) :: a)
+              //}
               
               
           }
         }
 
-        def check_final(f, st, sub)
-        {
-          if (st.HaveFinal) st else
-          match (f.Find((x, _) => x.Num == st.Num))
-          {
-            | Some((_, fin)) => st.ChangeSubStates(sub.Append(fin).NToList())
-            | _              => null
-          }
-        }
+        //def check_final(f, st, sub)
+        //{
+        //  if (st.HaveFinal) st else
+        //  match (f.Find((x, _) => x.Num == st.Num))
+        //  {
+        //    | Some((_, fin)) => st.ChangeSubStates(sub.Append(fin).NToList())
+        //    | _              => null
+        //  }
+        //}
 
-        def check_tran(st, (x, (tr, a)))
-        {
-          def (to, fin) = x.To.Reduce(a, final = check_target(st, _, x, _));
-          def tran = x.ChangeTo(to);
-          (tran :: tr, fin)
-        }
+        //def check_tran(st, (x, (tr, a)))
+        //{
+        //  def (to, fin) = x.To.Reduce(a, final = check_target(st, _, x, _));
+        //  def tran = x.ChangeTo(to);
+        //  (tran :: tr, fin)
+        //}
 
-        def check_state(s, _, a)
-        {
-          def (tran, fin) = s.transitions.FoldBack(([], a), check_tran(s, _));
-          def (init, fin) = s.initial.FoldBack(([], fin), check_tran(s, _));
-          def st          = s.ChangeTransitionsInitial(tran, init);
-          (st, fin)
-        }
+        //def check_state(s, _, a)
+        //{
+        //  def (tran, fin) = s.transitions.FoldBack(([], a), check_tran(s, _));
+        //  def (init, fin) = s.initial.FoldBack(([], fin), check_tran(s, _));
+        //  def st          = s.ChangeTransitionsInitial(tran, init);
+        //  (st, fin)
+        //}
 
-        def (top, final) = TopState.ReduceSingle([], check_state);
+        //def (top, final) = TopState.ReduceSingle([], check_state);
+        
+        TransitionMod.Iter(check_target);
+        
         // check to add final state
-        UpdateStateMap(top.ReduceSingle(true, check_final(final, _, _)))
+        //UpdateStateMap(top.ReduceSingle(true, check_final(final, _, _)))
+    }
+    
+    TransitionEnumerate : IEnumerable[StateTransition]
+    {
+      get
+      {
+        def en = statemap.StateTree.GetEnumerable(TreeTraversalType.BreadthFirst, TreeTraversalDirection.TopDown);
+        en.SelectMany(x => x.Value.all_transitions_with_init)
+      }
+    }
+
+    TransitionMod : IEnumerable[SimpleTreeNode[FsmState] * StateTransition]
+    {
+      get
+      {
+        def en = statemap.StateTree.GetEnumerable(TreeTraversalType.BreadthFirst, TreeTraversalDirection.TopDown);
+        en.SelectMany(x => x.Value.all_transitions_with_init.Select(y => (x, y)))
+      }
     }
     
     RenameDuplicates() : void
