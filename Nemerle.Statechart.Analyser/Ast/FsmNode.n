@@ -9,7 +9,7 @@ using System.Linq;
 
 namespace Nemerle.Statechart
 {
-  
+
   /// <summary>
   /// Description of FsmNode.
   /// </summary>
@@ -17,7 +17,7 @@ namespace Nemerle.Statechart
   {
     | State       { node : SimpleTreeNode[FsmState]; }
     | PseudoState { node : PseudoStateNode; }
-    
+
     public StateNode : FsmState
     {
       get
@@ -37,14 +37,54 @@ namespace Nemerle.Statechart
         }
       }
     }
+
+
+    public CompareTo(node : FsmNode) : int
+    {
+      match (this, node)
+      {
+        | (State(a), State(b))             => a.Value.CompareTo(b.Value)
+        | (PseudoState(a), PseudoState(b)) => a.Num - b.Num
+        | (_, _)                           => -1
+      }
+    }
     
+    public static PartOfRegion(this node : SimpleTreeNode[FsmNode]) : option[FsmState.ConcurrentRegion]
+    {
+      node.Parents().FindType()
+    }
     
+    public static PartOfSubRegion(this node : SimpleTreeNode[FsmNode]) : option[FsmState.ConcurrentSubRegion]
+    {
+      node.Parents().FindType()
+    }
+  }
+
+  public class TreeNode
+  {
+    public static Parents[T](this node : SimpleTreeNode[T]) : IEnumerable[T]
+    {
+      def loop(node)
+      {
+        if (node != null) 
+        {
+          yield node.Value;
+          loop(node.Parent)
+        } else ()
+        
+      }
+      
+      loop(node.Parent)
+    }
   }
   
-  public class JunctionNode
+  public variant JunctionNode
   {
-        guard  : GuardNode;
-        action : option[Actions] = None();
+    | Node 
+    | Target { target : FsmNode; }
+
+    guard  : GuardNode;
+    action : option[Actions] = None();
 
   }
 }
