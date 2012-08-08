@@ -9,13 +9,9 @@ namespace System.Collections.Generic
 {
     public enum TreeTraversalType
     {
-        DepthFirst,
+        PreOrder,
+        PostOrder,
         BreadthFirst
     }
 
-    public enum TreeTraversalDirection
-    {
-        TopDown,
-        BottomUp
-    }
 }

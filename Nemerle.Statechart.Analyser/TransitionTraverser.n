@@ -17,7 +17,7 @@ namespace Nemerle.Statechart
   public class TransitionTraverser
   {
     defered    : List[StateTransition] = List();
-    defered_st : List[FsmState]        = List();
+    defered_st : List[SimpleTreeNode[FsmState]]        = List();
 
     analyser : FsmAnalyser;
 
@@ -28,27 +28,27 @@ namespace Nemerle.Statechart
       when (analyser.FsmFlags.Debug) log_file = StreamWriter($"$(analyser.Name)path_log.log", false);
     }
 
-    completed        : List[StateTransition] = List();
+    //completed        : List[StateTransition] = List();
 
     completed_buf    : BitArray;
     
-    completed_states : List[FsmState]  = List();
+    //completed_states : List[FsmState]  = List();
     
-    public Completed : IEnumerable[StateTransition]
-    {
-      get
-      {
-        completed
-      }
-    }
+    //public Completed : IEnumerable[StateTransition]
+    //{
+    //  get
+    //  {
+    //    completed
+    //  }
+    //}
 
-    public CompletedStates : IEnumerable[FsmState]
-    {
-      get
-      {
-        completed_states
-      }
-    }
+    //public CompletedStates : IEnumerable[FsmState]
+    //{
+    //  get
+    //  {
+    //    completed_states
+    //  }
+    //}
 
     public Add(tran : StateTransition) : void
     {
@@ -67,12 +67,12 @@ namespace Nemerle.Statechart
       completed_buf.SetAll(tran, _.Num)
     }
 
-    public Add(st : FsmState) : void
+    public Add(st : SimpleTreeNode[FsmState]) : void
     {
-      when (!completed_buf.Get(st.Num)) 
+      when (!completed_buf.Get(st.Value.Num))
       {
         defered_st.Add(st);
-        completed_buf.Set(st.Num, true)
+        completed_buf.Set(st.Value.Num, true)
       }
       
     }
@@ -90,10 +90,8 @@ namespace Nemerle.Statechart
       def tran_queue  = defered.ToArray();
       defered_st.Clear();
       defered.Clear();
-      def st_res = state_queue.Map(_.TraverseTransitions());
-      completed_states.AddRange(st_res);
-      def trans = tran_queue.Map(_.TraversePath(true));
-      completed.AddRange(trans);
+      state_queue.Iter(x => x.Update(x => x.TraverseTransitions()));
+      tran_queue.Iter(x => x.TraversePath(true).Change());
       // if empty queue
       if (!defered_st.IsEmpty() || !defered.IsEmpty()) Traverse() else
       {

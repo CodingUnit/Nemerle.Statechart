@@ -59,16 +59,6 @@ namespace System.Collections.Generic
             private set { _Children = value; }
         }
 
-        private TreeTraversalDirection _DisposeTraversal = TreeTraversalDirection.BottomUp;
-        /// <summary>
-        /// Specifies the pattern for traversing the Tree for disposing of resources. Default is BottomUp.
-        /// </summary>
-        public TreeTraversalDirection DisposeTraversal
-        {
-            get { return _DisposeTraversal; }
-            set { _DisposeTraversal = value; }
-        }
-
         public ComplexTreeNode()
         {
             Parent = null;
@@ -138,22 +128,12 @@ namespace System.Collections.Generic
             CheckDisposed();
 
             // clean up contained objects (in Value property)
-            if (DisposeTraversal == TreeTraversalDirection.BottomUp)
-            {
-                foreach (ComplexTreeNode<T> node in Children)
-                {
-                    node.Dispose();
-                }
-            }
 
             OnDisposing();
 
-            if (DisposeTraversal == TreeTraversalDirection.TopDown)
+            foreach (ComplexTreeNode<T> node in Children)
             {
-                foreach (ComplexTreeNode<T> node in Children)
-                {
-                    node.Dispose();
-                }
+                node.Dispose();
             }
 
             // TODO: clean up the tree itself

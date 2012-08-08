@@ -4,6 +4,9 @@
 
 using System;
 using System.Text;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace System.Collections.Generic
 {
@@ -61,14 +64,8 @@ namespace System.Collections.Generic
             set { _Value = value; }
         }
 
-        private TreeTraversalDirection _DisposeTraversalDirection = TreeTraversalDirection.BottomUp;
-        public TreeTraversalDirection DisposeTraversalDirection
-        {
-            get { return _DisposeTraversalDirection; }
-            set { _DisposeTraversalDirection = value; }
-        }
+        private TreeTraversalType _DisposeTraversalType = TreeTraversalType.PostOrder;
 
-        private TreeTraversalType _DisposeTraversalType = TreeTraversalType.DepthFirst;
         public TreeTraversalType DisposeTraversalType
         {
             get { return _DisposeTraversalType; }
@@ -127,73 +124,91 @@ namespace System.Collections.Generic
             }
         }
 
-        public IEnumerable<SimpleTreeNode<T>> GetEnumerable(TreeTraversalType TraversalType, TreeTraversalDirection TraversalDirection)
-        {
-            switch (TraversalType)
-            {
-                case TreeTraversalType.DepthFirst: return GetDepthFirstEnumerable(TraversalDirection);
-                case TreeTraversalType.BreadthFirst: return GetBreadthFirstEnumerable(TraversalDirection);
-                default: return null;
-            }
-        }
+        //#if 0 
+        //        public IEnumerable<SimpleTreeNode<T>> GetEnumerable(TreeTraversalType TraversalType, TreeTraversalDirection TraversalDirection)
+        //        {
+        //            switch (TraversalType)
+        //            {
+        //                case TreeTraversalType.DepthFirst: return GetDepthFirstEnumerable(TraversalDirection);
+        //                case TreeTraversalType.BreadthFirst: return GetBreadthFirstEnumerable(TraversalDirection);
+        //                default: return null;
+        //            }
+        //        }
 
-        private IEnumerable<SimpleTreeNode<T>> GetDepthFirstEnumerable(TreeTraversalDirection TraversalDirection)
-        {
-            if (TraversalDirection == TreeTraversalDirection.TopDown)
-                yield return this;
+        //        private IEnumerable<SimpleTreeNode<T>> GetDepthFirstEnumerable(TreeTraversalDirection TraversalDirection)
+        //        {
+        //    //         if (!root) return;  
+        //    //stack<BinaryTree*> s;  
+        //    //Queue<BinaryTree*> output;  
+        //    //s.push(root);  
+        //    //while (!s.empty()) {  
+        //    //    BinaryTree *curr = s.top();  
+        //    //    //Enque Current element in Output queue or just print         
+        //    //    output.enque(curr);  
+        //    //    s.pop();  
+        //    //    if (curr->right)  
+        //    //        s.push(curr->right);  
+        //    //    if (curr->left)  
+        //    //        s.push(curr->left);  
 
-            foreach (SimpleTreeNode<T> child in Children)
-            {
-                var e = child.GetDepthFirstEnumerable(TraversalDirection).GetEnumerator();
-                while (e.MoveNext())
-                {
-                    yield return e.Current;
-                }
-            }
 
-            if (TraversalDirection == TreeTraversalDirection.BottomUp)
-                yield return this;
-        }
+        //            if (TraversalDirection == TreeTraversalDirection.TopDown)
+        //                yield return this;
 
-        // TODO: adjust for traversal direction
-        private IEnumerable<SimpleTreeNode<T>> GetBreadthFirstEnumerable(TreeTraversalDirection TraversalDirection)
-        {
-            if (TraversalDirection == TreeTraversalDirection.BottomUp)
-            {
-                var stack = new Stack<SimpleTreeNode<T>>();
-                foreach (var item in GetBreadthFirstEnumerable(TreeTraversalDirection.TopDown))
-                {
-                    stack.Push(item);
-                }
-                while (stack.Count > 0)
-                {
-                    yield return stack.Pop();
-                }
-                yield break;
-            }
+        //            foreach (SimpleTreeNode<T> child in Children)
+        //            {
+        //                var e = child.GetDepthFirstEnumerable(TraversalDirection).GetEnumerator();
+        //                while (e.MoveNext())
+        //                {
+        //                    yield return e.Current;
+        //                }
+        //            }
 
-            var queue = new Queue<SimpleTreeNode<T>>();
-            queue.Enqueue(this);
-            
-            while (0 < queue.Count)
-            {
-                SimpleTreeNode<T> node = queue.Dequeue();
+        //            if (TraversalDirection == TreeTraversalDirection.BottomUp)
+        //                yield return this;
+        //        }
 
-                foreach (SimpleTreeNode<T> child in node.Children)
-                {
-                    queue.Enqueue(child);
-                }
+        //        // TODO: adjust for traversal direction
+        //        private IEnumerable<SimpleTreeNode<T>> GetBreadthFirstEnumerable(TreeTraversalDirection TraversalDirection)
+        //        {
+        //            if (TraversalDirection == TreeTraversalDirection.BottomUp)
+        //            {
+        //                var stack = new Stack<SimpleTreeNode<T>>();
+        //                foreach (var item in GetBreadthFirstEnumerable(TreeTraversalDirection.TopDown))
+        //                {
+        //                    stack.Push(item);
+        //                }
+        //                while (stack.Count > 0)
+        //                {
+        //                    yield return stack.Pop();
+        //                }
+        //                yield break;
+        //            }
 
-                yield return node;
-            }
-        }
+        //            var queue = new Queue<SimpleTreeNode<T>>();
+        //            queue.Enqueue(this);
+
+        //            while (0 < queue.Count)
+        //            {
+        //                SimpleTreeNode<T> node = queue.Dequeue();
+
+        //                foreach (SimpleTreeNode<T> child in node.Children)
+        //                {
+        //                    queue.Enqueue(child);
+        //                }
+
+        //                yield return node;
+        //            }
+        //        }
+
+        //#endif
 
         public override string ToString()
         {
             string Description = "[" + (Value == null ? "<null>" : Value.ToString()) + "] ";
 
             Description += "Depth=" + Depth.ToString() + ", Children=" + Children.Count.ToString();
-            
+
             if (Root == this)
                 Description += " (Root)";
 
@@ -208,30 +223,98 @@ namespace System.Collections.Generic
             get { return _IsDisposed; }
         }
 
+        public IEnumerable<SimpleTreeNode<T>> GetEnumerable(TreeTraversalType TraversalType)
+        {
+            switch (TraversalType)
+            {
+                case TreeTraversalType.PreOrder: return GetPreOrderEnumerable();
+                case TreeTraversalType.BreadthFirst: return GetBreadthFirstEnumerable();
+                case TreeTraversalType.PostOrder: return GetPostOrderEnumerable();
+            }
+            return null;
+        }
+
+        public IEnumerable<SimpleTreeNode<T>> GetPreOrderEnumerable()
+        {
+            var stack = new Stack<SimpleTreeNode<T>>();
+            stack.Push(this);
+
+
+            while (stack.Count != 0)
+            {
+                var current = stack.Pop();
+                foreach (var c in current.Children)
+                {
+                    stack.Push(c);
+                }
+                yield return current;
+                //stack.Push( current. );
+                //if( current.left != null ) stack.push( current.left );
+                //System.out.print( current.data + " " );
+            }
+        }
+
+        public IEnumerable<SimpleTreeNode<T>> GetPostOrderEnumerable()
+        {
+            var child = new Stack<SimpleTreeNode<T>>();
+            var parent = new Stack<SimpleTreeNode<T>>();
+
+
+            child.Push(this);
+
+            while (child.Count != 0)
+            {
+                var curr = child.Pop();
+                parent.Push(curr);
+                foreach (var s in curr.Children) child.Push(s);
+            }
+            return parent;
+
+        }
+
+        // TODO: adjust for traversal direction
+        private IEnumerable<SimpleTreeNode<T>> GetBreadthFirstEnumerable()
+        {
+            var queue = new Queue<SimpleTreeNode<T>>();
+            queue.Enqueue(this);
+
+            while (queue.Count != 0)
+            {
+                var node = queue.Dequeue();
+                yield return node;
+                foreach (var s in node.Children) queue.Enqueue(s);
+            }
+        }
+
         // TODO: update this to use GetEnumerator once that's working
         public virtual void Dispose()
         {
             CheckDisposed();
 
-            // clean up contained objects (in Value property)
-            if (DisposeTraversalDirection == TreeTraversalDirection.BottomUp)
-            {
-                foreach (SimpleTreeNode<T> node in Children)
-                {
-                    node.Dispose();
-                }
-            }
+
+            //// clean up contained objects (in Value property)
+            //if (DisposeTraversalDirection == TreeTraversalDirection.BottomUp)
+            //{
+            //    foreach (SimpleTreeNode<T> node in Children)
+            //    {
+            //        node.Dispose();
+            //    }
+            //}
 
             OnDisposing();
-
-            if (DisposeTraversalDirection == TreeTraversalDirection.TopDown)
+            var en = GetEnumerable(DisposeTraversalType);
+            foreach (var item in en)
             {
-                foreach (SimpleTreeNode<T> node in Children)
-                {
-                    node.Dispose();
-                }
-            }
+                item.Dispose();
 
+            }
+            //if (DisposeTraversalDirection == TreeTraversalDirection.TopDown)
+            //{
+            //    foreach (SimpleTreeNode<T> node in Children)
+            //    {
+            //        node.Dispose();
+            //    }
+            //}
             _IsDisposed = true;
         }
 

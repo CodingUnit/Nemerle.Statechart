@@ -284,9 +284,10 @@ namespace Nemerle.Statechart
       {
         match (node)
         {
-          | TransitionTarget.PseudoState(ReferenceNode(Value = PseudoStateNode.Junction) as node) as t => def tree = CheckJunction(t);
-                                                                                                          node.SetValue(x => (x :> PseudoStateNode.Junction).ChangeDecisionTree(tree))
-          | _                                                                                          => ()
+          | TransitionTarget.PseudoState(SimpleTreeNode(Value = PseudoState(PseudoStateNode.Junction as j) as n)) as t => def tree = CheckJunction(t);
+                                                                                                                t.node.Value = n.ChangeNode(j.ChangeDecisionTree(tree));
+                                                                                                                //node.SetValue(x => (x :> PseudoStateNode.Junction).ChangeDecisionTree(tree))
+          | _                                                                                                => ()
         }
 
       }
@@ -317,7 +318,7 @@ namespace Nemerle.Statechart
 
       def check_cross_orthogonal(tr)
       {
-        when (is_crossed_orthogonal(tr, tr.Source)) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr));
+        when (is_crossed_orthogonal(tr, tr.Source.Value)) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr));
       }
 
       //def check_tran(st, _)
@@ -356,10 +357,7 @@ namespace Nemerle.Statechart
         traverser = TransitionTraverser(this);
         traverser.Add(TopState.initial);
         traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
-        statemap.Update(traverser.CompletedStates);
-        def tran = traverser.Completed;
         traverser = null;
-        UpdateTransitions(tran);
       }
 
       def update_states()
