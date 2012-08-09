@@ -19,42 +19,22 @@ namespace Nemerle.Statechart
   /// </summary>
   public partial variant DecisionNode
   {
-    public static create_decision_tree(n : PseudoStateNode.Junction) : DecisionNode
+    public static create_decision_tree(node : PseudoStateNode.Junction) : DecisionNode
     {
-      def create_target(n : TransitionTarget)
+      def create_target(n)
       {
-        DecisionNode.Target(n.analyser, [], n, n.analyser.statemap.GetNextGlobalNum())
+        //DecisionNode.Target(n.analyser, [], n, n.analyser.statemap.GetNextGlobalNum())
       }
 
-      def create_junction(n, a)
+      def create_junction_node(n, acc)
       {
-        match (n)
-        {
-          | TransitionTarget.PseudoState(ReferenceNode(Value = PseudoStateNode.Junction(type = t, state = st))) => a.state = st;
-                                                                                                                   a.ChangeType(t)
-          | _                                                                                                   => null
-        }
+          | (JunctionNode.Node(guard = g, action = a), toacc :: nacc :: tail) => 
+              
+            DecisionNode.Condition(node.analyser, g, node.analyser.GetNextNum(), a.ToList(), toacc, Some(nacc)) :: tail
+          | (Target(guard = g, action = a, target = t), n :: tail) => DecisionNode.Target(node.analyser, [], n, node.analyser.GetNextNum())
       }
 
-      def create_junction_node(n, toacc, nacc)
-      {
-        match (n)
-        {
-          | TransitionTarget.JunctionNode(guard = g, action = a) => DecisionNode.Condition(n.analyser, g, n.analyser.statemap.GetNextGlobalNum(), a.ToList(), toacc, nacc)
-        }
-      }
-
-      //n.tree
-      def tree = n.Fold(null, 
-                        create_target,
-                        create_target,
-                        create_junction,
-                        create_target,
-                        null,
-                        null,
-                        create_target,
-                        create_junction_node,
-                       );
+      def tree = node.tree.GetPostOrderEnumerable().FoldLeft([], create_junction_node);
 
       create_states(tree);
       tree

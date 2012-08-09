@@ -22,12 +22,12 @@ namespace Nemerle.Statechart
     MakeIter(iter_childs : IEnumerable[T]) : T;
     SetChildCount(len : int)               : T;
     ChildCount                             : int {get;}
+    GetCode()                       : int;
   }
 
   public interface ITraversable[T] : ITree[T]
   {
     Rebuild(child : IEnumerable[T]) : T;
-    GetCode()                       : int;
     GetChild()                      : IEnumerable[ITraversable[T]];
   }
 
@@ -49,7 +49,7 @@ namespace Nemerle.Statechart
       setted = if (lst.IsMoreThanOne()) BitArray(lst.MapToArray(_ != null)) else null;
     }
 
-    public IsSet(node : ITraversable[T]) : bool
+    public IsSet(node : ITree[T]) : bool
     {
       def code = node.GetCode();
       if (setted != null) setted[code] else true
@@ -168,6 +168,22 @@ namespace Nemerle.Statechart
       obj.CachedIterator ?? Iterator(obj : ITraversable[T])
     }
 
+    public FoldDo[T, TAcc](this obj : SimpleTreeNode[T], init : TAcc, ctx : IIteratorContext[T, TAcc]) : TAcc where T : class, ITree[T]
+    {
+      def fold_func(x : SimpleTreeNode[T], itacc)
+      {
+        def len = x.Children.Count();
+        def (child, itacc) = itacc.PopRev(len);
+        if (ctx.IsSet(x.Value)) 
+        {
+          ctx.Visit(x.Value, child) :: itacc
+        } else itacc
+      }
+
+      def lst = obj.GetEnumerable(TreeTraversalType.PostOrder);
+      lst.FoldLeft([init], fold_func).Head
+    }
+    
     public FoldDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IIteratorContext[T, TAcc]) : TAcc  where T : class, ITraversable[T]
     {
       def fold_func(x, itacc)
@@ -195,6 +211,17 @@ namespace Nemerle.Statechart
       lst.FoldLeft(init, fold_func)
     }
 
+    public FoldDo[T, TAcc](this obj : SimpleTreeNode[T], init : TAcc, ctx : IAccIteratorContext[T, TAcc]) : TAcc  where T : class, ITree[T]
+    {
+      def fold_func(x, a)
+      {
+        if (ctx.IsSet(x.Value)) ctx.Visit(x.Value, a) else a
+      }
+
+      def lst = obj.GetEnumerable(TreeTraversalType.PostOrder);
+      lst.FoldLeft(init, fold_func)
+    }
+    
     public ReduceDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IReduceTwoAccIteratorContext[T, TAcc]) : T * TAcc where T : class, ITraversable[T]
     {
       def manual = ctx.manual_rebuild;

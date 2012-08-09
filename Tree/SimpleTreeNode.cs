@@ -273,7 +273,7 @@ namespace System.Collections.Generic
         }
 
         // TODO: adjust for traversal direction
-        private IEnumerable<SimpleTreeNode<T>> GetBreadthFirstEnumerable()
+        public IEnumerable<SimpleTreeNode<T>> GetBreadthFirstEnumerable()
         {
             var queue = new Queue<SimpleTreeNode<T>>();
             queue.Enqueue(this);
