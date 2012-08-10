@@ -19,15 +19,17 @@ namespace Nemerle.Statechart
   /// Description of FsmStateImpl.
   /// </summary>
   //[RefNode]
-  [Traversable]
   public partial variant FsmState : IdObject
   {
     public override ToString() : string { Name }
 
-    public GetCopy(to : FsmState, copy : int) : FsmState
+    public static GetCopy(this node : SimpleTreeNode[FsmState], to : FsmState, copy : int) : FsmState
     {
-      def get_copy(st, _)
+      def statemap = node.Value.statemap;
+      
+      def get_copy(st)
       {
+        def st = st.Value;
         def num = statemap.GetNextGlobalNum();
         def int_tran = st.internal_tran.Map(_.SetNewId());
         def hist = st.history.Map(_.ChangeNumCopy(statemap.GetNextGlobalNum(), copy));
@@ -37,9 +39,10 @@ namespace Nemerle.Statechart
         st.ChangeNumHistoryPseudoStatesCloneForInitialInternalTranTransitionsCopyNum(num, hist, pseudo, st, init, int_tran, trans, copy)
       }
 
-      def st = ReduceSingle(get_copy);
+      def node = node.Clone();
+      node.Reduce(get_copy);
 
-      def old_pseudo  = AllPseudo;
+      def old_pseudo  = node.Value.AllPseudo;
       def new_pseudo  = st.AllPseudo;
 
       def pseudo_id_map = old_pseudo.MakeArrayMap(new_pseudo, statemap.GlobalId, _.Num);
@@ -494,12 +497,9 @@ namespace Nemerle.Statechart
       }
     }
 
-    public AllPseudo  : IEnumerable[PseudoStateNode]
+    public static AllPseudo(this node : SimpleTreeNode[FsmState])  : IEnumerable[PseudoStateNode]
     {
-      get
-      {
-        AllStates.SelectMany(_.ChildPseudo)
-      }
+        node.AllStates().SelectMany(_.ChildPseudo)
     }
 
     public AllHistory : IEnumerable[PseudoStateNode.History]

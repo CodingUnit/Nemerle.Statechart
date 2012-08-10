@@ -31,23 +31,16 @@ namespace Nemerle.Statechart
       }
     }
     
-    public all_transitions_nested : IEnumerable[StateTransition]
-    {
-      get
-      {
-        Iterator().SelectMany(_.all_transitions_with_init)
-        //all_transitions_with_init + (AllSubStates |>< all_transitions_with_init)
-      }
-    }
 
-    public transitions_nested : IEnumerable[StateTransition]
-    {
-      get
-      {
-        def tran = AllLivedSubStatesNested.SelectMany(_.transitions);
-        transitions.Concat(tran)
-      }
-    }
+
+    //public transitions_nested : IEnumerable[StateTransition]
+    //{
+    //  get
+    //  {
+    //    def tran = AllLivedSubStatesNested.SelectMany(_.transitions);
+    //    transitions.Concat(tran)
+    //  }
+    //}
 
     public completion_transitions : IEnumerable[StateTransition]
     {
@@ -99,25 +92,6 @@ namespace Nemerle.Statechart
       }
     }
     
-    public HaveFinal : bool
-    {
-      get
-      {
-        match (this)
-        {
-          | ConcurrentRegion(sub_regions = r) => r.All(x => x.HaveFinal)
-          | _                                 => sub_states.Exists(_ is Final)
-        }
-      }
-    }
-
-    public FinalSubState : option[FsmState.Final]
-    {
-      get
-      {
-        sub_states.FindType()
-      }
-    }
     
     public grouped_transitions : IEnumerable[string * IEnumerable[StateTransition]]
     {
@@ -151,16 +125,6 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    /// <summary>
-    /// Transitions defined direct from this state
-    /// </summary>
-    public this_transitions : IEnumerable[StateTransition]
-    {
-      get
-      {
-        all_transitions.Where(x  => x.From == this)
-      }
-    }
 
     
     public GetHistory(type : PseudoStateNode.History) : PseudoStateNode.History
@@ -271,49 +235,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    /// <summary>
-    /// All sub states at all nesting levels
-    /// </summary>
-    public AllSubStates : IEnumerable[FsmState]
-    {
-      get
-      {
-        Iterator().ChopLast()
-        //sub_states + (sub_states |>< AllSubStates)
-      }
-    }
-
-    /// <summary>
-    /// All sub states include this at all nesting levels
-    /// </summary>
-    public AllStates : IEnumerable[FsmState]
-    {
-      get
-      {
-         Iterator()
-        //sub_states + (sub_states |>< AllSubStates)
-      }
-    }
-
-    //public AllPseudoStates : list[PseudoStateNode]
-    //{
-    //  get
-    //  {
-    //    pseudo_states + (sub_states |>< AllPseudoStates)
-    //  }
-    //}
-
-    /// <summary>
-    /// All lived sub states
-    /// </summary>
-    public AllLivedSubStates : IEnumerable[FsmState]
-    {
-      get
-      {
-        AllSubStates.Where(_.Lived)
-      }
-    }
-
+ 
   // /// <summary>
     ///// All lived sub states
     ///// </summary>
@@ -330,28 +252,7 @@ namespace Nemerle.Statechart
   //   }
   // }
 
-    /// <summary>
-    /// Direct lived sub states without consider of living nesting states of this substates
-    /// </summary>
-    public LivedSubStates : IEnumerable[FsmState]
-    {
-      get
-      {
-        sub_states.Where(_.Lived)
-      }
-    }
-
-    /// <summary>
-    /// All Lived substates with consider of nesting state life on all nesting levels
-    /// </summary>
-    public AllLivedSubStatesNested : IEnumerable[FsmState]
-    {
-      get
-      {
-        AllSubStates.Where(_.LivedNested)
-        //sub_states.Filter(_.LivedNested) + (sub_states |>< AllLivedSubStatesNested)
-      }
-    }
+    
 
     public Lived : bool
     {
@@ -361,95 +262,9 @@ namespace Nemerle.Statechart
       }
     }
     
-    /// <summary>
-    /// Is it Lived state, consider on nesting lived states
-    /// </summary>
-    public LivedNested : bool
-    {
-      get
-      {
-        Lived || !AllLivedSubStates.IsEmpty()
-      }
-    }
 
-    /// <summary>
-    /// Direct lived substates with consider of nesting state life
-    /// </summary>
-    public LivedSubStatesNested : IEnumerable[FsmState]
-    {
-      get
-      {
-        sub_states.Where(_.LivedNested)
-      }
-    }
 
-    /// <summary>
-    /// Sub states included in the history of this state
-    /// </summary>
-    public SubStatesParticipateInHistory : IEnumerable[FsmState]
-    {
-      get
-      {
-        history.Value.SelectMany(SubStatesParticipateIn)
-      }
-    }
 
-    public SubStatesParticipateIn(hist : PseudoStateNode.History) : IEnumerable[FsmState]
-    {
-      | PseudoStateNode.History(type = HistoryType.Deep)     => AllLivedSubStates
-      | PseudoStateNode.History(type = HistoryType.Shallow)  => LivedSubStatesNested
-      | _                                                    => Enumerable.Empty()
-    }
-
-    ///// <summary>
-    ///// History pseudo-states in which participate this state
-    ///// </summary>
-    public ParticipateInHistory : IEnumerable[PseudoStateNode.History]
-    {
-      get
-      {
-        analyser.HistoryStates.Where(x => x.SubStatesParticipateInHistory.Contains(this))
-      }
-    }
-
-    public SuperStates : IEnumerable[FsmState]
-    {
-      get
-      {
-        SuperStatesCalc
-      }
-    }
-    
-    SuperStatesCalc : IEnumerable[FsmState]
-    {
-      get
-      {
-        def loop(p)
-        {
-          | null  => ()
-          | p     => yield p;
-                     loop(p.Super)
-        }
-
-        loop(Super)
-      }
-    }
-
-    public SuperStatesFromTop : IEnumerable[FsmState]
-    {
-      get
-      {
-        Enumerable.Reverse(SuperStates)
-      }
-    }
-
-    public SuperStatesFromTopInclude : IEnumerable[FsmState]
-    {
-      get
-      {
-        SuperStatesFromTop.Append(this)
-      }
-    }
 
     /// <summary>
     /// Use both types of history in state
@@ -470,10 +285,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    public IsSubStateOf(st : FsmState) : bool
-    {
-      SuperStates.Exists(_ == st)
-    }
 
     public static CreateState(st : StateNode.State, an : FsmAnalyser) : FsmState
     {

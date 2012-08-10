@@ -1,0 +1,188 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of FsmStateFuncs.
+  /// </summary>
+  module FsmStateFuncs
+  {
+
+    /// <summary>
+    /// Is it Lived state, consider on nesting lived states
+    /// </summary>
+    public LivedNested(this node : SimpleTreeNode[FsmState]) : bool
+    {
+      node.Value.Lived || !node.AllLivedSubStates().IsEmpty()
+    }
+
+    /// <summary>
+    /// Direct lived substates with consider of nesting state life
+    /// </summary>
+    public LivedSubStatesNested(this node : SimpleTreeNode[FsmState]) : IEnumerable[FsmState]
+    {
+      node.Children.Where(x => x.LivedNested()).Select(x => x.Value)
+    }
+
+    /// <summary>
+    /// All Lived substates with consider of nesting state life on all nesting levels
+    /// </summary>
+    public AllLivedSubStatesNested(this node : SimpleTreeNode[FsmState]) : IEnumerable[FsmState]
+    {
+      node.GetBreadthFirstEnumerable().Where(_.LivedNested()).Select(_.Value)
+        //sub_states.Filter(_.LivedNested) + (sub_states |>< AllLivedSubStatesNested)
+    }
+
+    /// <summary>
+    /// Direct lived sub states without consider of living nesting states of this substates
+    /// </summary>
+    public LivedSubStates(this node : SimpleTreeNode[FsmState]) : IEnumerable[FsmState]
+    {
+      node.SubStates().Where(_.Lived)
+    }
+
+      /// <summary>
+    /// All sub states at all nesting levels
+    /// </summary>
+    public AllSubStates(this node : SimpleTreeNode[FsmState]) : IEnumerable[FsmState]
+    {
+      node.AllStates().Skip(1)
+        //sub_states + (sub_states |>< AllSubStates)
+    }
+
+    /// <summary>
+    /// All sub states include this at all nesting levels
+    /// </summary>
+    public AllStates(this node : SimpleTreeNode[FsmState]) : IEnumerable[FsmState]
+    {
+      node.GetBreadthFirstEnumerable().Select(_.Value)
+    }
+
+    //public AllPseudoStates : list[PseudoStateNode]
+    //{
+    //  get
+    //  {
+    //    pseudo_states + (sub_states |>< AllPseudoStates)
+    //  }
+    //}
+
+    /// <summary>
+    /// All lived sub states
+    /// </summary>
+    public AllLivedSubStates(this node : SimpleTreeNode[FsmState]) : IEnumerable[FsmState]
+    {
+      node.AllSubStates().Where(_.Lived)
+    }
+
+        /// <summary>
+    /// Sub states included in the history of this state
+    /// </summary>
+    public SubStatesParticipateInHistory(this node : SimpleTreeNode[FsmState]) : IEnumerable[FsmState]
+    {
+      node.Value.history.Value.SelectMany(x => node.SubStatesParticipateIn(x))
+    }
+
+    public SubStatesParticipateIn(this node : SimpleTreeNode[FsmState], hist : PseudoStateNode.History) : IEnumerable[FsmState]
+    {
+      match (hist)
+      {
+        | PseudoStateNode.History(type = HistoryType.Deep)     => node.AllLivedSubStates()
+        | PseudoStateNode.History(type = HistoryType.Shallow)  => node.LivedSubStatesNested()
+        | _                                                    => Enumerable.Empty()
+      }
+    }
+
+    ///// <summary>
+    ///// History pseudo-states in which participate this state
+    ///// </summary>
+    public ParticipateInHistory(this node : SimpleTreeNode[FsmState]) : IEnumerable[PseudoStateNode.History]
+    {
+      node.Value.analyser.HistoryStates.Where(x => x.SubStatesParticipateInHistory.Contains(node.Value))
+    }
+
+    public SuperStates(this node : SimpleTreeNode[FsmState]) : IEnumerable[FsmState]
+    {
+      node.Parents()
+    }
+
+    public SuperStatesFromTop(this node : SimpleTreeNode[FsmState]) : IEnumerable[FsmState]
+    {
+      Enumerable.Reverse(node.SuperStates())
+    }
+
+    public SuperStatesFromTopInclude(this node : SimpleTreeNode[FsmState]) : IEnumerable[FsmState]
+    {
+      node.SuperStatesFromTop().Append(node.Value)
+    }    
+
+    public HaveFinal(this node : SimpleTreeNode[FsmState]) : bool
+    {
+      match (node.Value)
+      {
+        | ConcurrentRegion => node.Children.All(x => x.HaveFinal())
+        | _                => node.SubStates().Exists(_ is FsmState.Final)
+      }
+    }
+
+    public FinalSubState(this node : SimpleTreeNode[FsmState]) : option[FsmState.Final]
+    {
+      node.SubStates().FindType()
+    }
+
+        /// <summary>
+    /// Transitions defined direct from this state
+    /// </summary>
+    public this_transitions(this node : SimpleTreeNode[FsmState]) : IEnumerable[StateTransition]
+    {
+      node.Value.all_transitions.Where(x  => if (x.From.Value is FsmNode.State as st) st.node : object == node else false)
+    }
+
+    //public IsSubStateOf(this node : SimpleTreeNode[FsmState], st : SimpleTreeNode[FsmState]) : bool
+    //{
+    //  node.SuperStates().Exists(_ == st)
+    //}
+
+    public Index(this node : SimpleTreeNode[FsmState]) : int
+    {
+      node.Parent.Children.IndexOf(node)
+    }
+
+    public Super(this node : SimpleTreeNode[FsmState]) : FsmState
+    {
+      node.Parent.Value
+    }
+
+        //[TraverseIgnore] 
+        //[NeedChange(index)] 
+    public ContainedIn(this node : SimpleTreeNode[FsmState]) : FsmState.ConcurrentRegion
+    {
+      node.Super() :> FsmState.ConcurrentRegion
+    }
+
+    public static all_transitions_nested(this node : SimpleTreeNode[FsmState]) : IEnumerable[StateTransition]
+    {
+      node.GetBreadthFirstEnumerable().SelectMany(x => x.Value.all_transitions_with_init)
+    }
+              /// <summary>
+          /// Indicates that maybe external transitions from some points of orthogonal state out of region not only completion
+          /// </summary>
+    public MayTakePlaceForcedTransitions(this node : SimpleTreeNode[FsmState]) : bool 
+    {
+      node.all_transitions_nested().Exists(_.OutOfRegion)
+    }
+
+    public NeedHistorySave(this node : SimpleTreeNode[FsmState]) : bool
+    {
+      !node.ParticipateInHistory().IsEmpty()
+    }
+
+  }
+}
+
