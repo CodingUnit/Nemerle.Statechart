@@ -16,27 +16,27 @@ namespace Nemerle.Statechart
   public variant TransitionDestination
   {
     | Unknown
-    | History {state : PseudoStateNode.History;}
-    | State {state : FsmState;}
+    | History {state : SimpleTreeNode[FsmNode.PseudoState];}
+    | State {state : SimpleTreeNode[FsmState];}
     | NoStateChange
     | Choice 
       {
-        state      : FsmState;
+        state      : SimpleTreeNode[FsmState];
         choice     : IEnumerable[StateTransition];
-        else_state : option[FsmState] = None();
+        else_state : option[SimpleTreeNode[FsmState]] = None();
       }
-    | Terminate {node : PseudoStateNode.Terminate;}
-    | Region {reg : ConcurrentRegion;}
-    | SubRegion {reg : ConcurrentSubRegion;state : TransitionDestination;from : FsmState;}
-    | Fork {reg : ConcurrentRegion;sub_tran : list[StateTransition];}
-    | Join {join : PseudoStateNode.Join;}
-    | Final {state : FsmState;sub_region : ConcurrentSubRegion;region : ConcurrentRegion;completion : IEnumerable[StateTransition];}
+    | Terminate {node : SimpleTreeNode[FsmNode.PseudoState];}
+    | Region {reg : SimpleTreeNode[FsmState];}
+    | SubRegion {reg : SimpleTreeNode[FsmState];state : TransitionDestination;from : SimpleTreeNode[FsmState];}
+    | Fork {reg : SimpleTreeNode[FsmState];sub_tran : list[StateTransition];}
+    | Join {join : SimpleTreeNode[FsmNode.PseudoState];}
+    | Final {state : SimpleTreeNode[FsmState];sub_region : ConcurrentSubRegion;region : ConcurrentRegion;completion : IEnumerable[StateTransition];}
     | ForceStateChange {nested : TransitionDestination;}
-    | HistoryRestore {history : PseudoStateNode.History;}
-    | EventSend {st : FsmState;evt : StateEvent;}
+    | HistoryRestore {history : SimpleTreeNode[FsmNode.PseudoState];}
+    | EventSend {st : SimpleTreeNode[FsmState];evt : StateEvent;}
     | CheckAfter {check : CheckNode;before : TransitionDestination;nested : TransitionDestination;}
     | JoinedTransition {join : PseudoStateNode.Join;transition : StateTransition;}
-    | SubMachine {machine : FsmState.SubMachine;state : string;}
+    | SubMachine {machine : SimpleTreeNode[FsmState];state : string;}
     | JunctionNode {node : DecisionNode;}
     | ChoiceNode {node : DecisionNode;}
     | TransitionExecute {tran : StateTransition;}
@@ -70,22 +70,22 @@ namespace Nemerle.Statechart
     /// <summary>
     /// Concrete State for where transition ends known at compile time
     /// </summary>
-    public ConcreteTo : FsmState
+    public ConcreteTo : SimpleTreeNode[FsmState]
     {
       get
       {
         def check_dest(d)
         {
-          | null => null
+          | null                  => null
           | TransitionDestination.State(st)
           | Fork(st, _)
-          | Region(ConcurrentRegion as st)
-          | Join(Join(state = st))
-          | Final(state = st)
-          | Terminate(PseudoStateNode.Terminate(state = st)) => st
+          | Region(st)
+          | Final(state = st)     => st
+          | Join(j)
+          | Terminate(j)          => j.ParentState()
           | ForceStateChange(st)
           | SubRegion(state = st) => check_dest(st)
-          | _ => null
+          | _                     => null
         }
 
         check_dest(this)
@@ -110,21 +110,21 @@ namespace Nemerle.Statechart
       }
     }
 
-    public ToState : FsmState
+    public ToState : SimpleTreeNode[FsmState]
     {
       get
       {
         match (this)
         {
           | State(st)
-          | History(PseudoStateNode.History(state = st))
-          | Terminate(PseudoStateNode(state = st))
           | Region(st)
           | SubRegion(reg = st)
           | Fork(reg = st)
-          | Join(PseudoStateNode(state = st))
           | Final(state = st)
           | Choice(st, _, _)        => st
+          | History(st)
+          | Terminate(st)
+          | Join(st) => st.ParentState()
           | TransitionExecute(tran) => tran.ToState
           | ForceStateChange(nest)  => nest.ToState
           | _                       => null

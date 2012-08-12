@@ -9,8 +9,11 @@ using System.Linq;
 
 using SCG = System.Collections.Generic;
 
+
 namespace Nemerle.Statechart
 {
+
+  using ListUtils;
 
   /// <summary>
   /// Description of FsmNode.
@@ -20,58 +23,72 @@ namespace Nemerle.Statechart
     | State       { [NeedChange] node : SimpleTreeNode[FsmState]; }
     | PseudoState { [NeedChange] node : PseudoStateNode; }
 
-    public StateNode : FsmState
+    //public Analyser : FsmAnalyser
+    //{
+    //  get
+    //  {
+    //    match (this)
+    //    {
+    //      | State(node)       => node.Value.analyser
+    //      | PseudoState(node) => node.analyser
+    //    }
+    //  }
+    //}
+
+    public StateNode : SimpleTreeNode[FsmState]
     {
       get
       {
         match (this)
         {
-          | State(node) => node.Value
+          | State(node) => node
           | _           => null
         }
       }
-      set
-      {
-        match (this)
-        {
-          | State(node) => node.Value = value
-          | _           => ()
-        }
-      }
     }
 
 
-    public CompareTo(node : FsmNode) : int
-    {
-      match (this, node)
-      {
-        | (State(a), State(b))             => a.Value.CompareTo(b.Value)
-        | (PseudoState(a), PseudoState(b)) => a.Num - b.Num
-        | (_, _)                           => -1
-      }
-    }
+    //public CompareTo(node : FsmNode) : int
+    //{
+    //  match (this, node)
+    //  {
+    //    | (State(a), State(b))             => a.Value.CompareTo(b.Value)
+    //    | (PseudoState(a), PseudoState(b)) => a.Num - b.Num
+    //    | (_, _)                           => -1
+    //  }
+    //}
 
-    public static PartOfRegion(this node : SimpleTreeNode[FsmNode]) : option[FsmState.ConcurrentRegion]
+    public static PartOfRegion(this node : SimpleTreeNode[FsmNode]) : option[FsmState]
     {
       node.Parents().FindType()
     }
 
-    public static PartOfSubRegion(this node : SimpleTreeNode[FsmNode]) : option[FsmState.ConcurrentSubRegion]
+    public static PartOfSubRegion(this node : SimpleTreeNode[FsmNode]) : option[FsmState]
     {
       node.Parents().FindType()
+    }
+
+    public static ParentState(this node : SimpleTreeNode[FsmNode]) : SimpleTreeNode[FsmState]
+    {
+      match (node.Parent)
+      {
+        | null                                      => null
+        | SimpleTreeNode(Value = FsmNode.State(st)) => st
+        | _                                         => null
+      }
     }
 
   }
 
   public class TreeNode
   {
-    public static Parents[T](this node : SimpleTreeNode[T]) : IEnumerable[T]
+    public static Parents[T](this node : SimpleTreeNode[T]) : IEnumerable[SimpleTreeNode[T]]
     {
       def loop(node)
       {
         if (node != null) 
         {
-          yield node.Value;
+          yield node;
           loop(node.Parent)
         } else ()
 
@@ -90,42 +107,101 @@ namespace Nemerle.Statechart
       def folder(n, acc)
       {
         def node = SimpleTreeNode(n.Value);
-        node.Children.AddRange(acc);
+        if (acc != null) node.Children.AddRange(acc); else ();
         node
       }
-      
-      Fold(node, folder)
+
+      Fold(node, null, folder)
     }
-    
-    public static Fold[T, TAcc](this node : SimpleTreeNode[T], folder : SimpleTreeNode[T] * list[TAcc] -> TAcc) : TAcc
+
+    public static Fold[T, TAcc](this node : SimpleTreeNode[T], init : TAcc, folder : SimpleTreeNode[T] * list[TAcc] -> TAcc) : TAcc
     {
       def fold(n, acc)
       {
         def (chacc, tail) = acc.PopRev(n.Children.Count());
         folder(n, chacc) :: tail
       }
-      
-      node.GetPostOrderEnumerable().FoldLeft([], fold).Head
+
+      node.GetPostOrderEnumerable().FoldLeft([init], fold).Head
     }
-    
+
     public static Reduce[T](this node : SimpleTreeNode[T], folder : SimpleTreeNode[T] -> T, type : TreeTraversalType = TreeTraversalType.PostOrder) : void
     {
       def reduce(n)
       {
         n.Value = folder(n)
       }
-      
+
       node.GetEnumerable(type).Iter(reduce)
     }
+
+    public static Unfold[T](this node : SimpleTreeNode[T], func : T -> IEnumerable[T]) : void
+    {
+      def unfold(n)
+      {
+        def childs = func(n.Value);
+        def nodes = childs.Select(SimpleTreeNode);
+        n.Children.AddRange(nodes);
+        nodes
+      }
+
+      def lst = SCG.Queue();
+
+      def loop()
+      {
+        if (lst.IsEmpty()) () else 
+        {
+          def node = lst.Dequeue();
+          def childs = node.GetBreadthFirstEnumerable().SelectMany(unfold);
+          childs.Iter(lst.Enqueue);
+          loop()
+        }
+      }
+
+      lst.Enqueue(node);
+      loop()
+    }
+
   }
 
-  public variant JunctionNode
+  [Record]
+  public variant TreeJunctionNode
   {
     | Node 
-    | Target { target : FsmNode; }
+    | Target { target : TransitionTarget; }
 
     public guard  : GuardNode;
     public action : option[Actions] = None();
+
+
+    public static Create(node : PseudoStateAstNode.Junction) : SimpleTreeNode[TreeJunctionNode]
+    {
+      def nodes = node.node.Map(SimpleTreeNode);
+      def jnode = SimpleTreeNode();
+      jnode.Children.AddRange(nodes);
+
+      def fold(n)
+      {
+        | JunctionNode(to = TargetType.PseudoState(Junction(node = n))) => n
+        | _                                                             => Enumerable.Empty()
+      }
+
+      jnode.Unfold(fold);
+
+      def fold(n, sb)
+      {
+        def node = match (n.Value)
+                    {
+                      | JunctionNode(_, g, a, TargetType.PseudoState(Junction)) => Node(g, a)
+                      | JunctionNode(_, g, a, t)                                => Target(g, a, TransitionTarget.Create(t))
+                    }
+        def node = SimpleTreeNode(node);
+        node.Children.AddRange(sb);
+        node
+      }
+
+      jnode.Fold(null, fold)
+    }
 
   }
 }

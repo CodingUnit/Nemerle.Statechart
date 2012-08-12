@@ -14,20 +14,27 @@ namespace Nemerle.Statechart
 
 //  [RefNode]
   [Record]
-  public variant PseudoStateNode : IdObject
+  public variant PseudoStateNode
   {
     | History 
       {
-        public this(st : FsmState, num : int, hist : StateNode.History)
+        public this(hist : StateNode.History)
         {
-          base(0, num, st.analyser);
+          base(0);
       //history = hist;
       //state = if (hist.state != null) FsmState.State(hist.state, null, analyser, true); else st;
           type = hist.type;
-          default = hist.default |> StateTransition.Default(st, this, _).Create();
+          //default = hist.default.Map(x => StateTransition.Default(an, _))
         }
 
-        
+        public Create(hist : StateNode.History) : SimpleTreeNode[FsmNode]
+        {
+          def h = History(hist);
+          def pnode = FsmNode.PseudoState(h);
+          def node = SimpleTreeNode(pnode);
+          node.Value = pnode.ChangeNode(h.ChangeDefault(hist.default.Map(StateTransition.Default(node, _))));
+          node
+        }
     //public history : StateNode.History;
 
     //public state : FsmState
@@ -67,16 +74,6 @@ namespace Nemerle.Statechart
     //  Used = hist.Used;
     //}
 
-        public static Create(st : FsmState, hist : TwoOption[StateNode.History]) : TwoOption[History]
-        {
-          hist.Map(Create(st, st.statemap.GetNextGlobalNum(), _))
-        }
-
-        public static Create(st : FsmState, num : int, hist : StateNode.History) : History
-        {
-          History(st, num, hist)
-        }
-
     //[Accessor] clone_for : PseudoStateNode.History;
 
     //public static @==(a : PseudoStateNode.History, b : PseudoStateNode.History) : bool
@@ -90,46 +87,25 @@ namespace Nemerle.Statechart
     //}
 
 
-        public BothHistories(st : FsmState) : bool
-        {
-          st.BothHistories
-        }
+        //public BothHistories(st : FsmState) : bool
+        //{
+        //  st.BothHistories
+        //}
 
-        public Name : string
-        {
-          get
-          {
-            def type = match (type)
-                        {
-                          | HistoryType.Deep     => "Deep"
-                          | Shallow              => "Shallow"
-                          | None                 => ""
-                        }
 
-            if (state.history.IsOne) $"$(state)History" else $"$(state)$(type)History"
-          }
-        }
 
-        public SimpleName : string
-        {
-          get
-          {
-            $"$(state)History"
-          }
-        }
+        //public override ToString() : string
+        //{
+        //  Name
+        //}
 
-        public override ToString() : string
-        {
-          Name
-        }
-
-        public SubStatesParticipateInHistory : IEnumerable[FsmState]
-        {
-          get
-          {
-            state.SubStatesParticipateIn(this)
-          }
-        }
+        //public SubStatesParticipateInHistory : IEnumerable[FsmState]
+        //{
+        //  get
+        //  {
+        //    state.SubStatesParticipateIn(this)
+        //  }
+        //}
 
     //public ChangeState(st : FsmState) : void
     //{
@@ -140,13 +116,13 @@ namespace Nemerle.Statechart
     //    st.Updated.SubStatesParticipateIn(this)
     //}
 
-        public Updated : PseudoStateNode.History
-        {
-          get
-          {
-            state.GetHistory(this)
-          }
-        }
+        //public Updated : PseudoStateNode.History
+        //{
+        //  get
+        //  {
+        //    state.GetHistory(this)
+        //  }
+        //}
 
         //public ChangeDefault(tran : StateTransition -> StateTransition) : History
         //{
@@ -162,8 +138,8 @@ namespace Nemerle.Statechart
 
     | Junction
       {
-        [NeedChange] native_name : string;
-        [NeedChange] tree : SimpleTree[JunctionNode];// TransitionTarget.JunctionNode;
+        [NeedChange] name : string;
+        [NeedChange] tree : SimpleTreeNode[TreeJunctionNode];// TransitionTarget.JunctionNode;
         //[TraverseIgnore] parent : Junction;
         type : JunctionType;
         [NeedChange] decisionTree : DecisionNode;
@@ -173,31 +149,28 @@ namespace Nemerle.Statechart
         //  ChangeTo(to.ChangeDecisionTree(tree))
         //}
         
-        IsUnnamed : bool
+        this(n : string, tr : SimpleTreeNode[TreeJunctionNode], type : JunctionType)
         {
-          get
-          {
-            native_name == null
-          }
-        }
-        
-        name : string
-        {
-          get
-          {
-            if (native_name != null) native_name else "Unnamed"
-          }
-        }
-        
-        this(st : FsmState, num : int, n : string, node : TargetType.JunctionNode, type : JunctionType)
-        {
-          def an =st.analyser;
-          base(0, num, an);
-          this.to = TransitionTarget.JunctionNode.Create(st, node);//lst |> JunctionNode(st, tran, _, this);
-          native_name = n;
+          base(0);
+          name = n;
+          tree = tr;
           this.type = type;
         }
 
+        Create(an : FsmAnalyser, node : PseudoStateAstNode.Junction) : SimpleTreeNode[FsmNode]
+        {
+          def name =  match (node) 
+          {
+            | PseudoStateAstNode.Junction(name = null, type = JunctionType.Choice) => def num = an.NextChoiceNum();
+                                                                                      $"UnnamedChoice$num"
+            | Junction(name = null, type = JunctionType.Junction)                  => def num = an.NextJunctionNum();
+                                                                                      $"UnnamedJunction$num"
+            | Junction(name = n)                                                   => n
+          }
+          def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
+          def junc = Junction(name, tree, node.type);
+          SimpleTreeNode(FsmNode.PseudoState(junc))
+        }
         //Nodes : IEnumerable[TransitionTarget.JunctionNode]
         //{
         //  get
@@ -250,7 +223,7 @@ namespace Nemerle.Statechart
         {
           get
           {
-            to.Actions
+            tree.Actions
           }
         }
 
@@ -355,42 +328,18 @@ namespace Nemerle.Statechart
     | EntryPoint
     | ExitPoint
     | Terminate
-      {
-        Name : string
-        {
-          get
-          {
-            $"$(state)Terminate"
-          }
-        }
 
-        public static Create(st : FsmState, an : FsmAnalyser) : Terminate
-        {
-          def node = Terminate(0, an.statemap.GetNextGlobalNum(), an);
-          an.statemap.ParentFor(node.Num, st);
-          node
-        }
-
-        override ToString() : string
-        {
-          Name
-        }
-      }
-
-    public static Create(st : FsmState,  pseudo : PseudoStateAstNode, num : int = -1) : PseudoStateNode
+    public static Create(an : FsmAnalyser, pseudo : PseudoStateAstNode) : SimpleTreeNode[FsmNode]
     {
-      def an = st.analyser;
       match (pseudo)
       {
-        | History(n)                                  => History.Create(st, num, n)
-        | Junction(null, node, t) => def num = if (num == -1) an.NextGlobalNum(); else num;
-                                     Junction(st, num, null, node, t)
-        | Junction(name = n, node = nn, type = tp)   => Junction(st, num, n, nn, tp)
-        | Fork(target = lst)                         => Fork(0, num, an, lst |> TransitionTarget.Create(st, _), [])
-        | Join(name = n, target = t)                 => Join(0, num, an, n, TransitionTarget.Create(st, t), null, null, null)
-        | EntryPoint                                 => EntryPoint(0, num, an)
-        | ExitPoint                                  => ExitPoint(0, num, an)
-        | Terminate                                  => Terminate(0, num, an)
+        | History                                    => History.Create(an, pseudo)
+        | Junction as j                              => Junction.Create(an, j)
+        | Fork(target = lst)                         => SimpleTreeNode(FsmNode.PseudoState(Fork(0, lst.Map(TransitionTarget.Create), [])))
+        | Join(name = n, target = t)                 => SimpleTreeNode(FsmNode.PseudoState(Join(0, n, TransitionTarget.Create(t), null, null, null)))
+        | EntryPoint                                 //EntryPoint(0, num, an)
+        | ExitPoint                                  => null//ExitPoint(0, num, an)
+        | Terminate                                  => SimpleTreeNode(FsmNode.PseudoState(Terminate(0)))
       }
     }
 
@@ -402,14 +351,14 @@ namespace Nemerle.Statechart
       }
     }
 
-    //[NeedChange]
-    public state : FsmState
-    {
-      get
-      {
-        StateMap.ParentFor(Num)
-      }
-    }
+    ////[NeedChange]
+    //public state : FsmState
+    //{
+    //  get
+    //  {
+    //    StateMap.ParentFor(Num)
+    //  }
+    //}
 
     //public ChangeState(st : FsmState) : void
     //{
@@ -419,10 +368,6 @@ namespace Nemerle.Statechart
     [NeedChange]
     public copy : int;
 
-    [NeedChange(copy)]
-    [NeedChange]
-    [Accessor]
-    public num : int;
 
     public NativeName : option[string]
     {
@@ -437,23 +382,23 @@ namespace Nemerle.Statechart
       }
     }
 
-    public static @==(a : PseudoStateNode, b : PseudoStateNode) : bool
-    {
-      | (null, null) => true
-      | (null, _)    
-      | (_, null)    => false
-      | _            => a.Num == b.Num
-    }
+    //public static @==(a : PseudoStateNode, b : PseudoStateNode) : bool
+    //{
+    //  | (null, null) => true
+    //  | (null, _)    
+    //  | (_, null)    => false
+    //  | _            => a.Num == b.Num
+    //}
 
-    public analyser : FsmAnalyser;
+    //public analyser : FsmAnalyser;
 
-    public StateMap : StateMap
-    {
-      get
-      {
-        analyser.statemap
-      }
-    }
+    //public StateMap : StateMap
+    //{
+    //  get
+    //  {
+    //    analyser.statemap
+    //  }
+    //}
 
   }
 

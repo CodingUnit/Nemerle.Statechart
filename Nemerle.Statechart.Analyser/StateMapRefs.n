@@ -62,6 +62,10 @@ namespace Nemerle.Statechart
       {
         | Named(name = n) =>
 
+            match (Analyser.States.Find(x => x.NativeName == n))
+        {
+          | Some(st) => TransitionTarget.State(Analyser, st)
+          | _            =>
             def states = Analyser.PseudoStates.Filter(x => x.NativeName.HasValue);
             match (states.Find(x => x.NativeName.Value == n))
             {
@@ -69,6 +73,8 @@ namespace Nemerle.Statechart
               | _       => Analyser.AddError(FsmError.UnknownNode(tr));
                            tar
             }
+
+        }
       }
     }
 
@@ -90,20 +96,18 @@ namespace Nemerle.Statechart
       }
     }
 
-    SuperForPseudo(st : FsmState, tran : StateTransition) : FsmState
+    SuperForPseudo(st : SimpleTreeNode[FsmState], tran : StateTransition) : SimpleTreeNode[FsmState]
     {
-      if (tran is StateTransition.Initial) st else st.Super
+      if (tran is StateTransition.Initial) st else st.Super()
     }
 
-    CheckPseudo(st : FsmState, res : FsmState, np : ReferenceNode[PseudoStateNode], targ : TransitionTarget, tran : StateTransition, ch : IEnumerable[TransitionTarget]) : ReferenceNode[PseudoStateNode]
+    public ResolveTarget(targ : TransitionTarget) : SimpleTreeNode[FsmNode]
     {
-      if (np.IsFixed)
-      {
-        if (np.NeedNormalize)
-        {
-          TransitionTarget.CreatePseudoRef(np.Value, true)
-        } else null
-      } else
+      
+    }
+    
+    CheckPseudo(st : SimpleTreeNode[FsmState], res : SimpleTreeNode[FsmState], np : SimpleTreeNode[FsmNode.PseudoState], targ : TransitionTarget, tran : StateTransition, ch : IEnumerable[TransitionTarget]) : SimpleTreeNode[FsmNode]
+    {
       match (np.Value)
       {
         | Fork as j =>
@@ -112,6 +116,7 @@ namespace Nemerle.Statechart
             //ParentFor(p.Num, st);
             //st.Super
             def st = SuperForPseudo(st, tran);
+
             ParentFor(j.Num, st);
             ChangeMan.Add(st.Num, x => x.AddPseudo(j));
             np.Fix(j.Num)
@@ -163,11 +168,8 @@ namespace Nemerle.Statechart
     {
       match (tr)
       {
-        | State(state = cst, value = r) as t when (!r.IsFixed) => def cst = cst.Updated;
-                                                                  t.ChangeValue(r.Fix(cst.Num))
-
         | Named as t => def t = GetNamed(t, tran);
-                        ResolveTargets(st, st, t, tran, ch)
+                                ResolveTargets(st, st, t, tran, ch)
         | Qualified(parent = res, target = t) =>
             def res = Get(res);
             match (res, t)

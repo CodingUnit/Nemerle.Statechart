@@ -124,85 +124,6 @@ namespace System.Collections.Generic
             }
         }
 
-        //#if 0 
-        //        public IEnumerable<SimpleTreeNode<T>> GetEnumerable(TreeTraversalType TraversalType, TreeTraversalDirection TraversalDirection)
-        //        {
-        //            switch (TraversalType)
-        //            {
-        //                case TreeTraversalType.DepthFirst: return GetDepthFirstEnumerable(TraversalDirection);
-        //                case TreeTraversalType.BreadthFirst: return GetBreadthFirstEnumerable(TraversalDirection);
-        //                default: return null;
-        //            }
-        //        }
-
-        //        private IEnumerable<SimpleTreeNode<T>> GetDepthFirstEnumerable(TreeTraversalDirection TraversalDirection)
-        //        {
-        //    //         if (!root) return;  
-        //    //stack<BinaryTree*> s;  
-        //    //Queue<BinaryTree*> output;  
-        //    //s.push(root);  
-        //    //while (!s.empty()) {  
-        //    //    BinaryTree *curr = s.top();  
-        //    //    //Enque Current element in Output queue or just print         
-        //    //    output.enque(curr);  
-        //    //    s.pop();  
-        //    //    if (curr->right)  
-        //    //        s.push(curr->right);  
-        //    //    if (curr->left)  
-        //    //        s.push(curr->left);  
-
-
-        //            if (TraversalDirection == TreeTraversalDirection.TopDown)
-        //                yield return this;
-
-        //            foreach (SimpleTreeNode<T> child in Children)
-        //            {
-        //                var e = child.GetDepthFirstEnumerable(TraversalDirection).GetEnumerator();
-        //                while (e.MoveNext())
-        //                {
-        //                    yield return e.Current;
-        //                }
-        //            }
-
-        //            if (TraversalDirection == TreeTraversalDirection.BottomUp)
-        //                yield return this;
-        //        }
-
-        //        // TODO: adjust for traversal direction
-        //        private IEnumerable<SimpleTreeNode<T>> GetBreadthFirstEnumerable(TreeTraversalDirection TraversalDirection)
-        //        {
-        //            if (TraversalDirection == TreeTraversalDirection.BottomUp)
-        //            {
-        //                var stack = new Stack<SimpleTreeNode<T>>();
-        //                foreach (var item in GetBreadthFirstEnumerable(TreeTraversalDirection.TopDown))
-        //                {
-        //                    stack.Push(item);
-        //                }
-        //                while (stack.Count > 0)
-        //                {
-        //                    yield return stack.Pop();
-        //                }
-        //                yield break;
-        //            }
-
-        //            var queue = new Queue<SimpleTreeNode<T>>();
-        //            queue.Enqueue(this);
-
-        //            while (0 < queue.Count)
-        //            {
-        //                SimpleTreeNode<T> node = queue.Dequeue();
-
-        //                foreach (SimpleTreeNode<T> child in node.Children)
-        //                {
-        //                    queue.Enqueue(child);
-        //                }
-
-        //                yield return node;
-        //            }
-        //        }
-
-        //#endif
-
         public override string ToString()
         {
             string Description = "[" + (Value == null ? "<null>" : Value.ToString()) + "] ";
@@ -248,9 +169,6 @@ namespace System.Collections.Generic
                     stack.Push(c);
                 }
                 yield return current;
-                //stack.Push( current. );
-                //if( current.left != null ) stack.push( current.left );
-                //System.out.print( current.data + " " );
             }
         }
 
@@ -258,7 +176,6 @@ namespace System.Collections.Generic
         {
             var child = new Stack<SimpleTreeNode<T>>();
             var parent = new Stack<SimpleTreeNode<T>>();
-
 
             child.Push(this);
 

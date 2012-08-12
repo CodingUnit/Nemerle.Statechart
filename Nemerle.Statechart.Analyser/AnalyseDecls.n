@@ -19,7 +19,7 @@ namespace Nemerle.Statechart
     [NeedChange(Warnings)]
     [NeedChange(Errors)]
     [NeedChange]
-    public statemap : StateMap;
+    public mutable statemap : StateMap;
 
     public FsmFlags : MachineFlags
     {
@@ -29,6 +29,7 @@ namespace Nemerle.Statechart
       }
     }
 
+    
     //[Accessor] mutable states : list[FsmState];
     public Events : IEnumerable[string]
     {
@@ -135,11 +136,11 @@ namespace Nemerle.Statechart
       }
     }
 
-    public HistoryStates : IEnumerable[PseudoStateNode.History]
+    public HistoryStates : IEnumerable[SimpleTreeNode[FsmNode]]
     {
       get
       {
-        States.SelectMany(x => x.history.Value).Where(_.Used)//$[h, x in States, h in x.history.Value, h.Used]//.Filter(x => x.history.HasValue) |>< history.Value
+        statemap.Tree.GetBreadthFirstEnumerable().Where(x => x.Value is FsmNode.PseudoState(PseudoStateNode.History(Used = true)))//$[h, x in States, h in x.history.Value, h.Used]//.Filter(x => x.history.HasValue) |>< history.Value
       }
     }
 
@@ -382,14 +383,6 @@ namespace Nemerle.Statechart
     [NeedChange(transitions, initial_transitions)]
     public mutable internal_transitions : Map[string, StateTransition];
 
-    public States : IEnumerable[FsmState]
-    {
-      get
-      {
-        statemap.States
-      }
-    }
-
     //public PathsFromOut : IEnumerable[StateTransition]
     //{
     //  get
@@ -553,7 +546,6 @@ namespace Nemerle.Statechart
     {
       this.Fsm = fsm;
       Name = name;
-      statemap = StateMap(this);
       StatesId = StateId(this);
     }
 
@@ -680,7 +672,7 @@ namespace Nemerle.Statechart
     //public static StringComparator : string * string -> int = string.Compare(_, _, StringComparison.CurrentCulture);
     //public static StrEq : string * string -> bool = (x, y) => StringComparator(x, y) == 0;
 
-    public TopState : FsmState
+    public TopState : SimpleTreeNode[FsmState]
     {
       get
       {

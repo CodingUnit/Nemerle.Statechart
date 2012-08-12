@@ -14,7 +14,7 @@ namespace Nemerle.Statechart
   /// <summary>
   /// Description of TransitionActions.
   /// </summary>
-  public partial variant StateTransition : IdObject
+  public partial variant StateTransition
   {
 
     public this(an : FsmAnalyser) 
@@ -22,12 +22,12 @@ namespace Nemerle.Statechart
       this.analyser = an
     }
 
-    public this(st : FsmState, tran : StateNode.Transition)
+    public this(st : SimpleTreeNode[FsmNode], tran : StateNode.Transition)
     {
-      def an = st.analyser;
+      def an = st.Value.Analyser;
       this(an);
       //From = st;
-      FromNum = st;
+      From = st;
       node = tran;
       when (tran != null)
       {
@@ -36,18 +36,18 @@ namespace Nemerle.Statechart
       }
       To = if (tran.to != null) TransitionTarget.Create(st, tran.to) else TransitionTarget.Nowhere(analyser);
     }
-    
-    public this(st : FsmState, to : FsmState)
+
+    public this(st : SimpleTreeNode[FsmState], to : SimpleTreeNode[FsmState])
     {
-      this(st, TransitionTarget.State(st.analyser, TransitionTarget.CreateStateRef(to, true)))//TransitionTarget.State(st.analyser, to))
+      this(st.GetFsmNode(), TransitionTarget.State(st.Value.analyser, to))//TransitionTarget.State(st.analyser, to))
     }
 
-    public this(st : FsmState, to : TransitionTarget)
+    public this(st : SimpleTreeNode[FsmNode], to : TransitionTarget)
     {
-      this(st.analyser);
+      this(st.Value.Analyser);
       //From = st;
       To = to;
-      FromNum = st;
+      From = st
     }
 
     public node : StateNode.Transition;
@@ -71,12 +71,12 @@ namespace Nemerle.Statechart
     public num : int;
 
     public From : SimpleTreeNode[FsmNode];
-    
+
     public static Change(this changed : StateTransition) : void
     {
       changed.Source.Update(x => x.UpdateTransition(changed))
     }
-    
+
     [NeedChange]
     public guard : option[GuardNode] = None();
     [NeedChange]
@@ -84,13 +84,13 @@ namespace Nemerle.Statechart
     [NeedChange]
     public To : TransitionTarget;
     [NeedChange]
-    public ActualTo : FsmState;
+    public ActualTo : SimpleTreeNode[FsmState];
     [NeedChange]
     public Path : TransitionPath;
 
     [NeedChange]
     public clones : list[StateTransition] = [];
-    
+
     [NeedChange(ActualTo)]
     [NeedChange]
     public Destination : TransitionDestination;
@@ -223,58 +223,58 @@ namespace Nemerle.Statechart
       }
     }
 
-    public ToState : FsmState
+    public ToState : SimpleTreeNode[FsmState]
     {
       get
       {
         match (To)
         {
-          | TransitionTarget.State(state = st)  => st
-          | _                                   => null
+          | TransitionTarget.State(st)  => st.node
+          | _                           => null
         }
       }
     }
 
-    public ToPseudo : ReferenceNode[PseudoStateNode]
+    public ToPseudo : SimpleTreeNode[FsmNode.PseudoState]
     {
       get
       {
         match (To)
         { 
-        | PseudoState(node) => node
-        | _                 => null
-      }
+          | PseudoState(node) => node
+          | _                 => null
+        }
       }
     }
-    
+
     /// <summary>
     /// Concrete State for where transition ends known at compile time
     /// </summary>
-    public AtLeastStaticTo : FsmState
+    public AtLeastStaticTo : SimpleTreeNode[FsmState]
     {
       get
       {
         match (To)
         {
-          | Final(state = st)
+          | Final(st)
+          | State(st) => st.node
           //| History(PseudoStateNode.History(state = st))
-          | PseudoState(value = PseudoStateNode(state = st))
+          | PseudoState(st) => st.ParentState()
           //| JunctionNode(state = st)
-          | State(state = st) => st
           | _                 => null
         }
 
       }
     }
 
-    public TargetIdObjects : IEnumerable[IdObject]
-    {
-      get
-      {
-        To.IdObjects
-      }
-    }
-    
+    //public TargetIdObjects : IEnumerable[IdObject]
+    //{
+    //  get
+    //  {
+    //    To.IdObjects
+    //  }
+    //}
+
     /// <summary>
     /// Beginning state from which real executes transition
     /// </summary>
@@ -284,7 +284,7 @@ namespace Nemerle.Statechart
     /// Source as a rule is nested state or same as From, if From not have sub states
     /// </remarks>
     public Source : SimpleTreeNode[FsmState];
-    
+
     [NeedChange]
     public Local : bool;
 
@@ -302,16 +302,16 @@ namespace Nemerle.Statechart
     //  {
     //    p.ChangeNode(p => p.ChangeNumCopy(analyser.statemap.GetNextGlobalNum(), copy))
     //  }
-      
+
     //  def to = To.Reduce(pseudo_state = func, junction = (t, _) => func(t));
     //  ChangeTo(to)
     //}
-    
+
     public SetNewId() : StateTransition
     {
       ChangeNum(analyser.statemap.GetNextGlobalNum())
     }
-    
+
     public PathNode : IEnumerable[PathNode]
     {
       get
@@ -395,7 +395,7 @@ namespace Nemerle.Statechart
     }
 
     public analyser : FsmAnalyser;
-    
+
     public Statemap : StateMap
     {
       get
@@ -417,7 +417,7 @@ namespace Nemerle.Statechart
     //public UpdateTargets(old_t : FsmState, new_t : FsmState) : StateTransition
     //{
     //  def old_num = old_t.Num;
-      
+
     //  def check_target(tar)
     //  {
     //    | TransitionTarget.State(st) as t when (st.Num == old_t.Num) => t.ChangeState(new_t)
@@ -462,10 +462,10 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (AtLeastTo, From)
+        match (AtLeastTo.PartOfRegion(), From.PartOfRegion())
         {
-          | (FsmState(PartOfRegion = Some(r)), FsmState(PartOfRegion = Some(reg))) => r == reg
-          | _                                                                      => false
+          | (Some(r), Some(reg)) => r == reg : object
+          | _                    => false
         }
       }
     }
@@ -474,11 +474,11 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (AtLeastTo, From)
+        match (AtLeastTo.PartOfRegion(), From.PartOfRegion())
         {
-          | (FsmState(PartOfRegion = Some(r)), FsmState(PartOfRegion = Some(reg))) => r != reg
-          | (FsmState(PartOfRegion = Some), FsmState(PartOfRegion = None))         => true
-          | _                                                                      => false
+          | (Some(r), Some(reg)) => r != reg : object
+          | (Some, None)         => true
+          | _                    => false
         }
       }
     }    
@@ -486,7 +486,7 @@ namespace Nemerle.Statechart
     /// <summary>
     /// State for which at least transition proceed known at compile time
     /// </summary>
-    public AtLeastTo : FsmState
+    public AtLeastTo : SimpleTreeNode[FsmState]
     {
       get
       {
@@ -494,10 +494,10 @@ namespace Nemerle.Statechart
         {
           | null => match (To)
               {
-                | Final(state = st)
+                | TransitionTarget.Final(st) => st.node
                 //| History(PseudoStateNode.History(state = st))
-                | PseudoState(value = PseudoStateNode(state = st))
-                | State(state = st) => st
+                | PseudoState(node) => node.ParentState()
+                | State(st)         => st.node
                 | _                 => null
               }
           | TransitionDestination.State when ActualTo != null => ActualTo
@@ -505,14 +505,14 @@ namespace Nemerle.Statechart
           | Choice(_, _, Some(st))
           | Choice(st, _, _)
           | Fork(st, _)
-          | History(PseudoStateNode.History(state = st))
-          | Region(ConcurrentRegion as st)
-          | Join(Join(state = st))
-          | Final(state = st)
-          | Terminate(PseudoStateNode.Terminate(state = st)) => st
+          | Region(st)
+          | Final(state = st) => st
           | CheckAfter(before = st)
           | ForceStateChange(st)
           | SubRegion(state = st) => check_dest(st)
+          | Terminate(j)
+          | Join(j)    
+          | History(j) => j.ParentState()
           | _ => null
         }
 
@@ -537,26 +537,26 @@ namespace Nemerle.Statechart
     [NeedChange(omit_guard)]
     [NeedChange]
     public used : bool;
-    
-    public Updated : StateTransition
-    {
-      get
-      {
-        def trans = match (this)
-        {
-          | Internal   => Source.internal_tran
-          | Initial    => Source.initial
-          | Transition => Source.transitions
-          | _          => Source.all_transitions_with_init
-        }
-        match (trans.Find(x => x.Num == Num))
-        {
-          | Some(tr) => tr
-          | _        => null
-        }
-      }
-    }
-    
+
+    //public Updated : StateTransition
+    //{
+    //  get
+    //  {
+    //    def trans = match (this)
+    //                 {
+    //                   | Internal   => Source.internal_tran
+    //                   | Initial    => Source.initial
+    //                   | Transition => Source.transitions
+    //                   | _          => Source.all_transitions_with_init
+    //                 }
+    //    match (trans.Find(x => x.Num == Num))
+    //    {
+    //      | Some(tr) => tr
+    //      | _        => null
+    //    }
+    //  }
+    //}
+
     public Used : bool
     {
       get
@@ -604,11 +604,11 @@ namespace Nemerle.Statechart
       Name
     }
 
-    public FromRegion : FsmState.ConcurrentSubRegion
+    public FromRegion : SimpleTreeNode[FsmState]
     {
       get
       {
-        From.PartOfSubRegion.Value
+        From.PartOfSubRegion()
       }
     }
     /// <summary>

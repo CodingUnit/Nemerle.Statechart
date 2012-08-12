@@ -17,102 +17,133 @@ namespace Nemerle.Statechart
   [Record]
   public partial class StateMap
   {
-    mutable states : array[FsmState] = array[];
+    //mutable states : array[FsmState] = array[];
 
     public Analyser : FsmAnalyser;
 
-    mutable super_map : array[int] = array[];
+    //mutable super_map : array[int] = array[];
 
     [Accessor]
-    mutable state_tree : SimpleTreeNode[FsmState];
+    state_tree : SimpleTreeNode[FsmState];
     [Accessor]
-    mutable tree       : SimpleTreeNode[FsmNode];
+    tree       : SimpleTreeNode[FsmNode];
     
-    public ParentFor(num : int) : FsmState
+    map : NC.Hashtable[SimpleTreeNode[FsmState], SimpleTreeNode[FsmNode]] = NC.Hashtable();
+    
+    public GetNode(node : SimpleTreeNode[FsmState]) : SimpleTreeNode[FsmNode]
     {
-      if (super_map.Length > num) 
-      {
-        def num = super_map[num];
-        if (num == -1) null else
-        {
-          def st = states[num];
-          ChangeMan.GetChanged(st)
-        }
-      } else null
+      map[node]
+    }
+    
+    public Add(node : SimpleTreeNode[FsmState], st : SimpleTreeNode[FsmState]) : SimpleTreeNode[FsmNode]
+    {
+      def tnode = map[node];
+      _ = node.Children.Add(st);
+      tnode.Children.Add(SimpleTreeNode(FsmNode.State(st)))
     }
 
-    public ParentFor(num : int, st : FsmState) : void
+    public Add(node : SimpleTreeNode[FsmState], st : SimpleTreeNode[FsmNode]) : SimpleTreeNode[FsmNode]
     {
-      when (super_map.Length <= num)
+      def tnode = map[node];
+      _ = tnode.Children.Add(st);
+      match (st.Value)
       {
-        Array.Resize(ref super_map, num + 1);
+        | FsmNode.State(state) => _ = node.Children.Add(state)
+        | _                    => ()                          
       }
-      super_map[num] = st.Num
+      tnode
     }
+    
+    //public ParentFor(num : int) : FsmState
+    //{
+    //  if (super_map.Length > num) 
+    //  {
+    //    def num = super_map[num];
+    //    if (num == -1) null else
+    //    {
+    //      def st = states[num];
+    //      ChangeMan.GetChanged(st)
+    //    }
+    //  } else null
+    //}
+
+    //public ParentFor(num : int, st : FsmState) : void
+    //{
+    //  when (super_map.Length <= num)
+    //  {
+    //    Array.Resize(ref super_map, num + 1);
+    //  }
+    //  super_map[num] = st.Num
+    //}
 
 
-    [Accessor]
-    mutable global_id : int;
+    //[Accessor]
+    //mutable global_id : int;
 
-    public GetNextGlobalNum() : int
-    {
-      def num = global_id;
-      global_id++;
-      num
-    }
+    //public GetNextGlobalNum() : int
+    //{
+    //  def num = global_id;
+    //  global_id++;
+    //  num
+    //}
 
-    public States : array[FsmState]
+    public States : IEnumerable[SimpleTreeNode[FsmState]]
     {
       get
       {
-        Update();
-        states.FilterToArray(_ != null)
+        state_tree.AllStates()
       }
     }
 
-    public this(an : FsmAnalyser) { Analyser = an; TopNum = -1; ChangeMan = ChangeManager(an) }
-
-    public Contains(state : FsmState) : bool
-    {
-      states.Length - 1 >= state.Num
+    public this(an : FsmAnalyser, stree : SimpleTreeNode[FsmState], tr : SimpleTreeNode[FsmNode]) 
+    { 
+      state_tree = stree;
+      tree = tr;
+      Analyser = an; 
+      tr.GetBreadthFirstEnumerable().Iter(x => when (x.Value is FsmNode.State(n)) map[n] = x)
     }
+
+    //public Contains(state : FsmState) : bool
+    //{
+    //  states.Length - 1 >= state.Num
+    //}
 
     public static GetFullName(st : list[FsmState]) : string
     {
       string.Join(".", st |> NativeName)
     }
 
-    public Get(state : FsmState) : FsmState
-    {
-      if (state == null) null else
-      {
-        def num = state.Num;
-        def st = if (num == -1) Get(state.NativeName) else Get(num);
-        match (st)
-        {
-          | null => state//throw InvalidOperationException($"state is not correctly mapped $state")
-          | st   => st
-        }
-      }
-    }
+    //public Get(state : FsmState) : FsmState
+    //{
+    //  if (state == null) null else
+    //  {
+    //    def num = state.Num;
+    //    def st = if (num == -1) Get(state.NativeName) else Get(num);
+    //    match (st)
+    //    {
+    //      | null => state//throw InvalidOperationException($"state is not correctly mapped $state")
+    //      | st   => st
+    //    }
+    //  }
+    //}
 
-    public Get(state : list[string]) : FsmState
+    public Get(state : list[string]) : SimpleTreeNode[FsmState]
     {
       def merge_name(n)
       {
         string.Join(".", n)
       }
 
-      def get_loop(st, lst, path)
+      def get_loop(st : list[SimpleTreeNode[_]], lst, path)
       {
         | (st, head :: tail, p) => 
               def path = head :: p;
               match (get_all_state(st, head), tail)
               {
                 | ([], _)    => Analyser.AddError(FsmError.StateNotFound(State(merge_name(path.Rev()), Analyser))); null
-                | ([st], []) => ChangeMan.GetChanged(st)
-                | ([st], _)  => get_loop(st.sub_states, tail, path)
-                | (lst, _)   => Analyser.AddError(FsmError.SeveralState(lst |> State(merge_name((_.NativeName :: p).Rev()), Analyser)));
+                | ([st], []) => st
+                | ([st], _)  => get_loop(st.SubStates().NToList(), tail, path)
+                | (lst, _)   => Analyser.AddError(FsmError.SeveralState(lst.Map(x => State(merge_name((x.Value.NativeName :: p).Rev()), Analyser))));
                                 null
               }
         | _                => null
@@ -121,7 +152,7 @@ namespace Nemerle.Statechart
       get_loop(States.NToList(), state, [])
     }
 
-    get_all_state(map : IEnumerable[FsmState], state : string) : list[FsmState]
+    get_all_state(map : IEnumerable[SimpleTreeNode[FsmState]], state : string) : list[SimpleTreeNode[FsmState]]
     {
       def name = state ?? FsmState.TopStateName;
       def (name, sub_name) = if (name != FsmState.TopStateName) 
@@ -130,57 +161,57 @@ namespace Nemerle.Statechart
                                 if (sub != null) (name.GetSub('['), sub) else (name, null)
                               } else (name, null);
       def name = if (sub_name != null) $"$(name)SubRegion$sub_name" else name;
-      map.Filter(x => x.NativeName == name)
+      map.Filter(x => x.Value.NativeName == name)
     }
 
 
-    public Get(state : string) : FsmState
+    public Get(state : string) : SimpleTreeNode[FsmState]
     {
       def st = state.SplitToList('.');
       Get(st)
     }
 
-    public Get(num : int) : FsmState
-    {
-      if (num != -1) ChangeMan.GetChanged(states[num]) else null
-    }
+    //public Get(num : int) : FsmState
+    //{
+    //  if (num != -1) ChangeMan.GetChanged(states[num]) else null
+    //}
 
-    public Item[index : int] : FsmState
-    {
-      get
-      {
-        Get(index)
-      }
-    }
+    //public Item[index : int] : FsmState
+    //{
+    //  get
+    //  {
+    //    Get(index)
+    //  }
+    //}
 
-    public ChangeMan : ChangeManager;
+    //public ChangeMan : ChangeManager;
 
-    public Update(st : IEnumerable[FsmState], top : FsmState = null) : void
-    {
-      BeginUpdate();
-      UpdateInternal(st, top);
-      EndUpdate();
-    }
+    //public Update(st : IEnumerable[FsmState], top : FsmState = null) : void
+    //{
+    //  BeginUpdate();
+    //  UpdateInternal(st, top);
+    //  EndUpdate();
+    //}
 
-    UpdateInternal(st : IEnumerable[FsmState], top : FsmState = null) : void
-    {
+    //UpdateInternal(st : IEnumerable[FsmState], top : FsmState = null) : void
+    //{
 
-      def check_name(n, _)
-      {
-        match (st.Find(_.StateEquals(n)))
-        {
-          | Some(n) => n
-            // if no new state use old
-          | _       => null
-        }
-      }
+    //  def check_name(n, _)
+    //  {
+    //    match (st.Find(_.StateEquals(n)))
+    //    {
+    //      | Some(n) => n
+    //        // if no new state use old
+    //      | _       => null
+    //    }
+    //  }
 
-      def top = Top ?? top;
-      def top = top.ReduceSingle(check_name); // replace old states with new ones
-      UpdateInternal(top)
-    }
+    //  def top = Top ?? top;
+    //  def top = top.ReduceSingle(check_name); // replace old states with new ones
+    //  UpdateInternal(top)
+    //}
 
-    public Init(state : StateNode.State) : void
+    public static Create(an : FsmAnalyser, state : StateNode.State) : StateMap
     {
       def create_node(s, sb : IEnumerable[_] = null) : SimpleTreeNode[_]
       {
@@ -190,106 +221,119 @@ namespace Nemerle.Statechart
       }
       
       def top = state.Fold(null, 
-                      (s, sb) => create_node(FsmState.CreateState(s, Analyser), sb),
-                      (s, sr) => create_node(FsmState.ConcurrentRegion(s, Analyser), sr),
-                      (s, _)  => create_node(FsmState.Final(s, Analyser)),
+                      (s, sb) => create_node(FsmState.CreateState(s, an), sb),
+                      (s, sr) => create_node(FsmState.ConcurrentRegion(s, an), sr),
+                      (s, _)  => create_node(FsmState.Final(s, an)),
                       null);
-       
-      state_tree = top
+
+      def create_tree(n, sb : list[_])
+      {
+        def node = SimpleTreeNode(FsmNode.State(n));
+        
+        when (sb != null) node.Children.AddRange(sb);
+        def pseudo = n.Value.state.pseudo_states.Select(x => PseudoStateNode.Create(an, x.node));
+        node.Children.AddRange(pseudo);
+        node
+      }
+                      
+      def tree = top.Fold(null, create_tree);
+           
+      
+      StateMap(an, top, tree)
     }
     
-    public Update(top : FsmState) : void
-    {
-      BeginUpdate();
-      UpdateInternal(top);
-      EndUpdate();
-    }
+    //public Update(top : FsmState) : void
+    //{
+    //  BeginUpdate();
+    //  UpdateInternal(top);
+    //  EndUpdate();
+    //}
 
-    public Update(force : bool = false) : void
-    {
-      when (force || Updating == 0)
-      {
-        BeginUpdate();
-        def st = ChangeMan.CheckChange();
-        if (st.IsEmpty()) () else UpdateInternal(st);
-        EndUpdate();
-      }	  
-    }
+    //public Update(force : bool = false) : void
+    //{
+    //  when (force || Updating == 0)
+    //  {
+    //    BeginUpdate();
+    //    def st = ChangeMan.CheckChange();
+    //    if (st.IsEmpty()) () else UpdateInternal(st);
+    //    EndUpdate();
+    //  }	  
+    //}
 
-    mutable Updating : int;
+    //mutable Updating : int;
 
-    BeginUpdate() : void
-    {
-      Updating++;
-    }
+    //BeginUpdate() : void
+    //{
+    //  Updating++;
+    //}
 
-    EndUpdate() : void
-    {
-      Updating--;
-    }
+    //EndUpdate() : void
+    //{
+    //  Updating--;
+    //}
 
-    UpdateInternal(top : FsmState) : void
-    {
+    //UpdateInternal(top : FsmState) : void
+    //{
 
-      // if top is not top state, but some child
-      if (Top != null && Top.Num != -1 && top.Num != Top.Num)
-      {
-        UpdateInternal(TraverseUtils.SingleElement(top))
-      } else
-        when (top : object != Top)
-        {
-          if (TopNum == -1) // if not set number
-          {
-            def st = top.LevelOrderMap(x => x.ChangeNum(GetNextGlobalNum())).ToArray();
-            TopNum = st.First().Num;
-            UpdateInternal(st, top)
-          } else
-          {
-            def st = top.AllStates;
-            def len = states.Length;
-            states = st.MakeArrayMap(st, global_id, _.Num);//OrderBy(_.Num).ToArray();
-            ChangeMan.StateMapChanged();
-            Update(true);
-            def new_states = len != states.Length; // 
-            // update super state map
-            // if new map
-            when (super_map.Length < global_id)
-            {
-              // create new super state map
-              def supers = States.SelectMany(x => x.AllChilds.Select(y => (y, x.Num))).AddBefore((TopNum, -1));
-              super_map = supers.MakeArrayMap(global_id);
-            }
-            when (new_states || NewReferences)
-            {
-              def st = top.ReduceSingle((x, _) => UpdateStateReference(x)); // update references in tree
-              NewReferences = false;
-              UpdateInternal(st)
-            }
-          }
-        }
-    }
+    //  // if top is not top state, but some child
+    //  if (Top != null && Top.Num != -1 && top.Num != Top.Num)
+    //  {
+    //    UpdateInternal(TraverseUtils.SingleElement(top))
+    //  } else
+    //    when (top : object != Top)
+    //    {
+    //      if (TopNum == -1) // if not set number
+    //      {
+    //        def st = top.LevelOrderMap(x => x.ChangeNum(GetNextGlobalNum())).ToArray();
+    //        TopNum = st.First().Num;
+    //        UpdateInternal(st, top)
+    //      } else
+    //      {
+    //        def st = top.AllStates;
+    //        def len = states.Length;
+    //        states = st.MakeArrayMap(st, global_id, _.Num);//OrderBy(_.Num).ToArray();
+    //        ChangeMan.StateMapChanged();
+    //        Update(true);
+    //        def new_states = len != states.Length; // 
+    //        // update super state map
+    //        // if new map
+    //        when (super_map.Length < global_id)
+    //        {
+    //          // create new super state map
+    //          def supers = States.SelectMany(x => x.AllChilds.Select(y => (y, x.Num))).AddBefore((TopNum, -1));
+    //          super_map = supers.MakeArrayMap(global_id);
+    //        }
+    //        when (new_states || NewReferences)
+    //        {
+    //          def st = top.ReduceSingle((x, _) => UpdateStateReference(x)); // update references in tree
+    //          NewReferences = false;
+    //          UpdateInternal(st)
+    //        }
+    //      }
+    //    }
+    //}
 
-    public Super(st : FsmState) : FsmState
-    {
-      def num = st.Num;
-      if (num != -1) ParentFor(num) else null
-    }
+    //public Super(st : FsmState) : FsmState
+    //{
+    //  def num = st.Num;
+    //  if (num != -1) ParentFor(num) else null
+    //}
 
-    public Count : int
+    //public Count : int
+    //{
+    //  get
+    //  {
+    //    states.Length
+    //  }
+    //}
+
+    //public TopNum : int {get; private set;}
+
+    public Top : SimpleTreeNode[FsmState]
     {
       get
       {
-        states.Length
-      }
-    }
-
-    public TopNum : int {get; private set;}
-
-    public Top : FsmState
-    {
-      get
-      {
-        if (Count == 0) null else states[TopNum]
+        state_tree
       }
     }
   }

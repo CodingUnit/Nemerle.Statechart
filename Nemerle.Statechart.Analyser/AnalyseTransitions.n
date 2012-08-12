@@ -20,26 +20,31 @@ namespace Nemerle.Statechart
 
     CheckInitialTransitions() : void
     {
-      def check_auto_initial(st, _)
+      def check_auto_initial(st)
       {
-        match (st)
+        match (st.Value)
         {
           | FsmState.Final 
-          | ConcurrentRegion => st
-          | FsmState(initial = [], sub_states = head :: _) =>
-              if (head is FsmState.Final) st else st.DefineInitial(head)
-          | _ => null
+          | ConcurrentRegion       => ()
+          | FsmState(initial = []) =>
+          
+              match (st.SubStates().First())
+              {
+                | null => ()
+                | head => if (head.Value is FsmState.Final) () else st.DefineInitial(head);
+              }
+              
+          | _                      => ()
         }
       }
 
-      States.Iter(x => check_duplicates(x.initial));  // check duplicates
-      def top = if (FsmFlags.AutoInitial) TopState.ReduceSingle(check_auto_initial) else TopState;
+      States.Iter(x => check_duplicates(x.Value.initial));  // check duplicates
+      when (FsmFlags.AutoInitial) States.Iter(check_auto_initial);
 
-      def top = if (top.initial.IsEmpty()) // if not have initial transition in top state
-                  if (top.transitions.IsEmpty()) // if not have other transitions
-                    check_auto_initial(top, top.sub_states) // initial is first substate
-                  else top; // else initial transition is top state
-                 else top;
+      def top = TopState;
+      when (top.Value.initial.IsEmpty()) // if not have initial transition in top state
+        when (top.Value.transitions.IsEmpty()) // if not have other transitions
+          check_auto_initial(top) // initial is first substate
 
       //def create_path_from_out(st, _)
       //{
@@ -50,7 +55,7 @@ namespace Nemerle.Statechart
 
       //UpdateStateMap(top);
       //def top = top.ReduceSingle(create_path_from_out);
-      UpdateStateMap(top);
+      //UpdateStateMap(top);
     }
 
     is_crossed_orthogonal(tr : StateTransition, st : FsmState) : bool
