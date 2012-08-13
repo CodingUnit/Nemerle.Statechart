@@ -94,11 +94,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    public static ToList(this opt : option[T]) : list[T]
-    {
-      | Some(v)  => [v]
-      | _        => []
-    }
 
     public ToList() : list[T]
     {
@@ -120,6 +115,19 @@ namespace Nemerle.Statechart
       }        
     }
 
+    public static Map[T1](this opt : TwoOption[T1], conv : T1 -> T1) : TwoOption[T1] where T1 : class
+    {
+      match (opt)
+      {
+        | None as t      => t
+        | Two(f, s) as t => def tf = conv(f);
+                            def ts = conv(s);
+                            if (tf : object != f || ts : object != s) TwoOption.Two(tf, ts) else t
+        | One(f) as t    => def tf = conv(f);
+                            if (tf : object != t) TwoOption.One(tf) else t
+      }
+    }
+
     public Value : list[T]
     {
       get
@@ -128,16 +136,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    public static Compare[T1](this a : option[T1], b : option[T1], comp : T1 * T1 -> int) : int
-    {
-      match (a, b)
-      {
-        | (Some(a), Some(b))  => comp(a, b)
-        | (Some, None)        => 1
-        | (None, Some)        => -1
-        | (None, None)        => 0
-      }
-    }
 
     public static FromList(this lst : list[T]) : TwoOption[T]
     {
@@ -158,18 +156,32 @@ namespace Nemerle.Statechart
     }
   }
 
-  public class Opt
+  public module Opt
   {
-    public static Map[T](this opt : TwoOption[T], conv : T -> T) : TwoOption[T] where T : class
+
+    public ToList[T](this opt : option[T]) : list[T]
     {
-      match (opt)
+      | Some(v)  => [v]
+      | _        => []
+    }
+
+    public Compare[T1](this a : option[T1], b : option[T1], comp : T1 * T1 -> int) : int
+    {
+      match (a, b)
       {
-        | None as t      => t
-        | Two(f, s) as t => def tf = conv(f);
-                            def ts = conv(s);
-                            if (tf : object != f || ts : object != s) TwoOption.Two(tf, ts) else t
-        | One(f) as t    => def tf = conv(f);
-                            if (tf : object != t) TwoOption.One(tf) else t
+        | (Some(a), Some(b))  => comp(a, b)
+        | (Some, None)        => 1
+        | (None, Some)        => -1
+        | (None, None)        => 0
+      }
+    }
+
+    public @==[T1](this a : option[T1], b : option[T1]) : bool where T1 : class
+    {
+      match (a, b)
+      {
+        | (Some(a), Some(b))  => a == b : object
+        | _                   => false
       }
     }
 
