@@ -67,20 +67,79 @@ namespace Nemerle.Statechart
 
     CreateSuperStateTransitions() : void
     {
+      def resolve_conflict(trans)
+      {
+        
+      }
+      
+      def check_duplicate_tran(tr)
+      {
+        //def check_begin_and_ends(tr : IEnumerable[_])
+        //{
+        //  def equal(lst, lst2)
+        //  {
+        //    lst.Equals(lst2, _ == _);
+        //  }
+
+        //  when (tr.IsMoreThanOne())
+        //  {
+        //    def acts = tr.Select(x : StateTransition => x.ActionList);
+        //    def res = acts.ElementsEqual(equal);
+        //    when (res) AddError(FsmError.DuplicateTransition(tr));
+        //  }
+        //}
+
+        //def ordinary = tr.Exclude(x => x is Initial || x.IsCompletion);
+        def dups = tr.NToList().Duplicates(FsmStateFuncs.Compare(StateTransition.GuardComparer)); // find duplicates with same guards and same triggers
+        when (!dups.IsEmpty())
+        {
+          AddError(FsmError.DuplicateTransition(dups))
+        }// else
+        //{
+          //def (intern, other) = tr.PartitionLazy(_ is Internal);
+          //def begin_and_end_eq = other.NToList().Group((x, y) => x.From.Value.CompareTo(y.From.Value) - x.To.CompareTo(y.To)).Select(x => x.AsEnumerable());
+          //def begin_and_end_eq = begin_and_end_eq.Where(_.IsMoreThanOne());
+          //def merged = begin_and_end_eq.Append(intern);
+          //merged.Iter(check_begin_and_ends)
+        //}
+      }
+
+      def check_override(tr)
+      {
+        // без гуарда переопределяет на том же уровне с гуардами и без гуардов, если такое возникает то необходимо сигнализировать
+        match (tr.Filter(x => x.Value.Guard.IsNone))
+        {
+          | [] 
+          | [_] => ()
+          | _ => def warn = tr.Map(x => FsmWarning.TransitionOverriden(x, t));
+                 AddWarnings(warn)
+          | _ => ()
+        }
+      }
       def create_trans(st)
       {
-        def parent = st.Parent;
-        when (parent != null)
-        {
-          def trans = if (parent.PartOfSubRegion().HasValue)
-                       {
-                         parent.Value.all_transitions.Exclude(is_crossed_orthogonal(_, st))
-                       } else
-                       {
-                         parent.Value.all_transitions
-                       }
-          st.Update(x => x.DefineTransitions(trans))
-        }
+        
+        def parent_trans = st.ExternalTransitions() + st.SuperStates().SelectMany(x => x.ExternalTransitions()); // get the super states transitions and concatinate with current
+        //def parent_trans = parent_trans.Select(x => (x.Value.FriendlyTriggerName, x)); // get with trigger names
+        def by_trigger   = parent_trans.GroupBy(x => x.Value.FriendlyTriggerName);
+        def conflict     = by_trigger.Where(x => x.IsMoreThanOne());
+        def conflict     = conflict.Select(x => x.OrderByDescending(x => x.Parent.Value.hierarchy_pos));
+        //def conflict     = conflict.OrderBy(x => x.);
+        conflict.Iter(check_duplicate_tran);
+        conflict.Iter(check_override);
+        conflict.Iter(resolve_conflict);
+        
+        //when (parent != null)
+        //{
+        //  def trans = if (parent.PartOfSubRegion().HasValue)
+        //               {
+        //                 parent.Value.all_transitions.Exclude(is_crossed_orthogonal(_, st))
+        //               } else
+        //               {
+        //                 parent.Value.all_transitions
+        //               }
+        //  st.DefineTransitions(trans)
+        //}
         //| FsmState(PartOfSubRegion = Some, sub_states = sub) with trans = st.all_transitions.Exclude(is_crossed_orthogonal(_, st))
 
         //| FsmState(sub_states = sub, all_transitions = trans) => 
@@ -90,7 +149,9 @@ namespace Nemerle.Statechart
 
       }
 
-    States.Iter(create_trans)
+    def (simple, other) = States.PartitionLazy(_.IsSimpleState());
+    simple.Iter(create_trans);
+    other.Iter(_.DeleteTransitions());
   }
 
     CheckCrossTransitions() : void
@@ -137,48 +198,7 @@ namespace Nemerle.Statechart
 
     check_duplicates(tr : IEnumerable[StateTransition]) : void
     {
-      def check_duplicate_tran(tr)
-      {
-        def check_begin_and_ends(tr : IEnumerable[_])
-        {
-          def equal(lst, lst2)
-          {
-            lst.Equals(lst2, _ == _);
-          }
-
-          when (tr.IsMoreThanOne())
-          {
-            def acts = tr.Select(x : StateTransition => x.ActionList);
-            def res = acts.ElementsEqual(equal);
-            when (res) AddError(FsmError.DuplicateTransition(tr));
-          }
-        }
-
-        def ordinary = tr.Exclude(x => x is Initial || x.IsCompletion);
-        def dups = ordinary.NToList().Duplicates(StateTransition.GuardComparer); // find duplicates with same guards and same triggers
-        if (!dups.IsEmpty())
-        {
-          AddError(FsmError.DuplicateTransition(dups))
-        } else
-        {
-          def (intern, other) = tr.PartitionLazy(_ is Internal);
-          def begin_and_end_eq = other.NToList().Group((x, y) => x.From.Value.CompareTo(y.From.Value) - x.To.CompareTo(y.To)).Select(x => x.AsEnumerable());
-          def begin_and_end_eq = begin_and_end_eq.Where(_.IsMoreThanOne());
-          def merged = begin_and_end_eq.Append(intern);
-          merged.Iter(check_begin_and_ends)
-        }
-      }
-
-      def check_override(tr)
-      {
-        match (tr.Find(x => x.Guard.IsNone))
-        {
-          | Some(t) => def tr = tr.Filter(_ != t : object);
-              def warn = tr.Map(x => FsmWarning.TransitionOverriden(x, t));
-              AddWarnings(warn)
-          | _ => ()
-        }
-      }
+      
 
       def group = FsmState.create_transition_group(tr).Values();
       def group = group.Where(_.IsMoreThanOne());
