@@ -43,11 +43,11 @@ namespace Nemerle.Statechart
     | Initial
       {
 
-        public static new Create(st : FsmState, tr : StateNode.Transition) : StateTransition
+        public static new Create(st : SimpleTreeNode[FsmState], tr : StateNode.Transition) : StateTransition
         {
           match (tr)
           {
-            | StateNode.Transition(type = TransitionType.Initial)              => Initial(st, tr).Create()
+            | StateNode.Transition(type = TransitionType.Initial)              => Initial(st, tr)
             | _                                                                => throw InvalidOperationException("invalid transition node")
           }
         }
@@ -68,7 +68,7 @@ namespace Nemerle.Statechart
           }
         }
 
-        this(st : FsmState, evt : StateEvent, tr : StateNode.Transition)
+        this(st : SimpleTreeNode[FsmState], evt : StateEvent, tr : StateNode.Transition)
         {
           base(st, tr);
           trigger = evt;
@@ -83,15 +83,15 @@ namespace Nemerle.Statechart
         //  To = TransitionTarget.State(this, st.analyser, to);
         //}
 
-        this(st : FsmState, trigger : StateEvent, to : TransitionTarget, source : PseudoStateNode)
+        this(st : SimpleTreeNode[FsmState], trigger : StateEvent, to : TransitionTarget, source : PseudoStateNode)
         {
           base(st, to);
           this.trigger = trigger;
           implicit_from = source;
         }
 
-        [NeedChange]
-        public implicit_from : PseudoStateNode;
+        //[NeedChange]
+        //public implicit_from : PseudoStateNode;
         //this(tran : Transition)
         //{
         //  base(tran);
@@ -169,24 +169,29 @@ namespace Nemerle.Statechart
 
       }
 
-    public static Create(st : FsmState, trigger : StateEvent, to : TransitionTarget, source : PseudoStateNode) : StateTransition
+    public static Create(st : NodeValue[FsmState, PseudoStateNode], trigger : StateEvent, to : TransitionTarget) : StateTransition
     {
-      StateTransition.Transition(st, trigger, to, source).Create()
+      StateTransition.Transition(FsmNode.PseudoState(st), trigger, to)
+    }
+      
+    public static Create(st : FsmNode, trigger : StateEvent, to : TransitionTarget) : StateTransition
+    {
+      StateTransition.Transition(st, trigger, to)
     }
 
-    public static Create(st : FsmState, tr : StateNode.Transition) : IEnumerable[StateTransition]
+    public static Create(st : SimpleTreeNode[FsmState], tr : StateNode.Transition) : IEnumerable[StateTransition]
     {
       match (tr)
       {
-        | StateNode.Transition(type = TransitionType.Internal, evt = e)    => e.Map(x => Internal(st, StateEvent(x), tr).Create())
-        | StateNode.Transition(type = TransitionType.Initial)              => TraverseUtils.SingleElement(Initial(st, tr).Create())
-        | StateNode.Transition(type = TransitionType.Transition, evt = e)  => e.Map(x => Transition(st, StateEvent(x), tr).Create())
+        | StateNode.Transition(type = TransitionType.Internal, evt = e)    => e.Map(x => Internal(st, StateEvent(x), tr))
+        | StateNode.Transition(type = TransitionType.Initial)              => TraverseUtils.SingleElement(Initial(st, tr))
+        | StateNode.Transition(type = TransitionType.Transition, evt = e)  => e.Map(x => Transition(st, StateEvent(x), tr))
         | _                                                                => throw InvalidOperationException("invalid transition node")
       }
     }
 
 
-    public static Create(st : FsmState, tr : IEnumerable[StateNode.Transition]) : IEnumerable[StateTransition]
+    public static Create(st : SimpleTreeNode[FsmState], tr : IEnumerable[StateNode.Transition]) : IEnumerable[StateTransition]
     {
       tr.SelectMany(Create(st, _))
     }
@@ -201,10 +206,10 @@ namespace Nemerle.Statechart
     //        $[Transition(st, StateEvent(y), x) : StateTransition, x in tr, y in x.evt].Map(x => x.ChangeNum(st.analyser.GetNewTransitionId(x)))
     //}
 
-    public Create() : StateTransition
-    {
-      SetNewId()
-    }
+    //public Create() : StateTransition
+    //{
+    //  SetNewId()
+    //}
 
     //public static Create(st : FsmState, trigger : StateEvent, to : TransitionTarget, source : PseudoStateNode) : StateTransition
     //{

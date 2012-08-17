@@ -67,11 +67,11 @@ namespace Nemerle.Statechart
 
     CheckAddFinalState() : void
     {
-      def check_target(st, tran) : void
+      def check_target(tran)
       {
-        def to = tran.To;
-
-        def to = match (to, tran)
+       def to = tran.Value.To;
+       def st = tran.Parent;
+       def to = match (to, tran.Value)
                   {
             //| (TransitionTarget.Final, _) when (is_top(st)) => 
             //    def term = PseudoStateNode.Terminate(0, statemap.GetNextGlobalNum(), this);
@@ -87,7 +87,7 @@ namespace Nemerle.Statechart
 
                           | fin  => t.ChangeState(fin)
                         }
-                    | _ => null
+                    | _ => to
               //match (a.Find((x, _) => x.Num == super.Num))
               //{
               //  | Some((_, fin)) => def t = t.ChangeValue(TransitionTarget.CreateStateRef(fin, true));
@@ -101,7 +101,8 @@ namespace Nemerle.Statechart
 
 
                   }
-        tran.ChangeTo(to).Change()
+                  
+        tran.Value = tran.Value.ChangeTo(to)
       }
 
         //def check_final(f, st, sub)
@@ -131,7 +132,7 @@ namespace Nemerle.Statechart
 
         //def (top, final) = TopState.ReduceSingle([], check_state);
 
-      TransitionMod.Iter(check_target);
+      TransitionEnumerate.Iter(check_target);
 
         // check to add final state
         //UpdateStateMap(top.ReduceSingle(true, check_final(final, _, _)))
@@ -145,23 +146,23 @@ namespace Nemerle.Statechart
       }
     }
 
-    TransitionEnumerate : IEnumerable[StateTransition]
+    TransitionEnumerate : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
       get
       {
         def en = statemap.StateTree.GetEnumerable(TreeTraversalType.BreadthFirst);
-        en.SelectMany(x => x.Value.all_transitions_with_init)
+        en.SelectMany(x => x.AllTransitions())
       }
     }
 
-    TransitionMod : IEnumerable[SimpleTreeNode[FsmState] * StateTransition]
-    {
-      get
-      {
-        def en = statemap.StateTree.GetEnumerable(TreeTraversalType.BreadthFirst);
-        en.SelectMany(x => x.Value.all_transitions_with_init.Select(y => (x, y)))
-      }
-    }
+    //TransitionMod : IEnumerable[SimpleTreeNode[FsmState] * StateTransition]
+    //{
+    //  get
+    //  {
+    //    def en = statemap.StateTree.GetEnumerable(TreeTraversalType.BreadthFirst);
+    //    en.SelectMany(x => x.Value.all_transitions_with_init.Select(y => (x, y)))
+    //  }
+    //}
 
     RenameDuplicates() : void
     {
@@ -187,9 +188,9 @@ namespace Nemerle.Statechart
           | TwoOption.Two(n, n2) =>
               match (n.Value, n2.Value)
               {
-                | (FsmNode.PseudoState(PseudoStateNode.History(type = HistoryType.Deep)), FsmNode.PseudoState(PseudoStateNode.History(type = HistoryType.Deep)))
-                | (FsmNode.PseudoState(PseudoStateNode.History(type = HistoryType.Shallow)), FsmNode.PseudoState(PseudoStateNode.History(type = HistoryType.Shallow))) => AddError(FsmError.DuplicateHistory(st.Value, st.History().Value.First().Value))
-                | _                                                                                                                                                    => ()
+                | (PseudoStateNode.History(type = HistoryType.Deep), PseudoStateNode.History(type = HistoryType.Deep))
+                | (PseudoStateNode.History(type = HistoryType.Shallow), PseudoStateNode.History(type = HistoryType.Shallow)) => AddError(FsmError.DuplicateHistory(st.Value, st.History().Value.First()))
+                | _                                                                                                           => ()
               }
           | _ => ()
         }
