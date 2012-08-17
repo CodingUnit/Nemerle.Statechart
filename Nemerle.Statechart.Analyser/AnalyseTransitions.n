@@ -39,7 +39,7 @@ namespace Nemerle.Statechart
         }
       }
 
-      States.Iter(x => check_duplicates(x.InitialTransitions().Select(_.Value)));  // check duplicates
+      //States.Iter(x => check_duplicates(x.InitialTransitions().Select(_.Value)));  // check duplicates
       when (FsmFlags.AutoInitial) States.Iter(check_auto_initial);
 
       def top = TopState;
@@ -65,7 +65,7 @@ namespace Nemerle.Statechart
       | _                                                                                                       => false
     }
 
-    CreateSuperStateTransitions() : void
+    CreateAndCheckSuperStateTransitions() : void
     {
       def resolve_conflict(trans)
       {
@@ -218,50 +218,54 @@ namespace Nemerle.Statechart
     create_join_transitions() : void
     {
 
-      def check_join(j, tr : IEnumerable[_])
+      def check_join(j : NodeValue[FsmState, PseudoStateNode], tr : IEnumerable[NodeValue[FsmState, StateTransition]])
       {
-        match (j)
+        match (j.Value)
         {
-          | PseudoStateNode.Join(state = st, target = t) =>
-
-              if (tr.ElementsEqual((x, y) => x.Trigger == y.Trigger))
+          | PseudoStateNode.Join(target = t) as jn =>
+              def st = j.Parent;
+              
+              if (tr.ElementsEqual((x, y) => x.Value.Trigger == y.Value.Trigger))
               {
-                if (tr.All(x => x.From.PartOfSubRegion().HasValue) &&
-                    tr.ElementsEqual((x, y) => x.From.PartOfRegion().Value == y.From.PartOfRegion().Value))
+                if (tr.All(x => x.Parent.PartOfSubRegion().HasValue) &&
+                    tr.ElementsEqual((x, y) => x.Parent.PartOfRegion().Value == y.Parent.PartOfRegion().Value : object))
                 {
-                  def tran = StateTransition.Create(st, tr.First().Trigger, t, j);
-                  def reg = tr.First().From.PartOfRegion().Value;
-                  def tr = tr.OrderBy(x : StateTransition => x.FromRegion.index);
+                  def tran = StateTransition.Create(st.Value, tr.First().Trigger, t, j.Value);
+                  def reg = tr.First().From.PartOfRegion();
+                  def tr = tr.OrderBy(x => x.Parent.PartOfSubRegion().Value.Index());
                   //j.joined_tran = tr;
                   //j.region = reg;
 
                   //j.transition = tran;
                   /// !!! mutable
-                  tr.Iter(x => x.ToPseudo.SetValue(x => (x :> PseudoStateNode.Join).ChangeRegionJoinedTranTransition(reg, tr, tran)));
+                  //tr.Iter(x => x.ToPseudo.SetValue(x => (x :> PseudoStateNode.Join).ChangeRegionJoinedTranTransition(reg, tr, tran)));
+                  jn.region.Value = reg;
+                  def jn = jn.ChangeJoinedTran(tr);
+                  jn.transition.Value = tran
                 } else 
                 {
                   AddError(FsmError.JoinTransitionMustLeaveRegion(j, tr));
                 }
               } else 
               {
-                AddError(FsmError.JoinTransitionMustHaveSameTrigger(j, tr));
+                AddError(FsmError.JoinTransitionMustHaveSameTrigger(j, tr))
               }
         }
       }
 
-      def get_join(t, lst)
+      def get_join(t : NodeValue[FsmState, StateTransition], lst)
       {
-        match (t)
+        match (t.Value)
         {
-          | StateTransition(To = TransitionTarget.PseudoState(SimpleTreeNode(Value = PseudoState(PseudoStateNode.Join as j)))) => (j, t) :: lst
-          | _                                                                                                                  => lst
+          | StateTransition(To = TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join) as j)) => (j, t) :: lst
+          | _                                                                                                => lst
         }
       }
 
-      def join_tran = States.SelectMany(x => x.all_transitions_with_init.FoldLeft([], get_join));
-      def jtrans = join_tran.GroupBy(x => x[0].name);
-      def jtrans = jtrans.Select(x => (x.First()[0], x.Values()));
-      jtrans.Iter((x, y) => check_join(x, y));
+      def join_tran = States.SelectMany(x => x.AllTransitions().FoldLeft([], get_join));
+      def jtrans = join_tran.GroupBy((x, _) => x);
+      def jtrans = jtrans.Select(x => (x.Key, x.Values()));
+      jtrans.Iter(check_join)
     }
 
     create_fork_transitions() : void
@@ -316,25 +320,25 @@ namespace Nemerle.Statechart
     {
       def check_targets(node)
       {
-        match (node)
+        match (node.Value.To)
         {
-          | TransitionTarget.PseudoState(SimpleTreeNode(Value = PseudoState(PseudoStateNode.Junction as j) as n)) as t => def tree = CheckJunction(j);
-                                                                                                                          t.node.Value = n.ChangeNode(j.ChangeDecisionTree(tree));
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction as j) as n) => def tree = CheckJunction(j);
+                                                                                                   n.Value = j.ChangeDecisionTree(tree);
                                                                                                                 //node.SetValue(x => (x :> PseudoStateNode.Junction).ChangeDecisionTree(tree))
-          | _                                                                                                => ()
+          | _                                                                                   => ()
         }
 
       }
 
       def check_tran(st)
       {
-        st.all_transitions_with_init.Iter(x => check_targets(x.To))
+        st.AllTransitions().Iter(x => check_targets(x))
       }
 
       States.Iter(check_tran);
       create_join_transitions(); // creating join transitions
       create_fork_transitions(); // creating fork transitions
-      CreateSuperStateTransitions(); // create parent transitions
+      CreateAndCheckSuperStateTransitions(); // create parent transitions
       //CheckDuplicates(); // check duplicates
       //CheckCrossTransitions(); // look for cross transitions
     }
