@@ -63,8 +63,8 @@ namespace Nemerle.Statechart
     {
       match (tr.Value, st)
       {
-        | (StateTransition(To = TransitionTarget.State(state = n)), _) when n.PartOfRegion() == st.PartOfRegion() => n.PartOfSubRegion() != st.PartOfSubRegion() : object
-        | _                                                                                                       => false
+        | (StateTransition(To = TransitionTarget.State(state = n)), _) when n.PartOfRegion() == st.PartOfRegion() : object => n.PartOfSubRegion() != st.PartOfSubRegion() : object
+        | _                                                                                                                => false
       }
     }
 
@@ -274,7 +274,7 @@ namespace Nemerle.Statechart
 
     create_fork_transitions() : void
     {
-      def check_fork(tr : NodeValue[FsmState, StateTransition], f : NodeValue[FsmState, PseudoStateNode])
+      def check_fork(f : NodeValue[FsmState, PseudoStateNode])
       {
         match (f.Value)
         {
@@ -303,25 +303,19 @@ namespace Nemerle.Statechart
               {
                 AddError(FsmError.ForkMustGoToRegion(f))
               }
+
+          | _ => ()
         }
       }
 
-      def get_fork(t, lst)
-      {
-        match (t.Value)
-        {
-          | StateTransition(To = TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Fork) as f)) => (t, f) :: lst
-          | _                                                                                                => lst
-        }
-      }
-
-      def tran = States.SelectMany(x => x.AllTransitions().FoldLeft([], get_fork));
-      tran.Iter(check_fork);
+      def tran = States.SelectMany(x => x.AllTransitions().GetPseudo(_ is PseudoStateNode.Fork));
+      tran.Iter(check_fork)
       //statemap.Update();
     }
-  /// <summary>
-  /// Creating Transitions
-  /// </summary>
+
+    /// <summary>
+    /// Creating Transitions
+    /// </summary>
     CreateTransitions() : void
     {
       def check_targets(node)
@@ -380,18 +374,20 @@ namespace Nemerle.Statechart
       //UpdateStateMap(TopState.ReduceSingle(check_tran))
     }
 
-    RenameTransition(tran : IEnumerable[NodeValue[FsmState, StateTransition]]) : IEnumerable[string * NodeValue[FsmState, StateTransition]]
+    RenameTransition(tran : IEnumerable[NodeValue[FsmState, StateTransition]]) : void
     {
-      def (dups, tran) = tran.DuplicatesPartition(x => x.Value.Name);
-      dups.Iter(x => x.Value = x.Value.ChangeNeedGuardedName(true));
-      def dups = dups.Map(x => (x.Value.GuardedName, x));
-      def tran = tran.Map(x => (x.Value.Name, x));
-      def tran = tran.Concat(dups);
-      def (dups, tran) = tran.DuplicatesPartition(x => x[0]);
-      def dups = dups.GroupBy(x => x[0]);
-      def err = dups.Map(x => FsmError.DuplicateTransition(x.Values()));
+      def dups = tran.NToList().Duplicates((x, y) => x.Value.Name.CompareTo(y.Value.Name));
+      dups.Iter(x => x.Update(x => x.ChangeNeedGuardedName(true)));
+      def dups = tran.DuplicatesGroup(x => x.Value.Name);
+      dups.Iter(x => x.Iter(x => Used[x] = false));
+      //def dups = tran.Duplicates((x, y) => x.Value.Name.CompareTo(y.Value.Name));
+      //def dups = dups.Map(x => (x.Value.GuardedName, x));
+      //def tran = tran.Map(x => (x.Value.Name, x));
+      //def tran = tran.Concat(dups);
+      //def (dups, tran) = tran.DuplicatesPartition(x => x[0]);
+      //def dups = dups.GroupBy(x => x[0]);
+      def err = dups.Map(FsmError.DuplicateTransition);
       AddErrors(err);
-      tran
     }
 
     CreateTransitionPaths() : void
@@ -404,73 +400,76 @@ namespace Nemerle.Statechart
         traverser = null;
       }
 
-      def update_states()
-      {
-        def dest = trans_paths.SelectMany(x => x.Paths.Map((_, y) => y.Transition.Destination));
-        //def tran = dest.SelectMany(_.Transition);
-        //UpdateTransitions(tran);
-        def hist = dest.OfType.[TransitionDestination.History]().Select(_.state);
-        def hist = hist.RemoveDuplicatesSort(_.Name).Select(_.ChangeUsed(true));
+      //def update_states()
+      //{
+      //  //def dest = trans_paths.SelectMany(x => x.Paths.Map((_, y) => y.Transition.Destination));
+      //  //def tran = dest.SelectMany(_.Transition);
+      //  //UpdateTransitions(tran);
+      //  //def hist = dest.OfType.[TransitionDestination.History]().Select(_.state);
+      //  //def hist = hist.RemoveDuplicatesSort(_.Name).Select(_.ChangeUsed(true));
 
-        def update_hist(s, _)
-        {
-          def hist = hist.Where(x => x.Num == s.Num);
-          hist.FoldLeft(s, (x, a) => a.UpdateHistory(x))
-        }
+      //  //def update_hist(s, _)
+      //  //{
+      //  //  def hist = hist.Where(x => x.Num == s.Num);
+      //  //  hist.FoldLeft(s, (x, a) => a.UpdateHistory(x))
+      //  //}
 
-        //statemap.Update(st);
-        def top = TopState.ReduceSingle(update_hist);
-        UpdateStateMap(top)
-      }
+      //  ////statemap.Update(st);
+      //  //def top = TopState.ReduceSingle(update_hist);
+      //  //UpdateStateMap(top)
+      //}
 
       traverse(); // traverse paths
-      update_states();
+      //update_states();
       CreateTransitionsWithPaths()
     }
 
     CreateTransitionsWithPaths() : void
     {
-      def determine_used()
-      {
-        def empty = empty_states.Select(FsmWarning.StateNotUsed); // warning about all without substates and not lived that is not used
-        def not_used = not_used_transitions.Select(FsmWarning.TransitionNotUsed);
-        AddWarnings(empty);
-        AddWarnings(not_used);
-      }
-
-      determine_used(); // determine used elements
+      def empty = empty_states.Select(FsmWarning.StateNotUsed); // warning about all without substates and not lived that is not used
+      def not_used = not_used_transitions.Select(FsmWarning.TransitionNotUsed);
+      AddWarnings(empty);
+      AddWarnings(not_used); // determine used elements
 
       //def (used_hstates, not_used) = history_states.Partition(_.Used);
       //history_states = used_hstates;
 
-      def trans = RenameTransition(used_transitions);
-      def trans = Map(trans);
-      def int_tran =  States.SelectMany(_.internal_tran);
-      def int_tran =  RenameTransition(int_tran);
-      def int_tran = Map(int_tran);
-      def init = used_states_initial_tran;
-      def init = RenameTransition(init);
-      def init = Map(init);
-      internal_transitions = int_tran;
-      transitions = trans;
-      initial_transitions = init;
+      RenameTransition(used_transitions);
+      //def int_tran =  States.SelectMany(_.internal_tran);
+      //def int_tran =  RenameTransition(int_tran);
+      //def int_tran = Map(int_tran);
+      //def init = used_states_initial_tran;
+      //def init = RenameTransition(init);
+      //def init = Map(init);
+      //internal_transitions = int_tran;
+      //transitions = trans;
+      //initial_transitions = init;
       def hist = not_used_history.Select(FsmWarning.HistoryNotUsed);
       AddWarnings(hist)
     }
 
     CreateHistoryPaths() : void
     {
-      def create_hist_path(st, _)
+      def create_hist_path(h)
       {
-        def shist = st.SuperStates.Where(x => x.ParticipateInHistory.Exists(x => x.type == HistoryType.Shallow));
-        def spaths = shist.SelectMany(_.HistoryPaths);
-        def paths = st.ParticipateInHistory.Select(x => (x.state.name, HistoryPath(x.state, st, x).CreatePath()));
-        def paths = paths.Concat(spaths).NToList();
-        st.ChangeHistoryPaths(paths)
+        match (h.Value)
+        {
+          | PseudoStateNode.History() => def sub = h.SubStatesParticipateIn();
+                                         def parent = h.Parent;
+                                         sub.Iter(x => HistoryPaths[x] = HistoryPath(parent, x, h).CreatePath());
+          | _ => ()
+        }
+        //def shist = st.SuperStates().Where(x => x.ParticipateInHistory().Exists(x => x.Value is PseudoStateNode.History(type = HistoryType.Shallow)));
+        //def spaths = shist.SelectMany(x => x.Value.HistoryPaths);
+        //def paths = st.ParticipateInHistory.Select(x => (x.state.name, HistoryPath(x.state, st, x).CreatePath()));
+        //def paths = paths.Concat(spaths).NToList();
+        //st.ChangeHistoryPaths(paths)
       } 
 
-      def top = TopState.ReduceSingle(create_hist_path);
-      UpdateStateMap(top)
+      HistoryStates.Iter(create_hist_path)
+      //States.Iter(create_hist_path);
+      //def top = TopState.ReduceSingle(create_hist_path);
+      //UpdateStateMap(top)
     }
 
     UpdateInitial() : void

@@ -35,14 +35,14 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def evts = States.SelectMany(_.events);
+        def evts = States.SelectMany(x => x.Value.events);
         def evts = evts.Where(x => x.Name != null);
         def evts = evts.Select(_.Name);
         evts.Distinct()
       }
     }
 
-    public mutable transitions : Map[string, StateTransition];
+    //public mutable transitions : Map[string, StateTransition];
 
     //public events : IEnumerable[string] // event * for internal transition
     //{
@@ -63,7 +63,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.Select(_.paths).Where(_ != null)
+        States.Select(x => x.Value.paths).Where(_ != null)
         //$[x.paths, x in States, x.paths != null]
       }
     }
@@ -87,16 +87,16 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    
+    public mutable HistoryPaths : Hashtable[SimpleTreeNode[FsmState], HistoryPath]; // paths from outer history
 
     public actions : IEnumerable[string]
     {
       get
       {
-        def acts =  trans_paths.SelectMany(_.Actions);
-        def int_acts =  internal_transitions.Values().SelectMany(_.Actions);
-        def acts = acts.Concat(int_acts);
-        acts.Distinct()
+        trans_paths.SelectMany(_.Actions);
+        //def int_acts =  internal_transitions.Values().SelectMany(_.Actions);
+        //def acts = acts.Concat(int_acts);
+        //acts.Distinct()
         //acts.RemoveDuplicatesSort((x, y) => x.CompareTo(y));
         //def do_activities = States.FilterValues(_.do_activity);
       //def err = do_activities.FoldLeft([], check_do);
@@ -128,31 +128,41 @@ namespace Nemerle.Statechart
       }
     }
 
-    public not_used_history : list[PseudoStateNode.History]
+    public not_used_history : IEnumerable[NodeValue[FsmState, PseudoStateNode]]
     {
       get
       {
-        $[h, x in States, h in x.history.Value, !h.Used]
+        HistoryStates.Where(x => Used[x])
+        //$[h, x in States, h in x.history.Value, !h.Used]
       }
     }
 
-    public HistoryStates : IEnumerable[SimpleTreeNode[FsmNode]]
+    public HistoryStates : IEnumerable[NodeValue[FsmState, PseudoStateNode]]
     {
       get
       {
-        statemap.Tree.GetBreadthFirstEnumerable().Where(x => x.Value is FsmNode.PseudoState(PseudoStateNode.History(Used = true)))//$[h, x in States, h in x.history.Value, h.Used]//.Filter(x => x.history.HasValue) |>< history.Value
+        PseudoStates.Values.Where(x => x.Value is PseudoStateNode.History)//$[h, x in States, h in x.history.Value, h.Used]//.Filter(x => x.history.HasValue) |>< history.Value
       }
     }
 
-    public HistoryPaths : IEnumerable[HistoryPath]
+    public PseudoStates : ValueMap[FsmState, PseudoStateNode]
     {
       get
       {
-        def paths = States.SelectMany(x => x.HistoryPaths.Select(x => x[1]));
-        def paths = paths.Exclude(_.IsDefault);
-        paths.RemoveDuplicatesSort(_.Name)
+        statemap.PseudoStates
       }
     }
+    
+    public Used : Hashtable[object, bool];
+    //public HistoryPaths : IEnumerable[HistoryPath]
+    //{
+    //  get
+    //  {
+    //    //def paths = States.SelectMany(x => x.Value.HistoryPaths.Select(x => x[1]));
+    //    //def paths = paths.Exclude(_.IsDefault);
+    //    //paths.RemoveDuplicatesSort(_.Name)
+    //  }
+    //}
 
     //public work_transitions : Map[string, StateTransition]
     //{
@@ -181,156 +191,158 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    states_initial_tran : IEnumerable[StateTransition]
+    InitialTran : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
       get
       {
-        States.SelectMany(_.initial)
+        AllTransitions.Where(x => x.Value is StateTransition.Initial)
+        //States.SelectMany(_.initial)
         //States |>< Initial
       }
     }
 
-    used_states_initial_tran : IEnumerable[StateTransition]
+    AllTransitions : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
       get
       {
-        states_initial_tran.Where(_.Used)
+        statemap.Transitions.Values
       }
     }
-
-    not_used_states_initial_tran : IEnumerable[StateTransition]
+    
+    used_states_initial_tran : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
       get
       {
-        def not_used = states_initial_tran.Exclude(_.Used);
-        not_used.Exclude(x => x.clones.Exists(x => x.Updated.Used));
+        InitialTran.Where(x => Used[x])
       }
     }
 
-    public mutable initial_transitions : Map[string, StateTransition];
-
-    public DoActivities : IEnumerable[FsmState * StateAction.Do]
+    not_used_states_initial_tran : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
       get
       {
-        States.SelectMany(x => x.do_activity.Map(y => (x, y)))
+        def not_used = InitialTran.Where(x => !Used[x]);
+        not_used.Exclude(x => x.Value.clones.Exists(x => Used[x]));
       }
     }
 
-    public Regions : IEnumerable[FsmState.ConcurrentRegion]
+    //public mutable initial_transitions : Map[string, StateTransition];
+
+    public DoActivities : IEnumerable[SimpleTreeNode[FsmState] * StateAction.Do]
     {
       get
       {
-        def regs = States.FilterType();
-        regs.Filter(_.LivedNested);
+        States.SelectMany(x => x.Value.do_activity.Map(y => (x, y)))
       }
     }
 
-    public all_transitions_with_init : IEnumerable[StateTransition]
+    public Regions : IEnumerable[SimpleTreeNode[FsmState]]
     {
       get
       {
-        if (TopState != null) TopState.all_transitions_nested else Enumerable.Empty()
+        def regs = States.Where(x => x.Value is FsmState.ConcurrentRegion);
+        regs.Where(x => x.LivedNested());
       }
     }
 
-    public not_used_regions : IEnumerable[FsmState.ConcurrentRegion]
+    //public all_transitions_with_init : IEnumerable[StateTransition]
+    //{
+    //  get
+    //  {
+    //    if (TopState != null) TopState.all_transitions_nested else Enumerable.Empty()
+    //  }
+    //}
+
+    public not_used_regions : IEnumerable[SimpleTreeNode[FsmState]]
     {
       get
       {
-        def regs = States.FilterType();
-        regs.Exclude(_.LivedNested);
+        def regs = States.Where(x => x.Value is FsmState.ConcurrentRegion);
+        regs.Where(x => !x.LivedNested())
       }
     }
 
-    public PseudoStates : IEnumerable[PseudoStateNode]
+    //public PseudoStates : IEnumerable[PseudoStateNode]
+    //{
+    //  get
+    //  {
+    //    States.SelectMany(_.pseudo_states)
+    //  }
+    //    //other_pseudo.Concat(junctions).Concat(choices).Concat(merges)
+    //}
+
+    //public other_pseudo : IEnumerable[PseudoStateNode]
+    //{
+    //  get
+    //  {
+    //    PseudoStates.Exclude(x => x is PseudoStateNode.Junction || x is PseudoStateNode.Fork)
+    //  }
+    //}
+
+    public junctions : IEnumerable[NodeValue[FsmState, PseudoStateNode]]
     {
       get
       {
-        States.SelectMany(_.pseudo_states)
+         PseudoStates.Values.Where(x => x.Value is PseudoStateNode.Junction(type = JunctionType.Junction))
       }
-        //other_pseudo.Concat(junctions).Concat(choices).Concat(merges)
     }
 
-    public other_pseudo : IEnumerable[PseudoStateNode]
+    public choices : IEnumerable[NodeValue[FsmState, PseudoStateNode]]
     {
       get
       {
-        PseudoStates.Exclude(x => x is PseudoStateNode.Junction || x is PseudoStateNode.Fork)
+        PseudoStates.Values.Where(x => x.Value is PseudoStateNode.Junction(type = JunctionType.Choice))
       }
     }
 
-    public junctions : IEnumerable[PseudoStateNode.Junction]
+    public merges : IEnumerable[NodeValue[FsmState, PseudoStateNode]]
     {
       get
       {
-         PseudoStates.FilterType().Where(x => x.type == JunctionType.Junction);
+        PseudoStates.Values.Where(x => x.Value is PseudoStateNode.Junction(type = JunctionType.Merge))
       }
     }
 
-    public choices : IEnumerable[PseudoStateNode.Junction]
+    public forks : IEnumerable[NodeValue[FsmState, PseudoStateNode]]
     {
       get
       {
-        PseudoStates.FilterType().Where(x => x.type == JunctionType.Choice);
+        PseudoStates.Values.Where(x => x.Value is PseudoStateNode.Fork)
       }
     }
 
-    public merges : IEnumerable[PseudoStateNode.Junction]
+    public joins : IEnumerable[NodeValue[FsmState, PseudoStateNode]]
     {
       get
       {
-        PseudoStates.FilterType().Where(x => x.type == JunctionType.Merge)
+        PseudoStates.Values.Where(x => x.Value is PseudoStateNode.Join)
       }
     }
-
-    public forks : IEnumerable[PseudoStateNode.Fork]
-    {
-      get
-      {
-        PseudoStates.FilterType()
-      }
-    }
-
+    
     [Accessor] mutable traverser : TransitionTraverser;
 
-    public special_transitions : IEnumerable[StateTransition]
+    public special_transitions : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
       get
       {
-        def get_special_transitions(tran, a)
-        {
-          match (tran)
-          {
-            | StateTransition.Transition(Destination = TransitionDestination.Fork(sub_tran = tr))                              => a.HeadAppend(tr)
-            | StateTransition.Transition(To = PseudoState(SimpleTreeNode(Value = FsmNode.PseudoState(Join(transition = tr))))) => tr :: a 
-            | _                                                                                                                => a
-          }
-        }
-
-        def special = used_transitions.FoldLeft([], get_special_transitions);
-        special.RemoveDuplicatesSort(StateTransition.Comparer)
+        def fork_tran = forks.SelectMany(x => (x.Value :> PseudoStateNode.Fork).fork_tran);
+        def join_tran = joins.SelectMany(x => (x.Value :> PseudoStateNode.Join).joined_tran);
+        fork_tran + join_tran
+        //def special = used_transitions.FoldLeft([], get_special_transitions);
+        //special.RemoveDuplicatesSort(StateTransition.Comparer)
       //special_transitions.Iter(x => x.UpdateReference(statemap));
       }
     }
 
-    public concurrent_states : IEnumerable[FsmState]
+    public concurrent_states : IEnumerable[SimpleTreeNode[FsmState]]
     {
       get
       {
-        States.Where(_ is FsmState.ConcurrentSubRegion)
+        States.Where(x => x.Value is FsmState.ConcurrentSubRegion)
       }
     }
 
-    public LivedStates : IEnumerable[FsmState]
-    {
-      get
-      {
-        States.Where(_.Lived)
-      }
-    }
-
-    public empty_states : IEnumerable[FsmState]
+    public empty_states : IEnumerable[SimpleTreeNode[FsmState]]
     {
       get
       {
@@ -342,46 +354,46 @@ namespace Nemerle.Statechart
           | _     => true
         }
 
-        def empty =  States.Exclude(_.LivedNested); // determine lived states
-        empty.Where(filter_used)
+        def empty =  States.Exclude(x => x.LivedNested()); // determine lived states
+        empty.Where(x => filter_used(x.Value))
       }
     }
 
-    public LivedNestedStates : IEnumerable[FsmState]
+    public LivedNestedStates : IEnumerable[SimpleTreeNode[FsmState]]
     {
       get
       {
-        States.Filter(_.LivedNested) // determine lived states
+        States.Where(x => x.LivedNested()) // determine lived states
       }
     }
 
-    public ObjectsId : IEnumerable[IdObject]
-    {
-      get
-      {
-        States.SelectMany(_.ChildObjects).OrderBy(_.Num)
-      }
-    }
+    //public ObjectsId : IEnumerable[IdObject]
+    //{
+    //  get
+    //  {
+    //    States.SelectMany(_.ChildObjects).OrderBy(_.Num)
+    //  }
+    //}
 
-    public ObjectsIdDetail : IEnumerable[IdObject * int * FsmState]
-    {
-      get
-      {
-        ObjectsId.Select(x => (x, x.Num, statemap.ParentFor(x.Num)))
-      }
-    }
+    //public ObjectsIdDetail : IEnumerable[IdObject * int * FsmState]
+    //{
+    //  get
+    //  {
+    //    ObjectsId.Select(x => (x, x.Num, statemap.ParentFor(x.Num)))
+    //  }
+    //}
 
-    public ChildsDetail : IEnumerable[FsmState * list[IdObject * int]]
-    {
-      get
-      {
-        States.Select(x => (x, x.ChildObjects.Map(x => (x, x.Num))))
-        //ObjectsId.Select(x => (x, x.Num, statemap.ParentFor(x.Num)))
-      }
-    }
+    //public ChildsDetail : IEnumerable[FsmState * list[IdObject * int]]
+    //{
+    //  get
+    //  {
+    //    States.Select(x => (x, x.ChildObjects.Map(x => (x, x.Num))))
+    //    //ObjectsId.Select(x => (x, x.Num, statemap.ParentFor(x.Num)))
+    //  }
+    //}
     
     [NeedChange(transitions, initial_transitions)]
-    public mutable internal_transitions : Map[string, StateTransition];
+    //public mutable internal_transitions : Map[string, StateTransition];
 
     //public PathsFromOut : IEnumerable[StateTransition]
     //{
@@ -441,44 +453,45 @@ namespace Nemerle.Statechart
 
     public GetError(err : FsmError) : string
     {
-      | StateNotFound(s)                                    => $<#State "$s" Not Found#>
-      | SubMachineStateNotFound(m, s)                       => $<#Sub machine "$m" does not contain referenced sub state "$s"#>
-      | UnknownTarget(tran, t)                              => $<#Transition "$tran" has unknown target "$t"#>
-      | DuplicateTransition(tran)                           => $<#Duplicate transitions "$tran"#>;
-      | DuplicateHistory(st, hist)                          => $<#Duplicate history of type "$(hist.type)" in "$st"#>
-      | RegionMustContainInitial(reg, tran)                 => $<#Transition "$tran" requires region "$reg" to contain initial transition in each of it sub regions#>
-      | SubRegionsMustContainInitial(reg, tran)             => $<#Transition "$tran" requires sub regions "$reg" to contain initial transitions#>
-      | UnknownTerminateTransition(tran)                    => $<#Unknown terminate transition target of "$tran", there is several terminate pseudo states, specify full name#>                  
-      | ForkMustGoToRegion(f)                               => $<#Fork "$f" must go to concurrent sub regions#>
-      | ForkMustGoToSeparateRegion(f)                       => $<#Fork "$f" must go to different concurrent sub regions of one region#>
-      | UnknownNode(tran)                                   => $<#Unknown pseudostate node used in target of "$tran" transition #>
-      | JoinTransitionMustHaveSameTrigger(j, tran)          => $<#Transitions "$tran" to join "$j" must have same event trigger#>
-      | JoinTransitionMustLeaveRegion(j, tran)              => $<#Transitions "$tran" to join "$j" must leave sub state of same orthogonal region#>
-      | TransitionCrossOrthogonalBoundaryOfSameRegion(tran) => $<#Transition "$tran" is cross orthogonal boundary of same region, this is not allowed#>
-      | DefaultTransitionMustGoToState(tran, hist)          => $<#Default history transition "$tran" of history "$hist" must go to state#>
-      | JunctionElseMustBeLast(j)                           => $<#Else node in junction "$(j.state).$j" must be the last alternative node#>
-      | JunctionActionMaybeLast(j, a)                       => $<#Junction action "$a" in "$(j.state).$j" maybe single in node or last#>
-      | JunctionElseMustAfterAnotherGuard(j)                => $<#Junction else node in "$(j.state).$j" must have preceded another GuardNode#>
-      | EmptyJunction(j)                                    => $<#There is a empty node in junction "$(j.state).$j"#>
-      | ChoiceElseMustBeLast(j)                             => $<#Else node in choice "$(j.state).$j" must be the last alternative node#>
-      | ChoiceActionMaybeLast(j, a)                         => $<#Choice action "$a" in "$(j.state).$j" maybe single in node or last#>
-      | ChoiceElseMustAfterAnotherGuard(j)                  => $<#Choice else node in "$(j.state).$j" must have preceded another GuardNode#>
-      | EmptyChoice(j)                                      => $<#There is a empty node in choice "$(j.state).$j"#>
-      | SeveralState(st)                                    => $<#There is several duplicate states of name $st #>
-      | Sequence(e)                                         => $<#..$(e;"\n";GetError)#>
+      | StateNotFound(s)                                                            => $<#State "$s" Not Found#>
+      | SubMachineStateNotFound(m, s)                                               => $<#Sub machine "$m" does not contain referenced sub state "$s"#>
+      | UnknownTarget(tran, t)                                                      => $<#Transition "$tran" has unknown target "$t"#>
+      | DuplicateTransition(tran)                                                   => $<#Duplicate transitions "$tran"#>;
+      | DuplicateHistory(st, NodeValue(Value = PseudoStateNode.History(type = t)))  => $<#Duplicate history of type "$(t)" in "$st"#>
+      | RegionMustContainInitial(reg, tran)                                         => $<#Transition "$tran" requires region "$reg" to contain initial transition in each of it sub regions#>
+      | SubRegionsMustContainInitial(reg, tran)                                     => $<#Transition "$tran" requires sub regions "$reg" to contain initial transitions#>
+      | UnknownTerminateTransition(tran)                                            => $<#Unknown terminate transition target of "$tran", there is several terminate pseudo states, specify full name#>                  
+      | ForkMustGoToRegion(f)                                                       => $<#Fork "$f" must go to concurrent sub regions#>
+      | ForkMustGoToSeparateRegion(f)                                               => $<#Fork "$f" must go to different concurrent sub regions of one region#>
+      | UnknownNode(tran)                                                           => $<#Unknown pseudostate node used in target of "$tran" transition #>
+      | JoinTransitionMustHaveSameTrigger(j, tran)                                  => $<#Transitions "$tran" to join "$j" must have same event trigger#>
+      | JoinTransitionMustLeaveRegion(j, tran)                                      => $<#Transitions "$tran" to join "$j" must leave sub state of same orthogonal region#>
+      | TransitionCrossOrthogonalBoundaryOfSameRegion(tran)                         => $<#Transition "$tran" is cross orthogonal boundary of same region, this is not allowed#>
+      | DefaultTransitionMustGoToState(tran, hist)                                  => $<#Default history transition "$tran" of history "$hist" must go to state#>
+      | JunctionElseMustBeLast(j)                                                   => $<#Else node in junction "$(j.Parent).$j" must be the last alternative node#>
+      | JunctionActionMaybeLast(j, a)                                               => $<#Junction action "$a" in "$(j.Parent).$j" maybe single in node or last#>
+      | JunctionElseMustAfterAnotherGuard(j)                                        => $<#Junction else node in "$(j.Parent).$j" must have preceded another GuardNode#>
+      | EmptyJunction(j)                                                            => $<#There is a empty node in junction "$(j.Parent).$j"#>
+      | ChoiceElseMustBeLast(j)                                                     => $<#Else node in choice "$(j.Parent).$j" must be the last alternative node#>
+      | ChoiceActionMaybeLast(j, a)                                                 => $<#Choice action "$a" in "$(j.Parent).$j" maybe single in node or last#>
+      | ChoiceElseMustAfterAnotherGuard(j)                                          => $<#Choice else node in "$(j.Parent).$j" must have preceded another GuardNode#>
+      | EmptyChoice(j)                                                              => $<#There is a empty node in choice "$(j.Parent).$j"#>
+      | SeveralState(st)                                                            => $<#There is several duplicate states of name $st #>
+      //| Sequence(e)                                                                 => $<#..$(e;"\n";GetError)#>
+      | n                                                                           => throw InvalidOperationException($"unnkown error $n")
     }
 
     public GetWarning(err : FsmWarning) : string
     {
       match (err)
       {
-        | HistoryNotUsed(hist = PseudoStateNode.History(state = st, type = t))  => $<#"$t History in "$st" is not used in fsm life history#>
-        | StateNotUsed(state = st)                                   => $<#State "$st" is not used in fsm life history#>
-        | TransitionNotUsed(tran)                                    => $<#Transition "$tran" is not used in fsm life history#>
-        | RegionNotUsed(reg)                                         => $<#Concurrent region "$reg" is not used in fsm life history#>
-        | NoConcurrentActivity(act)                                  => $<#There is no other activities in do activity node $act. Flag is no meaning, concurrent activity means that several activities may run concurently in do activity region of state.#>
-        | TransitionOverriden(tran,by)                               => $<#Transition $(tran.GuardedName) is overriden by $(by.GuardedName), due to execute priority rules, because these transition is unguarded#>
-        | x                                                          => $"Unknown Warning $x"
+        | HistoryNotUsed(hist = NodeValue(Parent = st, Value = PseudoStateNode.History(type = t)))  => $<#"$t History in "$st" is not used in fsm life history#>
+        | StateNotUsed(state = st)                                                                  => $<#State "$st" is not used in fsm life history#>
+        | TransitionNotUsed(tran)                                                                   => $<#Transition "$tran" is not used in fsm life history#>
+        | RegionNotUsed(reg)                                                                        => $<#Concurrent region "$reg" is not used in fsm life history#>
+        | NoConcurrentActivity(act)                                                                 => $<#There is no other activities in do activity node $act. Flag is no meaning, concurrent activity means that several activities may run concurently in do activity region of state.#>
+        | TransitionOverriden(tran,by)                                                              => $<#Transition $(tran.GuardedName) is overriden by $(by.GuardedName), due to execute priority rules, because these transition is unguarded#>
+        | x                                                                                         => $"Unknown Warning $x"
       }
     }
 
@@ -556,26 +569,29 @@ namespace Nemerle.Statechart
     FinalizeAnalyse() : void
     {
       StatesId.CreateMasks();
-      def longest = States.Max(x => x.Name.Length);
+      def longest = States.Max(x => x.Value.Name.Length);
       def len = States.Count();
-      def num_len = len.ToString().Length;
+      //def num_len = len.ToString().Length;
       
       
       def create_state_report(st)
       {
-        | FsmState(Name = n, Id = null, Num = num) with id = IdType(BitArray(len))
-        | FsmState(Name = n, Id = id, Num = num) => 
+        match (st.Value)
+        {
+          | FsmState(Name = n, Id = null) with id = IdType(BitArray(len))
+          | FsmState(Name = n, Id = id) => 
         
-            def id_hex = id.Result.Fold("", (x, a) => x.ToString("X8") + a);
-            def id_val = id.val.OfType.[bool]().MapListRev(x => if (x) '1' else '0');
-            def id_val = string(id_val.ToArray());
-            string.Format($<#{0, $longest}: Num = {1, $num_len}, Id = $(id_val) (0x$id_hex) #>, n, num)
+              def id_hex = id.Result.Fold("", (x, a) => x.ToString("X8") + a);
+              def id_val = id.val.OfType.[bool]().MapListRev(x => if (x) '1' else '0');
+              def id_val = string(id_val.ToArray());
+              string.Format($<#{0, $longest}: Id = $(id_val) (0x$id_hex) #>, n)
+        }
       }
       
       
       when (FsmFlags.Debug) 
       {
-        def info = TopState.LevelOrderIterator().Map(create_state_report);
+        def info = States.Map(create_state_report);
         File.WriteAllLines($"$(Name)statemap.log", info);
       }
     }
@@ -617,36 +633,39 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public history_default_transitions : IEnumerable[StateTransition]
+    public history_default_transitions : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
       get
       {
-        HistoryStates.FilterValues(_.default).Where(_.Used)//x.ActualTo != null)
+        HistoryStates.FilterValues(x => (x.Value :> PseudoStateNode.History).default).Where(x => Used[x])//x.ActualTo != null)
       }
     }
 
-    public used_transitions : IEnumerable[StateTransition]
+    public used_transitions : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
       get
       {
-        states_transitions.Where(_.UsedInGenerate)
+        States.SelectMany(x => x.AllTransitions()).Where(x => Used[x])
       }
     }
 
-    public states_transitions : IEnumerable[StateTransition]
-    {
-      get
-      {
-        States.SelectMany(_.all_transitions)
-      }
-    }
+    //public states_transitions : IEnumerable[StateTransition]
+    //{
+    //  get
+    //  {
+    //    States.SelectMany(_.all_transitions)
+    //  }
+    //}
 
-    public not_used_transitions : IEnumerable[StateTransition]
+    public Clones : Hashtable[SimpleTreeNode[FsmState], list[SimpleTreeNode[FsmState]]];
+    public LivedStates : Hashtable[SimpleTreeNode[FsmState], bool];
+
+    public not_used_transitions : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
       get
       {
-        def not_used = states_transitions.Exclude(_.UsedInGenerate);
-        def not_used = not_used.Where(x => x.From.Value.StateNode.Lived);
+        def not_used = AllTransitions.Exclude(x => !Used[x]);
+        def not_used = not_used.Where(x => x.Value.From.StateNode.Value.Lived);
         def not_used = not_used.Exclude(_.NotWork);
         not_used.Exclude(_.Used);
       }
