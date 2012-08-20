@@ -19,22 +19,38 @@ namespace Nemerle.Statechart
   /// </summary>
   public partial variant DecisionNode
   {
-    public static create_decision_tree(node : PseudoStateNode.Junction) : DecisionNode
+    public static create_decision_tree(an : FsmAnalyser, node : PseudoStateNode.Junction) : DecisionNode
     {
       //def create_target(n)
       //{
       //  //DecisionNode.Target(n.analyser, [], n, n.analyser.statemap.GetNextGlobalNum())
       //}
-
-      def create_junction_node(n, acc)
+      def create_junction_node(n : SimpleTreeNode[TreeJunctionNode], acc : list[DecisionNode])
       {
-          | (JunctionNode.Node(guard = g, action = a), toacc :: [])        => DecisionNode.Condition(node.analyser, g, node.analyser.GetNextNum(), a.ToList(), toacc, None())
-          | (JunctionNode.Node(guard = g, action = a), toacc :: nacc :: _) => DecisionNode.Condition(node.analyser, g, node.analyser.GetNextNum(), a.ToList(), toacc, Some(nacc))
-          | (Target(t), _)                                                 => DecisionNode.Target(node.analyser, [], t, node.analyser.GetNextNum())
-          | _                                                              => null
+        def create_node(n, acc)
+        {
+          match (n, acc)
+          {
+            | (DecisionNode.Target(condition = GuardNode.Else) as t, null) => t
+            | (DecisionNode.Target(condition = g, actions = a) as t, null) => DecisionNode.Condition(an, a, g, t.ChangeActionsCondition([], null), None())
+            | (DecisionNode.Target(condition = g, actions = a) as t, acc)  => DecisionNode.Condition(an, a, g, t.ChangeActionsCondition([], null), Some(acc))
+            | (DecisionNode.Condition as t, null)                          => t.ChangeElseNode(None())
+            | (DecisionNode.Condition as t, acc)                           => t.ChangeElseNode(Some(acc))
+          }
+        }
+        
+        match (n.Value)
+        {
+          | TreeJunctionNode.Node(guard = g, action = a)               => //DecisionNode.Condition(an, g, a, toacc, Some(nacc))
+                                                                          def node = acc.FoldBack(null, create_node);
+                                                                          DecisionNode.Condition(an, a, g, node, None())
+          | TreeJunctionNode.Target(guard = g, action = a, target = t) => DecisionNode.Target(an, a, g, t)
+                                                                          //DecisionNode.Condition(an, g, a, DecisionNode.Target(an, [], t), )
+          | _                                                          => null
+        }
       }
 
-      def tree = node.tree.Fold(create_junction_node);
+      def tree = node.tree.Fold(null, create_junction_node);
 
       create_states(tree);
       tree
