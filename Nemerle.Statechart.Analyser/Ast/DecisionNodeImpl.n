@@ -52,50 +52,51 @@ namespace Nemerle.Statechart
 
       def tree = node.tree.Fold(null, create_junction_node);
 
-      create_states(tree);
+      //create_states(tree);
       tree
     }
 
-    public static create_states(tar : DecisionNode) : void
-    {
+    //public static create_states(tar : DecisionNode) : void
+    //{
 
-      def check_node(n)
-      {
-        def set_state(n, st)
-        {
-          match (n)
-          {
-            | DecisionNode.Condition(state = null) as t
-            | DecisionNode.Target(state = null) as t    => t.state = st
-            | _                                         => ()
-          }
-        }
+    //  def check_node(n)
+    //  {
+    //    def set_state(n, st)
+    //    {
+    //      match (n)
+    //      {
+    //        | DecisionNode.Condition(state = null) as t
+    //        | DecisionNode.Target(state = null) as t    => t.state = st
+    //        | _                                         => ()
+    //      }
+    //    }
 
-        def child = n.GetChild();
-        child.Iter(set_state(_, n.state));
-      }
+    //    def child = n.GetChild();
+    //    child.Iter(set_state(_, n.state));
+    //  }
 
-      tar.LevelOrderIterator().Iter(check_node);
-    }
+    //  tar.LevelOrderIterator().Iter(check_node);
+    //}
 
-    public static create_junc_tree_node(an : FsmAnalyser, target : PseudoStateNode.Junction) : DecisionNode
+    public static create_junc_tree_node(an : FsmAnalyser, target : NodeValue[FsmState, PseudoStateNode]) : DecisionNode
     {
       //def junc = target.JunctionPseudo;
+      def targ = target.Value :> PseudoStateNode.Junction;
       
       def check_node_decision(n : DecisionNode)
       {
         | DecisionNode.Condition(condition = Else, else_node = Some) => 
-            an.AddError(if (target.type == JunctionType.Junction) FsmError.JunctionElseMustBeLast(target) else FsmError.ChoiceElseMustBeLast(target))
+            an.AddError(if (targ.type == JunctionType.Junction) FsmError.JunctionElseMustBeLast(target) else FsmError.ChoiceElseMustBeLast(target))
 
         | Condition(condition = Empty, actions = []) => 
-            an.AddError(if (target.type == JunctionType.Junction) FsmError.EmptyJunction(target) else FsmError.EmptyChoice(target))
+            an.AddError(if (targ.type == JunctionType.Junction) FsmError.EmptyJunction(target) else FsmError.EmptyChoice(target))
 
         | Condition(condition = GuardNode.Empty, actions = _ :: _ as a, else_node = Some) => 
-            an.AddError(if (target.type == JunctionType.Junction) FsmError.JunctionActionMaybeLast(target, a) else FsmError.ChoiceActionMaybeLast(target, a))
+            an.AddError(if (targ.type == JunctionType.Junction) FsmError.JunctionActionMaybeLast(target, a) else FsmError.ChoiceActionMaybeLast(target, a))
 
-        | Condition(Empty, _, Some)
-        | Condition(body = DecisionNode.Condition(Else, _, _)) => 
-            an.AddError(if (target.type == JunctionType.Junction) FsmError.JunctionElseMustAfterAnotherGuard(target) else FsmError.ChoiceElseMustAfterAnotherGuard(target))
+        | Condition(condition = GuardNode.Empty, else_node = Some)
+        | Condition(body = DecisionNode.Condition(condition = Else)) => 
+            an.AddError(if (targ.type == JunctionType.Junction) FsmError.JunctionElseMustAfterAnotherGuard(target) else FsmError.ChoiceElseMustAfterAnotherGuard(target))
 
         | _ => ()
       }
@@ -133,13 +134,13 @@ namespace Nemerle.Statechart
         n
       }
 
-      def tree  = create_decision_tree(target); // create decision tree
-      def tree  = tree.Reduce(true, merge_tree_node, merge_tree_target); // merge tree nodes
-      def old_nodes = tree.LevelOrderIterator();
-      old_nodes.Iter(check_node_decision);
-      def new_nodes = tree.LevelOrderMap(create_actions);
-      def node_map = old_nodes.MakeArrayMap(new_nodes, an.statemap.GlobalId, _.Num);
-      tree.ReduceSingle((x, _) => node_map[x.Num])
+      def tree  = create_decision_tree(an, targ); // create decision tree
+      tree.Reduce(true, merge_tree_node, merge_tree_target); // merge tree nodes
+      //def old_nodes = tree.LevelOrderIterator();
+      //old_nodes.Iter(check_node_decision);
+      //def new_nodes = tree.LevelOrderMap(create_actions);
+      //def node_map = old_nodes.MakeArrayMap(new_nodes, an.statemap.GlobalId, _.Num);
+      //tree.ReduceSingle((x, _) => node_map[x.Num])
     }
 
     //public static Create(an : FsmAnalyser, node : TransitionTarget.PseudoState) : DecisionNode
