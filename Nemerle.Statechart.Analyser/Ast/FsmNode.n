@@ -9,6 +9,7 @@ using System.Linq;
 
 using SCG = System.Collections.Generic;
 using NC = Nemerle.Collections;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -19,9 +20,9 @@ namespace Nemerle.Statechart
   {
     public Value : V {get;set;}
     
-    public Parent : SimpleTreeNode[T] {get;set;}
+    public Parent : GeneralTree[T] {get;set;}
     
-    public this(parent : SimpleTreeNode[T], val : V) 
+    public this(parent : GeneralTree[T], val : V) 
     {
       Parent = parent;
       Value = val;
@@ -36,24 +37,24 @@ namespace Nemerle.Statechart
   public class ValueMap[T, V]
   {
     [Accessor]
-    map : NC.Hashtable[SimpleTreeNode[T], list[NodeValue[T, V]]] = NC.Hashtable();
+    map : NC.Hashtable[GeneralTree[T], list[NodeValue[T, V]]] = NC.Hashtable();
     
-    public Add(node : SimpleTreeNode[T], val : IEnumerable[NodeValue[T, V]]) : void
+    public Add(node : GeneralTree[T], val : IEnumerable[NodeValue[T, V]]) : void
     {
       map[node] = map[node].Concat(val).NToList()
     }
 
-    public Add(node : SimpleTreeNode[T], val : NodeValue[T, V]) : void
+    public Add(node : GeneralTree[T], val : NodeValue[T, V]) : void
     {
       map[node] = val :: map[node]
     }
     
-    public Rem(node : SimpleTreeNode[T], val : IEnumerable[NodeValue[T, V]]) : void
+    public Rem(node : GeneralTree[T], val : IEnumerable[NodeValue[T, V]]) : void
     {
       map[node] = map[node].Except(val).NToList()
     }
     
-    public Clear(node : SimpleTreeNode[T]) : void
+    public Clear(node : GeneralTree[T]) : void
     {
       map[node] = []
     }
@@ -66,7 +67,7 @@ namespace Nemerle.Statechart
       }
     }
     
-    public Item[index : SimpleTreeNode[T]] : list[NodeValue[T, V]]
+    public Item[index : GeneralTree[T]] : list[NodeValue[T, V]]
     {
       get
       {
@@ -83,7 +84,7 @@ namespace Nemerle.Statechart
   /// </summary>
   public variant FsmNode
   {
-    | State       { [NeedChange] node : SimpleTreeNode[FsmState]; }
+    | State       { [NeedChange] node : GeneralTree[FsmState]; }
     | PseudoState { [NeedChange] node : NodeValue[FsmState, PseudoStateNode]; }
 
     //public Analyser : FsmAnalyser
@@ -98,7 +99,7 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public StateNode : SimpleTreeNode[FsmState]
+    public StateNode : GeneralTree[FsmState]
     {
       get
       {
@@ -121,22 +122,22 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public static PartOfRegion(this node : SimpleTreeNode[FsmNode]) : option[FsmState]
+    public static PartOfRegion(this node : GeneralTree[FsmNode]) : option[FsmState]
     {
       node.Parents().FindType()
     }
 
-    public static PartOfSubRegion(this node : SimpleTreeNode[FsmNode]) : option[FsmState]
+    public static PartOfSubRegion(this node : GeneralTree[FsmNode]) : option[FsmState]
     {
       node.Parents().FindType()
     }
 
-    public static ParentState(this node : SimpleTreeNode[FsmNode]) : SimpleTreeNode[FsmState]
+    public static ParentState(this node : GeneralTree[FsmNode]) : GeneralTree[FsmState]
     {
       match (node.Parent)
       {
         | null                                      => null
-        | SimpleTreeNode(Value = FsmNode.State(st)) => st
+        | GeneralTree(Data = FsmNode.State(st)) => st
         | _                                         => null
       }
     }
@@ -145,7 +146,7 @@ namespace Nemerle.Statechart
 
   public class TreeNode
   {
-    public static Parents[T](this node : SimpleTreeNode[T]) : IEnumerable[SimpleTreeNode[T]]
+    public static Parents[T](this node : GeneralTree[T]) : IEnumerable[GeneralTree[T]]
     {
       def loop(node)
       {
@@ -160,51 +161,51 @@ namespace Nemerle.Statechart
       loop(node.Parent)
     }
 
-    public static Update[T](this node : SimpleTreeNode[T], change : T -> T) : void
+    public static Update[T](this node : GeneralTree[T], change : T -> T) : void
     {
-      node.Value = change(node.Value)
+      node.Data = change(node.Data)
     }
 
-    public static Clone[T](this node : SimpleTreeNode[T]) : SimpleTreeNode[T]
+    public static Clone[T](this node : GeneralTree[T]) : GeneralTree[T]
     {
       def folder(n, acc)
       {
-        def node = SimpleTreeNode(n.Value);
-        if (acc != null) node.Children.AddRange(acc); else ();
+        def node = GeneralTree(n.Data);
+        if (acc != null) node.AddRange(acc); else ();
         node
       }
 
       Fold(node, null, folder)
     }
 
-    public static Fold[T, TAcc](this node : SimpleTreeNode[T], init : TAcc, folder : SimpleTreeNode[T] * list[TAcc] -> TAcc) : TAcc
+    public static Fold[T, TAcc](this node : GeneralTree[T], init : TAcc, folder : GeneralTree[T] * list[TAcc] -> TAcc) : TAcc
     {
       def fold(n, acc)
       {
-        def (chacc, tail) = acc.PopRev(n.Children.Count());
+        def (chacc, tail) = acc.PopRev(n.ChildNodes.Count());
         folder(n, chacc) :: tail
       }
 
       node.GetPostOrderEnumerable().FoldLeft([init], fold).Head
     }
 
-    public static Reduce[T](this node : SimpleTreeNode[T], folder : SimpleTreeNode[T] -> T, type : TreeTraversalType = TreeTraversalType.PostOrder) : void
+    public static Reduce[T](this node : GeneralTree[T], folder : GeneralTree[T] -> T, type : TreeTraversalType = TreeTraversalType.PostOrder) : void
     {
       def reduce(n)
       {
-        n.Value = folder(n)
+        n.Data = folder(n)
       }
 
       node.GetEnumerable(type).Iter(reduce)
     }
 
-    public static Unfold[T](this node : SimpleTreeNode[T], func : T -> IEnumerable[T]) : void
+    public static Unfold[T](this node : GeneralTree[T], func : T -> IEnumerable[T]) : void
     {
       def unfold(n)
       {
-        def childs = func(n.Value);
-        def nodes = childs.Select(SimpleTreeNode);
-        n.Children.AddRange(nodes);
+        def childs = func(n.Data);
+        def nodes = childs.Select(GeneralTree);
+        n.AddRange(nodes);
         nodes
       }
 
@@ -231,18 +232,23 @@ namespace Nemerle.Statechart
   public variant TreeJunctionNode
   {
     | Node 
-    | Target { target : TransitionTarget; }
+    | Target 
+      { 
+        target : TransitionTarget; 
+        
+        dest   : TransitionDestination;
+      }
 
     public pos    : int;
     public guard  : GuardNode;
     public action : list[Actions] = [];
     
 
-    public static Create(node : PseudoStateAstNode.Junction) : SimpleTreeNode[TreeJunctionNode]
+    public static Create(node : PseudoStateAstNode.Junction) : BinaryTree[TreeJunctionNode]
     {
-      def nodes = node.node.Map(SimpleTreeNode);
-      def jnode = SimpleTreeNode();
-      jnode.Children.AddRange(nodes);
+      def nodes = node.node.Map(GeneralTree);
+      def jnode = GeneralTree(null);
+      jnode.AddRange(nodes);
 
       def fold(n)
       {
@@ -254,15 +260,15 @@ namespace Nemerle.Statechart
 
       def fold(n, sb)
       {
-        def node = match (n.Value)
+        def node = match (n.Data)
                     {
                       | JunctionNode(p, g, a, TargetType.PseudoState(Junction)) => def a = if (a is Some(a)) a :: [] else []; 
                                                                                    Node(p, g, a)
                       | JunctionNode(p, g, a, t)                                => def a = if (a is Some(a)) a :: [] else []; 
-                                                                                   Target(p, g, a, TransitionTarget.Create(t))
+                                                                                   Target(p, g, a, TransitionTarget.Create(t), null)
                     }
-        def node = SimpleTreeNode(node);
-        node.Children.AddRange(sb);
+        def node = GeneralTree(node);
+        node.AddRange(sb);
         node
       }
 

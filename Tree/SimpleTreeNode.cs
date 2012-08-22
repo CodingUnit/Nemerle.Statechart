@@ -144,64 +144,6 @@ namespace System.Collections.Generic
             get { return _IsDisposed; }
         }
 
-        public IEnumerable<SimpleTreeNode<T>> GetEnumerable(TreeTraversalType TraversalType)
-        {
-            switch (TraversalType)
-            {
-                case TreeTraversalType.PreOrder: return GetPreOrderEnumerable();
-                case TreeTraversalType.BreadthFirst: return GetBreadthFirstEnumerable();
-                case TreeTraversalType.PostOrder: return GetPostOrderEnumerable();
-            }
-            return null;
-        }
-
-        public IEnumerable<SimpleTreeNode<T>> GetPreOrderEnumerable()
-        {
-            var stack = new Stack<SimpleTreeNode<T>>();
-            stack.Push(this);
-
-
-            while (stack.Count != 0)
-            {
-                var current = stack.Pop();
-                foreach (var c in current.Children)
-                {
-                    stack.Push(c);
-                }
-                yield return current;
-            }
-        }
-
-        public IEnumerable<SimpleTreeNode<T>> GetPostOrderEnumerable()
-        {
-            var child = new Stack<SimpleTreeNode<T>>();
-            var parent = new Stack<SimpleTreeNode<T>>();
-
-            child.Push(this);
-
-            while (child.Count != 0)
-            {
-                var curr = child.Pop();
-                parent.Push(curr);
-                foreach (var s in curr.Children) child.Push(s);
-            }
-            return parent;
-
-        }
-
-        // TODO: adjust for traversal direction
-        public IEnumerable<SimpleTreeNode<T>> GetBreadthFirstEnumerable()
-        {
-            var queue = new Queue<SimpleTreeNode<T>>();
-            queue.Enqueue(this);
-
-            while (queue.Count != 0)
-            {
-                var node = queue.Dequeue();
-                yield return node;
-                foreach (var s in node.Children) queue.Enqueue(s);
-            }
-        }
 
         // TODO: update this to use GetEnumerator once that's working
         public virtual void Dispose()

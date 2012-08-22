@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Collections;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -35,7 +36,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def evts = States.SelectMany(x => x.Value.events);
+        def evts = States.SelectMany(x => x.Data.events);
         def evts = evts.Where(x => x.Name != null);
         def evts = evts.Select(_.Name);
         evts.Distinct()
@@ -63,7 +64,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.Select(x => x.Value.paths).Where(_ != null)
+        States.Select(x => x.Data.paths).Where(_ != null)
         //$[x.paths, x in States, x.paths != null]
       }
     }
@@ -87,7 +88,7 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public mutable HistoryPaths : Hashtable[SimpleTreeNode[FsmState], HistoryPath]; // paths from outer history
+    public mutable HistoryPaths : Hashtable[GeneralTree[FsmState], HistoryPath]; // paths from outer history
 
     public actions : IEnumerable[string]
     {
@@ -228,19 +229,19 @@ namespace Nemerle.Statechart
 
     //public mutable initial_transitions : Map[string, StateTransition];
 
-    public DoActivities : IEnumerable[SimpleTreeNode[FsmState] * StateAction.Do]
+    public DoActivities : IEnumerable[GeneralTree[FsmState] * StateAction.Do]
     {
       get
       {
-        States.SelectMany(x => x.Value.do_activity.Map(y => (x, y)))
+        States.SelectMany(x => x.Data.do_activity.Map(y => (x, y)))
       }
     }
 
-    public Regions : IEnumerable[SimpleTreeNode[FsmState]]
+    public Regions : IEnumerable[GeneralTree[FsmState]]
     {
       get
       {
-        def regs = States.Where(x => x.Value is FsmState.ConcurrentRegion);
+        def regs = States.Where(x => x.Data is FsmState.ConcurrentRegion);
         regs.Where(x => x.LivedNested());
       }
     }
@@ -253,11 +254,11 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public not_used_regions : IEnumerable[SimpleTreeNode[FsmState]]
+    public not_used_regions : IEnumerable[GeneralTree[FsmState]]
     {
       get
       {
-        def regs = States.Where(x => x.Value is FsmState.ConcurrentRegion);
+        def regs = States.Where(x => x.Data is FsmState.ConcurrentRegion);
         regs.Where(x => !x.LivedNested())
       }
     }
@@ -334,15 +335,15 @@ namespace Nemerle.Statechart
       }
     }
 
-    public concurrent_states : IEnumerable[SimpleTreeNode[FsmState]]
+    public concurrent_states : IEnumerable[GeneralTree[FsmState]]
     {
       get
       {
-        States.Where(x => x.Value is FsmState.ConcurrentSubRegion)
+        States.Where(x => x.Data is FsmState.ConcurrentSubRegion)
       }
     }
 
-    public empty_states : IEnumerable[SimpleTreeNode[FsmState]]
+    public empty_states : IEnumerable[GeneralTree[FsmState]]
     {
       get
       {
@@ -355,11 +356,11 @@ namespace Nemerle.Statechart
         }
 
         def empty =  States.Exclude(x => x.LivedNested()); // determine lived states
-        empty.Where(x => filter_used(x.Value))
+        empty.Where(x => filter_used(x.Data))
       }
     }
 
-    public LivedNestedStates : IEnumerable[SimpleTreeNode[FsmState]]
+    public LivedNestedStates : IEnumerable[GeneralTree[FsmState]]
     {
       get
       {
@@ -569,14 +570,14 @@ namespace Nemerle.Statechart
     FinalizeAnalyse() : void
     {
       StatesId.CreateMasks();
-      def longest = States.Max(x => x.Value.Name.Length);
+      def longest = States.Max(x => x.Data.Name.Length);
       def len = States.Count();
       //def num_len = len.ToString().Length;
       
       
       def create_state_report(st)
       {
-        match (st.Value)
+        match (st.Data)
         {
           | FsmState(Name = n, Id = null) with id = IdType(BitArray(len))
           | FsmState(Name = n, Id = id) => 
@@ -657,8 +658,8 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public Clones : Hashtable[SimpleTreeNode[FsmState], list[SimpleTreeNode[FsmState]]];
-    public LivedStates : Hashtable[SimpleTreeNode[FsmState], bool];
+    public Clones : Hashtable[GeneralTree[FsmState], list[GeneralTree[FsmState]]];
+    public LivedStates : Hashtable[GeneralTree[FsmState], bool];
 
     public not_used_transitions : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
@@ -691,7 +692,7 @@ namespace Nemerle.Statechart
     //public static StringComparator : string * string -> int = string.Compare(_, _, StringComparison.CurrentCulture);
     //public static StrEq : string * string -> bool = (x, y) => StringComparator(x, y) == 0;
 
-    public TopState : SimpleTreeNode[FsmState]
+    public TopState : GeneralTree[FsmState]
     {
       get
       {

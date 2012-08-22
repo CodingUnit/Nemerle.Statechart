@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Statechart;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -79,13 +80,13 @@ namespace Nemerle.Statechart
                 // TODO: check later for need of termination of fsm if we reach final state
                     | (TransitionTarget.Final as t, StateTransition.Initial) with super = st
                     | (Final as t, _) with super = st.Parent => 
-                        match (super.Children.Find(x => x.Value is FsmState.Final))
+                        match (super.ChildNodes.Find(x => x.Data is FsmState.Final))
                         {
-                          | null => def fin = FsmState.Final(this);
-                            def node = statemap.Add(super, SimpleTreeNode(fin));
-                            t.ChangeState(node.Value.StateNode);
+                          | None => def fin = FsmState.Final(this);
+                            def node = statemap.Add(super, GeneralTree(fin));
+                            t.ChangeState(node.Data.StateNode);
 
-                          | fin  => t.ChangeState(fin)
+                          | Some(fin)  => t.ChangeState(fin)
                         }
                     | _ => to
               //match (a.Find((x, _) => x.Num == super.Num))
@@ -138,7 +139,7 @@ namespace Nemerle.Statechart
         //UpdateStateMap(top.ReduceSingle(true, check_final(final, _, _)))
     }
 
-    States : IEnumerable[SimpleTreeNode[FsmState]]
+    States : IEnumerable[GeneralTree[FsmState]]
     {
       get
       {
@@ -155,7 +156,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    //TransitionMod : IEnumerable[SimpleTreeNode[FsmState] * StateTransition]
+    //TransitionMod : IEnumerable[GeneralTree[FsmState] * StateTransition]
     //{
     //  get
     //  {
@@ -171,8 +172,8 @@ namespace Nemerle.Statechart
         st.IterI((i, x) => x.Update(x => x.ChangeCopyNum(i)))
       }
 
-      def dups = States.NToList().Duplicates((x, y) => FsmState.NameComparer(x.Value, y.Value));
-      def dups = dups.GroupBy(x => x.Value.Name);
+      def dups = States.NToList().Duplicates((x, y) => FsmState.NameComparer(x.Data, y.Data));
+      def dups = dups.GroupBy(x => x.Data.Name);
 
       dups.Iter(rename_group)
     }
@@ -189,7 +190,7 @@ namespace Nemerle.Statechart
               match (n.Value, n2.Value)
               {
                 | (PseudoStateNode.History(type = HistoryType.Deep), PseudoStateNode.History(type = HistoryType.Deep))
-                | (PseudoStateNode.History(type = HistoryType.Shallow), PseudoStateNode.History(type = HistoryType.Shallow)) => AddError(FsmError.DuplicateHistory(st.Value, st.History().Value.First()))
+                | (PseudoStateNode.History(type = HistoryType.Shallow), PseudoStateNode.History(type = HistoryType.Shallow)) => AddError(FsmError.DuplicateHistory(st.Data, st.History().Value.First()))
                 | _                                                                                                           => ()
               }
           | _ => ()
@@ -231,7 +232,7 @@ namespace Nemerle.Statechart
         st.Update(x => x.ChangeDoActivity(act))
       }
 
-      States.Iter(x => check_do(x, x.Value.do_activity));
+      States.Iter(x => check_do(x, x.Data.do_activity));
     }
 
     CreateConcurrentRegion() : void
@@ -246,7 +247,7 @@ namespace Nemerle.Statechart
       def set_hierarchy_pos(st)
       {
         if (st.IsTopState()) st.Update(x => x.ChangeCalcHierarchyPos(0)); 
-        else st.Value = st.Value.ChangeCalcHierarchyPos(st.Parent.Value.calc_hierarchy_pos + 1)
+        else st.Data = st.Data.ChangeCalcHierarchyPos(st.Parent.Data.calc_hierarchy_pos + 1)
       }
 
       States.Iter(set_hierarchy_pos)
@@ -256,7 +257,7 @@ namespace Nemerle.Statechart
     CreateSubMachines() : void
     {
       def inlined = States.FilterType();
-      inlined.Iter(x : SimpleTreeNode[FsmState.InlinedSubMachineInstance] => x.InitInline());
+      inlined.Iter(x : GeneralTree[FsmState.InlinedSubMachineInstance] => x.InitInline());
       //def (top, base_sm_types) = TopState.Reduce(true, [], inlined_sub_machine_instance = (x, _, acc) => x.InitInline(acc));
       // TODO: надо делать обновление ссылок только один раз
       //UpdateStateMap(top); // update tree with instanced state machines

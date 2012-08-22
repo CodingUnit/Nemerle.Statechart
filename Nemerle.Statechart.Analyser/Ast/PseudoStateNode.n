@@ -6,6 +6,7 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -27,11 +28,11 @@ namespace Nemerle.Statechart
           //default = hist.default.Map(x => StateTransition.Default(an, _))
         }
 
-        public Create(hist : StateNode.History) : SimpleTreeNode[FsmNode]
+        public Create(hist : StateNode.History) : GeneralTree[FsmNode]
         {
           def h = History(hist);
           def pnode = FsmNode.PseudoState(h);
-          def node = SimpleTreeNode(pnode);
+          def node = GeneralTree(pnode);
           node.Value = pnode.ChangeNode(h.ChangeDefault(hist.default.Map(StateTransition.Default(node, _))));
           node
         }
@@ -139,7 +140,7 @@ namespace Nemerle.Statechart
     | Junction
       {
         [NeedChange] name : string;
-        [NeedChange] tree : SimpleTreeNode[TreeJunctionNode];// TransitionTarget.JunctionNode;
+        [NeedChange] tree : BinaryTree[TreeJunctionNode];// TransitionTarget.JunctionNode;
         //[TraverseIgnore] parent : Junction;
         type : JunctionType;
         [NeedChange] decisionTree : DecisionNode;
@@ -149,7 +150,7 @@ namespace Nemerle.Statechart
         //  ChangeTo(to.ChangeDecisionTree(tree))
         //}
         
-        this(n : string, tr : SimpleTreeNode[TreeJunctionNode], type : JunctionType)
+        this(n : string, tr : GeneralTree[TreeJunctionNode], type : JunctionType)
         {
           base(0);
           name = n;
@@ -157,7 +158,7 @@ namespace Nemerle.Statechart
           this.type = type;
         }
 
-        Create(an : FsmAnalyser, node : PseudoStateAstNode.Junction) : SimpleTreeNode[FsmNode]
+        Create(an : FsmAnalyser, node : PseudoStateAstNode.Junction) : GeneralTree[FsmNode]
         {
           def name =  match (node) 
           {
@@ -169,7 +170,7 @@ namespace Nemerle.Statechart
           }
           def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
           def junc = Junction(name, tree, node.type);
-          SimpleTreeNode(FsmNode.PseudoState(junc))
+          GeneralTree(FsmNode.PseudoState(junc))
         }
         //Nodes : IEnumerable[TransitionTarget.JunctionNode]
         //{
@@ -283,7 +284,7 @@ namespace Nemerle.Statechart
       {
         name : string;
         [NeedChange] target : TransitionTarget;
-        [NeedChange(joined_tran, transition)] region : SimpleTreeNode[FsmState];
+        [NeedChange(joined_tran, transition)] region : GeneralTree[FsmState];
 
         [NeedChange]
         joined_tran : IEnumerable[NodeValue[FsmState, StateTransition]] = Enumerable.Empty();
@@ -330,17 +331,17 @@ namespace Nemerle.Statechart
     | ExitPoint
     | Terminate
 
-    public static Create(an : FsmAnalyser, pseudo : PseudoStateAstNode) : SimpleTreeNode[FsmNode]
+    public static Create(an : FsmAnalyser, pseudo : PseudoStateAstNode) : GeneralTree[FsmNode]
     {
       match (pseudo)
       {
         | History                                    => History.Create(an, pseudo)
         | Junction as j                              => Junction.Create(an, j)
-        | Fork(target = lst)                         => SimpleTreeNode(FsmNode.PseudoState(Fork(0, lst.Map(TransitionTarget.Create), [])))
-        | Join(name = n, target = t)                 => SimpleTreeNode(FsmNode.PseudoState(Join(0, n, TransitionTarget.Create(t), null, null, null)))
+        | Fork(target = lst)                         => GeneralTree(FsmNode.PseudoState(Fork(0, lst.Map(TransitionTarget.Create), [])))
+        | Join(name = n, target = t)                 => GeneralTree(FsmNode.PseudoState(Join(0, n, TransitionTarget.Create(t), null, null, null)))
         | EntryPoint                                 //EntryPoint(0, num, an)
         | ExitPoint                                  => null//ExitPoint(0, num, an)
-        | Terminate                                  => SimpleTreeNode(FsmNode.PseudoState(Terminate(0)))
+        | Terminate                                  => GeneralTree(FsmNode.PseudoState(Terminate(0)))
       }
     }
 
