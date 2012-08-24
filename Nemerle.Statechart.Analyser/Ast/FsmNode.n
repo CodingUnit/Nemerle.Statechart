@@ -189,6 +189,35 @@ namespace Nemerle.Statechart
       node.GetPostOrderEnumerable().FoldLeft([init], fold).Head
     }
 
+    public static Fold[T, TAcc](this node : BinaryTree[T], init : TAcc, folder : BinaryTree[T] * TAcc * TAcc -> TAcc) : TAcc where TAcc : class
+    {
+      def fold(n, acc)
+      {
+        //def left = if (n.Left != null) (Some(acc.Head), acc.Tail); else (null)
+         match (n.Left, n.Right, acc)
+         {
+           | (null, null, a)          => folder(n, null, null) :: a
+           | (null, _, a :: tail)     => folder(n, null, a) :: tail
+           | (_, null, a :: tail)     => folder(n, a, null) :: tail
+           | (_, _, ll :: rr :: tail) => folder(n, ll, rr) :: tail
+           | _                        => acc
+         }
+        //def (chacc, tail) = acc.PopRev(n.Count);
+      }
+
+      node.GetPostOrderEnumerable().FoldLeft([init], fold).Head
+    }
+
+    public static Fold[T, TAcc](this node : BinaryTree[T], folder : T -> TAcc) : BinaryTree[TAcc] where TAcc : class
+    {
+      def create(t : BinaryTree[T], l : BinaryTree[TAcc], r : BinaryTree[TAcc])
+      {
+        BinaryTree(folder(t.Data), l, r)
+      }
+      
+      Fold(node, null, create)
+    }
+    
     public static Reduce[T](this node : GeneralTree[T], folder : GeneralTree[T] -> T, type : TreeTraversalType = TreeTraversalType.PostOrder) : void
     {
       def reduce(n)
@@ -199,34 +228,31 @@ namespace Nemerle.Statechart
       node.GetEnumerable(type).Iter(reduce)
     }
 
-    public static Unfold[T](this node : GeneralTree[T], func : T -> IEnumerable[T]) : void
+    public static Unfold[T](this node : BinaryTree[T], func : T -> list[T], merge : list[T] -> BinaryTree[T]) : void
     {
-      def unfold(n)
+      
+      def loop(acc)
       {
-        def childs = func(n.Data);
-        def nodes = childs.Select(GeneralTree);
-        n.AddRange(nodes);
-        nodes
+        | []           => ()
+        | head :: tail =>
+        
+            def tail = match (func(head.Data))
+            {
+              | []  => tail
+              | lst => def new_node = merge(lst);
+                       head.Right = new_node;
+                       new_node :: tail
+            }
+            
+            loop(tail)
+        //childs.Iter(lst.Enqueue);
+        //childs.FoldBack(null, (x, a) => BinaryTree(x, a, null));
       }
 
-      def lst = SCG.Queue();
-
-      def loop()
-      {
-        if (lst.IsEmpty()) () else 
-        {
-          def node = lst.Dequeue();
-          def childs = node.GetBreadthFirstEnumerable().SelectMany(unfold);
-          childs.Iter(lst.Enqueue);
-          loop()
-        }
-      }
-
-      lst.Enqueue(node);
-      loop()
-    }
+      loop(node :: [])
 
   }
+}
 
   [Record]
   public variant TreeJunctionNode
@@ -246,33 +272,34 @@ namespace Nemerle.Statechart
 
     public static Create(node : PseudoStateAstNode.Junction) : BinaryTree[TreeJunctionNode]
     {
-      def nodes = node.node.Map(GeneralTree);
-      def jnode = GeneralTree(null);
-      jnode.AddRange(nodes);
-
-      def fold(n)
+      def convert(n)
       {
-        | JunctionNode(to = TargetType.PseudoState(Junction(node = n))) => n
-        | _                                                             => Enumerable.Empty()
-      }
-
-      jnode.Unfold(fold);
-
-      def fold(n, sb)
-      {
-        def node = match (n.Data)
-                    {
+        match (n)
+        {
                       | JunctionNode(p, g, a, TargetType.PseudoState(Junction)) => def a = if (a is Some(a)) a :: [] else []; 
                                                                                    Node(p, g, a)
                       | JunctionNode(p, g, a, t)                                => def a = if (a is Some(a)) a :: [] else []; 
                                                                                    Target(p, g, a, TransitionTarget.Create(t), null)
-                    }
-        def node = GeneralTree(node);
-        node.AddRange(sb);
-        node
+                    }                                                                          
+      }
+      
+      def merge(n)
+      {
+        n.FoldBack(null, (x, a) => BinaryTree(x, a, null));
+      }
+      
+      def jnode = merge(node.node);
+      //jnode.AddRange(nodes);
+
+      def fold(n : JunctionNode)
+      {
+        | JunctionNode(to = TargetType.PseudoState(Junction(node = n))) => n
+        | _                                                             => []
       }
 
-      jnode.Fold(null, fold)
+      jnode.Unfold(fold, merge);
+
+      jnode.Fold(convert)
     }
 
   }
