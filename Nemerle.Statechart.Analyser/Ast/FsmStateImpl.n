@@ -24,57 +24,69 @@ namespace Nemerle.Statechart
   {
     public override ToString() : string { Name }
 
-    public static GetCopy(this node : GeneralTree[FsmState], to : FsmState, copy : int) : FsmState
+    public static GetCopy(this node : GeneralTree[FsmState], to : FsmState, copy : int) : GeneralTree[FsmState]
     {
       def statemap = node.Data.statemap;
       
-      def get_copy(st)
+      def get_copy(st, ch)
       {
-        def st = st.Data;
-        def num = statemap.GetNextGlobalNum();
-        def int_tran = st.internal_tran.Map(_.SetNewId());
-        def hist = st.history.Map(_.ChangeNumCopy(statemap.GetNextGlobalNum(), copy));
-        def trans = st.transitions.Map(_.SetNewId());
-        def init  = st.initial.Map(_.SetNewId());
-        def pseudo = st.pseudo_states.Map(_.ChangeNumCopy(statemap.GetNextGlobalNum(), copy));
-        st.ChangeNumHistoryPseudoStatesCloneForInitialInternalTranTransitionsCopyNum(num, hist, pseudo, st, init, int_tran, trans, copy)
+        def nst = GeneralTree(st.Data);
+        nst.AddRange(ch);
+        def std = nst.Data;
+        //def num = statemap.GetNextGlobalNum();
+        //def int_tran = st.InternalTransitions.Iter(x => x.Update .SetNewId());
+        //def hist = st.history.Map(_.ChangeNumCopy(statemap.GetNextGlobalNum(), copy));
+        //def trans = st.transitions.Map(_.SetNewId());
+        //def init  = st.initial.Map(_.SetNewId());
+        def an = std.analyser;
+        def pseudo = an.PseudoStates[st].Map(x => x.Clone());
+        def tran   = an.statemap.Transitions[st].Map(x => x.Clone());
+        pseudo.Iter(x => x.Update(x => x.ChangeCopy(copy)));
+        an.PseudoStates.Add(nst, pseudo);
+        an.statemap.Transitions.Add(nst, tran);
+        nst.Update(x => x.ChangeCopyNum(copy));
+        an.Clones[st] = if (an.Clones.ContainsKey(st)) nst :: an.Clones[st] else  nst :: [];
+        nst
+        //st.ChangeNumHistoryPseudoStatesCloneForInitialInternalTranTransitionsCopyNum(num, hist, pseudo, st, init, int_tran, trans, copy)
       }
 
-      def node = node.Clone();
-      node.Reduce(get_copy);
+      //def node = node.Clone();
+      def st = node.Reduce(get_copy);
 
-      def old_pseudo  = node.Data.AllPseudo;
-      def new_pseudo  = st.AllPseudo;
+      def old_pseudo  = node.AllPseudo();
+      def new_pseudo  = st.AllPseudo();
 
-      def pseudo_id_map = old_pseudo.MakeArrayMap(new_pseudo, statemap.GlobalId, _.Num);
-      def states_id_map = AllStates.MakeArrayMap(st.AllStates, statemap.GlobalId, _.Num);
-      states_id_map[Num] = to;
+      def pseudo_map = Map(old_pseudo.ZipLazy(new_pseudo));
+      //def pseudo_id_map = old_pseudo.MakeArrayMap(new_pseudo, statemap.GlobalId, _.Num);
+      //def states_id_map = node.AllStates().MakeArrayMap(st.AllStates(), statemap.GlobalId, _.Num);
+      //states_id_map[Num] = to;
       
-      def retarget_transitions(s, _)
+      def retarget_transitions(s)
       {
         def check_target(tar)
         {
-          | TransitionTarget.State(st) as t               => t.ChangeValue(t.value.Fix(states_id_map[st.Id].Num))
+          | TransitionTarget.State(st) as t               => t.ChangeState(st.Analyser().Clones[st].Head)
               //| Qualified(_, State(state = st) as t)                  => t.ChangeStateNum(find_state(st))
               //| Final(st) as t                         => t.ChangeStateNum(find_state(st))          
           // TODO: copy unnamed junctions to states
           //| PseudoState(ReferenceNode(Value = Junction(IsUnnamed = true))) as t => t.ChangeNode(p => p.ChangeNumCopy(statemap.GetNextGlobalNum(), copy))
-          | PseudoState(ReferenceNode(Value = node)) as t => t.ChangeNode(TransitionTarget.CreatePseudoRef(states_id_map[node.state.Num], pseudo_id_map[node.Num]))//t.node.Fix(pseudo_id_map[node.Num].Num)) 
+          | PseudoState(node) as t                        => t.ChangeNode(pseudo_map.Get(node))//t.node.Fix(pseudo_id_map[node.Num].Num)) 
                                                                         //t
           | _                                             => null
         }
 
-        def check_tran(tr)
-        {
-          tr.TargetTraverse((x, _) => check_target(x))
-        }
+        //def check_tran(tr)
+        //{
+        //  tr.TargetTraverse((x, _) => check_target(x))
+        //}
 
-        def s        = s.TraverseTargets((x, _) => check_target(x));
-        def hist     = s.history.Map(_.ChangeDefault(check_tran));
-        s.ChangeHistory(hist)
+        //def s        = s.AllTransitions().Iter(x : NodeValue[FsmState, StateTransition] => x.Update(y => check_target(y.To)));
+        //def hist     = s.history.Map(_.ChangeDefault(check_tran));
+        //s.ChangeHistory(hist)
+        s.Data
       }
 
-      st.ReduceSingle(retarget_transitions); // retarget transitions to new place state
+      st.Reduce(retarget_transitions); // retarget transitions to new place state
     }
 
     //public FormatName() : void
