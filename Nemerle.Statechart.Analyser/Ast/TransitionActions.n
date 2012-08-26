@@ -271,6 +271,33 @@ namespace Nemerle.Statechart
       }
     }
 
+    //[NeedChange]
+    //public PathEdges : GeneralTree[FsmNode];
+    
+    //public CreatePathEdges() : StateTransition
+    //{
+    //  def create_junc_tree(j : TreeJunctionNode)
+    //  {
+    //    | Node()
+    //  }
+      
+      
+    //  def unfold(n)
+    //  {
+    //    | TransitionTarget.PseudoState(n) => match (n.Value)
+    //                                         {
+    //                                           | PseudoStateNode.Fork(t, _) => t
+    //                                           | PseudoStateNode.Join(target = t) => TraverseUtils.SingleElement(t)
+    //                                           | PseudoStateNode.Junction(tree = t) => def t = t.Fold(create_junc_tree);
+                                                                                       
+    //                                         }
+    //                                         null
+    //  }
+      
+    //  tree.Unfold(unfold);
+      
+    //  this
+    //}
     //public TargetIdObjects : IEnumerable[IdObject]
     //{
     //  get
@@ -408,14 +435,25 @@ namespace Nemerle.Statechart
       }
     }
 
-
-    public TargetTraverse(func : TransitionTarget * StateTransition -> TransitionTarget, manual_rebuild : bool = false) : StateTransition
+    
+    public TargetTraverse(func : TransitionTarget -> TransitionTarget) : StateTransition
     {
-      if (To != null) 
-      {
-        def to = To.ReduceSingle(manual_rebuild, (p, _) => func(p, this));
-        ChangeTo(to)
-      } else this
+        //ChangeTo(to)
+        def traverse(n)
+        {
+          match (n.Data)
+          {
+            | TreeJunctionNode.Target(target = t) as node => n.Update(_ => node.ChangeTarget(func(t)))
+            | _                                           => ()
+          }
+        }
+        
+        match (To)
+        {
+          | null                                                                                => this
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction(tree = t))) => t.GetBreadthFirstEnumerable().Iter(traverse);this
+          | _                                                                                   => ChangeTo(func(To))
+        }
     }
 
     //public UpdateTargets(old_t : FsmState, new_t : FsmState) : StateTransition

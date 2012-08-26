@@ -13,6 +13,15 @@ namespace Nemerle.Statechart
   using FsmState;
   using ListUtils;
 
+  [Record]
+  public class FsmJunctionNode 
+  {
+    public pos : int;
+    public guard : GuardNode;
+    public action : option[Actions];
+    public to : TransitionTarget;
+  }
+  
 //  [RefNode]
   [Record]
   public variant PseudoStateNode
@@ -141,6 +150,7 @@ namespace Nemerle.Statechart
       {
         [NeedChange] name : string;
         [NeedChange] tree : BinaryTree[TreeJunctionNode];// TransitionTarget.JunctionNode;
+        [NeedChange] nodes : list[FsmJunctionNode];
         //[TraverseIgnore] parent : Junction;
         type : JunctionType;
         //[NeedChange] decisionTree : DecisionNode;
@@ -150,14 +160,20 @@ namespace Nemerle.Statechart
         //  ChangeTo(to.ChangeDecisionTree(tree))
         //}
         
-        this(n : string, tr : GeneralTree[TreeJunctionNode], type : JunctionType)
+        this(n : string, nodes : list[FsmJunctionNode], type : JunctionType)
         {
           base(0);
           name = n;
-          tree = tr;
+          this.nodes = nodes;
           this.type = type;
         }
 
+        CreateTree() : Junction
+        {
+          def tree = TreeJunctionNode.Create(this);//lst |> JunctionNode(st, tran, _, this);
+          ChangeTree(tree)
+        }
+        
         Create(an : FsmAnalyser, node : PseudoStateAstNode.Junction) : GeneralTree[FsmNode]
         {
           def name =  match (node) 
@@ -168,8 +184,13 @@ namespace Nemerle.Statechart
                                                                                       $"UnnamedJunction$num"
             | Junction(name = n)                                                   => n
           }
-          def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
-          def junc = Junction(name, tree, node.type);
+          def create_node(x)
+          {
+            | JunctionNode(p, g, a, t) => FsmJunctionNode(p, g, a, TransitionTarget.Create(t))
+          }
+          //def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
+          def nodes = node.node.Map(create_node);
+          def junc = Junction(name, nodes, node.type);
           GeneralTree(FsmNode.PseudoState(junc))
         }
         //Nodes : IEnumerable[TransitionTarget.JunctionNode]
