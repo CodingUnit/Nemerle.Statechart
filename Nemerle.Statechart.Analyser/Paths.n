@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using SCG = System.Collections.Generic;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -235,20 +236,20 @@ namespace Nemerle.Statechart
   {
     [NeedChange]
     public Paths : list[StateEvent * TransitionPath];
-    public State : FsmState;
+    public State : GeneralTree[FsmState];
 
-    public this(st : FsmState)
+    public this(st : GeneralTree[FsmState])
     {
       State = st
     }
 
-    public TraverseTransitions(recursive : bool = false) : list[StateTransition] * TransitionPaths
+    public TraverseTransitions(recursive : bool = false) : TransitionPaths
     {
-      def trans = State.all_runnable_transitions.Exclude(_.UsedInGenerate);
-      def path = trans.Map(_.TraversePath(recursive));
+      def trans = State.AllTransitions().Exclude(x => x.Used() || x.Value.IsCompletion);
+      trans.Iter(x => x.TraversePath(recursive));
       def paths = path |> (Trigger, Path);
       //this.paths = paths;
-      (path, ChangePaths(paths))
+      ChangePaths(paths)
     }
 
     public Actions : IEnumerable[string]

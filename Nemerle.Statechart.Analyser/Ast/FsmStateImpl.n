@@ -22,11 +22,11 @@ namespace Nemerle.Statechart
   //[RefNode]
   public partial variant FsmState
   {
-    public override ToString() : string { Name }
+    public override ToString() : string { if (name != null) name else AstName }
 
     public static GetCopy(this node : GeneralTree[FsmState], to : FsmState, copy : int) : GeneralTree[FsmState]
     {
-      def statemap = node.Data.statemap;
+      //def statemap = node.Data.statemap;
       
       def get_copy(st, ch)
       {
@@ -39,8 +39,8 @@ namespace Nemerle.Statechart
         //def trans = st.transitions.Map(_.SetNewId());
         //def init  = st.initial.Map(_.SetNewId());
         def an = std.analyser;
-        def pseudo = an.PseudoStates[st].Map(x => x.Clone());
-        def tran   = an.statemap.Transitions[st].Map(x => x.Clone());
+        def pseudo = st.PseudoStates().Map(x => x.Clone(x => x.Clone()));
+        def tran   = st.AllTransitions().Map(x => x.Clone(x => x.Clone()));
         pseudo.Iter(x => x.Update(x => x.ChangeCopy(copy)));
         an.PseudoStates.Add(nst, pseudo);
         an.statemap.Transitions.Add(nst, tran);
@@ -61,6 +61,13 @@ namespace Nemerle.Statechart
       //def states_id_map = node.AllStates().MakeArrayMap(st.AllStates(), statemap.GlobalId, _.Num);
       //states_id_map[Num] = to;
       
+      def update_junction(j)
+      {
+        | Junction(tree = t) as j => t.GetBreadthFirstEnumerable().Iter(x => x.Update(x => x.ChangeJunc(pseudo_map.Get(x.junc)))); 
+                                     j
+        | _                       => j                             
+      }
+      
       def retarget_transitions(s)
       {
         def check_target(tar)
@@ -68,9 +75,12 @@ namespace Nemerle.Statechart
           | TransitionTarget.State(st) as t               => t.ChangeState(st.Analyser().Clones[st].Head)
               //| Qualified(_, State(state = st) as t)                  => t.ChangeStateNum(find_state(st))
               //| Final(st) as t                         => t.ChangeStateNum(find_state(st))          
-          // TODO: copy unnamed junctions to states
-          //| PseudoState(ReferenceNode(Value = Junction(IsUnnamed = true))) as t => t.ChangeNode(p => p.ChangeNumCopy(statemap.GetNextGlobalNum(), copy))
-          | PseudoState(node) as t                        => t.ChangeNode(pseudo_map.Get(node))//t.node.Fix(pseudo_id_map[node.Num].Num)) 
+          | PseudoState(NodeValue(Value = Junction) as n) as t => def j = pseudo_map.Get(n);
+                                                                  j.Update(update_junction);
+                                                                  t//t.ChangeNode(p => p.ChangeNumCopy(statemap.GetNextGlobalNum(), copy))
+          | PseudoState(node) as t                        => def pseudo = pseudo_map.Get(node);
+                                                             def t = t.ChangeNode(pseudo);//t.node.Fix(pseudo_id_map[node.Num].Num)) 
+                                                             t
                                                                         //t
           | _                                             => null
         }
@@ -83,10 +93,12 @@ namespace Nemerle.Statechart
         //def s        = s.AllTransitions().Iter(x : NodeValue[FsmState, StateTransition] => x.Update(y => check_target(y.To)));
         //def hist     = s.history.Map(_.ChangeDefault(check_tran));
         //s.ChangeHistory(hist)
-        s.Data
+        //s.Data
+        s.AllTransitions().Iter(x => x.Update(x => x.TargetTraverse(check_target)))
       }
 
-      st.Reduce(retarget_transitions); // retarget transitions to new place state
+      st.AllStates().Iter(retarget_transitions); // retarget transitions to new place state
+      st
     }
 
     //public FormatName() : void
@@ -121,25 +133,19 @@ namespace Nemerle.Statechart
     //  TransitionMap(find(_, tr))
     //}
 
-    public TraverseTargets(func : TransitionTarget * StateTransition -> TransitionTarget, manual_rebuild : bool = false) : FsmState
-    {
-      TransitionMap(_.TargetTraverse(func, manual_rebuild))
-    }
+    //public TraverseTargets(func : TransitionTarget * StateTransition -> TransitionTarget, manual_rebuild : bool = false) : FsmState
+    //{
+    //  TransitionMap(_.TargetTraverse(func, manual_rebuild))
+    //}
 
-    public TraverseTransitions() : FsmState
-    {
-      def paths = TransitionPaths(this);
-      def (trans, paths) = paths.TraverseTransitions(true);
-      UpdateTransitions(trans).ChangePaths(paths)
-    }
 
-    public TransitionMap(tran_func : StateTransition -> StateTransition) : FsmState
-    {
-      def init = initial.Map(tran_func);
-      def tran = transitions.Map(tran_func);
-      def int_tran = internal_tran.Map(tran_func);
-      ChangeTransitionsInitialInternalTran(tran, init, int_tran)
-    }
+    //public TransitionMap(tran_func : StateTransition -> StateTransition) : FsmState
+    //{
+    //  def init = initial.Map(tran_func);
+    //  def tran = transitions.Map(tran_func);
+    //  def int_tran = internal_tran.Map(tran_func);
+    //  ChangeTransitionsInitialInternalTran(tran, init, int_tran)
+    //}
     
     public this(an : FsmAnalyser)
     {
@@ -156,7 +162,7 @@ namespace Nemerle.Statechart
       //Num = statemap.GetNewStateId(this)
     }
 
-    public this(st : StateNode.State, sub : IEnumerable[FsmState], analyser : FsmAnalyser)
+    public this(st : StateNode.State, analyser : FsmAnalyser)
     {
       this(analyser);
       state = st;
@@ -231,29 +237,22 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public DefaultTransitions : IEnumerable[StateTransition]
-    {
-      get
-      {
-        history.Value.FoldLeft([], (x, a) => if (x.default is Some(t)) t :: a else a);
-      }
-    }
 
-    public AllChilds : IEnumerable[int]
-    {
-      get
-      {
-        sub_states.Select(_.Num) + ChildNodes
-      }
-    }
+    //public AllChilds : IEnumerable[int]
+    //{
+    //  get
+    //  {
+    //    sub_states.Select(_.Num) + ChildNodes
+    //  }
+    //}
     
-    public ChildNodes : IEnumerable[int]
-    {
-      get
-      {
-        ChildObjects.Select(_.Num)
-      }
-    }
+    //public ChildNodes : IEnumerable[int]
+    //{
+    //  get
+    //  {
+    //    ChildObjects.Select(_.Num)
+    //  }
+    //}
 
     //public SetNum(num : int) : FsmState
     //{
@@ -262,41 +261,41 @@ namespace Nemerle.Statechart
     //  st
     //}
 
-    public SetNewId() : FsmState
-    {
-      ChangeNum(statemap.GetNextGlobalNum())
-    }
+    //public SetNewId() : FsmState
+    //{
+    //  ChangeNum(statemap.GetNextGlobalNum())
+    //}
 
-    public ChangeHistory(h : PseudoStateNode.History) : FsmState
-    {
-      def check_hist(hist)
-      {
-        if (hist.Num == h.Num)
-        {
-          h
-        } else hist
-      }
+    //public ChangeHistory(h : PseudoStateNode.History) : FsmState
+    //{
+    //  def check_hist(hist)
+    //  {
+    //    if (hist.Num == h.Num)
+    //    {
+    //      h
+    //    } else hist
+    //  }
       
-      HistoryMap(check_hist)
-    }
+    //  HistoryMap(check_hist)
+    //}
 
-    public ChangeHistory(num : int, h : PseudoStateNode -> PseudoStateNode) : FsmState
-    {
-      def check_hist(hist)
-      {
-        if (hist.Num == num)
-        {
-          h(hist) :> PseudoStateNode.History
-        } else hist
-      }
+    //public ChangeHistory(num : int, h : PseudoStateNode -> PseudoStateNode) : FsmState
+    //{
+    //  def check_hist(hist)
+    //  {
+    //    if (hist.Num == num)
+    //    {
+    //      h(hist) :> PseudoStateNode.History
+    //    } else hist
+    //  }
       
-      HistoryMap(check_hist)
-    }
+    //  HistoryMap(check_hist)
+    //}
     
-    public HistoryMap(hist : PseudoStateNode.History -> PseudoStateNode.History) : FsmState
-    {
-      ChangeHistory(history.Map(hist))
-    }
+    //public HistoryMap(hist : PseudoStateNode.History -> PseudoStateNode.History) : FsmState
+    //{
+    //  ChangeHistory(history.Map(hist))
+    //}
     //// copy constructor
     //public this(st : FsmState)
     //{
@@ -330,22 +329,14 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public UsedInGenerate : bool
-    {
-      get
-      {
-        Lived || !AllLivedSubStates.IsEmpty()
-      }
-    }
 
-
-    public hierarchy_pos : int
-    {
-      get
-      {
-        if (calc_hierarchy_pos != -1) calc_hierarchy_pos else SuperStates.Count()
-      }
-    }
+    //public hierarchy_pos : int
+    //{
+    //  get
+    //  {
+    //    if (calc_hierarchy_pos != -1) calc_hierarchy_pos else SuperStates.Count()
+    //  }
+    //}
 
     public source_pos : int
     {
@@ -355,67 +346,22 @@ namespace Nemerle.Statechart
       }
     }
 
-    public IsTopState : bool
-    {
-      get
-      {
-        Num == statemap.TopNum
-      }
-    }
+    //public IsTopState : bool
+    //{
+    //  get
+    //  {
+    //    Num == statemap.TopNum
+    //  }
+    //}
 
-    CopyName : string
+    public CopyName : string
     {
       get
       {
         if (copy_num == 0) "" else $"$copy_num"
       }
     }
-
-    public Name : string
-    {
-      get
-      {
-        match (this)
-        {
-          | Final
-          | State
-          | ConcurrentRegion
-          | ConcurrentSubRegion                 => NativeName
-          | SubMachine(name = n)                => $"SubMachine$n$CopyName"
-          | InlinedSubMachine(name = n)         => $"InlinedSubMachine$n$CopyName"
-          | InlinedSubMachineInstance(name = n) => $"InlinedSubMachineInstance$n$CopyName"
-        }
-      }
-    }
-
-    public OriginalName : string
-    {
-      get
-      {
-        match (this)
-        {
-          | Final                                              => $"$(Super)Final"
-          | ConcurrentSubRegion(index = idx, contained_in = r) => $"$(r)SubRegion$idx"
-          | _                                                  => if (name != null) name else AstName
-        }
-      }
-    }
-
-    public NativeName : string
-    {
-      get
-      {
-        $"$OriginalName$CopyName"
-      }
-    }
-
-    public join_completion_transitions : IEnumerable[StateTransition]
-    {
-      get
-      {
-        completion_transitions.Where(x => x.To is TransitionTarget.PseudoState(ReferenceNode(Value = Join)))
-      }
-    }
+    
 
     public AstName : string
     {
@@ -425,20 +371,10 @@ namespace Nemerle.Statechart
       }
     }
 
-    /// <summary>
-    /// Events for which reacts state
-    /// </summary>
-    public events : IEnumerable[StateEvent]
-    {
-      get
-      {
-        work_transitions.Select(_.Trigger).Distinct();
-      }
-    }
 
 
 
-    public static NameComparer : FsmState * FsmState -> int = (x, y) => string.Compare(x.Name, y.Name);
+    public static NameComparer(x : GeneralTree[FsmState], y : GeneralTree[FsmState]) : int { string.Compare(x.Name(), y.Name()) }
 
 
 
@@ -460,10 +396,10 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public UpdateHistory(hist : PseudoStateNode.History) : FsmState
-    {
-      def hist = history.Map(x => if (x.type == hist.type) hist else x);
-      ChangeHistory(hist)
-    }
+    //public UpdateHistory(hist : PseudoStateNode.History) : FsmState
+    //{
+    //  def hist = history.Map(x => if (x.type == hist.type) hist else x);
+    //  ChangeHistory(hist)
+    //}
   }
 }

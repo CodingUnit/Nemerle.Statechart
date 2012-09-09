@@ -95,7 +95,7 @@ namespace Nemerle.Statechart
     [NeedChange]
     public clones : list[StateTransition] = [];
 
-    [NeedChange(ActualTo)]
+    [NeedChange(ActualTo, Path)]
     [NeedChange]
     public Destination : TransitionDestination;
 
@@ -319,13 +319,6 @@ namespace Nemerle.Statechart
     [NeedChange]
     public Local : bool;
 
-    public TraversePath(recursive : bool = false) : StateTransition
-    {
-      def path = TransitionPath(this, analyser, recursive);
-      path.Traverse();
-      def tran = path.Transition;
-      tran.ChangePath(path)
-    }
 
     //public ChangeCopyAndNum(copy : int) : StateTransition
     //{
@@ -448,14 +441,16 @@ namespace Nemerle.Statechart
         }
         
         def to = func(To);
+        def tran = if (to != null) ChangeTo(to) else this;
         match (to)
         {
-          | null                                                                                => this
-          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction(tree = t))) => t.GetBreadthFirstEnumerable().Iter(traverse);this
-          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Fork(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(t.Map(func)));this
-          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(func(t)));this
-          | _                                                                                   => ChangeTo(func(To))
+          | null                                                                                        => ()
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction(tree = t)))         => t.GetBreadthFirstEnumerable().Iter(traverse);
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Fork(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(t.Map(func)));
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(func(t)));
+          | _                                                                                           => ()
         }
+        tran
     }
 
 //blic UpdateTargets(old_t : FsmState, new_t : FsmState) : StateTransition

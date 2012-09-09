@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Statechart;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -17,14 +18,14 @@ namespace Nemerle.Statechart
   /// </summary>
   public partial class TransitionPath
   {
-    public static FindPath(src_st : FsmState,
-                          dest_st : FsmState,
-                          exit : IEnumerable[FsmState],
-                          entry : IEnumerable[FsmState]) : IEnumerable[FsmState] * IEnumerable[FsmState]
+    public static FindPath(src_st : GeneralTree[FsmState],
+                          dest_st : GeneralTree[FsmState],
+                          exit : IEnumerable[GeneralTree[FsmState]],
+                          entry : IEnumerable[GeneralTree[FsmState]]) : IEnumerable[GeneralTree[FsmState]] * IEnumerable[GeneralTree[FsmState]]
     {
-      def src = src_st.SuperStatesFromTopInclude.NToList();
-      def dest = dest_st.SuperStatesFromTopInclude.NToList();
-      def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x.Num == y.Num);
+      def src = src_st.SuperStatesFromTopInclude().NToList();
+      def dest = dest_st.SuperStatesFromTopInclude().NToList();
+      def (ex, en) = src.RemoveDupFirst(dest, _ == _);
       (exit.Concat(ex.Reverse()), en.Concat(entry))
     }
 
@@ -50,11 +51,11 @@ namespace Nemerle.Statechart
                 //* Case 4: The source is exited and the target entered.
                 //*
                 //* Case 5: Traverses the hiearchy until a common superstate is met.
-    static FindLCA(st : FsmState, dest_st : FsmState) : IEnumerable[FsmState] * IEnumerable[FsmState]
+    static FindLCA(st : GeneralTree[FsmState], dest_st : GeneralTree[FsmState]) : IEnumerable[GeneralTree[FsmState]] * IEnumerable[GeneralTree[FsmState]]
     {
-      def super = dest_st.Super;
+      def super = dest_st.Super();
       def dest = if (super != null) super else dest_st;
-      FindPath(st.Super, dest, TraverseUtils.SingleElement(st), TraverseUtils.SingleElement(dest_st))
+      FindPath(st.Super(), dest, TraverseUtils.SingleElement(st), TraverseUtils.SingleElement(dest_st))
     }
 
     static AddAction(nodes : IEnumerable[PathNode], act : option[Actions]) : IEnumerable[PathNode]

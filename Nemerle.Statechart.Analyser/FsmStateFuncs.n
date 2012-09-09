@@ -189,6 +189,17 @@ namespace Nemerle.Statechart
       node.SubStates().FindType()
     }
 
+    public DefaultTransitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
+    {
+      node.History().Value.FoldLeft([], (x, a) => if ((x.Value :> PseudoStateNode.History).default is Some(t)) t :: a else a)
+    }
+
+    public UsedInGenerate(this node : GeneralTree[FsmState]) : bool
+    {
+        node.Lived() || !node.AllLivedSubStates().IsEmpty()
+    }
+
+
         /// <summary>
     /// Transitions defined direct from this state
     /// </summary>
@@ -456,6 +467,138 @@ namespace Nemerle.Statechart
     //    SuperStatesInclude.FilterType()
     //  }
     //}    
+    public TraverseTransitions(this node : GeneralTree[FsmState]) : void
+    {
+      def paths = TransitionPaths(node);
+      node.Update(x => x.ChangePaths(paths.TraverseTransitions(true)));
+      //UpdateTransitions(trans).ChangePaths(paths)
+    }
+    
+   
+    public HierarchyPos(this node : GeneralTree[FsmState]) : int
+    {
+      if (node.Data.calc_hierarchy_pos != -1) node.Data.calc_hierarchy_pos else node.Height
+    }
+    
+    public Name(this node : GeneralTree[FsmState]) : string
+    {
+        match (node.Data)
+        {
+          | Final
+          | State
+          | ConcurrentRegion
+          | ConcurrentSubRegion                 => node.NativeName()
+          | SubMachine(name = n)                => $"SubMachine$n$(node.Data.CopyName)"
+          | InlinedSubMachine(name = n)         => $"InlinedSubMachine$n$(node.Data.CopyName)"
+          | InlinedSubMachineInstance(name = n) => $"InlinedSubMachineInstance$n$(node.Data.CopyName)"
+        }
+    }
+
+    public OriginalName(this node : GeneralTree[FsmState]) : string
+    {
+        match (node.Data)
+        {
+          | Final               => $"$(node.Super())Final"
+          | ConcurrentSubRegion => def idx = node.Index();
+                                   def reg = node.Super(); 
+                                   $"$(reg)SubRegion$idx"
+          | x                   => $"$x"
+        }
+    }
+
+    public NativeName(this node : GeneralTree[FsmState]) : string
+    {
+        $"$(node.OriginalName())$(node.Data.CopyName)"
+    }
+    
+    public GetHistory(this node : GeneralTree[FsmState], type : NodeValue[FsmState, PseudoStateNode]) : NodeValue[FsmState, PseudoStateNode]
+    {
+      match (node.History(), type.Value)
+      {
+        | (One(h), _)                                                                                              => h
+        | (Two(NodeValue(Value = PseudoStateNode.History(type = t1)) as f, s), PseudoStateNode.History(type = t))  => if (t1 == t) f else s
+        | _                                                                                                        => null
+      }
+    }
+    
+    public CompletionTransitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
+    {
+      node.AllTransitions().Where(x => x.Value.IsCompletion)
+    }
+    
+    public join_completion_transitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
+    {
+        node.CompletionTransitions().Where(x => x.Value.To is TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join)))
+    }
+
+    public HistoryPaths(this node : GeneralTree[FsmState]) : HistoryPath
+    {
+      def hist = node.Analyser().HistoryPaths;
+      if (hist != null && hist.ContainsKey(node))
+      {
+        hist[node]
+      } else null
+    }
+    
+    public HaveHistoryPaths(this node : GeneralTree[FsmState]) : bool
+    {
+      node.HistoryPaths() != null
+      //node.Analyser().HistoryPaths != null && HistoryPaths[node] HistoryPaths[node].IsEmpty()
+    }
+
+    
+    /// <summary>
+    /// Work transitions
+    /// </summary>
+    public WorkTransitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
+    {
+            node.AllTransitions().Where(x => x.Used())
+            //__.Exclude(_.CrossFor);
+            //__.Exclude(_.NotWork);
+            //__.Where(_.UsedInGenerate)
+    }
+    
+        /// <summary>
+    /// Events for which reacts state
+    /// </summary>
+    public Events(this node : GeneralTree[FsmState]) : IEnumerable[StateEvent]
+    {
+        node.WorkTransitions().Select(x => x.Value.Trigger).Distinct()
+    }
+
+        public region_exit_path(this node : GeneralTree[FsmState]) : IEnumerable[PathNode]
+    {
+        match (node.PartOfRegion())
+        {
+          | Some(r) => def (exit, _) = TransitionPath.FindPath(node, r, Enumerable.Empty(), Enumerable.Empty()); // exit state nested in region
+                       TransitionPath.ExitNodeCreate(this, exit); // create exit state node
+                       
+          | _       => Enumerable.Empty()
+        }
+    }
+
+  }
+  
+  module TransitionFuncs
+  {
+    public Used(this node : NodeValue[FsmState, StateTransition]) : bool
+    {
+      node.Value.analyser.Used[node]
+    }
+
+    public Used(this node : NodeValue[FsmState, StateTransition], res : bool) : void
+    {
+      node.Value.analyser.Used[node] = res
+    }
+    
+    public TraversePath(this node : NodeValue[FsmState, StateTransition], recursive : bool = false) : void
+    {
+      def path = TransitionPath(node, recursive);
+      path.Traverse();
+      //def tran = path.Transition;
+      //tran.ChangePath(path)
+    }
+
   }
   
   module PseudoStateFuncs
