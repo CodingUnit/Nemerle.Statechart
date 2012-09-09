@@ -40,25 +40,25 @@ namespace Nemerle.Statechart
     //  map[node]
     //}
     
-    public Add(node : GeneralTree[FsmState], st : GeneralTree[FsmState]) : GeneralTree[FsmNode]
-    {
-      _ = node.Children.Add(st);
-      map[st] = node;
-      node
-    }
+    //public Add(node : GeneralTree[FsmState], st : GeneralTree[FsmState]) : GeneralTree[FsmNode]
+    //{
+    //  _ = node.Children.Add(st);
+    //  map[st] = node;
+    //  node
+    //}
 
-    public Add(node : GeneralTree[FsmState], st : GeneralTree[FsmNode]) : GeneralTree[FsmNode]
-    {
-      def tnode = map[node];
-      _ = tnode.Children.Add(st);
-      match (st.Value)
-      {
-        | FsmNode.State(state) => _ = node.Children.Add(state);
-                                  map[state] = st;
-        | _                    => ()                          
-      }
-      tnode
-    }
+    //public Add(node : GeneralTree[FsmState], st : GeneralTree[FsmNode]) : GeneralTree[FsmNode]
+    //{
+    //  def tnode = map[node];
+    //  _ = tnode.Children.Add(st);
+    //  match (st.Value)
+    //  {
+    //    | FsmNode.State(state) => _ = node.Children.Add(state);
+    //                              map[state] = st;
+    //    | _                    => ()                          
+    //  }
+    //  tnode
+    //}
     
     //public ParentFor(num : int) : FsmState
     //{
@@ -101,12 +101,13 @@ namespace Nemerle.Statechart
       }
     }
 
-    public this(an : FsmAnalyser, stree : GeneralTree[FsmState], tr : GeneralTree[FsmNode]) 
+    public this(an : FsmAnalyser, stree : GeneralTree[FsmState], pseudo : ValueMap[FsmState, PseudoStateNode], tr : ValueMap[FsmState, StateTransition]) 
     { 
       state_tree = stree;
-      tree = tr;
       Analyser = an; 
-      tr.GetBreadthFirstEnumerable().Iter(x => when (x.Value is FsmNode.State(n)) map[n] = x)
+      pseudo_states = pseudo;
+      transitions = tr;
+      ///tr.GetBreadthFirstEnumerable().Iter(x => when (x.Value is FsmNode.State(n)) map[n] = x)
     }
 
     //public Contains(state : FsmState) : bool
@@ -149,7 +150,7 @@ namespace Nemerle.Statechart
                 | ([], _)    => Analyser.AddError(FsmError.StateNotFound(State(merge_name(path.Rev()), Analyser))); null
                 | ([st], []) => st
                 | ([st], _)  => get_loop(st.SubStates().NToList(), tail, path)
-                | (lst, _)   => Analyser.AddError(FsmError.SeveralState(lst.Map(x => State(merge_name((x.Value.NativeName :: p).Rev()), Analyser))));
+                | (lst, _)   => Analyser.AddError(FsmError.SeveralState(lst.Map(x => State(merge_name((x.NativeName() :: p).Rev()), Analyser))));
                                 null
               }
         | _                => null
@@ -167,7 +168,7 @@ namespace Nemerle.Statechart
                                 if (sub != null) (name.GetSub('['), sub) else (name, null)
                               } else (name, null);
       def name = if (sub_name != null) $"$(name)SubRegion$sub_name" else name;
-      map.Filter(x => x.Value.NativeName == name)
+      map.Filter(x => x.NativeName() == name)
     }
 
 
@@ -222,7 +223,7 @@ namespace Nemerle.Statechart
       def create_node(s, sb : IEnumerable[_] = null) : GeneralTree[_]
       {
         def node = GeneralTree(s);
-        when (sb != null) node.Children.AddRange(sb);
+        when (sb != null) node.AddRange(sb);
         node 
       }
       
@@ -232,20 +233,29 @@ namespace Nemerle.Statechart
                       (s, _)  => create_node(FsmState.Final(s, an)),
                       null);
 
-      def create_tree(n, sb : list[_])
+                      def pseudo_map = ValueMap();
+                      def tran_map   = ValueMap();
+                      
+      def create_tree(n)
       {
-        def node = GeneralTree(FsmNode.State(n));
+        //def node = GeneralTree(FsmNode.State(n));
         
-        when (sb != null) node.Children.AddRange(sb);
-        def pseudo = n.Value.state.pseudo_states.Select(x => PseudoStateNode.Create(an, x.node));
-        node.Children.AddRange(pseudo);
-        node
+        //when (sb != null) node.AddRange(sb);
+        def pseudo = n.Data.state.pseudo_states.Select(x => PseudoStateNode.Create(an, x.node));
+        def pseudo = pseudo.Map(NodeValue(n, _));
+        def tran   = StateTransition.Create(n, n.Data.state.transitions);
+        def tran   = tran.Map(NodeValue(n, _));
+        pseudo_map.Add(n, pseudo);
+        tran_map.Add(n, tran);
+        //pseudo_states.
+        //node.Children.AddRange(pseudo);
+        //node
       }
                       
-      def tree = top.Fold(null, create_tree);
+      top.GetBreadthFirstEnumerable().Iter(create_tree);
            
       
-      StateMap(an, top, tree)
+      StateMap(an, top, pseudo_map, tran_map)
     }
     
     //public Update(top : FsmState) : void
