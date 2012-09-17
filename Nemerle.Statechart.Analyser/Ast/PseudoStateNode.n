@@ -37,12 +37,13 @@ namespace Nemerle.Statechart
           //default = hist.default.Map(x => StateTransition.Default(an, _))
         }
 
-        public Create(hist : StateNode.History) : GeneralTree[FsmNode]
+        public Create(st : GeneralTree[FsmState], hist : StateNode.History) : NodeValue[FsmState, PseudoStateNode]
         {
-          def h = History(hist);
-          def pnode = FsmNode.PseudoState(h);
-          def node = GeneralTree(pnode);
-          node.Value = pnode.ChangeNode(h.ChangeDefault(hist.default.Map(StateTransition.Default(node, _))));
+          def h      = History(hist);
+          def node   = NodeValue(st, h);
+          def deflt  = hist.default.Map(StateTransition.Default(FsmNode.PseudoState(node), _));
+          def deflt  = deflt.Map(NodeValue(st, _));
+          node.Value = h.ChangeDefault(deflt);
           node
         }
     //public history : StateNode.History;
@@ -58,10 +59,10 @@ namespace Nemerle.Statechart
         [NeedChange]
         public default : option[NodeValue[FsmState, StateTransition]];
 
-        public ChangeDefault(tran : StateTransition -> StateTransition) : History
-        {
-          ChangeDefault(default.Map(tran))
-        }
+        //public ChangeDefault(tran : StateTransition -> StateTransition) : History
+        //{
+        //  ChangeDefault(default.Map(tran))
+        //}
     //[NeedChange]
     //[Accessor]
     //public num : int;
@@ -168,13 +169,13 @@ namespace Nemerle.Statechart
           this.type = type;
         }
 
-        CreateTree() : Junction
+        static CreateTree(node : NodeValue[FsmState, PseudoStateNode]) : void
         {
-          def tree = TreeJunctionNode.Create(this);//lst |> JunctionNode(st, tran, _, this);
-          ChangeTree(tree)
+          def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
+          node.Update(x => (x :> Junction).ChangeTree(tree))
         }
         
-        Create(an : FsmAnalyser, node : PseudoStateAstNode.Junction) : GeneralTree[FsmNode]
+        Create(an : FsmAnalyser, st : GeneralTree[FsmState], node : PseudoStateAstNode.Junction) : NodeValue[FsmState, PseudoStateNode]
         {
           def name =  match (node) 
           {
@@ -191,7 +192,7 @@ namespace Nemerle.Statechart
           //def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
           def nodes = node.node.Map(create_node);
           def junc = Junction(name, nodes, node.type);
-          GeneralTree(FsmNode.PseudoState(junc))
+          NodeValue(st, junc);
         }
         //Nodes : IEnumerable[TransitionTarget.JunctionNode]
         //{
@@ -241,22 +242,22 @@ namespace Nemerle.Statechart
         //  }
         //}
 
-        Actions : IEnumerable[PathNode]
-        {
-          get
-          {
-            tree.Actions
-          }
-        }
+        //Actions : IEnumerable[PathNode]
+        //{
+        //  get
+        //  {
+        //    tree.Actions
+        //  }
+        //}
 
-        Guards : IEnumerable[GuardNode]
-        {
-          get
-          {
-            def g = Nodes.Select(_.guard);//FoldLeft([], (x, a) => a + x.Guards).Rev();
-            g.Exclude(_ is GuardNode.Else)
-          }
-        }
+        //Guards : IEnumerable[GuardNode]
+        //{
+        //  get
+        //  {
+        //    def g = Nodes.Select(_.guard);//FoldLeft([], (x, a) => a + x.Guards).Rev();
+        //    g.Exclude(_ is GuardNode.Else)
+        //  }
+        //}
 
         //override UpdateReference() : PseudoStateNode
         //{
@@ -288,18 +289,10 @@ namespace Nemerle.Statechart
         //  }
         //}
 
-        Name : string
-        {
-          get
-          {
-            $<#Fork$(state)To..$(target;"_")#>
-          }
-        }
-
-        override ToString() : string
-        {
-          Name
-        }
+        //override ToString() : string
+        //{
+        //  "FO"
+        //}
       }
     | Join 
       {
@@ -315,10 +308,10 @@ namespace Nemerle.Statechart
         {
           get
           {
-            match (joined_tran)
+            match (joined_tran.NToList())
             {
               | []                                => null
-              | StateTransition(Trigger = t) :: _ => t
+              | t :: _ => t.Value.Trigger
             }
           }
         }

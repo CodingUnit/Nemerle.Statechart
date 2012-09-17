@@ -93,34 +93,38 @@ namespace Nemerle.Statechart
     public ExitNodeCreate(nodes : IEnumerable[GeneralTree[FsmState]]) : list[PathNode]
     {
 
-      def exiting_state(st : FsmState, a)
+      def exiting_state(st : GeneralTree[FsmState], a)
       {
-        match (st)
+        match (st.Data)
         {
-        | FsmState.ConcurrentRegion(exit = e) as r => 
+        | FsmState.ConcurrentRegion(exit = e) => 
             def get_source()
             {
-              match (transition.To)
+              match (transition.Value.To)
               {
-                | TransitionTarget.PseudoState(value = Join(region = reg, joined_tran = jtran)) => 
-                    def src = jtran |> Source;
-                    if (jtran.Last().FromRegion == transition.FromRegion) (reg, src, true) else (reg, src, false)
-                | _ => (null, [transition.Source], true)
+                | TransitionTarget.PseudoState(node = NodeValue(Value = Join(region = reg, joined_tran = jtran))) => 
+                    def src = jtran.Map(x => x.Parent);
+                    match (jtran.Last().FromRegion(), transition.FromRegion())
+                    {
+                      | (Some(a), Some(b)) when (a == b) => (reg, src, true) 
+                      | _                                => (reg, src, false)
+                    }
+                | _ => (null, [transition.Parent], true)
               }
             }
 
             def (reg, src, last) = get_source();
-            def src = if (r.sub_states.Exists(src.Contains)) src else [nodes.First()];
-            def regs = r.RegionsExcept(src);
+            def src = if (st.SubStates().Exists(src.Contains)) src else [nodes.First()];
+            def regs = st.RegionsExcept(src);
 
-            def node = if (last || r != reg) if (regs.Equals(r.sub_regions)) RegionExit(Enumerable.Empty(), r) else RegionExit(regs, r); else Empty();
+            def node = if (last || st : object != reg) if (regs.Equals(st.SubRegions())) RegionExit(Enumerable.Empty(), st) else RegionExit(regs, st); else Empty();
 
             if (e.IsEmpty()) 
             {
               node :: a
             } else 
             {
-              match (GetExitNode(r))
+              match (GetExitNode(st))
               {
                 | Empty => node :: a
                 | p     => node :: p :: a
@@ -138,22 +142,25 @@ namespace Nemerle.Statechart
       nodes.FoldBack([], exiting_state)
     }
 
-    public static ExitNodeCreate(src : FsmState, nodes : IEnumerable[FsmState]) : IEnumerable[PathNode]
+    public static ExitNodeCreate(src : GeneralTree[FsmState], nodes : IEnumerable[GeneralTree[FsmState]]) : IEnumerable[PathNode]
     {
       def exiting_state(st)
       {
-        | FsmState.ConcurrentRegion(exit = e) as r => 
-            def regs = r.RegionsExcept(src);
-            def node = RegionExit(regs, r);
+        match (st.Data)
+        {
+        | FsmState.ConcurrentRegion(exit = e)  => 
+            def regs = st.RegionsExcept(src);
+            def node = RegionExit(regs, st);
             if (e.IsEmpty()) TraverseUtils.SingleElement(node) else TraverseUtils.DoubleElement(GetExitNode(st), node)
 
         | _ => TraverseUtils.SingleElement(GetExitNode(st))
+      }
       }
 
       nodes.SelectMany(exiting_state)
     }
 
-    NodesCreate(ex : IEnumerable[FsmState], tran : StateTransition) : IEnumerable[PathNode]
+    NodesCreate(ex : IEnumerable[GeneralTree[FsmState]], tran : StateTransition) : IEnumerable[PathNode]
     {
       def (exit, en) = TraverseTransitionPath(tran);
       def ex = ex.Concat(exit);
@@ -163,52 +170,52 @@ namespace Nemerle.Statechart
       node.Concat(entry_nodes) // merge together
     }
 
-    NodesCreate(ex : IEnumerable[FsmState], en : IEnumerable[FsmState]) : IEnumerable[PathNode]
+    NodesCreate(ex : IEnumerable[GeneralTree[FsmState]], en : IEnumerable[GeneralTree[FsmState]]) : IEnumerable[PathNode]
     {
       def node        = ExitNodeCreate(ex); // create nodes for exit exit actions
       def entry_nodes = EntryNodeCreate(en); // create nodes for entry exit actions
       node.Concat(entry_nodes) // merge together
     }
 
-    TraverseTransitionPath(tran : StateTransition) : IEnumerable[FsmState] * IEnumerable[FsmState]
+    TraverseTransitionPath(tran : StateTransition) : IEnumerable[GeneralTree[FsmState]] * IEnumerable[GeneralTree[FsmState]]
     {
       // initial и pseudo is local transitions by default
       | Initial(AtLeastStaticTo = st, From = from)
-      | Transition(To = PseudoState(value = PseudoStateNode(state = st)), From = from)
+      | Transition(To = PseudoState(node = NodeValue(Parent = st)), From = from)
       | History(From = from, ToState = st)
       // fork transition
       | Transition(From = from, Local = true, AtLeastStaticTo = st)
-      | Default(ToState = st, From = from)            => FindPath(from, st, Enumerable.Empty(), Enumerable.Empty())
+      | Default(ToState = st, From = from)            => FindPath(from.StateDecl, st, Enumerable.Empty(), Enumerable.Empty())
       // transition to pseudo state
-      | Transition(AtLeastStaticTo = st, From = from) => FindLCA(from, st)
+      | Transition(AtLeastStaticTo = st, From = from) => FindLCA(from.StateDecl, st)
       | Internal  // no path for internal transition
       | _        => (Enumerable.Empty(), Enumerable.Empty())
     }
 
-    DefExitPath(src : FsmState, dest : FsmState) : void
+    DefExitPath(src : GeneralTree[FsmState], dest : GeneralTree[FsmState]) : void
     {
       def ex = FindPath(src, dest, Enumerable.Empty(), Enumerable.Empty())[0];
       AddNode(ExitNodeCreate(ex))
     }
 
-    DefPath(src : FsmState, dest : FsmState, local : bool = true, skip : FsmState = null) : void
+    DefPath(src : GeneralTree[FsmState], dest : GeneralTree[FsmState], local : bool = true, skip : GeneralTree[FsmState] = null) : void
     {
       def node = GetPath(src, dest, local, skip);
       AddNode(node)
     }
 
-    GetPath(src : FsmState, dest : FsmState, local : bool = true, skip : FsmState = null) : IEnumerable[PathNode]
+    GetPath(src : GeneralTree[FsmState], dest : GeneralTree[FsmState], local : bool = true, skip : GeneralTree[FsmState] = null) : IEnumerable[PathNode]
     {
       if (src == null || dest == null) Enumerable.Empty() else
       {
         def (ex, en) = if (local) FindPath(src, dest, Enumerable.Empty(), Enumerable.Empty()) else FindLCA(src, dest);
         def ex = if (ex.IsEmpty()) ex else 
-                  if (skip != null && ex.First().Num == skip.Num) ex.Skip(1) else ex;
+                  if (skip != null && ex.First() == skip : object) ex.Skip(1) else ex;
         NodesCreate(ex, en)
       }
     }
 
-    DefPath(src : FsmState, dest : FsmState, tr : StateTransition, ex_node : IEnumerable[PathNode] = null) : void
+    DefPath(src : GeneralTree[FsmState], dest : GeneralTree[FsmState], tr : StateTransition, ex_node : IEnumerable[PathNode] = null) : void
     {
       def ex = FindPath(src, dest, Enumerable.Empty(), Enumerable.Empty())[0];
       def node = NodesCreate(ex, tr);

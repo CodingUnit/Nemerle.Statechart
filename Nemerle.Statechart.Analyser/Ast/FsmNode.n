@@ -37,7 +37,7 @@ namespace Nemerle.Statechart
     {
       NodeValue(Parent, val_clone(Value))
     }
-    
+
     public Update(func : V -> V) : void
     {
       Value = func(Value)
@@ -122,6 +122,14 @@ namespace Nemerle.Statechart
     }
 
 
+    public Analyser : FsmAnalyser
+    {
+      get
+      {
+        StateDecl.Analyser()
+      }
+    }
+
     //public CompareTo(node : FsmNode) : int
     //{
     //  match (this, node)
@@ -131,21 +139,26 @@ namespace Nemerle.Statechart
     //    | (_, _)                           => -1
     //  }
     //}
-    public static GetState(this node : FsmNode) : GeneralTree[FsmState]
+    public StateDecl : GeneralTree[FsmState]
     {
-      | FsmNode.State(st)       => st
-      | FsmNode.PseudoState(st) => st.Parent
-
+      get
+      {
+        match (this)
+        {
+          | FsmNode.State(st)       => st
+          | FsmNode.PseudoState(st) => st.Parent
+        }
+      }
     }
 
     public static PartOfRegion(this node : FsmNode) : option[GeneralTree[FsmState]]
     {
-      node.GetState().PartOfRegion()
+      node.StateDecl.PartOfRegion()
     }
 
     public static PartOfSubRegion(this node : FsmNode) : option[GeneralTree[FsmState]]
     {
-      node.GetState().PartOfSubRegion()
+      node.StateDecl.PartOfSubRegion()
     }
 
     public static ParentState(this node : GeneralTree[FsmNode]) : GeneralTree[FsmState]
@@ -281,13 +294,13 @@ namespace Nemerle.Statechart
     //      | _                        => (ch, acc)
     //    }
     //  }
-      
+
     //  def (res, acc) = node.GetPostOrderEnumerable().FoldLeft(([node], init), fold);
     //  (res.Head, acc)
     //  //(a.Head, b)
     //  //node.GetBreadthFirstEnumerable().Iter(reduce)
     //}
-    
+
     public Unfold[T](this node : GeneralTree[T], func : T -> IEnumerable[T]) : void
     {
       def unfold(n)
@@ -328,10 +341,10 @@ namespace Nemerle.Statechart
         tree.AddRange(c);
         tree
       }
-      
+
       node.Reduce(clone)
     }
-    
+
     public Unfold[T](this node : GeneralTree[T], func : T -> IEnumerable[GeneralTree[T]]) : void
     {
       def unfold(n)
@@ -358,7 +371,7 @@ namespace Nemerle.Statechart
       lst.Enqueue(node);
       loop()
     }
-    
+
     public Unfold[T](this node : BinaryTree[T], func : T -> list[T], merge : list[T] -> BinaryTree[T]) : void
     {
 
@@ -371,8 +384,8 @@ namespace Nemerle.Statechart
             {
               | []  => tail
               | lst => def new_node = merge(lst);
-                       head.Right = new_node;
-                       new_node :: tail
+                      head.Right = new_node;
+                      new_node :: tail
             }
 
             loop(tail)
@@ -403,7 +416,7 @@ namespace Nemerle.Statechart
     public action : list[Actions] = [];
     [NeedChange]
     public junc   : NodeValue[FsmState, PseudoStateNode];
-    
+
     public type : JunctionType
     {
       get
@@ -419,7 +432,7 @@ namespace Nemerle.Statechart
         | FsmJunctionNode(p, g, a, TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction) as n)) => def a = if (a is Some(a)) a :: [] else []; 
                                                                                                                       Node(p, g, a, n)
         | FsmJunctionNode(p, g, a, t)                                => def a = if (a is Some(a)) a :: [] else []; 
-                                                                     Target(p, g, a, null, t, null)
+                                                                    Target(p, g, a, null, t, null)
       }
 
       def merge(n)
@@ -438,7 +451,7 @@ namespace Nemerle.Statechart
 
       jnode.Unfold(fold, merge);
       def jnode = jnode.Fold(convert);
-      
+
       def init_node(n, a)
       {
         match (n.Data)
@@ -448,7 +461,7 @@ namespace Nemerle.Statechart
                               a
         }
       }
-      
+
       _ = jnode.GetBreadthFirstEnumerable().Fold(node, init_node); // init empty target nodes
       jnode
     }
