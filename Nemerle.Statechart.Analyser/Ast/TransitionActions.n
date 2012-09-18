@@ -23,6 +23,11 @@ namespace Nemerle.Statechart
       this.analyser = an
     }
 
+    public this(st : GeneralTree[FsmState], tran : StateNode.Transition)
+    {
+      this(FsmNode.State(st), tran)
+    }
+    
     public this(st : FsmNode, tran : StateNode.Transition)
     {
       def an = st.Analyser;
@@ -35,17 +40,17 @@ namespace Nemerle.Statechart
         guard = tran.guard;
         action = tran.action;
       }
-      To = if (tran.to != null) TransitionTarget.Create(tran.to) else TransitionTarget.Nowhere(analyser);
+      To = if (tran.to != null) TransitionTarget.Create(st.StateDecl, tran.to) else TransitionTarget.Nowhere(analyser);
     }
 
     public this(st : GeneralTree[FsmState], to : GeneralTree[FsmState])
     {
-      this(FsmNode.State(st), TransitionTarget.State(st.Value.analyser, to))//TransitionTarget.State(st.analyser, to))
+      this(FsmNode.State(st), TransitionTarget.State(st.Data.analyser, to))//TransitionTarget.State(st.analyser, to))
     }
 
     public this(st : FsmNode, to : TransitionTarget)
     {
-      this(st.Value.Analyser);
+      this(st.Analyser);
       //From = st;
       To = to;
       From = st
@@ -61,7 +66,7 @@ namespace Nemerle.Statechart
       action = tran.action;
       To = tran.To;
       omit_guard = tran.omit_guard;
-      ParentCrossed = tran.ParentCrossed;
+      //ParentCrossed = tran.ParentCrossed;
       From = tran.From;
       Local = tran.Local;
       //ImplicitFrom = tran.ImplicitFrom;
@@ -164,16 +169,16 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | Transition(implicit_from = null) => $"Transition$(Source)To$(To)By$(FriendlyTriggerName)"
-          | Transition(implicit_from = src)  => $"Transition$(src)To$(To)"
+          | Transition(From = FsmNode.State(st))       => $"Transition$(st.Data)To$(To)By$(FriendlyTriggerName)"
+          | Transition(From = FsmNode.PseudoState(st)) => $"Transition$(st.Value)To$(To)"
           | Internal(TriggerName = t)        => $"InternalTransition$(From)By$(t)"
           | Initial                          => $"InitialTransitionFrom$(From)To$To"
           | History                          => $"HistoryFrom$(From)To$ToState"
           | Default(history = h)             => 
               match (Destination)
               {
-                | History(PseudoStateNode.History(state = st)) => $"DefaultTransition$(h)To$st"
-                | _                                 => $"DefaultTransition$(h)To$ActualTo"
+                | History(NodeValue(Parent = st)) => $"DefaultTransition$(h)To$st"
+                | _                               => $"DefaultTransition$(h)To$ActualTo"
               }
         }
       }
@@ -233,13 +238,13 @@ namespace Nemerle.Statechart
       {
         match (To)
         {
-          | TransitionTarget.State(st)  => st.node
+          | TransitionTarget.State(st)  => st
           | _                           => null
         }
       }
     }
 
-    public ToPseudo : GeneralTree[FsmNode.PseudoState]
+    public ToPseudo : NodeValue[FsmState, PseudoStateNode]
     {
       get
       {
@@ -261,9 +266,9 @@ namespace Nemerle.Statechart
         match (To)
         {
           | Final(st)
-          | State(st) => st.node
+          | State(st)       => st
           //| History(PseudoStateNode.History(state = st))
-          | PseudoState(st) => st.ParentState()
+          | PseudoState(st) => st.Parent
           //| JunctionNode(state = st)
           | _                 => null
         }
@@ -533,10 +538,10 @@ namespace Nemerle.Statechart
         {
           | null => match (To)
               {
-                | TransitionTarget.Final(st) => st.node
+                | TransitionTarget.Final(st) => st
                 //| History(PseudoStateNode.History(state = st))
-                | PseudoState(node) => node.ParentState()
-                | State(st)         => st.node
+                | PseudoState(node) => node.Parent
+                | State(st)         => st
                 | _                 => null
               }
           | TransitionDestination.State when ActualTo != null => ActualTo
@@ -551,7 +556,7 @@ namespace Nemerle.Statechart
           | SubRegion(state = st) => check_dest(st)
           | Terminate(j)
           | Join(j)    
-          | History(j) => j.ParentState()
+          | History(j) => j.Parent
           | _ => null
         }
 

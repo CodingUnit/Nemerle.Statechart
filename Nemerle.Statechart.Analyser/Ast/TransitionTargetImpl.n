@@ -54,9 +54,9 @@ namespace Nemerle.Statechart
     //  if (fix) node.Fix(val.Num) else node
     //}
     
-    public static Create(target : TargetType) : TransitionTarget
+    public static Create(st : GeneralTree[FsmState], target : TargetType) : TransitionTarget
     {
-      def an = st.analyser;
+      def an = st.Analyser();
       match (target)
       {
         | PseudoState as t                  => PseudoState(st, t)
@@ -139,34 +139,39 @@ namespace Nemerle.Statechart
     {
       get
       {
-        JunctionNodeParts.Select(_.guard)
+        match (this)
+        {
+          | TransitionTarget.PseudoState(NodeValue(Value = Junction as j)) => j.Guards
+          | _                                                              => Enumerable.Empty()
+        }
+        //JunctionNodeParts.Select(_.guard)
       }
     }
 
-    public Rebuild(child : IEnumerable[TransitionTarget]) : TransitionTarget
-    {
-      match (this)
-      {
-        | PseudoState(raw_value = Junction) as t => t.node.SetValue(j => (j :> PseudoStateNode.Junction).ChangeTo(child.First() :> JunctionNode));
-                                                    this// t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
-        | JunctionNode(next = Some as nt) as t  => def (f, s) = child.TakeTwo();
-                                                   t.ChangeNextTo(nt.ChangeValue(s :> JunctionNode), f)
-        | JunctionNode as t                     => def f = child.First();
-                                                   t.ChangeTo(f);
-        | _                                     => this
-      }
-    }
+    //public Rebuild(child : IEnumerable[TransitionTarget]) : TransitionTarget
+    //{
+    //  match (this)
+    //  {
+    //    | PseudoState(raw_value = Junction) as t => t.node.SetValue(j => (j :> PseudoStateNode.Junction).ChangeTo(child.First() :> JunctionNode));
+    //                                                this// t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
+    //    | JunctionNode(next = Some as nt) as t  => def (f, s) = child.TakeTwo();
+    //                                               t.ChangeNextTo(nt.ChangeValue(s :> JunctionNode), f)
+    //    | JunctionNode as t                     => def f = child.First();
+    //                                               t.ChangeTo(f);
+    //    | _                                     => this
+    //  }
+    //}
 
-    public GetChild() : IEnumerable[TransitionTarget]
-    {
-      match (this)
-      {
-        | JunctionNode(to = to, next = Some(n)) => TraverseUtils.DoubleElement(to, n)
-        | PseudoState(value = Junction(to = n))
-        | JunctionNode(to =  n)                 => TraverseUtils.SingleElement(n)
-        | _                                     => Enumerable.Empty()
-      }
-    }
+    //public GetChild() : IEnumerable[TransitionTarget]
+    //{
+    //  match (this)
+    //  {
+    //    | JunctionNode(to = to, next = Some(n)) => TraverseUtils.DoubleElement(to, n)
+    //    | PseudoState(value = Junction(to = n))
+    //    | JunctionNode(to =  n)                 => TraverseUtils.SingleElement(n)
+    //    | _                                     => Enumerable.Empty()
+    //  }
+    //}
 
     public Clone() : TransitionTarget
     {
@@ -176,6 +181,7 @@ namespace Nemerle.Statechart
                                         n.Update(x => x.Clone());
                                         j.ChangeNode(n)
         | State(state = n) as j      => j.ChangeState(n.Clone())
+        | _                          => this
       }
     }
     

@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Collections;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -123,47 +124,45 @@ namespace Nemerle.Statechart
     public CreateMasks() : void
     {
       def st = analyser.TopState;
-
+      def map = Map(st.GetBreadthFirstEnumerable().MapIndex((x, i) => (x, i)));
+      
       def create_id(t)
       {
         def id = BitArray(Count);
-        def num = t.Num;
+        def num = map.Get(t);
         id.Set(num, true);
         IdType(id)
       }
 
-      def create_num_id_super(s, t : IdType)
+      def create_num_id(s)
       {
         def id = create_id(s);
-        def id = if (t != null) id | t else id;
-        s.ChangeId(id)
+        def id = if (s.Parent != null) id | s.Parent.Data.Id else id;
+        s.Update(x => x.ChangeId(id))
       }
 
-      def create_num_id(t)
-      {
-        def id  = t.Id;
-        def sub = t.sub_states.Map(create_num_id_super(_, id));
-        t.ChangeSubStates(sub)
-      }
 
-      def mark_inlined_inst(t)
+      def mark_inlined_inst(t : GeneralTree[FsmState])
       {
-        | FsmState(CloneFor = null) => null
-        | FsmState(CloneFor = FsmState(Id = clone_id, PartOfStateMachine = Some(FsmState(Super = FsmState(Id = inlined_super_id)))), Id = id) =>
-
+        match (t.Data)
+        {
+        | FsmState          => null//(CloneFor = null) => null
+        | FsmState(Id = id) =>
+               // CloneFor = FsmState(Id = clone_id, PartOfStateMachine = Some(FsmState(Super = FsmState(Id = inlined_super_id)))
               def clone_id = clone_id.val & ~inlined_super_id.val; // get clone id but without it super state environment
               def id = (id.val | clone_id); // merge current id and from it is cloned
               def id = IdType(id);
               t.ChangeId(id)
 
         | _ => null
+        }
       }
 
       // first pass
-      def st = st.LevelOrderMap(create_num_id).NToList();
-      analyser.UpdateStateMap(st);
+      st.GetBreadthFirstEnumerable().Iter(create_num_id);
+      //analyser.UpdateStateMap(st);
       // second pass
-      def st = analyser.TopState.LevelOrderMap(mark_inlined_inst).NToList();
+      def st = st.GetBreadthFirstEnumerable().Iter(mark_inlined_inst);
       analyser.UpdateStateMap(st)
     }
 

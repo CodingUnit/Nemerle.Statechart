@@ -41,7 +41,7 @@ namespace Nemerle.Statechart
         {
           def h      = History(hist);
           def node   = NodeValue(st, h);
-          def deflt  = hist.default.Map(StateTransition.Default(FsmNode.PseudoState(node), _));
+          def deflt  = hist.default.Map(StateTransition.Default(node, _));
           def deflt  = deflt.Map(NodeValue(st, _));
           node.Value = h.ChangeDefault(deflt);
           node
@@ -187,7 +187,7 @@ namespace Nemerle.Statechart
           }
           def create_node(x)
           {
-            | JunctionNode(p, g, a, t) => FsmJunctionNode(p, g, a, TransitionTarget.Create(t))
+            | JunctionNode(p, g, a, t) => FsmJunctionNode(p, g, a, TransitionTarget.Create(st, t))
           }
           //def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
           def nodes = node.node.Map(create_node);
@@ -246,18 +246,20 @@ namespace Nemerle.Statechart
         //{
         //  get
         //  {
-        //    tree.Actions
+        //    tree.Fold((x, a) => a.Concat(x.action))
         //  }
         //}
 
-        //Guards : IEnumerable[GuardNode]
-        //{
-        //  get
-        //  {
-        //    def g = Nodes.Select(_.guard);//FoldLeft([], (x, a) => a + x.Guards).Rev();
-        //    g.Exclude(_ is GuardNode.Else)
-        //  }
-        //}
+        Guards : IEnumerable[GuardNode]
+        {
+          get
+          {
+            def data = tree.GetBreadthFirstEnumerable().FoldLeft([], (x, a) => x.Data.guard :: a);
+            data.Exclude(_ is GuardNode.Else)
+            //def g = Nodes.Select(_.guard);//FoldLeft([], (x, a) => a + x.Guards).Rev();
+            //g.Exclude(_ is GuardNode.Else)
+          }
+        }
 
         //override UpdateReference() : PseudoStateNode
         //{
@@ -345,14 +347,14 @@ namespace Nemerle.Statechart
     | ExitPoint
     | Terminate
 
-    public static Create(an : FsmAnalyser, pseudo : PseudoStateAstNode) : PseudoStateNode
+    public static Create(st : GeneralTree[FsmState], pseudo : PseudoStateAstNode) : PseudoStateNode
     {
       match (pseudo)
       {
-        | History                                    => History.Create(an, pseudo)
-        | Junction as j                              => Junction.Create(an, j)
-        | Fork(target = lst)                         => Fork(0, lst.Map(TransitionTarget.Create), [])
-        | Join(name = n, target = t)                 => Join(0, n, TransitionTarget.Create(t), null, null, null)
+        | History                                    => History.Create(st, pseudo)
+        | Junction as j                              => Junction.Create(st, j)
+        | Fork(target = lst)                         => Fork(0, lst.Map(TransitionTarget.Create(st, _)), [])
+        | Join(name = n, target = t)                 => Join(0, n, TransitionTarget.Create(st, t), null, null, null)
         | EntryPoint                                 //EntryPoint(0, num, an)
         | ExitPoint                                  => null//ExitPoint(0, num, an)
         | Terminate                                  => Terminate(0)
