@@ -144,17 +144,20 @@ namespace Nemerle.Statechart
 
       def mark_inlined_inst(t : GeneralTree[FsmState])
       {
-        match (t.Data)
+        match (t.PartOfStateMachine())
         {
-        | FsmState          => null//(CloneFor = null) => null
-        | FsmState(Id = id) =>
+        //| FsmState          => null//(CloneFor = null) => null
+        | Some(m) => 
+              def id = t.Data.Id;
+              def clone_id = analyser.Clones.Find(x => x.Value.Exists(x => x == t : object)).Value.Key.Data.Id;
+              def inlined_super_id = m.Super().Data.Id;
                // CloneFor = FsmState(Id = clone_id, PartOfStateMachine = Some(FsmState(Super = FsmState(Id = inlined_super_id)))
               def clone_id = clone_id.val & ~inlined_super_id.val; // get clone id but without it super state environment
               def id = (id.val | clone_id); // merge current id and from it is cloned
               def id = IdType(id);
-              t.ChangeId(id)
+              t.Update(x => x.ChangeId(id))
 
-        | _ => null
+        | _ => ()
         }
       }
 
@@ -162,8 +165,8 @@ namespace Nemerle.Statechart
       st.GetBreadthFirstEnumerable().Iter(create_num_id);
       //analyser.UpdateStateMap(st);
       // second pass
-      def st = st.GetBreadthFirstEnumerable().Iter(mark_inlined_inst);
-      analyser.UpdateStateMap(st)
+      st.GetBreadthFirstEnumerable().Iter(mark_inlined_inst);
+      //analyser.UpdateStateMap(st)
     }
 
   }
