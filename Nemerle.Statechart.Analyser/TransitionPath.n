@@ -66,46 +66,51 @@ namespace Nemerle.Statechart
       path = path.Add(node)
     }
 
-    TraverseChoice(j : PseudoStateNode.Junction, tran : StateTransition) : TransitionDestination
+    TraverseChoice(j : NodeValue[FsmState, PseudoStateNode], tran : StateTransition) : TransitionDestination
     {
-      | (PseudoStateNode.Junction(to = TransitionTarget.JunctionNode(decisionTree = t), state = jst), _) =>
-
-          DefPath(tran.From, jst);
+      match (j.Value)
+      {
+      | PseudoStateNode.Junction(tree = t) =>
+          def jst = j.Parent;  
+          DefPath(tran.From.StateDecl, jst);
           def exit = ExitNodeCreate(TraverseUtils.SingleElement(jst));
           AddNode(exit);
           def init_path = path;
           //path = Empty();
 
-          def create_tree_node(t, pst)
-          {
-            match (t)
-            {
-              | DecisionNode.Condition(state = st) =>
-                def node_path = GetPath(pst, st, true, jst);
-                (t.ChangeNodePathOutPath(node_path, Enumerable.Empty()), st)
-              }
-          }
+         
 
           def create_targ_tree(t, pst)
           {
-            match (t)
+            match (t.Data)
             {
-            | DecisionNode.Target(target = tar, state = st) as t =>
-
+              | TreeJunctionNode.Node(junc = j) =>
+                def st = j.Parent;
+                def node_path = GetPath(pst, st, true, jst);
+                t.Update(x => x.ChangeNodePathOutPath(node_path, Enumerable.Empty()));
+                st
+                
+            | TreeJunctionNode.Target(target = tar, junc = j) as tt=>
+ 
+                def st = j.Parent;
                 path = init_path;
                 def node_path = GetPath(pst, st, true, jst);
                 DefPath(st, tar.ToState, true, jst);
                 def dest = TraverseTargetReg(tar, tran);
                 def out_path = path.Path;
-                (t.ChangeDestinationOutPathNodePath(dest, out_path, node_path), st)
+                t.Data = tt.ChangeDestOutPathNodePath(dest, out_path, node_path); 
+                st
               }
                 
           }
 
           traverser?.Log($"\nTraversing choice node $j");
-          def (dest_tree, _) = t.Reduce(j.state, (t, _, _, a) => create_tree_node(t, a), create_targ_tree);
+          _ = t.GetBreadthFirstEnumerable().Fold(jst, create_targ_tree);//Reduce(j.state, (t, _, _, a) => create_tree_node(t, a), create_targ_tree);
           path = init_path;
-          ChoiceNode(dest_tree)
+          ChoiceNode(t)
+          
+          | _ => ()
+        }
     }
 
     TraverseJunction(j : PseudoStateNode.Junction, tran : StateTransition) : TransitionDestination

@@ -156,15 +156,17 @@ namespace Nemerle.Statechart
         type : JunctionType;
         //[NeedChange] decisionTree : DecisionNode;
 
+        IsUnnamed : bool;
         //ChangeDecisionTree(tree : DecisionNode) : Junction
         //{
         //  ChangeTo(to.ChangeDecisionTree(tree))
         //}
         
-        this(n : string, nodes : list[FsmJunctionNode], type : JunctionType)
+        this(n : string, nodes : list[FsmJunctionNode], type : JunctionType, is_unnamed : bool)
         {
           base(0);
           name = n;
+          IsUnnamed = is_unnamed;
           this.nodes = nodes;
           this.type = type;
         }
@@ -177,13 +179,13 @@ namespace Nemerle.Statechart
         
         Create(an : FsmAnalyser, st : GeneralTree[FsmState], node : PseudoStateAstNode.Junction) : NodeValue[FsmState, PseudoStateNode]
         {
-          def name =  match (node) 
+          def (name, unnamed) =  match (node) 
           {
             | PseudoStateAstNode.Junction(name = null, type = JunctionType.Choice) => def num = an.NextChoiceNum();
-                                                                                      $"UnnamedChoice$num"
+                                                                                      ($"UnnamedChoice$num", true)
             | Junction(name = null, type = JunctionType.Junction)                  => def num = an.NextJunctionNum();
-                                                                                      $"UnnamedJunction$num"
-            | Junction(name = n)                                                   => n
+                                                                                      ($"UnnamedJunction$num", true)
+            | Junction(name = n)                                                   => (n, false)
           }
           def create_node(x)
           {
@@ -191,7 +193,7 @@ namespace Nemerle.Statechart
           }
           //def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
           def nodes = node.node.Map(create_node);
-          def junc = Junction(name, nodes, node.type);
+          def junc = Junction(name, nodes, node.type, unnamed);
           NodeValue(st, junc);
         }
         //Nodes : IEnumerable[TransitionTarget.JunctionNode]

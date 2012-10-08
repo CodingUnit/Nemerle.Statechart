@@ -148,6 +148,30 @@ namespace Nemerle.Statechart
       }
     }
 
+    public Traverse(func : TransitionTarget -> TransitionTarget) : TransitionTarget
+    {
+        def traverse(n)
+        {
+          match (n.Data)
+          {
+            | TreeJunctionNode.Target(target = t) as node => n.Update(_ => node.ChangeTarget(func(t)))
+            | _                                           => ()
+          }
+        }
+        
+        def to = func(this);
+        def to = to ?? this;
+        match (to)
+        {
+          | null                                                                                        => ()
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction(tree = t)))         => t.GetBreadthFirstEnumerable().Iter(traverse);
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Fork(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(t.Map(func)));
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(func(t)));
+          | _                                                                                           => ()
+        }
+        to
+    }
+    
     //public Rebuild(child : IEnumerable[TransitionTarget]) : TransitionTarget
     //{
     //  match (this)
