@@ -5,6 +5,7 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -12,9 +13,10 @@ namespace Nemerle.Statechart
   using ListUtils;
   using DecisionNode;  
   using GuardNode;
-  /// <summary>
-  /// Description of AnalyseTransitions.
-  /// </summary>
+  using Opt;
+/// <summary>
+/// Description of AnalyseTransitions.
+/// </summary>
   public partial class FsmAnalyser
   {
 
@@ -22,449 +24,457 @@ namespace Nemerle.Statechart
     {
       def check_auto_initial(st)
       {
-        | FsmState.Final 
-        | ConcurrentRegion => ()
-        | (FsmState where (Initial = [], SubStates = head :: _)) when (!(head is FsmState.Final)) =>
-            st.DefineInitial(head);
-        | _ => ()
-      }
-
-      states.Iter(x => check_duplicates(x.Initial));  // check duplicates
-      when (fsm.flags.AutoInitial) states.Iter(check_auto_initial);
-
-      when (TopState.Initial.IsEmpty()) // if not have initial transition in top state
-        if (TopState.Transitions.IsEmpty()) // if not have other transitions
-          check_auto_initial(TopState) // initial is first substate
-        else TopState.DefineInitial(TopState); // else initial transition is top state
-
-    }
-
-    is_crossed_orthogonal(tr : StateTransition, st : FsmState) : bool
-    {
-      | (StateTransition where (To = TransitionTarget.State(FsmState where (PartOfRegion = Some(r), PartOfSubRegion = Some(sr)))),
-                         FsmState where (PartOfRegion = Some(r2), PartOfSubRegion = Some(sr2))) when r == r2 =>
-          sr2 != sr
-      | _ => false
-    }
-    
-    CreateSuperStateTransitions() : void
-    {
-      def create_trans(st)
-      {
-        | FsmState.State(SuperState = null) => ()
-        | FsmState where (SuperState = super, PartOfSubRegion = r) =>
-            single_func
-            {
-              super.combined_transitions;
-              if (r.HasValue) __.Filter(x => !is_crossed_orthogonal(x, st)) else __;
-              st.DefineTransitions(__)
-            }
-      }
-
-      states.Iter(create_trans)
-    }
-    
-    CheckCrossTransitions() : void
-    {
-      def group(st, tr)
-      {
-        match (tr)
+        match (st.Data)
         {
-          | _ :: []  => () // if not have group exit
-          | StateTransition where (Guard = Some()) as head :: tail  => head.IsCrossed = true; // cross transition
-              def (path, end) = tail.SplitFind(x  => x.Guard.IsNone); // get all include last without GuardNode
-              head.ParentCrossed = path;
-              path.Iter(x => x.CrossFor = true);
-              st.DeleteTransitions(end); // delete from usual transitions in state
-          | _ :: tail  => st.DeleteTransitions(tail)
-          | _  => ()
+          | FsmState.Final 
+          | ConcurrentRegion       => ()
+          | _ when st.InitialTransitions().IsEmpty()  =>
+
+              match (st.SubStates().First())
+              {
+                | null => ()
+                | head => if (head.Data is FsmState.Final) () else st.DefineInitial(head);
+              }
+
+          | _                      => ()
         }
       }
 
-      def check_cross_tran(st, tr)
-      {
-        single_func
-        {
-          tr.Sort((x, y) => StateTransition.GuardComparer(y, x));
-          __.Sort((x, y) => y.From.hierarchy_pos - x.From.hierarchy_pos); // sort on hierarchy position
-          group(st, __); // group transitions
-        }
-      }
+      //States.Iter(x => check_duplicates(x.InitialTransitions().Select(_.Value)));  // check duplicates
+      when (FsmFlags.AutoInitial) States.Iter(check_auto_initial);
 
-      def check_cross(st)
-      {
-        def tran = st.Transitions + st.InternalTran + st.Initial;
-        def group = FsmState.create_transition_group(tran).Filter((_, x) => x.Length > 1).Values();
-        group.Iter(check_cross_tran(st,_))
-      }
+      def top = TopState;
+      when (top.InitialTransitions().IsEmpty()) // if not have initial transition in top state
+        when (top.Transitions().IsEmpty()) // if not have other transitions
+          check_auto_initial(top) // initial is first substate
 
-      states.Iter(check_cross); // check from the top state
+      //def create_path_from_out(st, _)
+      //{
+      //  def path = StateTransition.Initial(TopState, st).Create();
+      //  def path = path.TraversePath();
+      //  st.ChangePathFromOut(path)
+      //}
+
+      //UpdateStateMap(top);
+      //def top = top.ReduceSingle(create_path_from_out);
+      //UpdateStateMap(top);
     }
 
-    check_duplicates(tr : list[StateTransition]) : void
+    is_crossed_orthogonal(tr : NodeValue[FsmState, StateTransition], st : GeneralTree[FsmState]) : bool
     {
+      match (tr.Value, st)
+      {
+        | (StateTransition(To = TransitionTarget.State(state = n)), _) when n.PartOfRegion() == st.PartOfRegion() : object => n.PartOfSubRegion() != st.PartOfSubRegion() : object
+        | _                                                                                                                => false
+      }
+    }
+
+    CreateAndCheckSuperStateTransitions() : void
+    {
+      def resolve_conflict(trans)
+      {
+        def conflict = trans.OrderByDescending(x => x.Parent.HierarchyPos()).NToList();
+        match (conflict)
+        {
+          // if first transition is guarded then dynamic choice with left in hierarchy
+          | NodeValue(Value = StateTransition(Guard = Some)) as head :: tail  => 
+              def (path, _) = tail.SplitFind(x => x.Value.Guard.IsNone); // get all include last without GuardNode
+              //def st = st.Update(x => x.DeleteTransitions(end)); // delete from usual transitions in state
+              head.Parent.DefineTransitions(path);
+              //st.UpdateTransitions(tr :: path)
+
+          // if without guard it overrides all in 
+          | _ => ()
+        }
+
+      }
+
       def check_duplicate_tran(tr)
       {
-        def check_begin_and_ends(tr)
+        def check_begin_and_ends(tr : list[_])
         {
           def equal(lst, lst2)
           {
             lst.Equals(lst2, _ == _);
           }
 
-          when (tr.Length > 1)
-          {
-            def acts = tr |> ActionList;
-            def res = acts.ElementsEqual(equal);
-            when (res) AddError(FsmError.DuplicateTransition(tr));
-          }
+          def acts = tr.Select(x => x.Value.ActionList);
+          def res = acts.ElementsEqual(equal);
+          when (res) AddError(FsmError.DuplicateTransition(tr));
         }
 
-        def ordinary = tr.Exclude(x => x is Initial || x.IsCompletion);
-        def dups = ordinary.Duplicates(StateTransition.GuardComparer); // find duplicates with same guards and same triggers
+        def dups = tr.NToList().Duplicates(FsmStateFuncs.Compare(StateTransition.GuardComparer)); // find duplicates with same guards and same triggers
         if (!dups.IsEmpty())
         {
-          AddError(FsmError.DuplicateTransition(dups));
+          AddError(FsmError.DuplicateTransition(dups))
         } else
         {
-          def (intern, other) = tr.Partition(_ is Internal);
-          check_begin_and_ends(intern);
-          def begin_and_end_eq = other.Group((x,y) => x.From.CompareTo(y.From) - x.To.CompareTo(y.To));
-          def begin_and_end_eq = begin_and_end_eq.Filter(x => x.Length > 1);
+          def begin_and_end_eq = tr.NToList().DuplicatesGroup((x, y) => x.Value.To.CompareTo(y.Value.To));
           begin_and_end_eq.Iter(check_begin_and_ends)
         }
       }
 
       def check_override(tr)
       {
-        match (tr.Find(x => x.Guard.IsNone))
+        // без гуарда переопределяет на том же уровне с гуардами и без гуардов, если такое возникает то необходимо сигнализировать
+        match (tr.Find(x => x.Value.Guard.IsNone))
         {
-          | Some(t) => def tr = tr.Exclude([t], (x, y) => x == y : object);
-              tr.Iter(x => AddWarning(FsmWarning.TransitionOverriden(x, t)));
+          | Some(t) => 
+                  def tr = tr.Except(t);
+                  def warn = tr.Map(x => FsmWarning.TransitionOverriden(x.Value, t.Value));
+                  AddWarnings(warn)
+
           | _ => ()
         }
       }
-      
-      def group = FsmState.create_transition_group(tr).Values();
-      def group = group.Filter(x => x.Length > 1);
-      group.Iter(check_duplicate_tran);
-      group.Iter(check_override)
-    }
 
-    /// <summary>
-	  /// Check duplicates
-	  /// </summary>
-    CheckDuplicates() : void
-    {
-      states.Iter(x => check_duplicates(x.this_transitions));
-      states.Iter(x => check_duplicates(x.Initial))
-    }
-
-    
-    get_named(tr : TransitionTarget.Named) : TransitionTarget
-    {
-      | Named(name = n, transition = tr) =>
-      
-          def states = pseudo_states.Filter(x => x.NativeName.HasValue);
-          match (states.Find(x => x.NativeName.Value == n))
-          {
-            | Some(t) => TransitionTarget.PseudoState(tr, t)
-            | _ => AddError(FsmError.UnknownNode(tr));null
-          }
-    }
-
-    check_targets(tr : TransitionTarget) : TransitionTarget
-    {
-        | PseudoState(node = Junction as j, transition = tr) as node
-        | PseudoState(node = Choice as j, transition = tr) as node => def n = CheckJunctionChoice(j);
-          if (j != n : object) TransitionTarget.PseudoState(tr, n) else node
-        | _  => tr
-    }
-
-    resolve_targets(st : FsmState, tr : TransitionTarget) : TransitionTarget
-    {
-      // TODO: может ли оно быть null?
-      def tran = tr?.transition;
-      
-      match (tr)
+      def check_trans(st, get_tran, func)
       {
-        | TransitionTarget.Final(state = null) as t =>
-            def super = if (tran is Initial) st else st.SuperState;
-            match (super.SubStates.FindType()[0])
-            {
-              | Some(st)  => t.ChangeState(st)
-              | _  => t
-            }
-           
-        | PseudoState(node = Terminate(state = null) as node) as t =>
-            match (pseudo_states.Filter(_ is PseudoStateNode.Terminate))
-            {
-              | [] => TransitionTarget.PseudoState(tran, node.ChangeState(TopState))
-              | [term] => TransitionTarget.PseudoState(tran, term)
-              | _ => AddError(FsmError.UnknownTerminateTransition(tran));t
-            }
-            
-        | PseudoState(node = Join(state = null, name = n)) as t =>
-            match (pseudo_states.FilterType())
-            {
-              | [] => AddError(FsmError.UnknownNode(tran));t
-              | joins =>
-                  match (joins.Find(x : PseudoStateNode.Join => x.name == n))
-                  {
-                    | Some(j) => TransitionTarget.PseudoState(tran, j)
-                    | _ => AddError(FsmError.UnknownNode(tran));t
-                  }
-            }
-            
-        | Named as t => def t = get_named(t);
-                        resolve_targets(st, t)
-        | Qualified(parent = st, target = t) => 
-            match (statemap.Get(st), t)
-            {
-              | (FsmState.SubMachine(inlined = false) as m, TransitionTarget.State(FsmState where (Name = n))) =>
-                  m.Scan(); // scan external sub machine for states
-                  when (!m.ref_sub_states.Contains(n)) AddError(FsmError.SubMachineStateNotFound(m, n));
-                  TransitionTarget.SubMachine(tran, m, n)
-              | (null, _) => AddError(FsmError.UnknownState(t.transition.From, FsmState.State(st), t.transition));t
-              | (st, t) => resolve_targets(st, t)
-            }
-        | t  => t
+
+        def parent_trans = get_tran(st); // get the super states transitions and concatinate with current
+        //def parent_trans = parent_trans.Select(x => (x.Value.FriendlyTriggerName, x)); // get with trigger names
+        def by_trigger   = parent_trans.GroupBy(x => x.Value.FriendlyTriggerName);
+        def conflict     = by_trigger.Where(x => x.IsMoreThanOne());
+
+        //def conflict     = conflict.OrderBy(x => x.);
+        conflict.Iter(func);
+
       }
+
+      def check_init_ext_trans(func)
+      {
+        States.Iter(x => check_trans(x, x => x.ExternalTransitions(), func));
+        States.Iter(x => check_trans(x, x => x.InitialTransitions(), func));
+      }
+
+      check_init_ext_trans(check_duplicate_tran);
+      check_init_ext_trans(check_override);
+
+      def (simple, other) = States.PartitionLazy(_.IsSimpleState());
+      simple.Iter(x => check_trans(x, x => x.ExternalTransitions() + x.SuperStates().SelectMany(x => x.ExternalTransitions()), resolve_conflict));
+      other.Iter(_.DeleteTransitions());
     }
-    
+
+  //  CheckCrossTransitions() : void
+  //  {
+  //    def group(tr, st : GeneralTree[FsmState])
+  //    {
+  //      match (tr)
+  //      {
+  //        | _ :: []  => st // if not have group exit
+  //        | StateTransition(Guard = Some) as head :: tail  => 
+  //            def (path, end) = tail.SplitFind(x => x.Guard.IsNone); // get all include last without GuardNode
+  //            head.ChangeParentCrossed(path).Change();
+  //            def path = path.Map(_.ChangeCrossFor(true));
+  //            def st = st.Update(x => x.DeleteTransitions(end)); // delete from usual transitions in state
+
+  //            st.UpdateTransitions(tr :: path)
+
+  //        | _ :: tail  => st.DeleteTransitions(tail)
+
+  //        | _  => st
+  //      }
+  //    }
+
+  //    def check_cross_tran(tr, st)
+  //    {
+  //      single_func
+  //      {
+  //        tr.NToList().Sort((x, y) => StateTransition.GuardComparer(y, x));
+  //        __.Sort((x, y) => y.From.Depth - x.From.Depth); // sort on hierarchy position
+  //        group(__, st); // group transitions
+  //      }
+  //    }
+
+  //    def check_cross(st)
+  //    {
+  //      def tran = st.AllTransitions();
+  //      def group = FsmState.create_transition_group(tran).Where((_, x) => x.IsMoreThanOne()).Values();
+  //      //group.FoldLeft(st, check_cross_tran)
+  //    }
+
+
+  //    States.Iter(check_cross); // check from the top state
+  //  }
+
+  //  check_duplicates(tr : IEnumerable[StateTransition]) : void
+  //  {
+
+
+  //    def group = FsmState.create_transition_group(tr).Values();
+  //    def group = group.Where(_.IsMoreThanOne());
+  //    group.Iter(check_duplicate_tran);
+  //    group.Iter(check_override);
+  //  }
+
+  ///// <summary>
+  ///// Check duplicates
+  ///// </summary>
+  //  CheckDuplicates() : void
+  //  {
+  //    States.Iter(x => check_duplicates(x.this_transitions));
+  //    States.Iter(x => check_duplicates(x.initial));
+  //  }
+
+
+
+
     create_join_transitions() : void
     {
-        
-      def check_join(j, tr)
-      {
-        match (j)
-        {
-          | PseudoStateNode.Join(state = st, target = t) =>
 
-              if (tr.ElementsEqual((x, y) => x.Trigger == y.Trigger))
+      def check_join(j, tr : IEnumerable[_])
+      {
+        match (j.Value)
+        {
+          | PseudoStateNode.Join(target = t) as jn =>
+
+              if (tr.ElementsEqual((x, y) => x.Value.Trigger == y.Value.Trigger))
               {
-                if (tr.All(x => x.From.PartOfSubRegion.HasValue) &&
-                      tr.ElementsEqual((x, y) => x.From.PartOfRegion.Value == y.From.PartOfRegion.Value))
+                if (tr.All(x => x.Parent.PartOfSubRegion().HasValue) &&
+                    tr.ElementsEqual((x, y) => x.Parent.PartOfRegion().Value == y.Parent.PartOfRegion().Value : object))
                 {
-                  def tran = Transition(st, tr.Head.Trigger, t, j);
-                  def reg = tr.Head.From.PartOfRegion.Value;
-                  def tr = tr.Sort((x, y) => x.FromRegion.index - y.FromRegion.index);
+                  def tran = StateTransition.Create(j, tr.First().Value.Trigger, t);
+                  def reg = tr.First().Parent.PartOfRegion().Value.Data;
+                  def tr = tr.OrderBy(x => x.Parent.PartOfSubRegion().Value.Index());
                   //j.joined_tran = tr;
                   //j.region = reg;
-                  
-                  def j = j.ChangeRegionData(reg, tr, tran);
+
                   //j.transition = tran;
                   /// !!! mutable
-                  tr.Iter(x => x.To = TransitionTarget.PseudoState(x, j))
-                } else AddError(FsmError.JoinTransitionMustLeaveRegion(j, tr))
-              } else
+                  //tr.Iter(x => x.ToPseudo.SetValue(x => (x :> PseudoStateNode.Join).ChangeRegionJoinedTranTransition(reg, tr, tran)));
+                  jn.region.Data = reg;
+                  def jn = jn.ChangeJoinedTran(tr);
+                  jn.transition.Value = tran
+                } else 
+                {
+                  AddError(FsmError.JoinTransitionMustLeaveRegion(j, tr));
+                }
+              } else 
               {
-                AddError(FsmError.JoinTransitionMustHaveSameTrigger(j, tr));
-                throw FsmErrorException()
+                AddError(FsmError.JoinTransitionMustHaveSameTrigger(j, tr))
               }
+
+          | _ => ()
         }
       }
-              
+
       def get_join(t, lst)
       {
-        match (t)
+        match (t.Value)
         {
-          | StateTransition where (To = TransitionTarget.PseudoState(Join as j)) => (j, t) :: lst
-          | _ => lst
+          | StateTransition(To = TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join) as j)) => (j, t) :: lst
+          | _                                                                                                => lst
         }
       }
-      
-      def join_tran = states.Map(x => x.all_transitions_with_init.FoldLeft([], get_join)).Flatten();
-      def jtrans = join_tran.Group((x, y) => x[0].name.CompareTo(y[0].name)).Map(x => (x.Head[0], x.Split()[1]));
-      jtrans.Iter(check_join);
-      
-        
+
+      def join_tran = States.SelectMany(x => x.AllTransitions().FoldLeft([], get_join));
+      def jtrans = join_tran.GroupBy((x, _) => x);
+      def jtrans = jtrans.Select(x => (x.Key, x.Values()));
+      jtrans.Iter(check_join)
     }
 
     create_fork_transitions() : void
     {
-      def check_fork(tr, f)
+      def check_fork(f : NodeValue[FsmState, PseudoStateNode])
       {
-        match (f)
+        match (f.Value)
         {
-          | PseudoStateNode.Fork(target = t) =>
+          | PseudoStateNode.Fork(target = t) as j =>
 
-              def st = t |> ToState;
-              def reg = st |> PartOfSubRegions;
-              if (!reg.IsEmpty() && reg.All(x => !x.IsEmpty()))
+              def st = t.Select(x => x.ToState);
+              def reg = st.Select(x => x.PartOfSubRegion());
+              if (!reg.IsEmpty() && reg.All(x => x.HasValue))
               {
-                def sreg = reg |> Last();
-                def dups = sreg.Duplicates((x, y) => x.index - y.index);
-                when (dups.Length != 0) AddError(FsmError.ForkMustGoToSeparateRegion(f));
-                def reg = sreg.Head.contained_in;
-                def sub_trans = t |> StateTransition.Transition(reg, null, _, f) : StateTransition;
-                sub_trans.Iter(x => x.Local = true);
-                /// !!! mutable
-                tr.To = TransitionTarget.PseudoState(tr, f.ChangeForkTran(sub_trans));
+                //def sreg = reg |> Last();
+                def dups = reg.DuplicatesGroup(x => x.Value.Index());
+                def regs = st.Select(x => x.PartOfRegion().Value);
+                if (dups.Count() != 0 || !regs.ElementsEqual((x, y) => x == y : object)) 
+                {
+
+                  AddError(FsmError.ForkMustGoToSeparateRegion(f))
+                } else
+                {
+                  //def reg = regs.First();
+                  def sub_trans = t.Map(x => NodeValue(f.Parent, StateTransition.Create(f, null, x)));
+                  f.Value = j.ChangeForkTran(sub_trans);
+                  //def sub_trans = sub_trans.Map(x => x.ChangeLocal(true));
+                  //tr.ToPseudo.SetValue(x => (x :> PseudoStateNode.Fork).ChangeForkTran(sub_trans))
+                }
               } else
               {
-                AddError(FsmError.ForkMustGoToRegion(f));
+                AddError(FsmError.ForkMustGoToRegion(f))
               }
+
+          | _ => ()
         }
       }
-        
-      def get_fork(t, lst)
-      {
-        match (t)
-        {
-          | StateTransition where (To = TransitionTarget.PseudoState(Fork as f)) => (t, f) :: lst
-          | _ => lst
-        }
-      }
-      
-      def tran = states |>< _.all_transitions_with_init.FoldLeft([], get_fork);
+
+      def tran = States.SelectMany(x => x.AllTransitions().GetPseudo(_ is PseudoStateNode.Fork));
       tran.Iter(check_fork)
+      //statemap.Update();
     }
+
     /// <summary>
-	  /// Creating Transitions
-	  /// </summary>
+    /// Creating Transitions
+    /// </summary>
     CreateTransitions() : void
     {
+      def check_targets(node)
+      {
+        match (node.Value.To)
+        {
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction) as n) => CheckJunction(n);
+          | _                                                                              => ()
+        }
+
+      }
+
       def check_tran(st)
       {
-        st.all_transitions_with_init.Iter(x => x.TargetTraverse(check_targets))
+        st.AllTransitions().Iter(x => check_targets(x))
       }
-            
-      states.Iter(check_tran);
+
+      States.Iter(check_tran);
       create_join_transitions(); // creating join transitions
       create_fork_transitions(); // creating fork transitions
-      CreateSuperStateTransitions(); // create parent transitions
-      CheckDuplicates(); // check duplicates
-      CheckCrossTransitions(); // look for cross transitions
-      def int_tran =  states |>< InternalTran;
-      def int_tran =  RenameTransition(int_tran);
-      internal_transitions = Map(int_tran);
+      CreateAndCheckSuperStateTransitions(); // create parent transitions
+      //CheckDuplicates(); // check duplicates
+      //CheckCrossTransitions(); // look for cross transitions
     }
 
     CheckTransitions() : void
     {
-      def proc_tran(st, tran)
-      {
-        match (tran.To)
-        {
-          | TransitionTarget.State(to) when (!statemap.Contains(st.Name)) => AddError(FsmError.UnknownState(st, to, tran));
-          | _  => ()
-        }
-
-      }
+      //def proc_tran(st, tran)
+      //{
+      //  match (tran.To)
+      //  {
+      //    | TransitionTarget.State as t when (!statemap.Contains(st)) => AddError(FsmError.UnknownTarget(tran, t))
+      //    | _                                                         => ()
+      //  }
+      //}
 
       def check_cross_orthogonal(tr)
       {
-        when (is_crossed_orthogonal(tr, tr.Source)) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr))        
-      }
-      
-      def init(st)
-      {
-        st.Initial.Iter(proc_tran(st, _));
-        st.all_transitions.Iter(proc_tran(st, _));
+        when (is_crossed_orthogonal(tr, tr.Parent)) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr));
       }
 
-      def check_tran(st)
+      //def check_tran(st, _)
+      //{
+        //st.TraverseTargets(resolve_targets(st, _, _), true); // first pass named and qualified
+        //st.TraverseTargets(resolve_targets(st, _, _)) // second pass final
+      //}
+
+      foreach (st in States)
       {
-        st.all_transitions_with_init.Iter(x => x.TargetTraverse(resolve_targets(st, _)))
+        //st.AllTransitions().Iter(proc_tran(st, _));
+        st.AllTransitions().Iter(check_cross_orthogonal)
       }
-      
-      states.Iter(init);
-      states.Iter(x => x.all_transitions.Iter(check_cross_orthogonal));
-      states.Iter(check_tran);
-      def trans = states |>< all_transitions_with_init;
-      states.Iter(x => trans.Iter(y => x.UpdateFromTarget(y.To))); // updating states to new transition analyse info
+
+      //UpdateStateMap(TopState.ReduceSingle(check_tran))
     }
 
-    RenameTransition(tran : list[StateTransition]) : list[string * StateTransition]
+    RenameTransition(tran : IEnumerable[NodeValue[FsmState, StateTransition]]) : void
     {
-      def (dups, tran) = tran.DuplicatesPartition(StateTransition.Comparer);
-      dups.Iter(x => x.NeedGuardedName = true);
-      def dups = dups |> (GuardedName, _);
-      def tran = tran |> (Name, _);
-      def tran = tran + dups;
-      def (dups, tran) = tran.DuplicatesPartition((x, y) => x[0].CompareTo(y[0]));
-      def dups = dups.Group((x, y) => x[0].CompareTo(y[0]));
-      dups.Iter(x => AddError(FsmError.DuplicateTransition(x.Split()[1])));
-      tran
+      def dups = tran.NToList().Duplicates((x, y) => x.Value.Name.CompareTo(y.Value.Name));
+      dups.Iter(x => x.Update(x => x.ChangeNeedGuardedName(true)));
+      def dups = tran.DuplicatesGroup(x => x.Value.Name);
+      dups.Iter(x => x.Iter(x => Used[x] = false));
+      //def dups = tran.Duplicates((x, y) => x.Value.Name.CompareTo(y.Value.Name));
+      //def dups = dups.Map(x => (x.Value.GuardedName, x));
+      //def tran = tran.Map(x => (x.Value.Name, x));
+      //def tran = tran.Concat(dups);
+      //def (dups, tran) = tran.DuplicatesPartition(x => x[0]);
+      //def dups = dups.GroupBy(x => x[0]);
+      def err = dups.Map(FsmError.DuplicateTransition);
+      AddErrors(err);
     }
 
     CreateTransitionPaths() : void
     {
       def traverse()
       {
-        traverser.Add(TopState.Initial);
+        traverser = TransitionTraverser(this);
+        traverser.Add(TopState.InitialTransitions());
         traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
-        $[x.paths, x in states, x.paths != null]
+        traverser = null;
       }
 
-      def determine_used()
+      //def update_states()
+      //{
+      //  //def dest = trans_paths.SelectMany(x => x.Paths.Map((_, y) => y.Transition.Destination));
+      //  //def tran = dest.SelectMany(_.Transition);
+      //  //UpdateTransitions(tran);
+      //  //def hist = dest.OfType.[TransitionDestination.History]().Select(_.state);
+      //  //def hist = hist.RemoveDuplicatesSort(_.Name).Select(_.ChangeUsed(true));
+
+      //  //def update_hist(s, _)
+      //  //{
+      //  //  def hist = hist.Where(x => x.Num == s.Num);
+      //  //  hist.FoldLeft(s, (x, a) => a.UpdateHistory(x))
+      //  //}
+
+      //  ////statemap.Update(st);
+      //  //def top = TopState.ReduceSingle(update_hist);
+      //  //UpdateStateMap(top)
+      //}
+
+      traverse(); // traverse paths
+      //update_states();
+      CreateTransitionsWithPaths()
+    }
+
+    CreateTransitionsWithPaths() : void
+    {
+      def empty = empty_states.Select(FsmWarning.StateNotUsed); // warning about all without substates and not lived that is not used
+      def not_used = not_used_transitions.Select(FsmWarning.TransitionNotUsed);
+      AddWarnings(empty);
+      AddWarnings(not_used); // determine used elements
+
+      //def (used_hstates, not_used) = history_states.Partition(_.Used);
+      //history_states = used_hstates;
+
+      RenameTransition(used_transitions);
+      //def int_tran =  States.SelectMany(_.internal_tran);
+      //def int_tran =  RenameTransition(int_tran);
+      //def int_tran = Map(int_tran);
+      //def init = used_states_initial_tran;
+      //def init = RenameTransition(init);
+      //def init = Map(init);
+      //internal_transitions = int_tran;
+      //transitions = trans;
+      //initial_transitions = init;
+      def hist = not_used_history.Select(FsmWarning.HistoryNotUsed);
+      AddWarnings(hist)
+    }
+
+    CreateHistoryPaths() : void
+    {
+      def create_hist_path(h)
       {
-        def filter_used(st)
+        match (h.Value)
         {
-          | FsmState.ConcurrentSubRegion
-          | ConcurrentRegion
-          | Final => false
-          | _ => true
+          | PseudoStateNode.History() => def sub = h.SubStatesParticipateIn();
+                                         def parent = h.Parent;
+                                         sub.Iter(x => HistoryPaths[x] = HistoryPath(parent, x, h).CreatePath());
+          | _ => ()
         }
+        //def shist = st.SuperStates().Where(x => x.ParticipateInHistory().Exists(x => x.Value is PseudoStateNode.History(type = HistoryType.Shallow)));
+        //def spaths = shist.SelectMany(x => x.Value.HistoryPaths);
+        //def paths = st.ParticipateInHistory.Select(x => (x.state.name, HistoryPath(x.state, st, x).CreatePath()));
+        //def paths = paths.Concat(spaths).NToList();
+        //st.ChangeHistoryPaths(paths)
+      } 
 
-        def (lived, empty) =  states.Partition(_.LivedNested); // determine lived states
-        states.Iter(_.CreatePathFromOut()); // creating paths from outer world for using as sub machine to go to any state from out
-        def empty = empty.Filter(filter_used);
-        lived_nested_states = lived;
-        lived_states = states.Filter(_.Lived);
-        def all_tran = states |>< all_transitions;
-        def (trans, not_used) = all_tran.Partition(_.UsedInGenerate);
-        def not_used = not_used.Filter(x => x.From.Lived);
-        def not_used = not_used.Exclude(_.NotWork);
-        def not_used = not_used.Exclude(_.Used);
-        paths_from_out = states |> PathFromOut;
-        empty.Iter(x => AddWarning(FsmWarning.StateNotUsed(x))); // warning about all without substates and not lived that is not used
-        not_used.Iter(x => AddWarning(FsmWarning.TransitionNotUsed(x)));
-        trans
-      }
-
-      def get_special_transitions(tran)
-      {
-        | StateTransition.Transition(Destination = TransitionDestination.Fork(sub_tran = tr)) => tr
-        | StateTransition.Transition(To = PseudoState(PseudoStateNode.Join(transition = tr))) => [tr]
-        | _ => []
-      }
-
-      def paths = traverse(); // traverse paths
-      def trans = determine_used(); // determine used elements
-      def special = trans |>< get_special_transitions(_);
-      special_transitions = special.RemoveDuplicatesSort(StateTransition.Comparer);
-      special_transitions.Iter(x => x.UpdateReference(statemap));
-      trans_paths = paths; // save in field
-      def trans = RenameTransition(trans);
-      def trans_nodes =  trans.Map((x, y) => (x, y.PathNode));  // nodes
-      def trans_nodes = trans_nodes.RemoveDuplicatesSort(nodes_cmp);
-      def map = Map(trans);
-      transitions = map;
-      def int_nodes = internal_transitions |> (_, _[2].PathNode);
-      int_trans_nodes = Map(int_nodes.RemoveDuplicatesSort(nodes_cmp));
-      transition_nodes = Map(trans_nodes);
-      def (used_hstates, not_used) = history_states.Partition(_.Used);
-      history_states = used_hstates;
-      not_used.Iter(x => AddWarning(FsmWarning.HistoryNotUsed(x)));
-      def select = trans.Filter((_, x)  => x.HistoryTarget == null);
-      work_transitions = Map(select);
-      def work_nodes = select |> (_, _[2].PathNode);
-      work_transition_nodes = Map(work_nodes.RemoveDuplicatesSort(nodes_cmp));
+      HistoryStates.Iter(create_hist_path)
+      //States.Iter(create_hist_path);
+      //def top = TopState.ReduceSingle(create_hist_path);
+      //UpdateStateMap(top)
     }
 
     UpdateInitial() : void
     {
-      def init = states |>< Initial;
-      def (init, not_used) = init.Partition(_.Used);
-      not_used.Iter(x => AddWarning(FsmWarning.TransitionNotUsed(x)));
-      def (init, not_used) = init.Partition(_.Used);
-      not_used.Iter(x => AddWarning(FsmWarning.TransitionNotUsed(x)));
-      def init = RenameTransition(init);
-      initial_transitions = Map(init);
-      def init_nodes = init |> (_, _[2].PathNode);
-      initial_transition_nodes = Map(init_nodes.RemoveDuplicatesSort(nodes_cmp));
+      def warn = not_used_states_initial_tran.Select(FsmWarning.TransitionNotUsed);
+      AddWarnings(warn)
     }
 
   }

@@ -5,6 +5,10 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Diagnostics;
+using System.Collections;
+using System.IO;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -12,40 +16,88 @@ namespace Nemerle.Statechart
   /// Description of TransitionTraverser.
   /// </summary>
   public class TransitionTraverser
-  {    
-    mutable defered : list[StateTransition] = [];
-    mutable defered_st : list[FsmState] = [];
-    
-    public Add(tran : StateTransition) : void
+  {
+    defered    : List[NodeValue[FsmState, StateTransition]] = List();
+    defered_st : List[GeneralTree[FsmState]]        = List();
+
+    analyser : FsmAnalyser;
+
+    public this(an : FsmAnalyser) 
     {
-      defered ::= tran;
-    }
-    
-    public Add(tran : list[StateTransition]) : void
-    {
-      defered += tran;
+      analyser = an;
+      completed_buf  = BitArray(an.statemap.GlobalId);
+      when (analyser.FsmFlags.Debug) log_file = StreamWriter($"$(analyser.Name)path_log.log", false);
     }
 
-    public Add(st : FsmState) : void
+    //completed        : List[StateTransition] = List();
+
+    //completed_buf    : BitArray;
+    
+    //completed_states : List[FsmState]  = List();
+    
+    //public Completed : IEnumerable[StateTransition]
+    //{
+    //  get
+    //  {
+    //    completed
+    //  }
+    //}
+
+    //public CompletedStates : IEnumerable[FsmState]
+    //{
+    //  get
+    //  {
+    //    completed_states
+    //  }
+    //}
+
+    public Add(tran : NodeValue[FsmState, StateTransition]) : void
     {
-      defered_st ::= st;
-    }    
+      //def num = tran.Value.Num;
+      //when (!completed_buf.Get(num)) 
+      //{
+        defered.Add(tran);
+        //completed_buf.Set(num, true)
+      //}
+    }
+
+    public Add(tran : IEnumerable[NodeValue[FsmState, StateTransition]]) : void
+    {
+      //def tran = tran.Where(x => !completed_buf.Get(x.Num));
+      defered.AddRange(tran);
+      //completed_buf.SetAll(tran, _.Num)
+    }
+
+    public Add(st : GeneralTree[FsmState]) : void
+    {
+      //when (!completed_buf.Get(st.Value.Num))
+      //{
+        defered_st.Add(st);
+        //completed_buf.Set(st.Value.Num, true)
+      //}
+      
+    }
+
+    public Log(str : string) : void
+    {
+      log_file?.WriteLine(str)
+    }
+    
+    log_file : TextWriter;
     
     public Traverse() : void
     {
-      def (fsm, st) = defered_st.Partition(x => x.PartOfStateMachine);
-      def state_queue = st.RemoveDuplicatesSort((x, y) => x.CompareTo(y)) + fsm;
-      def tran_queue = defered.RemoveDuplicatesSort((x, y) => x.Name.CompareTo(y.Name));
-      defered_st = [];
-      defered = [];
-      state_queue.Iter(x => x.TraverseTransitions());
-      tran_queue.Iter(x => x.TraversePath(true));
-      match (defered, defered_st)
+      def state_queue = defered_st.ToArray();
+      def tran_queue  = defered.ToArray();
+      defered_st.Clear();
+      defered.Clear();
+      state_queue.Iter(x => x.Update(x => x.TraverseTransitions()));
+      tran_queue.Iter(x => x.Value = x.Value.TraversePath(true));
+      // if empty queue
+      if (!defered_st.IsEmpty() || !defered.IsEmpty()) Traverse() else
       {
-        // empty queue
-        | ([], []) => () // finish traverse
-        | (_, _) => Traverse() // else recursive call self and traverse again
-      }
+        log_file?.Close()
+      }// else recursive call self and traverse again
     }
   }
 }

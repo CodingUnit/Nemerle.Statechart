@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Statechart;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -16,178 +17,282 @@ namespace Nemerle.Statechart
   public partial class FsmAnalyser
   {
 
-    InitStateMap() : void
+    //public NextGlobalNum() : int
+    //{
+    //  statemap.GetNextGlobalNum()
+    //}
+
+
+    //UpdateTransitions(tran : IEnumerable[StateTransition]) : void
+    //{
+    //  def group = tran.GroupBy(x => x.Source.Num);
+    //  def st = group.Map(x => statemap[x.Key].UpdateTransitions(x));
+    //  statemap.Update(st)
+    //}
+
+    InitStatechart() : void
     {
-      def CheckAddFinalState(st)
-      {   
-        def is_top(st)
-        {
-          def super = st.SuperState; 
-          // check if state is top or state is sub of top and don't have transitions
-          super == null || (super.SuperState == null && super.this_transitions.IsEmpty())
-        }
-        
-        def check_target(t, tran)
-        {
-          | (TransitionTarget.Final as t, _) when (is_top(st))=> 
-              def term = PseudoStateNode.Terminate(TopState, 0);
-              TopState.pseudo_states ::= term;
-              TransitionTarget.PseudoState(t.transition, term)
-          | (Final as t, Initial) with super = st
-          | (Final as t, _) with super = st.SuperState =>
-              def fst = FsmState.Final(super, true);
-              super.AddSubState(fst);t.ChangeState(fst);
-          | (t, _) => t
-        }
-      
-        st.all_transitions_with_init.Iter(x => x.TargetTraverse(check_target(_, x)))
-      }
-      
-      InitStatechart();
-      UpdateStateMap(); // first update state map
-      concurrent_states = states.Filter(_ is FsmState.ConcurrentSubRegion);
-      states.Iter(_.UpdateReference(statemap));
-      states.Iter(CheckAddFinalState); // check to add final state
-      UpdateStateMap(); // second update state map
-      CreateHistoryStates();
-      when (statemap.HaveErrors)
-      {
-        statemap.Errors.Iter(x => AddError(x));
-        throw FsmErrorException()
-      }
-      RenameDuplicates();
+      def state = Fsm.state.ChangeName(FsmState.TopStateName);
+
+      statemap = StateMap.Create(this, state)
+      //UpdateStateMap(top);
+
+
     }
 
-    public UpdateStateMap() : void
+    InitStateMap() : void
     {
-      statemap.Init(TopState); // initialize the state map
-      InitStates();
-      states.Iter(_.UpdateReference(statemap));
-      StateId.CreateMasks(this);
+      InitStatechart();
+
+      CreateHistoryStates();
+      when (Error) throw FsmErrorException();
+      RenameDuplicates()
     }
-    
-    InitStates() : void
+
+
+    //public UpdateStateMap(st : IEnumerable[FsmState]) : void
+    //{
+    //  statemap.Update(st)
+    //}
+
+    //public UpdateStateMap(top : FsmState = null) : void
+    //{
+    ////InitStates();
+    //  statemap.Update(top ?? TopState);
+    //  //when (upd_ref) 
+    //  //{
+    //  //  def top = TopState.ReduceSingle((x, _) => UpdateStateReference(x));
+    //  //  statemap.Update(top)
+    //  //}
+    //}
+
+    CheckAddFinalState() : void
     {
-      def init_states(st, pos)
+      def check_target(tran)
       {
-        st.hierarchy_pos = pos;
-        st.SubStates.Iter(init_states(_, pos + 1)); // init sub states
+       def to = tran.Value.To;
+       def st = tran.Parent;
+       def to = match (to, tran.Value)
+                  {
+            //| (TransitionTarget.Final, _) when (is_top(st)) => 
+            //    def term = PseudoStateNode.Terminate(0, statemap.GetNextGlobalNum(), this);
+            //    (TransitionTarget.PseudoState(this, term), null :: a)
+                // TODO: check later for need of termination of fsm if we reach final state
+                    | (TransitionTarget.Final as t, StateTransition.Initial) with super = st
+                    | (Final as t, _) with super = st.Parent => 
+                        match (super.ChildNodes.Find(x => x.Data is FsmState.Final))
+                        {
+                          | None => def fin = FsmState.Final(this);
+                            def fin = GeneralTree(fin);
+                            super.Add(fin);//statemap.Add(super, GeneralTree(fin));
+                            t.ChangeState(fin);
+
+                          | Some(fin)  => t.ChangeState(fin)
+                        }
+                    | _ => to
+              //match (a.Find((x, _) => x.Num == super.Num))
+              //{
+              //  | Some((_, fin)) => def t = t.ChangeValue(TransitionTarget.CreateStateRef(fin, true));
+              //                      (t, a)
+              //  | _              => def fin = FsmState.Final(this);
+              //                      def fin = fin.SetNewId();
+              //                      def rf = TransitionTarget.CreateStateRef(fin, true);
+              //                      def t = t.ChangeValue(rf);
+              //                      (t, (super, fin) :: a)
+              //}
+
+
+                  }
+                  
+        tran.Value = tran.Value.ChangeTo(to)
       }
-      init_states(TopState, 0); // init state map
-      states = statemap.States.NToList();
+
+        //def check_final(f, st, sub)
+        //{
+        //  if (st.HaveFinal) st else
+        //  match (f.Find((x, _) => x.Num == st.Num))
+        //  {
+        //    | Some((_, fin)) => st.ChangeSubStates(sub.Append(fin).NToList())
+        //    | _              => null
+        //  }
+        //}
+
+        //def check_tran(st, (x, (tr, a)))
+        //{
+        //  def (to, fin) = x.To.Reduce(a, final = check_target(st, _, x, _));
+        //  def tran = x.ChangeTo(to);
+        //  (tran :: tr, fin)
+        //}
+
+        //def check_state(s, _, a)
+        //{
+        //  def (tran, fin) = s.transitions.FoldBack(([], a), check_tran(s, _));
+        //  def (init, fin) = s.initial.FoldBack(([], fin), check_tran(s, _));
+        //  def st          = s.ChangeTransitionsInitial(tran, init);
+        //  (st, fin)
+        //}
+
+        //def (top, final) = TopState.ReduceSingle([], check_state);
+
+      TransitionEnumerate.Iter(check_target);
+
+        // check to add final state
+        //UpdateStateMap(top.ReduceSingle(true, check_final(final, _, _)))
     }
-    
+
+    States : IEnumerable[GeneralTree[FsmState]]
+    {
+      get
+      {
+        statemap.StateTree.GetBreadthFirstEnumerable()
+      }
+    }
+
+    TransitionEnumerate : IEnumerable[NodeValue[FsmState, StateTransition]]
+    {
+      get
+      {
+        def en = statemap.StateTree.GetEnumerable(TreeTraversalType.BreadthFirst);
+        en.SelectMany(x => x.AllTransitions())
+      }
+    }
+
+    //TransitionMod : IEnumerable[GeneralTree[FsmState] * StateTransition]
+    //{
+    //  get
+    //  {
+    //    def en = statemap.StateTree.GetEnumerable(TreeTraversalType.BreadthFirst);
+    //    en.SelectMany(x => x.Value.all_transitions_with_init.Select(y => (x, y)))
+    //  }
+    //}
+
     RenameDuplicates() : void
     {
-      def do_rename(n, st)
-      {
-        st.CopyNum = n;
-        st.is_new = true;
-        st.UpdateReference(statemap);
-      }
-      
       def rename_group(st)
       {
-        def (head :: _) = st;
-        statemap.Rem(head);
-        st.IterI(do_rename);
+        st.IterI((i, x) => x.Update(x => x.ChangeCopyNum(i)))
       }
-      
-      def dups = states.Duplicates(FsmState.NameComparer);
-      def dups = dups.Group(FsmState.NameComparer);
-      dups.Iter(rename_group);
+
+      def dups = States.NToList().Duplicates((x, y) => FsmState.NameComparer(x, y));
+      def dups = dups.GroupBy(x => x.Name());
+
+      dups.Iter(rename_group)
     }
-    
+
     CreateHistoryStates() : void
     {
-      // check history duplicates in state
+    // check history duplicates in state
       def check_dup_history(st)
       {
-        match (st.history)
+        match (st.History())
         {
-          // duplicate variants
-          | TwoOption.Two(StateHistory.Deep, StateHistory.Deep)
-          | Two(StateHistory.Shallow, StateHistory.Shallow)  =>
-              AddError(FsmError.DuplicateHistory(st, st.history.Value.First()));
-          | _  => ()
+        // duplicate variants
+          | TwoOption.Two(n, n2) =>
+              match (n.Value, n2.Value)
+              {
+                | (PseudoStateNode.History(type = HistoryType.Deep), PseudoStateNode.History(type = HistoryType.Deep))
+                | (PseudoStateNode.History(type = HistoryType.Shallow), PseudoStateNode.History(type = HistoryType.Shallow)) => AddError(FsmError.DuplicateHistory(st.Data, st.History().Value.First()))
+                | _                                                                                                           => ()
+              }
+          | _ => ()
         }
       }
 
       def check_exit_actions(st)
       {
-        | StateHistory where (state = FsmState where (exit = []) as st) =>
-            st.exit = [StateAction.Exit([], st)]
-        | _ => ()
+        | FsmState(exit = ex) when ex.IsEmpty() => st.ChangeExit(StateAction.Exit([], ActionFlags.None) :: [])
+        | _                                     => st
       }
 
-      def history = states.Filter(x => x.history.HasValue);
-      history.Iter(check_dup_history);
-      history_states =  history |>< history.Value;
-      def group = history_states.Group((x, y) => string.Compare(x.state.Name, y.state.Name));
-      group.IterI((i, x) => x.Iter(x => x.Index = i));
-      history_states.Iter(check_exit_actions);
-    }
+      def update_hist(st)
+      {
+        when (st.History().HasValue)
+        {
+          check_dup_history(st);
+          st.Update(check_exit_actions);
+        }
+      }
 
-    InitEvents() : void
-    {
-      def int_evts =  states |>< InternalTran |> Trigger;
-      def evts =  states |>< Transitions |> Trigger;
-      def evts = evts.Filter(x  => x.Name != null);
-      def int_tran_evt = int_evts.RemoveDuplicatesSort(_.CompareTo(_));
-      def tran_evt = evts.RemoveDuplicatesSort(_.CompareTo(_));
-      def int_tran_evt =  int_tran_evt.Exclude(tran_evt, _  ==  _);
-      int_tran_evt.Iter(x  => x.InternalOnly = true);
-      def evts =  (int_tran_evt + tran_evt) |> (Name, _);
-      events_map = Map(evts);
-      events = events_map.Keys()
-    }
-
-    nodes_eq : ((string * PathNode) * (string * PathNode)) -> bool = (x, y) => PathNode.Equals(x[1], y[1]);
-    nodes_cmp : ((string * PathNode) * (string * PathNode)) -> int = (x, y) => PathNode.Compare(x[1], y[1]);
-
-    CreateHistory() : void
-    {
-      def sub =  history_states |> (_, state, SubStatesParticipateInHistory);  // get all substates participate in history
-      def paths =  $[HistoryPath(par, st, h, this), (h, par, s) in sub, st in s, !(st is FsmState.Final)]; // create history paths
-      paths.Iter(_.CreatePath());
-      def paths = paths.Filter(x  => !x.IsDefault);
-      def paths = paths.RemoveDuplicatesSort((x, y) => x.Name.CompareTo(y.Name));
-      history_paths = paths
+      States.Iter(update_hist)
     }
 
     CreateActions() : void
     {
-      def check_do(act)
+      def check_do(st, act)
       {
-        | StateAction.Do(actions = [_], Concurrently = true) => AddWarning(FsmWarning.NoConcurrentActivity(act));
-            act.Concurrently = false
-        | _ => ()
+        def check(act)
+        {
+            | StateAction.Do(actions = [_], Concurrently = true, flags = f) => 
+                def err = FsmWarning.NoConcurrentActivity(act);
+                AddWarning(err);
+                act.ChangeFlags(f & ~ActivityFlag.Concurrently);
+            | _ => act
+        }
+
+        def act = act.Map(check);
+        st.Update(x => x.ChangeDoActivity(act))
       }
 
-      def acts =  trans_paths |>< Actions;
-      def int_acts =  internal_transitions.Values() |>< Actions;
-      def acts = acts + int_acts;
-      actions = acts.RemoveDuplicatesSort((x, y) => x.CompareTo(y));
-      do_activities = states.FilterValues(_.do_activity);
-      do_activities.Iter(check_do);
-      def tr = all_transitions |> PathNodeRecursive;
-      action_node = PathNode.Sequence(tr)
+      States.Iter(x => check_do(x, x.Data.do_activity));
     }
 
     CreateConcurrentRegion() : void
     {
-      def regs = states.FilterType();
-      def (used,not_used) = regs.Partition(_.LivedNested);
-      not_used.Iter(x => AddWarning(FsmWarning.RegionNotUsed(x)));
-      regions = used;
+      def warn = not_used_regions.Map(FsmWarning.RegionNotUsed);
+      AddWarnings(warn)
     }
-    
+
+    CreateHierarchy() : void
+    {
+
+      def set_hierarchy_pos(st)
+      {
+        if (st.IsTopState()) st.Update(x => x.ChangeCalcHierarchyPos(0)); 
+        else st.Data = st.Data.ChangeCalcHierarchyPos(st.Parent.Data.calc_hierarchy_pos + 1)
+      }
+
+      States.Iter(set_hierarchy_pos)
+    }
+
+
     CreateSubMachines() : void
     {
-      def fsm = states.FilterType();
-      def st = fsm.Filter(_ is FsmState.SubMachine(inlined = true));
-      st.Iter(_.InitInline());
-      //InitStates();
+      def inlined = States.Where(x => x.Data is FsmState.InlinedSubMachineInstance);
+      inlined.Iter(x => x.InitInline());
+      //def (top, base_sm_types) = TopState.Reduce(true, [], inlined_sub_machine_instance = (x, _, acc) => x.InitInline(acc));
+      // TODO: надо делать обновление ссылок только один раз
+      //UpdateStateMap(top); // update tree with instanced state machines
+      //UpdateStateMap(base_sm_types.SelectMany(_.AllStates)); // update base sm types and its contents
     }
+
+
+    public Analyse() : void
+    {
+      try
+      {
+        CheckParseErrors();
+        InitStateMap();
+        CheckTransitions();
+        CheckAddFinalState();
+        CreateSubMachines();
+        CreateHierarchy(); // create hierarchy
+        CheckInitialTransitions();
+        CreateTransitions();
+        BreakIfError();
+        CreateTransitionPaths();
+        CreateHistoryPaths(); // create history paths
+        CreateConcurrentRegion();
+        UpdateInitial();
+        CreateActions();
+        FinalizeAnalyse();
+      }
+      catch 
+      {
+        | x is FsmErrorException => 
+          def err = x.error;
+          when (err != null) AddError(err);
+      }
+    }
+
   }
 }

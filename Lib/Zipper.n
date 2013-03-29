@@ -1,0 +1,135 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+    public variant Tree[T]
+  {
+    | Item {item : T;}
+    | Section {sect : list[Tree[T]];}
+  }
+
+  public variant Path[T]
+  {
+    | Top
+    | Node {node : list[Tree[T]]; path : Path[T]; tree : list[Tree[T]];}
+  }
+
+  [Record]
+  public class Loc[T]
+  {
+    public tree : Tree[T];
+    public path : Path[T];
+
+    public Left() : Loc[T] 
+    {
+      match (path)
+      {
+        | Top => throw InvalidOperationException("left at top")
+        | Node(l :: left, up, right) => Loc(l, Path.Node(left, up, tree :: right))
+        | Node([], _, _) => throw InvalidOperationException("left of first")
+      }
+    }
+
+    public Right() : Loc[T]
+    {
+      match (path)
+      {
+        | Top => throw InvalidOperationException("right at top")
+        | Node(left, up, r :: right) => Loc(r, Path.Node(tree :: left , up, right))
+        | _ => throw InvalidOperationException("right of last")
+      }
+    }
+
+    public Up() : Loc[T]
+    {
+
+      match (path)
+      {
+        | Top => throw InvalidOperationException("up at top")
+        | Node(left, up, right) => Loc(Tree.Section(left.Rev() + (tree :: right)), up)
+      } 
+    }
+
+    public Down() : Loc[T]
+    {
+      match (tree)
+      {
+        | Item => throw InvalidOperationException("down with item")
+        | Section(t1 :: trees) => Loc(t1, Path.Node([], path, trees))
+        | _ => throw InvalidOperationException("down of empty")
+      } 
+    }
+
+    public static Zipper(tree : Tree[T]) : Loc[T]
+    {
+      Loc(tree, Path.Top())
+    }
+
+    public Root : Tree[T]
+    {
+      get
+      {
+        def loop(l)
+        {
+          | Loc where (t, Path.Top) => t
+          | _                       => loop(l.Up())
+        }
+
+        loop(this)
+      }
+    }
+
+    public Change(t : Tree[T]) : Loc[T]
+    {
+      Loc(t, path)
+    }
+
+    public InsertRight(t : Tree[T]) : Loc[T]
+    {
+      match (path)
+      {
+        | Path.Top              => throw InvalidOperationException("insert at top")
+        | Node(left, up, right) => Loc(t, Path.Node(left, up, t :: right))
+      }
+    }
+
+    public InsertLeft(t : Tree[T]) : Loc[T]
+    {
+      match (path)
+      {
+        | Path.Top              => throw InvalidOperationException("insert at top")
+        | Node(left, up, right) => Loc(t, Path.Node(t :: left, up, right))
+      }
+    }
+
+    public InsertDown(t : Tree[T]) : Loc[T]
+    {
+      match (tree)
+      {
+        | Item       => throw InvalidOperationException("down with item")
+        | Section(s) => Loc(t, Path.Node([], path, s))
+      }
+    }
+
+    public Delete() : Loc[T]
+    {
+      match (path)
+      {
+        | Path.Top                   => throw InvalidOperationException("delete at top")
+        | Node(left, up, r :: right) => Loc(r, Path.Node(left, up, right))
+        | Node(l :: left, up, [])    => Loc(l, Path.Node(left, up, []))
+        | Node([], up, [])           => Loc(Tree.Section([]), up)
+      }
+    }
+
+
+  }
+
+}

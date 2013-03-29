@@ -157,36 +157,45 @@ namespace Nemerle.Statechart
       match (node)
       {      
         | Entry(action = act)
-        | Exit(action = act) => inlined_actions = create_act_name(act, Action(act), decl_map)
-        | _ => ()
+        | Exit(action = act) => //def inl = inl.Map((x, _) => x);
+                                inlined_actions = create_act_name(act, Action(act), decl_map);
+                                              //inlined_actions = CreateActions(inl, decl_map).Concat(act).NToList();
+        | _                  => ()
       }
     }
-        
-    public static CreateActions(node : PathNode, map : Map[string, string]) : list[GenAction]
+    
+    // TODO: fold for actions
+    public static CreateActions(node : PathNode, map : Map[string, string]) : IEnumerable[GenAction]
     {
       match (node)
       {
-        | Action(act)  => create_act_name(act, node, map)
-        | Entry(action = StateAction.Entry(state = st)) => [GenAction($"$(st)Entry", node, map)]
-        | Exit(action = StateAction.Exit(state = st)) => [GenAction($"$(st)Exit", node, map)]
-        | Sequence(lst) => lst |>< CreateActions(_, map)
-        | RunDoActivity as n
-        | StopDoActivity as n => [GenAction(n.ToString(), node, map)]
-        | _  => []
+        | PathNode.Action(act)                          => create_act_name(act, node, map)
+        | Entry(state = st)                             => TraverseUtils.SingleElement(GenAction($"$(st)Entry", node, map))
+        | Exit(state = st)                              => TraverseUtils.SingleElement(GenAction($"$(st)Exit", node, map))
+        //| Sequence(lst)                               => lst.SelectMany(CreateActions(_, map))
+        | RunDoActivity as n                  
+        | StopDoActivity as n                           => TraverseUtils.SingleElement(GenAction(n.ToString(), node, map))
+        | _                                             => Enumerable.Empty()
       }
-    }
+      
+  }
 
-    public static GetActions(node : PathNode, map : Map[string, string]) : list[GenAction]
+    public static CreateActions(node : IEnumerable[PathNode], map : Map[string, string]) : IEnumerable[GenAction]
+    {
+      node.SelectMany(CreateActions(_, map))
+  }
+  
+    public static GetActions(node : PathNode, map : Map[string, string]) : IEnumerable[GenAction]
     {
       match (node)
       {
-        | Action(act)  => create_act_name(act, node, map)
-        | Entry(action = StateAction.Entry(state = st) as act) => GenAction($"$(st)Entry", node, map) :: create_act_name(act, Action(act), map)
-        | Exit(action = StateAction.Exit(state = st) as act) => GenAction($"$(st)Exit", node, map) :: create_act_name(act, Action(act), map)
-        | Sequence(lst) => lst |>< CreateActions(_, map)
+        | PathNode.Action(act)                                 => create_act_name(act, node, map)
+        | Entry(act, _, st)                                    => GenAction($"$(st)Entry", node, map) :: create_act_name(act, Action(act), map)
+        | Exit(act, _, st)                                     => GenAction($"$(st)Exit", node, map)  :: create_act_name(act, Action(act), map)
+        ///| Sequence(lst)                                        => lst.SelectMany(CreateActions(_, map))
         | RunDoActivity as n
-        | StopDoActivity as n => [GenAction(n.ToString(), node, map)]
-        | _  => []
+        | StopDoActivity as n                                  => TraverseUtils.SingleElement(GenAction(n.ToString(), node, map))
+        | _                                                    => Enumerable.Empty()
       }
     }
     
@@ -196,23 +205,29 @@ namespace Nemerle.Statechart
                  {
                    | Action
                    | Entry 
-                   | Exit => CreateExecActionName()
+                   | Exit           => CreateExecActionName()
                    | RunDoActivity
                    | StopDoActivity => action
-                   | _  => action
+                   | _              => action
                  }
     }        
 
     static create_act_name(act : Actions, node : PathNode, map : Map[string, string]) : list[GenAction]
     {      
-      def names = act.ActionList |> (_, $"$(_)Action");
-      names |> GenAction(_, _[2], node, map)
+      def names = act.actions.Select(x => (x, $"$(x)Action"));
+      names.Map(GenAction(_, _, node, map))
     }
 
   }
       
   public partial class StaticGenerator
   {
+    public static GetExecStateName(st : string, ctx : GenCtx) : PExpr
+    {
+      def name = $"State$st";
+      if (ctx.IsInEventHandler) <[ $(st : usesite)() ]> else <[ $(name : usesite) ]>
+    }
+    
     public static GetExecStateName(st : FsmState, ctx : GenCtx) : PExpr
     {
       def name = $"State$st";
@@ -221,19 +236,19 @@ namespace Nemerle.Statechart
        else <[ $(name : usesite) ]>
     }
     
-    public static GetSubRegionsExit(reg : list[FsmState.ConcurrentSubRegion]) : string
+    public static GetSubRegionsExit(reg : IEnumerable[FsmState.ConcurrentSubRegion]) : string
     {
       def pat = FsmState.ConcurrentRegion.get_pattern(reg);
       $"Exit$pat"
     }
     
-    public static IsEmpty(node : PathNode) : bool
+    public static IsEmpty(node : IEnumerable[PathNode]) : bool
     {
-      def implicit = node.Unsequenced.Exists(x => x is Exit || x is Entry);
-      node.Actions.IsEmpty() && !implicit
-    }    
+      def implicit = node.All(x => x is Exit || x is Entry);//node is Exit || node is Entry;
+      node.PathActions().IsEmpty() && !implicit
+    }
         
-    public static GetHistoryClear(hist : list[StateHistory]) : PExpr
+    public static GetHistoryClear(hist : IEnumerable[PseudoStateNode.History]) : PExpr
     {
       def expr = hist.Map(x => <[ $($"$(x)Clear" : usesite)(); ]>); 
       <[ {..$expr} ]>
@@ -246,11 +261,11 @@ namespace Nemerle.Statechart
 
     public GetActions(node : PathNode, map : Map[string, string], supress_inline : bool = false) : PExpr
     {
-      def node = node.Unsequenced;
-      GetActions(node, map, supress_inline)
+      //def node = node.Unsequenced;
+      GetActions(TraverseUtils.SingleElement(node), map, supress_inline)
     }
 
-    public GetActions(node : list[PathNode], map : Map[string, string], supress_inline : bool = false) : PExpr
+    public GetActions(node : IEnumerable[PathNode], map : Map[string, string], supress_inline : bool = false) : PExpr
     {
       def node = node.Exclude(_ is PathNode.Empty);
       
@@ -259,22 +274,22 @@ namespace Nemerle.Statechart
         | ClearHistory(hist)  => GetHistoryClear(hist)
         | SaveHistory(hist) => if (supress_inline) <[ () ]> else
                                {
-                                 match (hist.Filter(x => x.Used))
+                                 match (hist.Select(_.Updated).Filter(_.Used))
                                  {
-                                   | StateHistory where (SimpleName = n) :: _ => <[ $($"$(n)Save" : usesite)(); ]>
-                                   | _ => <[ () ]>
+                                   | PseudoStateNode.History(SimpleName = n) :: _ => <[ $($"$(n)Save" : usesite)() ]>
+                                   | _                                 => <[ () ]>
                                  }
                                }
         | RunDoActivity as n
-        | StopDoActivity as n => if (supress_inline) <[ () ]> else <[ $($"$n" : usesite)(); ]>;
+        | StopDoActivity as n => if (supress_inline) <[ () ]> else <[ $($"$n" : usesite)() ]>;
         | RegionExit([], reg) => def reg_state = GetExecStateName(reg, GenCtx.Normal());
                                  <[ $reg_state.Exit(this) ]>
         | RegionExit(st, reg) => def reg_state = GetExecStateName(reg, GenCtx.Normal());
             def reg_exit = GetSubRegionsExit(st);
             <[ $reg_state.$(reg_exit : usesite)(this) ]>
         | _  => def act =  GenAction.CreateActions(n, map);
-            def act = act |> end_name;
-            def acts = act |> <[$(_ : usesite)();]>;
+                def act = act |> end_name;
+                def acts = act |> <[$(_ : usesite)();]>;
                 <[ {..$acts} ]>
       }
       
@@ -289,7 +304,7 @@ namespace Nemerle.Statechart
       match (nest)
       {
         | ForceStateChange(n) => GetForceStateChange(n, ctx)
-        | State(FsmState where (PartOfRegion = Some(r), PartOfSubRegion = Some(sr))) =>
+        | State(FsmState(PartOfRegion = Some(r), PartOfSubRegion = Some(sr))) =>
             def reg = GetExecStateName(r, ctx);
             def sreg = get_sub_region_name(sr);
             <[ def st = $body;$reg.$(sreg : usesite) = st; st ]>
@@ -297,19 +312,18 @@ namespace Nemerle.Statechart
         | SubRegion
         | Region
         | State => if (st != null) 
-                   if (ctx.IsInEventHandler) <[ fsm.SwitchConcrete($body) ]> else
-                    <[ SwitchConcrete($body) ]> else 
-                    if (ctx.IsInEventHandler) <[ fsm.Switch($body) ]> else <[ Switch($body) ]>
+                   if (ctx.IsInEventHandler) <[ fsm.Switch($body) ]> else
+                    <[ Switch($body) ]> else 
+                    if (ctx.IsInEventHandler) <[ fsm.TrySwitch($body) ]> else <[ TrySwitch($body) ]>
         | Terminate => <[ _ = $body; null]>
         | Join
-        | Final(region = FsmState where (HaveFinal = true))
+        | Final(region = FsmState(HaveFinal = true))
         | TransitionExecute
         | JunctionNode
-        | ChoiceNode
         | NoStateChange => body
-        | _ => if (st != null)  if (ctx.IsInEventHandler) <[ fsm.SwitchConcrete($body) ]> else
-                    <[ SwitchConcrete($body) ]> else 
-                    if (ctx.IsInEventHandler) <[ def st = $body;fsm.Switch(st) ]> else <[ def st = $body;Switch(st) ]>
+        | _ => if (st != null)  if (ctx.IsInEventHandler) <[ fsm.Switch($body) ]> else
+                    <[ Switch($body) ]> else 
+                    if (ctx.IsInEventHandler) <[ def st = $body;fsm.TrySwitch(st) ]> else <[ def st = $body;TrySwitch(st) ]>
       }
     }
       

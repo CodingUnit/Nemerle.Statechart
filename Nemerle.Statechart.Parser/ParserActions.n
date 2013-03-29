@@ -25,8 +25,8 @@ namespace Nemerle.Statechart
       def name = match (name)
                  {
                    | "completion" 
-                   | "_"  => null
-                   | _  => name
+                   | "_"            => null
+                   | n              => n
                  }
       TransitionNode.Event(tok.StartPos, name)
     }
@@ -38,79 +38,78 @@ namespace Nemerle.Statechart
       match (cond)
       {
        | "else" => Else(pos)
-       | _ => Guard(pos, cond)
+       | _      => Guard(pos, cond)
       }
     }
     
     create_action(lst : List[NToken]) : Actions
     {
-      def acts = lst |> GetText(_);
+      def acts = lst.Map(GetText);
       Actions(acts)
     }
 
-    CreateState(pos : int, name : string, attr : list[StateAttribute], decls : list[StateNode], type : StateType) : StateNode.State
+    CreateState(pos : int, name : string, attr : IEnumerable[StateAttribute], decls : IEnumerable[StateNode], type : StateType) : StateNode.State
     {
       
       def check_tran(state, tr)
       {
         match (tr)
         {
-          | StateNode.Transition(to = State(st) as t) as tr when st.name == "@" ||  st.name == "self"  => tr.ChangeTarget(t.Change(state));
+          | StateNode.Transition(to = State(st) as t) as tr when st.name == "@" ||  st.name == "self"  => tr.ChangeTo(t.ChangeState(state));
           | x  => x
         } 
       }
           
       def get_decls(decls) 
       {
-        def (en, decls) = decls.PartitionType();
-        def (ex, decls) = decls.PartitionType();
-        def (states, decls) =  decls.PartitionType();
-        def (trans, decls)  =  decls.PartitionType();
-        def (in_trans, decls) = decls.PartitionType();
-        def (do_act, decls) = decls.FindType();
-        def (init, decls) = decls.PartitionType();
+        def (en, decls)       = decls.PartitionType();
+        def (ex, decls)       = decls.PartitionType();
+        def (states, decls)   = decls.PartitionType();
+        def (trans, decls)    = decls.PartitionType();
+        def (trans, other)    = trans.Partition(x => x.type is TransitionType.Transition);
+        def (in_trans, other) = other.Partition(x => x.type is TransitionType.Internal);
+        def (init, _)         = other.Partition(x => x.type is TransitionType.Initial);
+        def (do_act, decls)   = decls.PartitionType();
+        
         def (hist, decls) = decls.PartitionType();
         def (pseudo, decls) = decls.PartitionType();
-        def history = match (hist) 
+        def history = match (hist.NToList()) 
                       {
                         | [head]  => TwoOption.One(head)
                         | [f, s]  => TwoOption.Two(f, s)
-                        | _  => TwoOption.None() // TODO: надо отслеживать ошибку и выдавать пользователю
+                        | _       => TwoOption.None() // TODO: надо отслеживать ошибку и выдавать пользователю
                       }
         (en, ex, states, trans, in_trans, do_act, init, history, pseudo, decls)
       } 
       
       def create_sub_regions(reg)
       {
-        
         def (en, ex, states, trans, in_trans, do_act, init, hist, pseudo, _) = get_decls(reg);
-        State(0, null, init, [], en, ex, in_trans, trans, do_act, hist, states, None(), pseudo, StateType.SubRegion(), [])
+        State(0, null, init, [], en, ex, in_trans, trans, do_act, hist, states, pseudo, StateType.SubRegion(), [])
       }
       
-      def decls = decls.Sort((x, y)  => x.pos - y.pos);
+      def decls = decls.OrderBy(_.pos).NToList();
       def (reg_trans, reg) = decls.Partition(_ is StateNode.Transition);
       def regions = reg.FindDelimited(_ is State(type = StateType.SubRegion)); // split list by regions
       def (regions, decls) = if (regions.IsEmpty()) ([], decls) else (regions.Map(create_sub_regions), reg_trans); // create regions
       def (en, ex, states, trans, in_trans, do_act, init, hist, pseudo, decls) = get_decls(decls);
-      def regions = match (regions)
-                    {
-                      | []  => None() // if no regions
-                      | lst  => Some(Region(0, lst, State(name), trans)) // if some create node
-                    }
-      def trans  = trans |> check_tran(State(name), _);              
-      State(pos, name, init, attr, en, ex, in_trans, trans, do_act, hist, states, regions, pseudo, type, decls |> Error(_.pos, _));
+      //def regions =  // if some create node
+      def trans  = trans.Map(check_tran(State(name), _));
+      def (states, type) = if (regions.IsEmpty()) (states, type) else (regions, StateType.Region());
+      State(pos, name, init, attr.NToList(), en, ex, in_trans, trans, do_act, hist, states, pseudo, type, decls.Map(x => Error(x.pos, x)))
       }
 
-    def_history(hist : HistoryType, tok : NToken, tran : option[StateNode.Default]) : StateNode.History
+    def_history(hist : HistoryType, tok : NToken, tran : option[StateNode.Transition]) : StateNode
     {
       def pos = tok.StartPos;
       
       def check_tran(t)
       {
-        t.Change(pos, StateNode.History(tok.StartPos, null))
+        | StateNode.Transition(type = TransitionType.Default as t) as tr => tr.ChangeTypePos(t.ChangeHistory(History(pos, null)), pos)
+        | _                                                              => null
       }
       
-      StateNode.History(tok.StartPos, hist, tran.Map(check_tran))
+      History(pos, hist, tran.Map(check_tran))
     }
     
   }

@@ -12,13 +12,13 @@ using Nemerle.Statechart;
 
 namespace Nemerle.Statechart
 {
-  
+
   using StateNode;  
   using TransitionNode;
   using PseudoStateAstNode;
   using GuardNode;
   using ListUtils;
-  
+
   public partial class FsmParser
   {
     fully_qualified(id : NToken, tail : List[NToken]) : NameIdentifier
@@ -29,7 +29,7 @@ namespace Nemerle.Statechart
       {
         | (s, []) => NameIdentifier.Name(pos, s)
         | (s, tail) => def lst = s :: tail;
-            def joined = string.Join(".", lst);
+            def joined = $<#..$(lst;".")#>;
             NameIdentifier.QualifiedName(pos, joined, lst)
       }
     }
@@ -38,79 +38,75 @@ namespace Nemerle.Statechart
     {
       create_guard(tok)
     }
-    
+
     simple_target(name : NameIdentifier) : TargetType
     {
+      def pos = name.pos;
+      
       def get_target(p, n)
       {
         match (n)
         {
-          | "H"
-          | "h" => TargetType.History(name.pos, StateNode.History(0, HistoryType.Shallow, None(), p, true))
-          | "history"  => TargetType.History(name.pos, p : State)
-          | "h*" 
-          | "H*" => TargetType.History(name.pos, StateNode.History(0, HistoryType.Deep, None(), p, true))
+          | "history"  with hist = HistoryType.None
+          | "H"  with hist = HistoryType.Shallow
+          | "h"  with hist = HistoryType.Shallow
+          | "h*" with hist = HistoryType.Deep
+          | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateAstNode.History(pos, StateNode.History(pos, hist, None(), p, true)))
           | "final"
-          | "$0"  => TargetType.Final(name.pos, Final(null))
+          | "$0"       => TargetType.Final(name.pos, Final(null))
           | "terminate"
           | "x"
-          | "X" => TargetType.PseudoState(name.pos, PseudoStateAstNode.Terminate(0))
+          | "X"        => TargetType.PseudoState(name.pos, PseudoStateAstNode.Terminate(0))
           | x when (x.IndexOf('(') != -1 ) => TargetType.Named(name.pos, p, name.TargetName.Trim('(',')'))
           | _ => TargetType.State(name.pos, State(n))
         }
       }
-      
+
       match (name)
       {
         | Name(name = n) => get_target(null, n)
         | QualifiedName(parts = n) => def (tar, lst) = n.SplitLast();
-            def st = string.Join(".", lst);
+            def st = $<#..$(lst;".")#>;
             TargetType.Qualified(name.pos, st, get_target(State(st), tar))
       }
     }
-    
+
     transition_mark(GuardNode : option[GuardNode], act : option[Actions], target : TargetType) : StateNode.Transition
     {
       Transition(GuardNode, act, target)
     }
-    
-    default_transition(act : option[Actions], target : TargetType) : Default
+
+    default_transition(act : option[Actions], target : TargetType) : StateNode.Transition
     {
-      // TODO: проверка с выводом ошибки в случае если не в состояние
-      match (target)
-      {
-        | State(st) => Default(act, st)
-        | _ => Default(act, null)
-      }
+      Transition(target.pos, Enumerable.Empty(), None(), act, target, TransitionType.Default(null))
     }
-    
+
     events(id : NToken, evt : List[NToken]) : List[Event]
     {
-      def lst = id :: evt.NToList();
-      def lst = lst |> create_event(_);
-      lst.ToList()
+      def lst = evt.AddBefore(id);
+      lst.Select(create_event).ToList()
     }
-    
+
     simple_transition(evt : List[Event], tran : StateNode.Transition) : StateNode.Transition
     {
-      Transition(evt, tran)
+      Transition(evt, tran, TransitionType.Transition())
     }
 
     simp_transition(tran : StateNode.Transition) : StateNode
     {
       tran
     }
-    
+
     simple_attrs(attr : List[List[NToken]]) : List[NToken]
     {
       attr.Flatten().ToList()
     }
-    
+
     is_in_state(tok : NToken, _ : NToken, st : NToken, _ : NToken) : GuardNode
     {
       GuardNode.InState(tok.StartPos, GetText(st))
     }
-    
+
     attributes(attr : List[NToken]) : List[StateAttribute]
     {
       def get_attr(at)
@@ -118,10 +114,10 @@ namespace Nemerle.Statechart
         match (GetText(at))
         {
           | "Initial" => StateAttribute.Initial(at.StartPos)
-          | str => StateAttribute.Unknown(at.StartPos, str)
+          | str       => StateAttribute.Unknown(at.StartPos, str)
         }
       }
-      
+
       attr.Map(get_attr).ToList()
     }
 
@@ -129,37 +125,39 @@ namespace Nemerle.Statechart
     {
       create_action(lst)
     }
-    
+
     block_action_list(lst : List[NToken]) : Actions
     {
       create_action(lst)
     }
-    
+
     empty_action_list(tok : NToken) : Actions
     {
       Actions(tok.StartPos, [])
     }
-    
+
     delim_action_list(lst : List[NToken]) : Actions
-    {      
+    {
       create_action(lst)
     }
-          
+
     entry(attr : option[List[NToken]], key : NToken, acts : option[Actions]) : Entry
     {
       def acts = acts.WithDefault(Actions(key.StartPos, []));
-      def attr = get_action_attr(attr.MapDefault(_.NToList(), []));
+      def attr = attr.WithDefault(Enumerable.Empty());
+      def attr = get_action_attr(attr);
       Entry(key.StartPos, attr, acts)
     }
 
     exit(attr : option[List[NToken]], key : NToken,  acts : option[Actions]) : Exit
     {
       def acts = acts.WithDefault(Actions(key.StartPos, []));
-      def attr = get_action_attr(attr.MapDefault(_.NToList(), []));
+      def attr = attr.WithDefault(Enumerable.Empty());
+      def attr = get_action_attr(attr);
       Exit(key.StartPos, attr, acts)
     }
 
-    get_action_attr(attr : list[NToken]) : ActionFlags
+    get_action_attr(attr : IEnumerable[NToken]) : ActionFlags
     {
       def get_attr(at, res)
       {
@@ -168,134 +166,143 @@ namespace Nemerle.Statechart
           | _ => (ActionFlags.None | res)
         }
       }
-      
+
       attr.FoldLeft(ActionFlags.None, get_attr)
     }
-    
+
     do_activity(attr : option[List[NToken]], key : NToken, acts : Actions) : DoActivity
     {
       def get_attr(at, res)
       {
         def flag = match (GetText(at))
-        {
-          | "Concurrently" => ActivityFlag.Concurrently
-          | "NoWait" => ActivityFlag.NoWaitCancel
-          | "NotLong" => ActivityFlag.NotLong
-          | _ => ActivityFlag.None
-        }
+                    {
+                      | "Concurrently" => ActivityFlag.Concurrently
+                      | "NoWait"       => ActivityFlag.NoWaitCancel
+                      | "NotLong"      => ActivityFlag.NotLong
+                      | _              => ActivityFlag.None
+                    }
         res | flag
       }
-      
-      def flags = attr.MapDefault(_.NToList(), []);
+
+      def flags = attr.WithDefault(Enumerable.Empty());
       def flags = flags.FoldLeft(ActivityFlag.None, get_attr);
       DoActivity(key.StartPos, acts, flags)
     }
-    
-    internal_trans(evt : NToken, GuardNode : option[GuardNode], acts : Actions) : InternalTransition
+
+    internal_trans(evt : NToken, guard : option[GuardNode], acts : Actions) : StateNode.Transition
     {
-      InternalTransition(evt.StartPos, [create_event(evt)], GuardNode, acts)
+      Transition(evt.StartPos, create_event(evt) :: [], guard, Some(acts), null, TransitionType.Internal())
     }
-    
-    initial_trans(name : NToken, tran : StateNode.Transition) : Initial
+
+    initial_trans(name : NToken, tran : StateNode.Transition) : StateNode.Transition
     {
-      Initial(name.StartPos, tran)
+      Transition(name.StartPos, tran, TransitionType.Initial())
     }
 
     state(attr : option[List[StateAttribute]], name : NToken, nodes : List[StateNode]) : State
     {
       def name_text = GetText(name);
-      def attr = attr.MapDefault(_.NToList(), []);
-      CreateState(name.StartPos, name_text, attr, nodes.NToList(), StateType.State())
+      def attr = attr.WithDefault(Enumerable.Empty());
+      CreateState(name.StartPos, name_text, attr, nodes, StateType.State())
     }
-      
+
     flags(tok : List[NToken]) : MachineFlags
     {
-      def proc_tok(tok, (flag, errs))
-      {
-        def (nflag, err) = match (GetText(tok))
-                    {
-                      | "debug"                        => (MachineFlag.Debug, None())
-                      | "auto_initial"                 => (MachineFlag.AutoInitial, None())
-                      | "local_default"                => (MachineFlag.LocalDefault, None())
-                      | "transition_completed_events"  => (MachineFlag.TransitionCompleted, None())
-                      | "completion_strict"            => (MachineFlag.CompletionStrict, None())
-                      | x                              => (MachineFlag.None, Some(x))
-                    }
-        (nflag |  flag, err %:: errs)
-      }
+      def err = List();
       
-      MachineFlags(tok.FoldLeft((MachineFlag.None, []), proc_tok));
+      def proc_tok(tok, flag)
+      {
+        def nflag= match (GetText(tok))
+                    {
+                      | "debug"                        => MachineFlag.Debug
+                      | "auto_initial"                 => MachineFlag.AutoInitial
+                      | "local_default"                => MachineFlag.LocalDefault
+                      | "transition_completed_events"  => MachineFlag.TransitionCompleted
+                      | "completion_strict"            => MachineFlag.CompletionStrict
+                      | "only_analyse"                 => MachineFlag.OnlyAnalyse
+                      | x                              => err.Add(x);
+                                                          MachineFlag.None
+                    }
+        nflag |  flag
+      }
+
+      def flags = tok.FoldLeft(MachineFlag.None, proc_tok);
+      MachineFlags(flags, err);
     }
-    
-    history_deep(tok : NToken, tran : option[StateNode.Default]) : History
+
+    history_deep(tok : NToken, tran : option[StateNode.Transition]) : StateNode
     {
       def_history(HistoryType.Deep, tok, tran)
     }
 
-    history_shallow(tok : NToken, tran : option[StateNode.Default]) : History
+    history_shallow(tok : NToken, tran : option[StateNode.Transition]) : StateNode
     {
       def_history(HistoryType.Shallow, tok, tran)
     }
-    
-    history_long(type : NToken, tran : option[StateNode.Default]) : History
+
+    history_long(type : NToken, tran : option[StateNode.Transition]) : StateNode
     {
       match (GetText(type))
       {
         | "Deep"
-        | "deep"  => def_history(HistoryType.Deep, type, tran)
+        | "deep"     => def_history(HistoryType.Deep, type, tran)
         | "Shallow"
         | "shallow"  => def_history(HistoryType.Shallow, type, tran)
-        | _  => def_history(HistoryType.None, type, tran)
+        | _          => StateNode.Error(type.StartPos, def_history(HistoryType.None, type, tran))
       }
     }
-    
+
     terminate_node(tok : NToken) : PseudoState
     {
       StateNode.PseudoState(tok.StartPos, PseudoStateAstNode.Terminate(tok.StartPos))
     }
-    
+
     join(tok : NToken, name : NToken, target : TargetType) : PseudoState
     {
       StateNode.PseudoState(tok.StartPos, PseudoStateAstNode.Join(tok.StartPos, GetText(name), target))
     }
-    
-    junction_target(nodes : List[JunctionNode]) : TargetType
+
+    junction_target(node : List[JunctionNode]) : TargetType
     {
-      TargetType.PseudoState(0, Junction(0, nodes.NToList()))
+      def pos = if (node.Count() != 0) node.First().pos else 0;
+      TargetType.PseudoState(pos, Junction(pos, null, node.NToList(), JunctionType.Junction))
     }
-    
-    junction(tok : NToken, name : NToken, nodes : List[JunctionNode]) : PseudoState
+
+    junction(tok : NToken, name : NToken, node : List[JunctionNode]) : PseudoState
     {
       def pos = tok.StartPos;
-      PseudoState(pos, Junction(pos, GetText(name), nodes.NToList()))
+      PseudoState(pos, Junction(pos, GetText(name), node.NToList(), JunctionType.Junction))
     }
 
     create_junc_node(g : option[GuardNode], a: option[Actions], t : TargetType) : JunctionNode
     {
+      def g = g.WithDefault(GuardNode.Empty(0));
       JunctionNode(0, g, a, t)
     }
-    
+
     junction_body(body : List[option[GuardNode] * option[Actions] * TargetType]) : List[JunctionNode]
     {
-      (body |> create_junc_node(_)).ToList();
+      body.Select(create_junc_node).ToList()
+      //GeneralTree()
+      //body.FoldBack(null, ((g, a, t), n) => create_junc_node(g, a, t, n))
     }
-    
-    choice_target(tok : NToken, nodes : List[JunctionNode]) : TargetType
+
+    choice_target(tok : NToken, node : List[JunctionNode]) : TargetType
     {
       def pos = tok.StartPos;
-      TargetType.PseudoState(pos, Choice(pos, null, nodes.NToList()))
+      TargetType.PseudoState(pos, Junction(pos, null, node.NToList(), JunctionType.Choice))
     }
-    
-    choice(tok : NToken, name : NToken, _ : NToken, nodes : List[JunctionNode]) : StateNode.PseudoState
+
+    choice(tok : NToken, name : NToken, _ : NToken, node : List[JunctionNode]) : StateNode.PseudoState
     {
       def pos = tok.StartPos;
-      PseudoState(pos, Choice(pos, GetText(name), nodes.NToList()))
+      PseudoState(pos, Junction(pos, GetText(name), node.NToList(), JunctionType.Choice))
     }
-    
-    merge(tok : NToken, name : NToken, GuardNode : option[GuardNode], act : option[Actions], target : TargetType) : StateNode.PseudoState
+
+    merge(tok : NToken, name : NToken, guard : option[GuardNode], act : option[Actions], target : TargetType) : StateNode.PseudoState
     {
       def pos = tok.StartPos;
-      PseudoState(pos, Merge(pos, GetText(name), JunctionNode(pos, GuardNode, act, target)))
+      PseudoState(pos, Junction(pos, GetText(name), create_junc_node(guard, act, target) :: [], JunctionType.Merge))
     }
 
     trans_target(tar : TargetType, targets : List[TargetType]) : TargetType
@@ -306,26 +313,26 @@ namespace Nemerle.Statechart
         TargetType.PseudoState(0, PseudoStateAstNode.Fork(0, targets))
       }
     }
-    
+
     inlined_fsm(nkey : NToken, name : NToken, _ : NToken, type : NToken, body : List[StateNode]) : StateNode
     {
       def pos = nkey.StartPos;
       def name = GetText(name);
-      CreateState(pos, name, [], body.NToList(), StateType.InlinedSubMachine(GetText(type)));
+      CreateState(pos, name, [], body, StateType.InlinedSubMachine(GetText(type)));
     }
-    
+
     statemachine(name : NToken, _ : NToken, type : NToken, tran : List[StateNode.Transition]) : StateNode
     {
       State(GetText(name), name.StartPos, StateType.SubMachine(GetText(type)), tran.NToList())
     }
-    
+
     stateMachine(sp : NToken, flags : option[MachineFlags], st : List[StateNode]) : StateMachine
     {
       def st = CreateState(sp.StartPos, null, [], st.NToList(), StateType.State());
       def flags = flags.WithDefault(MachineFlags(MachineFlag.None, []));
       StateMachine(flags, st)
     }
-    
+
     region(beg : NToken, _ : NToken) : StateNode.State
     {
       State(beg.StartPos, StateType.SubRegion())

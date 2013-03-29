@@ -3,262 +3,236 @@ using Nemerle.Text;
 using Nemerle.Utility;
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Statechart;
+using SCG = System.Collections.Generic;
 
 namespace Nemerle.Statechart
 {
   public variant StateType
   {
     | State
-    | SubMachine {type : string;}
-    | InlinedSubMachine {type : string;}
+    | SubMachine        { type : string; }
+    | InlinedSubMachine { type : string; }
     | SubRegion
+    | Region
   }
-  
+
+  public variant TransitionType
+  {
+    | Internal
+    | Default 
+      { 
+        [NeedChange] history : StateNode.History;
+      }
+    | Initial
+    | Transition
+  }
+
+  [Traversable(State)]
   [Record]
   public variant StateNode
   {
-    
-    | StateMachine 
-        {
-          flags : MachineFlags;
-          state : State;
-          
-          this(fl : MachineFlags, st : State)
-          {
-            flags = fl;
-            state = st;
-            base(st.pos);
-          }
-          
-          GetErrors() : list[Error]
-          {
-            def get_errors(st, res)
-            {
-              st.sub_states.FoldLeft(res + st.errors, get_errors)
-            }
+    | StateMachine
+      {
+        flags : MachineFlags;
+        state : State;
 
-            get_errors(state, [])
-          }
-        }
-    | Region 
+        this(fl : MachineFlags, st : State)
         {
-          regions : list[State];
-          state : State;
-          transitions : list[Transition];
+          flags = fl;
+          state = st;
+          base(st.pos);
         }
-    | Initial 
-        {
-          guard : option[GuardNode];
-          action : option[Actions];
-          to : TargetType;
-          
-          this(pos : int, tran : Transition)
-          {
-            guard = tran.guard;
-            action = tran.action;
-            to = tran.to;
-            base(pos);
-          }
-          
-          ChangeTarget(t : TargetType) : Initial
-          {
-            Initial(pos, guard, action, t)
-          }
-          
-        }
-    | Default
-        {
-          action : option[Actions];
-          target : StateNode.State;
-          history : History;
 
-          Change(pos : int, hist : History) : Default
-          {
-            Default(pos, action, target, hist)
-          }
-          
-          this(act : option[Actions], to : State)
-          {
-            action = act;
-            target = to;
-            base(0)
-          }
-
+        GetErrors() : IEnumerable[Error]
+        {
+          StateParts.SelectMany(_.errors)
         }
+      }
     | Final
-        {
-          state  : State;
+      {
+        state  : State;
 
-          this(s : State) 
-          {
-            state = s;
-            base(0);
-          }
-        }
-    | State 
+        this(s : State)
         {
-          this (n : string) {name = n;reference = true;base(0);}
-          this (n : string, pos : int, type : StateType) 
-          {
-            base(pos);
-            name = n;
-            this.type = type;
-          }
-          this (n : string, pos : int, type : StateType, tran : list[Transition]) 
-          {
-            base(pos);
-            name = n;
-            transitions = tran;
-            this.type = type;
-          }
-          this (pos : int, type : StateType) 
-          {
-            base(pos);
-            this.type = type;
-          }
-          name : string;
-          initial : list[Initial] = [];
-          attributes : list[StateAttribute];
-          entry : list[Entry] = [];
-          exit : list[Exit] = [];
-          internal_tran : list[InternalTransition] = [];
-          transitions : list[Transition] = [];
-          do_activity : option[DoActivity] = None();
-          history : TwoOption[History] = TwoOption.None();
-          sub_states : list[State] = [];
-          regions : option[Region] = None();
-          [RecordIgnore]
-          reference : bool;
-          pseudo_states : list[PseudoState] = [];
-          type : StateType;
-          errors : list[Error] = [];
-          
-          
+          state = s;
+          base(0);
         }
-    | Entry 
+
+      }
+      
+    [Traverse(region(type = StateType.Region))]
+    | State
+      {
+        this (n : string) {base(0);name = n;reference = true;}
+        this (n : string, pos : int, type : StateType)
         {
-          this(pos : int) {action = Actions([]);base(pos);}
-          this(lst : list[string]) {action = Actions(lst);base(0);}
-          
-          attrib : ActionFlags;
-          action : Actions;
+          base(pos);
+          name = n;
+          this.type = type;
         }
-    | Exit 
+        this (n : string, pos : int, type : StateType, tran : list[Transition])
         {
-          this(pos : int) {action = Actions([]);base(pos);}
-          this(lst : list[string]) {action = Actions(lst);base(0);}
-          
-          attrib : ActionFlags;
-          action : Actions;
+          base(pos);
+          name = n;
+          transitions = tran;
+          this.type = type;
         }
+        this (pos : int, type : StateType)
+        {
+          base(pos);
+          this.type = type;
+        }
+        [NeedChange]
+        name : string;
+        initial       : list[Transition] = [];
+        attributes    : list[StateAttribute] = [];
+        entry         : list[Entry] = [];
+        exit          : list[Exit] = [];
+        internal_tran : list[Transition] = [];
+        transitions   : list[Transition] = [];
+        do_activity   : list[DoActivity] = [];
+        history       : TwoOption[History] = TwoOption.None();
+        sub_states    : list[State] = [];
+        [RecordIgnore]
+        reference     : bool;
+        pseudo_states : list[PseudoState] = [];
+        type : StateType;
+        errors : list[Error] = [];
+
+      }
+
+    | Entry
+      {
+        this(pos : int) {action = Actions([]);base(pos);}
+        this(lst : list[string]) {action = Actions(lst);base(0);}
+
+        attrib : ActionFlags;
+        action : Actions;
+      }
+    | Exit
+      {
+        this(pos : int) {action = Actions([]);base(pos);}
+        this(lst : list[string]) {action = Actions(lst);base(0);}
+
+        attrib : ActionFlags;
+        action : Actions;
+      }
     | Error {node : StateNode;}
     | DoActivity {action : Actions;flags : ActivityFlag;}
-    | InternalTransition
+    | Transition
+      {
+        evt : IEnumerable[TransitionNode.Event] = Enumerable.Empty();
+        guard : option[GuardNode];
+        action : option[Actions];
+        [NeedChange] to : TargetType;
+
+        [NeedChange(pos)]
+        [NeedChange]
+        type : TransitionType;
+
+        ToState : StateNode.State
         {
-          evt : list[TransitionNode.Event];
-          guard : option[GuardNode];
-          action : Actions;
-          
-          Actions : list[string]
+          get
           {
-            get
+            match (to)
             {
-              action.ActionList
+              | TargetType.State(st)  => st
+              | _                     => null
             }
           }
-          
         }
-    | Transition 
+
+        this(guard : option[GuardNode], action : option[Actions], to : TargetType)
         {
-          evt : list[TransitionNode.Event];
-          guard : option[GuardNode];
-          action : option[Actions];
-          to : TargetType;
-
-          ChangeTarget(t : TargetType) : Transition
-          {
-            Transition(pos, evt, guard, action, t)
-          }
-          
-          ToState : StateNode.State
-          {
-            get
-            {
-              match (to)
-              {
-                | TargetType.State(st)  => st
-                | _  => null
-              }
-            }
-          }
-          
-          this(guard : option[GuardNode], action : option[Actions], to : TargetType)
-          {
-            this.guard = guard;
-            this.action = action;
-            this.to = to;
-            base(to.pos);
-          }
-
-          this(evt : List[TransitionNode.Event],  tran : Transition)
-          {
-            this.evt = evt.NToList();
-            guard = tran.guard;
-            action = tran.action;
-            to = tran.to;
-            base(evt.First().pos);
-          }
-          
+          base(to.pos);
+          this.guard = guard;
+          this.action = action;
+          this.to = to;
         }
-            
+
+        this(pos : int,  tran : Transition, type : TransitionType)
+        {
+          base(pos);
+          guard = tran.guard;
+          action = tran.action;
+          to = tran.to;
+          this.type = type
+        }
+
+        this(evt : IEnumerable[TransitionNode.Event],  tran : Transition, type : TransitionType)
+        {
+          base(evt.First().pos);
+          this.evt = evt;
+          this.type = type;
+          guard = tran.guard;
+          action = tran.action;
+          to = tran.to;
+        }
+
+      }
+    [TraverseIgnore]
     | History
-        { 
-          type : HistoryType;
-          default : option[Default];
-          state : State;
-          reference : bool;
-          
-          ChangeState(st : State) : History
-          {
-             History(pos, type, default, st, reference)
-          }
-          
-          ChangeDefault(d : Default) : History
-          {
-            History(pos, type, Some(d), state, reference)
-          }
-          
-          this(pos : int, state : State)
-          {
-            this.state = state;
-            reference = true;
-            default = option.None();
-            base(pos);
-          }
-          
-          this(pos : int, type : HistoryType, default : option[Default])
-          {
-            this.type = type;
-            this.default = default;
-            base(pos)
-          }
+      {
+        type : HistoryType;
+        [NeedChange] default : option[Transition];
+        [NeedChange] state : State;
+        reference : bool;
 
-        }
-    | PseudoState
+        this(pos : int, state : State)
         {
-          node : PseudoStateAstNode;
-          
-          Change(n : PseudoStateAstNode) : PseudoState
-          {
-            PseudoState(pos, n)
-          }
+          this.state = state;
+          reference = true;
+          default = option.None();
+          base(pos);
         }
-        
+
+        this(pos : int, type : HistoryType, default : option[Transition])
+        {
+          this.type = type;
+          this.default = default;
+          base(pos)
+        }
+
+      }
+    | PseudoState
+      {
+        [NeedChange] node : PseudoStateAstNode;
+      }
+
+    [NeedChange]
     public pos : int;
-       
+
+    //public GetCode() : int
+    //{
+    //  match (this)
+    //  {
+    //    | StateMachine            => 0
+    //    | State(regions = Some()) => 1
+    //    | State                   => 2
+    //    | Final                   => 3
+    //    | _                       => -1
+    //  }
+    //}
+
+    public GetChild() : IEnumerable[StateNode.State]
+    {
+      match (this)
+      {
+        | State(sub_states = sub)           => sub
+        | StateMachine(state = st)          => TraverseUtils.SingleElement(st)
+        | Final(state = st)                 => TraverseUtils.SingleElement(st)
+        | _                                 => Enumerable.Empty()
+      }
+    }
+
+    public Rebuild(_ : IEnumerable[StateNode]) : StateNode
+    {
+      this
+    }
   }
 
 }

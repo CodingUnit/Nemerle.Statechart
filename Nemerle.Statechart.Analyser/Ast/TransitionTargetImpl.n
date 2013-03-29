@@ -1,0 +1,228 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using NGenerics.DataStructures.Trees;
+
+namespace Nemerle.Statechart
+{
+  using PseudoStateAstNode;
+  using FsmState;
+  using PseudoStateNode;
+  using ListUtils;
+
+  /// <summary>
+  /// Description of TransitionTargetImpl.
+  /// </summary>
+  public partial variant TransitionTarget
+  {
+    
+    //public IdObjects : IEnumerable[IdObject]
+    //{
+    //  get
+    //  {
+    //    PseudoStateParts.Select(_.value)
+    //    //Fold([], pseudo_state = (p, a) => p.node :: a)
+    //  }
+    //}
+
+    //public static CreateStateRef(val : FsmState, fix : bool = false) : ReferenceNode[FsmState]
+    //{
+    //  def statemap = val.analyser.statemap;
+    //  val.analyser.statemap.NewReferences = true;
+    //  def node = ReferenceNode(val, -1, val.analyser, statemap.Get, statemap.ChangeMan.Add, false);
+    //  if (fix) node.Fix(val.Num) else node
+    //}
+
+    //public static CreatePseudoRef(st : FsmState, val : PseudoStateNode) : ReferenceNode[PseudoStateNode]
+    //{
+    //  def statemap = st.analyser.statemap;
+    //  val.analyser.statemap.NewReferences = true;
+    //  def num = st.Num;
+    //  ReferenceNode(val, val.Num, val.analyser, x => statemap.Get(num).GetPseudo(x), (i, x) => statemap.ChangeMan.Add(st.Num, y => y.ChangePseudo(i, x)), true)
+    //}
+    
+    //public static CreatePseudoRef(val : PseudoStateNode, fix : bool = false) : ReferenceNode[PseudoStateNode]
+    //{
+    //  def statemap = val.analyser.statemap;
+    //  val.analyser.statemap.NewReferences = true;
+    //  def node = ReferenceNode(val, -1, val.analyser, x => statemap.ParentFor(x).GetPseudo(x), (i, x) => statemap.ChangeMan.Add(statemap.ParentFor(i).Num, y => y.ChangePseudo(i, x)), false);
+    //  if (fix) node.Fix(val.Num) else node
+    //}
+    
+    public static Create(st : GeneralTree[FsmState], target : TargetType) : TransitionTarget
+    {
+      def an = st.Analyser();
+      match (target)
+      {
+        | PseudoState as t                  => PseudoState(st, t)
+        | Final                             => TransitionTarget.Final(an, null)
+        | State       as t                  => State(an, t)
+        | Named       as t                  => Named(st, t)
+        | SubMachine(_m, s)                 => SubMachine(an, null, s)//SubMachine(m, null), s)
+        | Qualified(parent = p, target = t) => Qualified(an, p, Create(st, t))
+        //| JunctionNode(g, a, t, n)          => JunctionNode(an, g, a, Create(st, t), n.Map(x => Create(st, x) :> JunctionNode), null, JunctionType.Junction)
+      }
+    }
+
+    public CompareTo(target : TransitionTarget) : int
+    {
+      CompareTo(this, target)
+    }
+
+    public static CompareTo(t1 : TransitionTarget, target : TransitionTarget) : int
+    {
+      | (PseudoState(node = n1), PseudoState(node = n2))                    => if (n1 : object == n2) 0 else -1
+      | (Final(state = n1), Final(state = n2))                              
+      | (State(state = n1), State(state = n2))                              => if (n1 : object == n2) 0 else -1
+      //| (SubMachine(machine = m, state = s), SubMachine(machine = m2, state = s2)) when (m.Value == m2.Value) => s.CompareTo(s2)
+      //| (Qualified(p, t), Qualified(p2, t2)) when (p == p2)   => t.CompareTo(t2)
+      | _                                                                   => -1
+    }
+
+    //public static @==(a : TransitionTarget, b : TransitionTarget) : bool
+    //{
+    //  //| (History(h1), History(h2))             => h1 == h2
+    //  | (State(st1), State(st2))
+    //  | (Final(st1), Final(st2))               => st1 == st2
+    //  | (PseudoState(n1), PseudoState(n2))     => n1 == n2
+    //  | (Named(st, n), Named(st2, n2))         => st == st2 && n == n2
+    //  | (Qualified(p, t), Qualified(p2, t2))   => p == p2 && t == t2
+    //  | (SubMachine(machine = m, state = s), SubMachine(machine = m2, state = s2)) => m == m2 && s == s2
+    //  | _                                      => false
+    //}
+
+    //public PartOfSubRegion : option[ConcurrentSubRegion]
+    //{
+    //  get
+    //  {
+    //    match (ToState)
+    //    {
+    //      | null                      => None()
+    //      | ConcurrentSubRegion as st => Some(st)
+    //      | st                        => st.PartOfSubRegion
+    //    }
+    //  }
+    //}
+
+    public ToState : GeneralTree[FsmState]
+    {
+      get
+      {
+        match (this)
+        {
+          | PseudoState(NodeValue(Parent = st))
+          //| History(PseudoStateNode.History(state = st))
+          | Final(state = st)
+          //| SubMachine(machine = st)
+          | State(state = st)  => st
+          | Qualified(_, t)    => t.ToState
+          | _                  => null
+        }
+      }
+    }
+
+    //public transition : StateTransition;
+
+    //public SetCopy(ncopy : int) : TransitionTarget
+    //{
+    //  Reduce(pseudo_state = t => t.ChangeNode(t.node.ChangeCopy(ncopy)), 
+    //         merge = (t, _) => t.ChangeNode(t.node.ChangeCopy(ncopy)), 
+    //         junction = (t, _) => t.ChangeNode(t.node.ChangeCopy(ncopy)))
+    //}
+
+    public Guards : IEnumerable[GuardNode]
+    {
+      get
+      {
+        match (this)
+        {
+          | TransitionTarget.PseudoState(NodeValue(Value = Junction as j)) => j.Guards
+          | _                                                              => Enumerable.Empty()
+        }
+        //JunctionNodeParts.Select(_.guard)
+      }
+    }
+
+    public Traverse(func : TransitionTarget -> TransitionTarget) : TransitionTarget
+    {
+        def traverse(n)
+        {
+          match (n.Data)
+          {
+            | TreeJunctionNode.Target(target = t) as node => n.Update(_ => node.ChangeTarget(func(t)))
+            | _                                           => ()
+          }
+        }
+        
+        def to = func(this);
+        def to = to ?? this;
+        match (to)
+        {
+          | null                                                                                        => ()
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction(tree = t)))         => t.GetBreadthFirstEnumerable().Iter(traverse);
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Fork(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(t.Map(func)));
+          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(func(t)));
+          | _                                                                                           => ()
+        }
+        to
+    }
+    
+    //public Rebuild(child : IEnumerable[TransitionTarget]) : TransitionTarget
+    //{
+    //  match (this)
+    //  {
+    //    | PseudoState(raw_value = Junction) as t => t.node.SetValue(j => (j :> PseudoStateNode.Junction).ChangeTo(child.First() :> JunctionNode));
+    //                                                this// t.ChangeNode(p.ChangeTo(child.First() :> JunctionNode))
+    //    | JunctionNode(next = Some as nt) as t  => def (f, s) = child.TakeTwo();
+    //                                               t.ChangeNextTo(nt.ChangeValue(s :> JunctionNode), f)
+    //    | JunctionNode as t                     => def f = child.First();
+    //                                               t.ChangeTo(f);
+    //    | _                                     => this
+    //  }
+    //}
+
+    //public GetChild() : IEnumerable[TransitionTarget]
+    //{
+    //  match (this)
+    //  {
+    //    | JunctionNode(to = to, next = Some(n)) => TraverseUtils.DoubleElement(to, n)
+    //    | PseudoState(value = Junction(to = n))
+    //    | JunctionNode(to =  n)                 => TraverseUtils.SingleElement(n)
+    //    | _                                     => Enumerable.Empty()
+    //  }
+    //}
+
+    public Clone() : TransitionTarget
+    {
+      match (this)
+      {
+        | PseudoState(node = n) as j => def n = n.Clone();
+                                        n.Update(x => x.Clone());
+                                        j.ChangeNode(n)
+        | State(state = n) as j      => j.ChangeState(n.Clone())
+        | _                          => this
+      }
+    }
+    
+    public override ToString() : string
+    {
+      "TransitionTarget"
+    }
+    
+    public StateMap : StateMap
+    {
+      get
+      {
+        analyser.statemap
+      }
+    }
+
+    public analyser : FsmAnalyser;
+
+  }
+}

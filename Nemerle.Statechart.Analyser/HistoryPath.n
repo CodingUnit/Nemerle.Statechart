@@ -5,72 +5,72 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
   /// <summary>
   /// Description of HistoryPath.
   /// </summary>
+  [Record]
   public class HistoryPath
   {
-  
-    public analyser : FsmAnalyser;
-    
-    public mutable transition : StateTransition;
+
+    [NeedChange]
+    public transition : NodeValue[FsmState, StateTransition];
       
-    public this(from : FsmState, to : FsmState, hist : StateHistory, analyser : FsmAnalyser)
+    public this(from : GeneralTree[FsmState], to : GeneralTree[FsmState], hist : NodeValue[FsmState, PseudoStateNode])
     {
       History = hist;  
       FromSource = from;
       ToSource = to;
-      this.analyser = analyser
     }
     
-    FromSource : FsmState;
-    ToSource : FsmState;
+    public FromSource : GeneralTree[FsmState];
+    public ToSource   : GeneralTree[FsmState];
     
-    public History : StateHistory;
+    public History : NodeValue[FsmState, PseudoStateNode];
     
-    public IsDefault : bool
+    //public IsDefault : bool
+    //{
+    //  get
+    //  {
+    //    transition is StateTransition.Default
+    //  }
+    //}
+    
+    public Path : IEnumerable[PathNode]
     {
       get
       {
-        transition is StateTransition.Default
+        transition.Value.PathNode
       }
     }
     
-    public Path : PathNode
+    public ActualTo : GeneralTree[FsmState]
     {
       get
       {
-        transition.PathNode
-      }
-    }
-    
-    public ActualTo : FsmState
-    {
-      get
-      {
-        transition.ActualTo
+        transition.Value.ActualTo
       }
     }
 
-    public From : FsmState
+    public From : GeneralTree[FsmState]
     {
       get
       {
-        transition.From
+        transition.Value.From.StateDecl
       }
     }
       
-    public To : FsmState
+    public To : GeneralTree[FsmState]
     {
       get
       {
-        match (transition.To)
+        match (transition.Value.To)
           {
-            | TransitionTarget.State(st)  => st
-            | _  => null
+            | TransitionTarget.State(state = st) => st
+            | _                                  => null
           }
       }
     }
@@ -79,33 +79,34 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (IsDefault) $"$transition" else 
-          match (History)
+        //if (IsDefault) $"$transition" else 
+          match (History.Value)
           {
-            | StateHistory where (state = FsmState where (BothHistories = true), Type = t) => $"$(t)$transition"
-            | _ => $"$transition"
+            | PseudoStateNode.History(type = t) when (History.Parent.BothHistories()) => $"$(t)$transition"
+            | _                                                                       => $"$transition"
           }
       }
     }
-      
+    
     public override ToString() : string
     {
       Name
     }
     
-    public CreatePath() : void
+    public CreatePath() : HistoryPath
     {
-      transition = StateTransition.History(History, FromSource, ToSource);
-      transition.Local = true;
-      transition.UpdateReference(analyser.Statemap);
-      transition.TraversePath(); // creating transition path
-      match (History)
-      {
-          // define history path for transition
-        | StateHistory.Shallow  => To.DefineHistoryPathRecurse(FromSource.Name, this)
-        | StateHistory.Deep  => To.DefineHistoryPath(FromSource.Name, this);
-        | _  => ()
-      }
+      def tran = NodeValue(FromSource, StateTransition.History(History, FromSource, ToSource) : StateTransition);
+      tran.Update(x => x.ChangeLocal(true));
+      // UpdateReference
+      tran.TraversePath(); // creating transition path
+      ChangeTransition(tran)
+      //match (History)
+      //{
+      //    // define history path for transition
+      //  | PseudoStateNode.History.Shallow  => To.DefineHistoryPathRecurse(FromSource.Name, this)
+      //  | PseudoStateNode.History.Deep  => To.DefineHistoryPath(FromSource.Name, this);
+      //  | _  => ()
+      //}
     }
       
   }

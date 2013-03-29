@@ -6,431 +6,363 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
   using FsmState;
   using ListUtils;
+
+  [Record]
+  public class FsmJunctionNode 
+  {
+    public pos : int;
+    public guard : GuardNode;
+    public action : option[Actions];
+    public to : TransitionTarget;
+  }
   
+//  [RefNode]
   [Record]
   public variant PseudoStateNode
   {
+    | History 
+      {
+        public this(hist : StateNode.History)
+        {
+          base(0);
+      //history = hist;
+      //state = if (hist.state != null) FsmState.State(hist.state, null, analyser, true); else st;
+          type = hist.type;
+          //default = hist.default.Map(x => StateTransition.Default(an, _))
+        }
+
+        public Create(st : GeneralTree[FsmState], hist : StateNode.History) : NodeValue[FsmState, PseudoStateNode]
+        {
+          def h      = History(hist);
+          def node   = NodeValue(st, h);
+          def deflt  = hist.default.Map(StateTransition.Default(node, _));
+          def deflt  = deflt.Map(NodeValue(st, _));
+          node.Value = h.ChangeDefault(deflt);
+          node
+        }
+    //public history : StateNode.History;
+
+    //public state : FsmState
+    //{
+    //  get
+    //  {
+    //    statemap.ParentFor(Num)
+    //  }
+    //}
+
+        [NeedChange]
+        public default : option[NodeValue[FsmState, StateTransition]];
+
+        //public ChangeDefault(tran : StateTransition -> StateTransition) : History
+        //{
+        //  ChangeDefault(default.Map(tran))
+        //}
+    //[NeedChange]
+    //[Accessor]
+    //public num : int;
+
+    //[NeedChange(default)]
+    //[NeedChange] public state : FsmState;
+        public type : HistoryType;
+    //[NeedChange] public reference : bool;
+
+        [NeedChange] public Used : bool;
+
+    //public this(an : FsmAnalyser) { analyser = an }
+    //public this(hist : PseudoStateNode.History, clone : bool = false, ncopy : int = 0)
+    //{
+    //  history = hist.history;
+    //  default = if (clone) hist.default.Map(x => x.Clone(ncopy) :> StateTransition.Default) else hist.default;
+    //  state = hist.state;
+    //  type = hist.type;
+    //  reference = hist.reference;
+    //  Used = hist.Used;
+    //}
+
+    //[Accessor] clone_for : PseudoStateNode.History;
+
+    //public static @==(a : PseudoStateNode.History, b : PseudoStateNode.History) : bool
+    //{
+    //  a.Num == b.Num//a.Name == b.Name && a.type == b.type && a.state == b.state
+    //}
+
+    //public static @!=(a : PseudoStateNode.History, b : PseudoStateNode.History) : bool
+    //{
+    //   !(@==(a, b))
+    //}
+
+
+        //public BothHistories(st : FsmState) : bool
+        //{
+        //  st.BothHistories
+        //}
+
+
+
+        //public override ToString() : string
+        //{
+        //  Name
+        //}
+
+        //public SubStatesParticipateInHistory : IEnumerable[FsmState]
+        //{
+        //  get
+        //  {
+        //    state.SubStatesParticipateIn(this)
+        //  }
+        //}
+
+    //public ChangeState(st : FsmState) : void
+    //{
+    //  analyser.statemap.ParentFor(Num, st)
+    //}
+    //public SubStatesParticipateInHistoryIndirect : IEnumerable[FsmState]
+    //{
+    //    st.Updated.SubStatesParticipateIn(this)
+    //}
+
+        //public Updated : PseudoStateNode.History
+        //{
+        //  get
+        //  {
+        //    state.GetHistory(this)
+        //  }
+        //}
+
+        //public ChangeDefault(tran : StateTransition -> StateTransition) : History
+        //{
+        //  ChangeHistory(history.ChangeDefault(history.default.Map(tran)))
+        //}
+
+        //this(st : FsmState, type : TargetType.History)
+        //{
+        //  base(st.analyser);
+        //  history = PseudoStateNode.History.Create(st, -1, type.history)
+        //}
+      }
+
     | Junction
-        {
-          name : string;
-          nodes : list[JunctionNode];
-          parent : Junction;
+      {
+        [NeedChange] name : string;
+        [NeedChange] tree : BinaryTree[TreeJunctionNode];// TransitionTarget.JunctionNode;
+        [NeedChange] nodes : list[FsmJunctionNode];
+        //[TraverseIgnore] parent : Junction;
+        type : JunctionType;
+        //[NeedChange] decisionTree : DecisionNode;
 
-          ChangeNodes(n : list[JunctionNode]) : Junction
-          {
-            Junction(state, copy, name, n, parent, DecisionTree)
-          }
-          
-          this(st : FsmState, n : string, lst : list[TransitionNode.JunctionNode], tran : StateTransition)
-          {
-            base(st, 0);
-            
-            nodes = lst |> JunctionNode(st, tran, _, this);
-            
-            name = n;
-          }
-          
-          Name : string
-          {
-            get
-            {
-              $"Junction$name$copy_name"
-            }
-          }
-          
-          WithTree(tree : DecisionNode) : Junction
-          {
-            Junction(state, copy, name, nodes, parent, tree)
-          }
-          
-          //[RecordIgnore]
-          DecisionTree : DecisionNode;
-          
-          IsTop : bool 
-          {
-            get
-            {
-              parent == null
-            }
-          }
-          
-          Actions : PathNode
-          {
-            get
-            {
-              DecisionTree.Actions
-            }
-          }
-          
-          Guards : list[GuardNode]
-          {
-            get
-            {
-              def g = nodes.FoldLeft([], (x, a) => a + x.Guards).Rev();
-              g.Exclude(_ is GuardNode.Else)
-            }
-          }
-                    
-          override UpdateReference(map : StateMap, force : bool = false) : PseudoStateNode
-          {
-            match (base.UpdateReference(map, force))
-            {
-              | Junction(n, nodes, p, t) as j => def st = j.state;
-                  def nodes = nodes |> UpdateRef(map, force);
-                  Junction(st, copy, n, nodes, p, t)
-              | _ => this
-            }
-            
-          }
-          
-          override ToString() : string
-          {
-            Name
-          }
-          
-        }
-    | Choice
-        {
-          name : string;
-          nodes : list[JunctionNode];
-          parent : Choice;
+        IsUnnamed : bool;
+        //ChangeDecisionTree(tree : DecisionNode) : Junction
+        //{
+        //  ChangeTo(to.ChangeDecisionTree(tree))
+        //}
         
-          WithTree(tree : DecisionNode) : Choice
-          {
-            Choice(state, copy, name, nodes, parent, tree)
-          }
-          
-          ChangeNodes(n : list[JunctionNode]) : Choice
-          {
-            Choice(state, copy, name, n, parent, DecisionTree)
-          }
-          
-          this(st : FsmState, n : string, lst : list[TransitionNode.JunctionNode], tran : StateTransition)
-          {
-            base(st, 0);
-            nodes = lst |> JunctionNode(st, tran, _, this);
-            name = n;
-          }
-          
-          //[RecordIgnore]
-          DecisionTree : DecisionNode;// {get;set;}
-          
-          IsTop : bool 
-          {
-            get
-            {
-              parent == null
-            }
-          }
-
-          Actions : PathNode
-          {
-            get
-            {
-              DecisionTree.Actions
-            }
-          }
-          
-          Guards : list[GuardNode]
-          {
-            get
-            {
-              def g = nodes.FoldLeft([], (x, a) => a + x.Guards).Rev();
-              g.Exclude(_ is GuardNode.Else)
-            }
-          }
-          
-          public override UpdateReference(map : StateMap, force : bool = false) : PseudoStateNode
-          {
-            match (base.UpdateReference(map, force))
-            {
-              | Choice(n, nodes, p, t) as j => def st = j.state;
-                  def nodes = nodes |> UpdateRef(map, force);
-                  Choice(st, copy, n, nodes, p, t)
-              | _ => this
-            }
-          }
-          
-          Name : string
-          {
-            get
-            {
-              $"Choice$name$copy_name"
-            }
-          }
-          
-          override ToString() : string
-          {
-            Name
-          }
-      
-        }
-    
-    | Merge
+        this(n : string, nodes : list[FsmJunctionNode], type : JunctionType, is_unnamed : bool)
         {
-          name : string;
-          node : JunctionNode;
+          base(0);
+          name = n;
+          IsUnnamed = is_unnamed;
+          this.nodes = nodes;
+          this.type = type;
+        }
 
-          this(st : FsmState, n : string, node : TransitionNode.JunctionNode)
+        static CreateTree(node : NodeValue[FsmState, PseudoStateNode]) : void
+        {
+          def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
+          node.Update(x => (x :> Junction).ChangeTree(tree))
+        }
+        
+        Create(an : FsmAnalyser, st : GeneralTree[FsmState], node : PseudoStateAstNode.Junction) : NodeValue[FsmState, PseudoStateNode]
+        {
+          def (name, unnamed) =  match (node) 
           {
-            base(st, 0);
-            this.node = JunctionNode(st, null, node,  this);
-            name = n;
+            | PseudoStateAstNode.Junction(name = null, type = JunctionType.Choice) => def num = an.NextChoiceNum();
+                                                                                      ($"UnnamedChoice$num", true)
+            | Junction(name = null, type = JunctionType.Junction)                  => def num = an.NextJunctionNum();
+                                                                                      ($"UnnamedJunction$num", true)
+            | Junction(name = n)                                                   => (n, false)
           }
-          
-          public override UpdateReference(map : StateMap, force : bool = false) : PseudoStateNode
+          def create_node(x)
           {
-            def nnode = node.UpdateReference(map, force);
-            match (base.UpdateReference(map, force))
+            | JunctionNode(p, g, a, t) => FsmJunctionNode(p, g, a, TransitionTarget.Create(st, t))
+          }
+          //def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
+          def nodes = node.node.Map(create_node);
+          def junc = Junction(name, nodes, node.type, unnamed);
+          NodeValue(st, junc);
+        }
+        //Nodes : IEnumerable[TransitionTarget.JunctionNode]
+        //{
+        //  get
+        //  {
+        //    def loop(t)
+        //    {
+        //      yield t;
+        //      match (t.next)
+        //      {
+        //        | Some(t) => loop(t)
+        //        | _       => ()
+        //      }
+        //    }
+
+        //    loop(to)
+
+        //  }
+        //} 
+
+        TypeName : string
+        {
+          get
+          {
+            match (type)
             {
-              | x when (x : object != this || node : object != nnode) => Merge(x.state, copy, name, nnode :> JunctionNode)
-              | _                           => this
+              | Junction => "Junction"
+              | Choice   => "Choice"
+              | Merge    => "Merge"
             }
-            
-            
-          }
-       
-          Name : string
-          {
-            get
-            {
-              $"Merge$name$copy_name"
-            }
-          }
-          
-          override ToString() : string
-          {
-            Name
           }
         }
+        
+        Name : string
+        {
+          get
+          {
+            $"$name$TypeName$copy_name"
+          }
+        }
+
+        //IsTop : bool 
+        //{
+        //  get
+        //  {
+        //    parent == null
+        //  }
+        //}
+
+        //Actions : IEnumerable[PathNode]
+        //{
+        //  get
+        //  {
+        //    tree.Fold((x, a) => a.Concat(x.action))
+        //  }
+        //}
+
+        Guards : IEnumerable[GuardNode]
+        {
+          get
+          {
+            def data = tree.GetBreadthFirstEnumerable().FoldLeft([], (x, a) => x.Data.guard :: a);
+            data.Exclude(_ is GuardNode.Else)
+            //def g = Nodes.Select(_.guard);//FoldLeft([], (x, a) => a + x.Guards).Rev();
+            //g.Exclude(_ is GuardNode.Else)
+          }
+        }
+
+        //override UpdateReference() : PseudoStateNode
+        //{
+        //  def st = ChangeTo(to.UpdateReference() :> TransitionTarget.JunctionNode);
+        //  st.UpdateReference()
+        //}
+
+        override ToString() : string
+        {
+          Name
+        }
+
+      }
+
     | Fork 
-        {
-          target : list[TransitionTarget];
-       
-          ChangeForkTran(ftran : list[StateTransition]) : Fork
-          {
-            Fork(state, copy, target, ftran)
-          }
-          
-          fork_tran : list[StateTransition] = [];
-          
-          override UpdateReference(map : StateMap, force : bool = false) : PseudoStateNode
-          { 
-           // TODO: сделать через Lazy создание нового списк только в случае если есть новые элементы
-            match (base.UpdateReference(map, force))
-            {
-              | Fork(state = st) => def target = target.Map(_.UpdateReference(map, force));
-                  Fork(st, copy, target, fork_tran)
-              | _                => this                      
-            }
-          }
-          
-          Name : string
-          {
-            get
-            {
-              $<#Fork$(state)To..$(target;"_")#>
-            }
-          }
-          
-          override ToString() : string
-          {
-            Name
-          }
-        }
-    | Join 
-        {
-          name : string;
-          target : TransitionTarget;
-          region : ConcurrentRegion;
-          
-          ChangeRegionData(region : ConcurrentRegion, jtran : list[StateTransition], tran : StateTransition) : Join
-          {
-            Join(state, copy, name, target, region, jtran, tran)
-          }
-          
-          joined_tran : list[StateTransition] = [];
-          transition : StateTransition;
-          
-          trigger : StateEvent
-          {
-            get
-            {
-              match (joined_tran)
-              {
-                | [] => null
-                | StateTransition where (Trigger = t) :: _ => t
-              }
-            }
-          }
-          
-          Name : string
-          {
-            get
-            {
-              $"Join$name$copy_name"
-            }
-          }
-          
-          override ToString() : string
-          {
-            Name
-          }
+      {
+        [NeedChange] target    : list[TransitionTarget] = [];
+        [NeedChange] fork_tran : list[NodeValue[FsmState, StateTransition]]  = [];
 
-          override UpdateReference(map : StateMap, force : bool = false) : PseudoStateNode
+        //override UpdateReference() : PseudoStateNode
+        //{ 
+        //  // TODO: сделать через Lazy создание нового списк только в случае если есть новые элементы
+        //  def st = base.UpdateReference();
+        //  match (st)
+        //  {
+        //    | Fork as j => def target = target.Map(_.UpdateReference());
+        //                   j.ChangeTarget(target)//(Fork(st, copy, target, fork_tran), an)
+        //    | _         => this
+        //  }
+        //}
+
+        //override ToString() : string
+        //{
+        //  "FO"
+        //}
+      }
+    | Join 
+      {
+        name : string;
+        [NeedChange] target : TransitionTarget;
+        [NeedChange(joined_tran, transition)] region : GeneralTree[FsmState];
+
+        [NeedChange]
+        joined_tran : IEnumerable[NodeValue[FsmState, StateTransition]] = Enumerable.Empty();
+        transition : NodeValue[FsmState, StateTransition];
+
+        trigger : StateEvent
+        {
+          get
           {
-            def tar = target?.UpdateReference(map, force);
-            match (base.UpdateReference(map, force))
+            match (joined_tran.NToList())
             {
-              | Join as j when (tar : object != target || j : object != this) => Join(state, copy, name, tar, region, joined_tran, transition)
-              | _                                                             => this
+              | []                                => null
+              | t :: _ => t.Value.Trigger
             }
           }
-          
         }
+
+        Name : string
+        {
+          get
+          {
+            $"Join$name$copy_name"
+          }
+        }
+
+        override ToString() : string
+        {
+          Name
+        }
+
+        //override UpdateReference() : PseudoStateNode
+        //{
+        //  def tar = target?.UpdateReference();
+        //  def st = base.UpdateReference();
+        //  match (st)
+        //  {
+        //    | Join as j => j.ChangeTarget(tar)//Join(state, copy, name, tar, region, joined_tran, transition)
+        //    | _         => this
+        //  }
+        //}
+
+      }
     | EntryPoint
     | ExitPoint
     | Terminate
-        {
-          Name : string
-          {
-            get
-            {
-              $"$(state)Terminate"
-            }
-          }
-          
-          
-          override ToString() : string
-          {
-            Name
-          }
-        }
-    
-    | JunctionNode
-        {
-          guard : option[GuardNode];
-          action : option[Actions];
-          to : TransitionTarget;
-          parent : PseudoStateNode;
-          
-          ChangeTo(t : TransitionTarget) : JunctionNode
-          {
-            JunctionNode(state, copy, guard, action, t, parent)
-          }
-          
-          this(st : FsmState, tran : StateTransition, node : TransitionNode.JunctionNode, par : PseudoStateNode)
-          {
-            match (node)
-            {
-              | TransitionNode.JunctionNode(g, a, t) =>
-        
-                  base(st, 0);
-                  guard = g;
-                  action = a;
-                  parent = par;
-                  to = TransitionTarget.Create(st, tran, t)
-            }
-          }
-          
-          Top : PseudoStateNode
-          {
-            get
-            {
-              def find_top(j)
-              {
-                | Junction(parent = null)
-                | Choice(parent = null) => j
-                | Junction(parent = p)
-                | Choice(parent = p) => find_top(p)
-                | _ => null
-              }
-              
-              find_top(parent)
-            }
-          }
-          
-          Guards : list[GuardNode]
-          {
-            get
-            {
-              def g = match (to)
-                      {
-                        | TransitionTarget.PseudoState(Choice(Guards = g))
-                        | TransitionTarget.PseudoState(Merge(node = JunctionNode(Guards = g)))
-                        | TransitionTarget.PseudoState(Junction(Guards = g)) => g
-                        | _ => []
-                      }
-              guard %:: g
-            }
-          }
 
-          public UpdateRef(map : StateMap, force : bool = false) : JunctionNode
-          {   
-            def nto = to.UpdateReference(map, force); 
-            match (base.UpdateReference(map, force))
-            {
-              | JunctionNode(state = st) as j when (j : object != this || nto : object != to) => JunctionNode(st, copy, guard, action, nto, parent)
-              | _                                                                             => this
-            }
-          }
-          
-          public override UpdateReference(map : StateMap, force : bool = false) : PseudoStateNode
-          {   
-            UpdateRef(map, force)
-          }
-          
-        }
-        
-    public static Create(st : PseudoStateAstNode, state : FsmState, tran : StateTransition) : PseudoStateNode
+    public static Create(st : GeneralTree[FsmState], pseudo : PseudoStateAstNode) : PseudoStateNode
     {
-      def analyser = state.Analyser;
-      match (st)
+      match (pseudo)
       {
-        | PseudoStateAstNode.Choice(null, lst) =>
-        
-            def num = analyser.NextChoiceNum();
-            def name = $"Unnamed$num";
-            Choice(state, name, lst, tran)
-            
-        | PseudoStateAstNode.Choice(n, lst) => Choice(state, n, lst, tran)  
-        
-        | Junction(null, lst) => 
-            def num = analyser.NextJunctionNum();
-            def name = $"Unnamed$num";
-            Junction(state, name, lst, tran)
-            
-        | Junction(name = n, nodes = lst) => Junction(state, n, lst, tran)
-        | Merge(name = n, node = node)    => Merge(state, n, node)
-        | Fork(target = lst)              => Fork(state, 0, lst |> TransitionTarget.Create(state, tran, _), null)
-        | Join(name = n, target = t)      => Join(state, 0, n, TransitionTarget.Create(state, tran, t), null, null, null)
-        | EntryPoint                      => EntryPoint(state, 0)
-        | ExitPoint                       => ExitPoint(state, 0)
-        | Terminate                       => Terminate(state, 0)
-      }
-      
-    }
-        
-    public SetCopy(ncopy : int) : PseudoStateNode
-    {
-      
-      match (this)
-      {
-        | Junction(state = st, name = n, nodes = lst, parent = p, DecisionTree = t) => 
-            Junction(st, ncopy, n, lst |> (_.SetCopy(ncopy) :> JunctionNode), p, t?.SetCopy(ncopy))
-        | Choice(state = st, name = n, nodes = lst, parent = p, DecisionTree = t) => 
-            Choice(st, ncopy, n, lst |> (_.SetCopy(ncopy) :> JunctionNode), p, t?.SetCopy(ncopy));
-        | Merge(state = st, name = n, node = node) => Merge(st, ncopy, n, node.SetCopy(ncopy) :> JunctionNode)
-        | JunctionNode(state = st, guard = g, action = a, to = t, parent = p) => JunctionNode(st, ncopy, g, a, t.SetCopy(ncopy), p)
-        | _ => this
+        | History                                    => History.Create(st, pseudo)
+        | Junction as j                              => Junction.Create(st, j)
+        | Fork(target = lst)                         => Fork(0, lst.Map(TransitionTarget.Create(st, _)), [])
+        | Join(name = n, target = t)                 => Join(0, n, TransitionTarget.Create(st, t), null, null, null)
+        | EntryPoint                                 //EntryPoint(0, num, an)
+        | ExitPoint                                  => null//ExitPoint(0, num, an)
+        | Terminate                                  => Terminate(0)
       }
     }
-    
+
     copy_name : string
     {
       get
@@ -438,27 +370,25 @@ namespace Nemerle.Statechart
         if (copy == 0) "" else $"$copy"
       }
     }
-    
-    public state : FsmState;
 
-    public ChangeState(st : FsmState) : PseudoStateNode
-    {
-      match (this)
-      {
-        | Choice(nm, n, p, t)                  => Choice(st, copy, nm, n, p, t)  
-        | Junction(nm, n, p, t)                => Junction(st, copy, nm, n, p, t)
-        | JunctionNode(guard, action, to, par) => JunctionNode(state, copy, guard, action, to, par)
-        | Merge(name = n, node = node)         => Merge(st, copy, n, node)
-        | Fork(lst, ftran)                     => Fork(st, copy, lst, ftran)
-        | Join(n, t, r, jtran, tran)           => Join(state, copy, n, t, r, jtran, tran)
-        | EntryPoint                           => EntryPoint(st, copy)
-        | ExitPoint                            => ExitPoint(st, copy)
-        | Terminate                            => Terminate(st, copy)
-      }
-    }
+    ////[NeedChange]
+    //public state : FsmState
+    //{
+    //  get
+    //  {
+    //    StateMap.ParentFor(Num)
+    //  }
+    //}
+
+    //public ChangeState(st : FsmState) : void
+    //{
+    //  StateMap.ParentFor(Num, st)
+    //}
     //[RecordIgnore] [Accessor] cloneFor : PseudoStateNode;
-    copy : int;
-    
+    [NeedChange]
+    public copy : int;
+
+
     public NativeName : option[string]
     {
       get
@@ -466,34 +396,39 @@ namespace Nemerle.Statechart
         match (this)
         {
           | Join(name = n) 
-          | Choice(name = n)
-          | Merge(name = n)
           | Junction(name = n) => Some(n)
-          | _ => None()
+          | _                  => None()
         }
       }
     }
-    
-    public static @==(a : PseudoStateNode, b : PseudoStateNode) : bool
+
+    public Clone() : PseudoStateNode
     {
-      | (Join(state = st, name = null, target = t), Join(state = st2, name = null, target = t2)) => st == st2 && t == t2
-      | (Junction(name = n), Junction(name = n2))
-      | (Choice(name = n), Choice(name = n2))
-      | (Join(name = n), Join(name = n2))
-      | (Merge(name = n), Merge(name = n2)) => n == n2
-      | (Fork(target = lst, state = st), Fork(target = lst2, state = st2)) => st == st2 && lst.Equals(lst2, _ == _)
-      | (EntryPoint(state = st), EntryPoint(state = st2))
-      | (ExitPoint(state = st), ExitPoint(state = st2))
-      | (Terminate(state = st), Terminate(state = st2)) => st == st2
-      | _ => false
+      match (this)
+      {
+        | Junction(tree = t) as n => n.ChangeTree(t.Clone())
+        | n                       => n
+      }
     }
-    
-    public virtual UpdateReference(map : StateMap, force : bool = false) : PseudoStateNode
-    {
-      if (force || (state !=null && state.Reference)) ChangeState(map[state.Name]) else this
-    }
-    
+    //public static @==(a : PseudoStateNode, b : PseudoStateNode) : bool
+    //{
+    //  | (null, null) => true
+    //  | (null, _)    
+    //  | (_, null)    => false
+    //  | _            => a.Num == b.Num
+    //}
+
+    //public analyser : FsmAnalyser;
+
+    //public StateMap : StateMap
+    //{
+    //  get
+    //  {
+    //    analyser.statemap
+    //  }
+    //}
+
   }
-  
+
 
 }

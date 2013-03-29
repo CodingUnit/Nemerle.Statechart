@@ -25,12 +25,12 @@ namespace Nemerle.Statechart
       if (WithSources) _  =  ty.DefineWithSource(f); else ty.Define(f);
     }
 
-    Define(ty : TypeBuilder, lst : list[ClassMember]) : void
+    Define(ty : TypeBuilder, lst : IEnumerable[ClassMember]) : void
     {
-      lst.Iter(Define(ty, _));
+      foreach (l in lst) Define(ty, l);
     }
 
-    Define(lst : list[ClassMember]) : void
+    Define(lst : IEnumerable[ClassMember]) : void
     {
       Define(ty, lst);
     }
@@ -44,7 +44,7 @@ namespace Nemerle.Statechart
       }
       ty.DefineNestedType(f);
     }
-    
+
     DefineNested(f : ClassMember.TypeDeclaration) : TypeBuilder
     {
       DefineNested(ty, f);
@@ -67,34 +67,35 @@ namespace Nemerle.Statechart
                     }]>;
       Define([method, evt]);
     }
-    
-    static merge_and : PExpr * PExpr -> PExpr = (x, y) => <[$x && $y]>;
-    
-    DefineActionEvent(name : list[GenAction]) : void
+
+    static merge_and : PExpr * PExpr -> PExpr = (x, y) => <[ $x && $y ]>;
+
+    DefineActionEvent(name : IEnumerable[GenAction]) : void
     {
       def get_body(n)
       {
         def act_call = get_action_call(n.exec_name);
         def inline = match (n)
-                     {
-                       | GenAction where (Node = PathNode.Entry(inline = lst), InlinedActions = i) 
-                       | GenAction where (Node = PathNode.Exit(inline = lst), InlinedActions = i) => 
-                           def i = i.Map(x => (x.ExecExpr, true));
-                           def lst = lst |> (GetActions(_, action_for, false), _[2]);
-                           i + lst
-                       | _ => [(<[ () ]>, false)]
-                     }
-        
+                      {
+                        | GenAction(Node = PathNode.Entry(inline = lst), InlinedActions = i) 
+                        | GenAction(Node = PathNode.Exit(inline = lst), InlinedActions = i) => 
+                            def i = i.Select(x => (x.ExecExpr, false));
+                            def lst = lst.Select((x, y) => (GetActions(x, action_for, false), y));
+                            i.Concat(lst).NToList()
+                            
+                        | _ => [(<[ () ]>, false)]
+                      }
+
         def (after, before) = inline.Partition((_, x) => x);
-        def after = after.Split()[0];
+        def after  = after.Split()[0];
         def before = before.Split()[0];
           <[
-        {..$before}
-          $act_call;
-          {..$after}
+            {..$before}
+            $act_call;
+            {..$after}
           ]>
       }
-        
+
       def events = name.Map(x => <[decl: public event $(x.exec_name : usesite) : Action;]>);
       def methods = name.Map(x => <[decl: $(x.end_name : usesite)() : void 
                               {
@@ -102,7 +103,7 @@ namespace Nemerle.Statechart
                               }]>);
       Define(events + methods);
     }
-    
+
     DefineMethod(name : string, body : PExpr) : void
     {
       Define(<[decl: $(name : usesite)() : void {$body}]>)
@@ -113,82 +114,118 @@ namespace Nemerle.Statechart
       def defs = lst.Map((x, y) => <[decl: $(x : usesite)() : void {$y}]>);
       Define(defs)
     }
-    
-    get_history_run_name(h : StateHistory, x : string) : string
+
+    get_history_run_name(h : PseudoStateNode.History, x : string) : string
     {
-      | (StateHistory where (state = FsmState where (BothHistories = true), Type = t), x) => $"$(t)HistoryFrom$x"
-      | (_, x) => $"HistoryFrom$x"
+      | (PseudoStateNode.History(state = FsmState(BothHistories = true), type = t), x) => $"$(t)HistoryFrom$x"
+      | (_, x)                                                              => $"HistoryFrom$x"
     }
 
     get_action_call(act : string) : PExpr
     {
       <[
-      def temp =  $(act : usesite);
-      when (temp != null) temp();
+        def temp =  $(act : usesite);
+        when (temp != null) temp();
       ]>;
     }
 
     get_guard_call(act : string) : PExpr
     {
       <[
-      def temp =  $(act : usesite);
-      if (temp != null) temp(); else false
-      ]>;
-    }
-    
-    get_event_call(act : string) : PExpr
-    {
-      <[
-      def temp =  $(act : usesite);
-      when (temp != null) temp(this, null);
+        def temp =  $(act : usesite);
+        if (temp != null) temp(); else false
       ]>;
     }
 
-    static MergeExprAnd(expr : list[PExpr]) : PExpr
+    get_event_call(act : string) : PExpr
+    {
+      <[
+        def temp =  $(act : usesite);
+        when (temp != null) temp(this, null);
+      ]>;
+    }
+
+    static MergeExprAnd(expr : IEnumerable[PExpr]) : PExpr
     {
       MergeExpr(expr, merge_and)
     }
-    
-    static MergeExpr(expr : list[PExpr], merge_func : PExpr * PExpr -> PExpr) : PExpr
+
+    static MergeExpr(expr : IEnumerable[PExpr], merge_func : PExpr * PExpr -> PExpr) : PExpr
     {
       def merge_expr(item, res)
       {
         | (<[ () ]>, r) => r
         | (e, <[ () ]>) => e
-        | (e, expr) => merge_func(expr, e)
+        | (e, expr)     => merge_func(expr, e)
       }
-      
-      expr.FoldLeft(<[ () ]>, merge_expr)
+
+      expr.Reduce(merge_expr)
+    }
+
+    StatesId : StateId
+    {
+      get
+      {
+        analyser.StatesId
+      }
+    }
+
+    StateIdDefaultValue : PExpr
+    {
+      get
+      {
+        match (StatesId.Length)
+        {
+          | 1
+          | 2               => <[ 0 ]>
+          | x when (x <= 4) => <[ LongId() ]>
+          | _               => <[ null ]>
+        }
+      }
     }
     
-    GetId(id : IdType) : PExpr * PExpr * PExpr
+    StateIdType : PExpr
+    {
+      get
+      {
+        match (StatesId.Length)
+        {
+          | 1               => <[ uint ]>
+          | 2               => <[ ulong ]>
+          | x when (x <= 4) => <[ LongId ]>
+          | _               => <[ LongId ]>
+        }
+      }
+    }
+
+    GetId(id : IdType) : PExpr * PExpr
     {
       def get_long_id() : PExpr
       {
-        def res = id.Result;
+        def res = id.Result.NToList();
         def pars =  res |> <[ $_ ]>;
         <[ LongId(..$pars) ]>
       }
 
       def get_class_long_id() : PExpr
       {
-        def res = id.Result;
+        def res = id.Result.NToList();
         def res = res.FirstElems(_ == 0);
-        def pars = res |> <[ $_ ]>;
-        def pars = pars.MapIndex((x,i) => <[ id.$($"id$i" : usesite) = $x;]>);
+        def pars = res.Select(x => <[ $x ]>);
+        def pars = pars.MapIndex((x, i) => <[ id.$($"id$i" : usesite) = $x ]>).NToList();
         <[ 
           def id = LongId();
           {..$pars}
           id
         ]>
       }
-      
-      match (id)
+
+      match (analyser.StatesId.Length)
       {
-        | Int(id) => (<[uint]>, <[ $(id : uint) ]>, <[ 0 ]>)
-        | Long(id) => (<[ulong]>, <[ $(id : ulong) ]>, <[ 0 ]>)
-        | Struct => (<[LongId]>, <[ $(get_long_id()) ]>, <[ LongId() ]>)
-        | Class => (<[LongId]>, <[ $(get_class_long_id()) ]>, <[ null ]>)
+        | 1               => def id = id.UInt; (<[ $(id : uint) ]>, <[ 0 ]>)
+        | 2               => def id = id.ULong;(<[ $(id : ulong) ]>, <[ 0 ]>)
+        | x when (x <= 4) => (<[ $(get_long_id()) ]>, <[ LongId() ]>)
+        | _               => (<[ $(get_class_long_id()) ]>, <[ null ]>)
       }
     }
   }

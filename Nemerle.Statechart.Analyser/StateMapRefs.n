@@ -1,0 +1,222 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using NGenerics.DataStructures.Trees;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of StateMapRefs.
+  /// </summary>
+  partial class StateMap
+  {
+
+    UpdateReferences() : void
+    {
+      state_tree.GetBreadthFirstEnumerable().Iter(UpdateStateReference)
+    }
+
+    UpdateHistoryReference(hist : PseudoStateNode.History, st : GeneralTree[FsmState]) : void
+    {
+      hist.default.Iter(UpdateTargetReference(_, st))
+    }
+
+    UpdateStateReference(state : GeneralTree[FsmState]) : void
+    {
+      match (state.Data)
+      {
+        | FsmState.SubMachine(type = type) as st =>
+          def fsm = States.Where(x => x.Data is FsmState.InlinedSubMachine);
+          match (fsm.Find(x => (x.Data :> FsmState.InlinedSubMachine).type == type))
+          {
+            | Some(f) => st.Instance(f)
+            | _       => ()
+          }
+        | _ =>
+
+      state.Transitions().Iter(UpdateTargetReference(_, state));
+      state.History().Iter(x => UpdateHistoryReference(x.Value :> PseudoStateNode.History, state));
+      }
+    }
+
+    ResolveTarget(st : GeneralTree[FsmState], targ : TransitionTarget, tr : NodeValue[FsmState, StateTransition]) : TransitionTarget
+    {
+      targ.Traverse(ResolveTargets(st, st, _, tr))
+      //tr.Value.TargetTraverse(x => ResolveTargets(st, st, x, tr))
+      //targ.ReduceSingle(true, ResolveTargets(st, st, _, tr, _))
+    }
+
+    UpdateTargetReference(tr : NodeValue[FsmState, StateTransition], st : GeneralTree[FsmState]) : void
+    {
+      def from = match (tr.Value.From)
+                  {
+                    | null                        => null
+                    | FsmNode.PseudoState(p) as n => def node = CheckPseudo(st, st, p, null, tr);
+                                        n.ChangeNode(node)
+                    | FsmNode.State(s) as n       => UpdateStateReference(s);n
+                  }
+
+      def recursive_resolve(prev)
+      {
+        def to = ResolveTarget(st, prev, tr);
+        if (to : object != prev) recursive_resolve(to) else to
+      }
+
+      tr.Update(x => x.ChangeFromTo(from, recursive_resolve(x.To)))
+    }
+
+    //public NewReferences : bool {get;set;}
+
+    GetNamed(tar : TransitionTarget.Named, tr : NodeValue[FsmState, StateTransition]) : TransitionTarget
+    {
+      match (tar)
+      {
+        | Named(name = n) =>
+
+            match (States.Find(x => x.NativeName() == n))
+            {
+              | Some(st) => TransitionTarget.State(Analyser, st)
+              | _            =>
+              
+            def states = PseudoStates.Values.Filter(x => x.Value.NativeName.HasValue);
+            match (states.Find(x => x.Value.NativeName.Value == n))
+            {
+              | Some(t) => TransitionTarget.PseudoState(Analyser, t)
+              | _       => Analyser.AddError(FsmError.UnknownNode(tr));
+                          tar
+            }
+
+            }
+      }
+    }
+
+    //public UpdateRefsToParent(st : FsmState) : void
+    //{
+    //  def num = st.Num;
+    //  st.AllChilds.Iter(x => super_map[x] = num)
+    //}
+
+    GetNode[T](name : string, err : int -> void) : option[NodeValue[FsmState, PseudoStateNode]] where T : PseudoStateNode
+    {
+      def pseudo = PseudoStates.Values.Where(x : NodeValue[_, _] => x.Value is T);
+      def pseudo = if (name != null) pseudo.Where(x => if (x.Value.NativeName is Some(n)) name == n else false) else pseudo;
+      match (pseudo.NToList())
+      {
+        | []     => err(1);
+                    Some(null)
+        | [node] => Some(node)
+        | _      => err(2);
+                    None()
+      }
+    }
+
+    SuperForPseudo(st : GeneralTree[FsmState], tran : NodeValue[FsmState, StateTransition]) : GeneralTree[FsmState]
+    {
+      if (tran.Value is StateTransition.Initial) st else st.Super()
+    }
+
+    //public ResolveTarget(targ : TransitionTarget) : GeneralTree[FsmNode]
+    //{
+
+    //}
+
+    CheckPseudo(st : GeneralTree[FsmState], res : GeneralTree[FsmState], np : NodeValue[FsmState, PseudoStateNode], targ : TransitionTarget, tran : NodeValue[FsmState, StateTransition]) : NodeValue[FsmState, PseudoStateNode]
+    {
+      match (np.Value)
+      {
+        | PseudoStateNode.Fork =>
+        //| EntryPoint
+        //| ExitPoint =>
+            //ParentFor(p.Num, st);
+            //st.Super
+            
+            def st = SuperForPseudo(st, tran);
+            np.Parent = st;
+            pseudo_states.Add(st, np);
+            //ParentFor(j.Num, st);
+            //ChangeMan.Add(st.Num, x => x.AddPseudo(j));
+            np
+
+        | History       => res.GetHistory(np)
+                                //np.Fix(hist.Num)
+
+        | Junction(IsUnnamed = true) => def st = SuperForPseudo(st, tran);
+                                        np.Parent = st;
+                                        pseudo_states.Add(st, np);
+                                        np
+                                            //ParentFor(j.Num, st);
+                                            //def j = j.ChangeTo(ch.First() :> TransitionTarget.JunctionNode); // update childs resolved
+                                            //ChangeMan.Add(st.Num, x => x.AddPseudo(j)); // add to super state
+                                            //np.Fix(j.Num)
+
+        | Junction(name = n) => match (GetNode(n, _ => Analyser.AddError(FsmError.UnknownTarget(tran, targ))))
+            {
+              | Some(null)          => np
+              | Some(NodeValue(Value = Junction) as j) => j// update childs resolved
+                    
+                     //ChangeMan.Add(st.Super.Num, x => x.AddPseudo(j));
+                  //np.Fix(j.Num); // fix target
+                                                          //def tar = ResolveTarget(st, j.to, tran) :> TransitionTarget.JunctionNode;
+                                                          //fixed.SetValue(j => (j :> PseudoStateNode.Junction).ChangeTo(tar));
+                                                          //fixed// update junction in state to updated value
+              | _                   => np
+            }
+        | Join(name = n)     => match (GetNode(n, _ => Analyser.AddError(FsmError.UnknownTarget(tran, targ))))
+            {
+              | Some(null)                         => np
+              | Some(NodeValue(Value = Join) as j) => j
+              | _                                  => np
+            }
+        | Terminate     => match (GetNode(null, n => when (n == 2) Analyser.AddError(FsmError.UnknownTerminateTransition(tran))))
+            {
+              | Some(null)           => //def t = t.ChangeNum(GetNextGlobalNum());
+                                                            def st = SuperForPseudo(st, tran);
+                                                            np.Parent = st;
+                                                            pseudo_states.Add(st, np);
+                                                            np
+                                                            //ParentFor(t.Num, st);
+                                                            //ChangeMan.Add(st.Num, x => x.AddPseudo(t));
+                                                            //np.Fix(t.Num)
+              | Some(NodeValue(Value = Terminate) as t)   => t//TransitionTarget.PseudoState(this, node)
+              | _                                         => np
+            }
+        | _                  => null
+      }
+    }
+
+
+    // TODO: решить проблему с двойным обходом узлов до разрешения и после
+    ResolveTargets(st : GeneralTree[FsmState], res : GeneralTree[FsmState], tr : TransitionTarget, tran : NodeValue[FsmState, StateTransition]) : TransitionTarget
+    {
+      match (tr)
+      {
+        | Named as t => def t = GetNamed(t, tran);
+                        ResolveTargets(st, st, t, tran)
+        | Qualified(parent = res, target = t) =>
+            def res = Get(res);
+            match (res, t)
+            {
+              | (GeneralTree(Data = FsmState.SubMachine as m), TransitionTarget.State(state = st)) with n = st.Name() =>
+                  def m = m.Scan(); // scan external sub machine for states
+                  when (!m.ref_sub_states.Contains(n)) Analyser.AddError(FsmError.SubMachineStateNotFound(m, n));
+                  TransitionTarget.Nowhere(Analyser)//TransitionTarget.SubMachine(Analyser, m, n)
+
+              | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
+                            t
+              | (res, t)  => ResolveTargets(st, res, t, tran)
+            }
+        | PseudoState(p) as t => def np = CheckPseudo(st, res, p, t, tran);
+                                if (np == null) null else t.ChangeNode(np)
+
+        | _                   => null
+      }
+    }
+
+
+  }
+}

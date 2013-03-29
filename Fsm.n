@@ -8,6 +8,7 @@ using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
 using Nemerle.Compiler.Parsetree;
+using System.IO;
 
 namespace Nemerle.Statechart
 {
@@ -57,6 +58,7 @@ namespace Nemerle.Statechart
   + junction без guard
   + merge
   + guard in state
+  - empty junctions
   - множественные guard_for
   - проверить region в sub_region
   - полное имя внутри экземпляра inlined sub machine
@@ -70,7 +72,7 @@ namespace Nemerle.Statechart
   - сигнализировать в парсере о неверных аттрибутах 
   - состояния с одинаковыми именами
   - точка входа и выхода
-  - встраиваемые автоматы
+  + встраиваемые автоматы
   - у fork могут быть guard на начальных переходах
   - synch state
   - Transition redefinition has been added to standart, in order to express if a transition of a general state machine can be redefined or not.
@@ -78,7 +80,7 @@ namespace Nemerle.Statechart
   - auto initial attribute for state
   - deffered events
   - events with parameters
-  - sync and async events (eg queue)
+  + sync and async events (eg queue)
   - time events
   - events hierarchy
   - change events (like properties)
@@ -95,8 +97,13 @@ namespace Nemerle.Statechart
   - there is no more reaction to events within the region if the final state is active
   - completion запускается сразу если нет активности по стандарту (надо задавать флагами если мы не хотим этого)    
   - сложные выражения в guards
+  - history не нужно делать GetCopy для простых состояний не регионов
+  - The history state may not have incoming transitions from other states within the composite state because it is already active
+  - !!! state machine должна быть в своем контексте, поиск узлов как terminate, должна идти в своей машине, история должна относится к машине как к целому а не так же как и к другим комп. состояниям
+  - не блокировать поток во время обработки синхронного события
+  - fork must check to go to states through junctions or choices
   */
-    
+
   module FsmHelper
   {
     Parse(ty : TypeBuilder, body : string, loc : Location) : StateNode.StateMachine
@@ -114,44 +121,55 @@ namespace Nemerle.Statechart
           def (line, col) = line.StartLineColumn;
           def line = loc.Line + line;
           def col = col + macro_col;
-          Message.Error($"Error in input at $line:$col. Expected: ..$(ids;\r\n    )");
+          def loc = Location(loc, line, col);
+          Message.Error(loc, $"Error in input at $line:$col. Expected: ..$(ids;\r\n    )");
           null
         }
       } else null
     }
-    
+
     public ParseAndGenerate(ty : TypeBuilder, body : PExpr) : void
     {
-    
+
       def parse(val)
       {
         def fsm = Parse(ty, val, body.Location);
         if (fsm != null)
         {
           when (fsm.flags.Debug) assert2(false);
-          def analyser = FsmAnalyser(fsm);
+          def analyser = FsmAnalyser(fsm, ty.Name);
           analyser.Analyse();
-          analyser.Warnings.Iter(Message.Warning);
-          if (!analyser.Error) 
+          def warn = analyser.Warnings;
+          def warn_file = $"$(ty.Name)Warnings.log";
+          if (!warn.IsEmpty()) 
           {
-            def gen = StaticGenerator(analyser, ty);
-            gen.Generate();
+            warn.Iter(Message.Warning);
+            when (fsm.flags.Debug) File.WriteAllLines(warn_file, warn);
+          } else when (fsm.flags.Debug) File.Delete(warn_file);
+          def err_file = $"$(ty.Name)errors.log";
+          if (analyser.Error)
+          {
+            def err = analyser.Errors;
+            when (fsm.flags.Debug) System.IO.File.WriteAllLines(err_file, err);
+            err.Iter(Message.Error)
           } else
           {
-            analyser.Errors.Iter(Message.Error);
+            when (fsm.flags.Debug) File.Delete(err_file);
+            when (!fsm.flags.OnlyAnalyse) 
+            {
+              def gen = StaticGenerator(analyser, ty);
+              gen.Generate()
+            }
           }
-        } else
-        {
-          Message.Warning("No Statechart parsed")
-        }
+        } else Message.Warning("No Statechart parsed")
       }
 
       match (body)
       {
-        | Literal(String(val))  => parse(val);
-        | _  => Message.Error(ty.Location, "Body expression must be a string");
+        | <[ $(val : string) ]>  => parse(val);
+        | _                      => Message.Error(ty.Location, "Body expression must be a string");
       }
     }
   }
-  
+
 }

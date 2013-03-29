@@ -4,339 +4,365 @@ using Nemerle.Text;
 using Nemerle.Utility;
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using SCG = System.Collections.Generic;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
   using StateTransition;
   using PseudoStateNode;
+  using ListUtils;
+
   /// <summary>
   /// Description of FsmStateImpl.
   /// </summary>
+  //[RefNode]
   public partial variant FsmState
   {
-    public override ToString() : string {Name}
+    public override ToString() : string { if (name != null) name else AstName }
 
-    public virtual UpdateReference(map : StateMap, force : bool = false) : void
+    public static GetCopy(this node : GeneralTree[FsmState], copy : int) : GeneralTree[FsmState]
     {
-      Analyser = map.Analyser;
-      when (is_new) map.Add(this);
-      when (super_state != null)
-        when (super_state.Reference || force)
-        {
-          when (super_state.AstName == null) super_state.Name = TopStateName;
-          super_state = map[super_state.Name];
-        }
-      initial.Iter(_.UpdateReference(map, force));
-      transitions.Iter(_.UpdateReference(map, force));
-      history.Iter(_.UpdateReference(map, force));
-      // !!! mutable
-      pseudo_states = pseudo_states.Map(_.UpdateReference(map, force))
-    }
-
-    public FormatName() : void
-    {
-      def name = name.SplitToList('.');
-      this.name = name.Last();
-    }
-    
-    public DefineInitial(st : FsmState) : void
-    {
-      match (this)
+      //def statemap = node.Data.statemap;
+      
+      def get_copy(st, ch)
       {
-        | ConcurrentSubRegion(contained_in = r) => initial ::= Initial(r, st)
-        | _ => initial ::= Initial(this, st)
+        def nst = GeneralTree(st.Data);
+        nst.AddRange(ch);
+        def std = nst.Data;
+        //def num = statemap.GetNextGlobalNum();
+        //def int_tran = st.InternalTransitions.Iter(x => x.Update .SetNewId());
+        //def hist = st.history.Map(_.ChangeNumCopy(statemap.GetNextGlobalNum(), copy));
+        //def trans = st.transitions.Map(_.SetNewId());
+        //def init  = st.initial.Map(_.SetNewId());
+        def an = std.analyser;
+        def pseudo = st.PseudoStates().Map(x => x.Clone(x => x.Clone()));
+        def tran   = st.AllTransitions().Map(x => x.Clone(x => x.Clone()));
+        pseudo.Iter(x => x.Update(x => x.ChangeCopy(copy)));
+        an.PseudoStates.Add(nst, pseudo);
+        an.statemap.Transitions.Add(nst, tran);
+        nst.Update(x => x.ChangeCopyNum(copy));
+        an.Clones[st] = if (an.Clones.ContainsKey(st)) nst :: an.Clones[st] else  nst :: [];
+        nst
+        //st.ChangeNumHistoryPseudoStatesCloneForInitialInternalTranTransitionsCopyNum(num, hist, pseudo, st, init, int_tran, trans, copy)
       }
-    }
 
-    public AddSubState(st : FsmState) : void
-    {
-      st.Analyser = Analyser;
-      when (!sub_states.Exists(x => x.Name == st.Name)) sub_states = sub_states + [st];
-    }
-    
-    public DefineTransition(tr : StateTransition) : void
-    {
-      | Transition as tr => transitions ::= Transition(this, tr)
-      | Internal   as tr => internal_tran ::= Internal(this, tr)
-      | Initial    as tr => initial ::= tr
-      | _ => ()
-    }
+      //def node = node.Clone();
+      def st = node.Reduce(get_copy);
 
-    public Clone(ncopy : int) : FsmState
-    {
-      def st = match (this)
-               {
-                 | State               as st => State(st, false, ncopy)
-                 | ConcurrentRegion    as st => ConcurrentRegion(st, ncopy)
-                 | ConcurrentSubRegion as st => ConcurrentSubRegion(st, ncopy)
-                 | InlinedSubMachine   as st => InlinedSubMachine(st, ncopy)
-                 | SubMachine          as st => SubMachine(st, ncopy)
-                 | Final               as st => Final(st, false, ncopy)
-               }
-               
-      clones ::= st;
-      st.CopyNum = ncopy;
-      st.cloneFor = this;
-      //st.FindCopyName();
+      def old_pseudo  = node.AllPseudo();
+      def new_pseudo  = st.AllPseudo();
+
+      def pseudo_map = Map(old_pseudo.ZipLazy(new_pseudo));
+      //def pseudo_id_map = old_pseudo.MakeArrayMap(new_pseudo, statemap.GlobalId, _.Num);
+      //def states_id_map = node.AllStates().MakeArrayMap(st.AllStates(), statemap.GlobalId, _.Num);
+      //states_id_map[Num] = to;
+      
+      def update_junction(j)
+      {
+        | Junction(tree = t) as j => t.GetBreadthFirstEnumerable().Iter(x => x.Update(x => x.ChangeJunc(pseudo_map.Get(x.junc)))); 
+                                     j
+        | _                       => j                             
+      }
+      
+      def retarget_transitions(s)
+      {
+        def check_target(tar)
+        {
+          | TransitionTarget.State(st) as t               => t.ChangeState(st.Analyser().Clones[st].Head)
+              //| Qualified(_, State(state = st) as t)                  => t.ChangeStateNum(find_state(st))
+              //| Final(st) as t                         => t.ChangeStateNum(find_state(st))          
+          | PseudoState(NodeValue(Value = Junction) as n) as t => def j = pseudo_map.Get(n);
+                                                                  j.Update(update_junction);
+                                                                  t//t.ChangeNode(p => p.ChangeNumCopy(statemap.GetNextGlobalNum(), copy))
+          | PseudoState(node) as t                        => def pseudo = pseudo_map.Get(node);
+                                                             def t = t.ChangeNode(pseudo);//t.node.Fix(pseudo_id_map[node.Num].Num)) 
+                                                             t
+                                                                        //t
+          | _                                             => null
+        }
+
+        //def check_tran(tr)
+        //{
+        //  tr.TargetTraverse((x, _) => check_target(x))
+        //}
+
+        //def s        = s.AllTransitions().Iter(x : NodeValue[FsmState, StateTransition] => x.Update(y => check_target(y.To)));
+        //def hist     = s.history.Map(_.ChangeDefault(check_tran));
+        //s.ChangeHistory(hist)
+        //s.Data
+        s.AllTransitions().Iter(x => x.Update(x => x.TargetTraverse(check_target)))
+      }
+
+      st.AllStates().Iter(retarget_transitions); // retarget transitions to new place state
       st
     }
-    
-    mutable clones : list[FsmState] = [];
-    
-    //FindCopyName() : void
+
+    //public FormatName() : void
     //{
-      
-    //  if (Analyser.Statemap.Contains(Name)) FindCopyName(); else ()
+    //  def name = name.SplitToList('.');
+    //  this.name = name.Last();
+    //}
+
+
+   
+    //public UpdateTransition(tr : StateTransition) : FsmState
+    //{
+    //  def find(t)
+    //  {
+    //    if (t.Num == tr.Num) tr else t
+    //  }
+
+    //  TransitionMap(find)
+    //}
+   
+    //public UpdateTransitions(tr : IEnumerable[StateTransition]) : FsmState
+    //{
+    //  def find(tr, trans)
+    //  {
+    //    match (trans.Find(x => x.Num == tr.Num))
+    //    {
+    //      | Some(tr) => tr
+    //      | _        => tr
+    //    }
+    //  }
+
+    //  TransitionMap(find(_, tr))
+    //}
+
+    //public TraverseTargets(func : TransitionTarget * StateTransition -> TransitionTarget, manual_rebuild : bool = false) : FsmState
+    //{
+    //  TransitionMap(_.TargetTraverse(func, manual_rebuild))
+    //}
+
+
+    //public TransitionMap(tran_func : StateTransition -> StateTransition) : FsmState
+    //{
+    //  def init = initial.Map(tran_func);
+    //  def tran = transitions.Map(tran_func);
+    //  def int_tran = internal_tran.Map(tran_func);
+    //  ChangeTransitionsInitialInternalTran(tran, init, int_tran)
     //}
     
-    public DefineTransitions(tr : list[StateTransition]) : void
+    public this(an : FsmAnalyser)
     {
-      tr.Iter(DefineTransition)
+      analyser = an;
     }
 
-    public DefineHistoryPath(st : string, nodes : HistoryPath) : void
+    public this(name : string, analyser : FsmAnalyser)
     {
-      history_paths ::= (st, nodes)
+      //super : FsmState, 
+      this(analyser);
+      this.name = name;
+      //this.super_state = super;
+      //this.reference = reference;
+      //Num = statemap.GetNewStateId(this)
     }
 
-    public DefineHistoryPathRecurse(st : string, nodes : HistoryPath) : void
+    public this(st : StateNode.State, analyser : FsmAnalyser)
     {
-      def reg = this is ConcurrentRegion;
-      when (Lived || reg) DefineHistoryPath(st, nodes);
-      when (!reg) sub_states.Iter(x  => x.DefineHistoryPathRecurse(st, nodes))
-    }
-
-    public DeleteTransitions(tr : list[StateTransition]) : void
-    {
-      def (tran, other) = tr.PartitionType();
-      def (int_tran, other) = other.PartitionType();
-      def (init, _) = other.PartitionType();
-      initial = initial.Exclude(init, (x, y) => StateTransition.FullComparer(x, y) == 0);
-      internal_tran = internal_tran.Exclude(int_tran, (x, y) => StateTransition.FullComparer(x, y) == 0);
-      transitions = transitions.Exclude(tran, (x, y) => StateTransition.FullComparer(x, y) == 0)
-    }
-
-    public DeleteTransitionsNested(tr : list[StateTransition]) : void
-    {
-      DeleteTransitions(tr);
-      AllSubStates.Iter(x => x.DeleteTransitionsNested(tr));
-    }
-    
-    public TraverseTransitions() : void
-    {
-      paths = TransitionPaths(this);
-      paths.TraverseTransitions(true);
-    }
-    
-    public CreatePathFromOut() : void
-    {
-      path_from_out = StateTransition.Initial(Analyser.TopState, this);
-      path_from_out.TraversePath();
-    }
-
-    public mutable super_state_cross_transitions : list[StateTransition] = [];
-    
-    public this()
-    {
-      is_new = true;
-    }
-
-    public this(st : StateNode.State, super : FsmState, analyser : FsmAnalyser, reference : bool = false)
-    {
-      this();
-      this.Analyser = analyser;
-      Create(st, super, reference)
-    }
-
-    Create(st : StateNode.State, super : FsmState, reference : bool = false) : void
-    {
-      this.Analyser = Analyser ?? super?.Analyser;
+      this(analyser);
       state = st;
-      source_pos = st.pos;
-      Name = st.name;
-      this.reference = reference || state.reference;
-      
-      def st_from_node(n)
-      {
-        | StateNode.State(type = SubMachine) => SubMachine(n, this)
-        | State(type = InlinedSubMachine)    => InlinedSubMachine(n, this)
-        | _                                  => FsmState.State(n, this, false)
-      }
-      
-      when (!Reference)
-      {
-        do_activity = st.do_activity |> StateAction.Do(_.action.ActionList, this, _.flags);
-        internal_tran = Internal.Create(this, st.internal_tran);
-        entry = st.entry |> StateAction.Entry(_.action.ActionList, this, _.attrib);
-        exit = st.exit |> StateAction.Exit(_.action.ActionList, this, _.attrib);
-        history = StateHistory.Create(this, st.history);
-        transitions = Transition.Create(this, st.transitions);
-        initial = st.initial |> Initial(this, _);
-        def (regs, subst) = st.sub_states.Partition(x => x.regions.HasValue);
-        def regs = regs |> ConcurrentRegion(this, _.regions.Value); // TODO: сделать с помощью st_from_node
-        super_state = super;
-        def subst = (subst |> st_from_node(_)) + regs;
-        sub_states = subst.Sort((x, y) => x.source_pos - y.source_pos);
-        pseudo_states = st.pseudo_states |> PseudoStateNode.Create(_.node, this, null)
-      }
-    }
-    
-    public this(st : StateNode.State, super : FsmState, reference : bool = false)
-    {
-      this();
-      Create(st, super, reference)
-    }
-    
-    public this(st : FsmState, reference : bool = false, ncopy : int = 0)
-    {
-      this();
-      this.reference = reference;
       name = st.name;
-      Analyser = st.Analyser;
-      do_activity = st.do_activity;
-      internal_tran = if (ncopy != 0) st.internal_tran |> Clone(ncopy) else st.internal_tran;
-      entry = st.entry |> Clone() :> StateAction.Entry;
-      exit = st.exit |> Clone() :> StateAction.Exit;
-      history =  if (ncopy != 0) st.history |> Clone(ncopy) else st.history;
-      history.Iter(x => x.state = this);
-      transitions = if (ncopy != 0) st.transitions |> Clone(ncopy) else st.transitions;
-      initial = if (ncopy != 0) st.initial |> Clone(ncopy) else st.initial;
-      super_state = st.SuperState;
-      sub_states = if (ncopy != 0) st.SubStates |> Clone(ncopy) else st.SubStates;
-      sub_states.Iter(x => x.super_state = this);
-      pseudo_states = if (ncopy != 0) st.pseudo_states |> SetCopy(ncopy) else st.pseudo_states
+      //this.reference = reference || state.reference;
+
+      //when (!reference)
+      //{
+      do_activity = st.do_activity |> StateAction.Do(_.action.actions, _.flags);
+      //internal_tran = Internal.Create(this, st.internal_tran).NToList();
+      entry = st.entry |> StateAction.Entry(_.action.actions, _.attrib);
+      exit = st.exit |> StateAction.Exit(_.action.actions, _.attrib);
+      //history = PseudoStateNode.History.Create(this, st.history);
+      //transitions = Transition.Create(this, st.transitions).NToList();
+      //initial = st.initial.Map(Initial.Create(this, _));
+        //def (regs, subst) = st.sub_states.Partition(x => x.regions.HasValue);
+        //def regs = regs |> ConcurrentRegion(this, _, _.regions.Value); // TODO: сделать с помощью st_from_node
+        //super_state = super;
+        //def subst = (subst |> st_from_node(_)) + regs;
+        //sub_states = subst.Sort((x, y) => x.source_pos - y.source_pos);
+      //sub_states = sub.NToList();//.Map(_.ChangeSuperState(this));
+      //pseudo_states = st.pseudo_states |> PseudoStateNode.Create(this, _.node, analyser.statemap.GetNextGlobalNum())
+      //}
+      //Num = statemap.GetNewStateId(this)
     }
+
+    //public NestedObjects : IEnumerable[IdObject]
+    //{
+    //  get
+    //  {
+    //    def obj = all_transitions_with_init.SelectMany(_.TargetIdObjects);
+    //    all_transitions_with_init + ChildPseudo + DefaultTransitions + obj
+    //  }
+    //}
+
+    //public GetPseudo(num : int) : PseudoStateNode
+    //{
+    // ChildPseudo.Find(x => x.Num == num).WithDefault(null)
+    //}
     
-    public mutable do_activity : option[StateAction.Do];
+    //public ChangePseudo(num : int, func : PseudoStateNode -> PseudoStateNode) : FsmState
+    //{
+    //  PseudoMap(x => if (x.Num == num) func(x) else x)
+    //}
+    
+    //public PseudoMap(func : PseudoStateNode -> PseudoStateNode) : FsmState
+    //{
+    //  def st = HistoryMap(x => func(x) :> PseudoStateNode.History);
+    //  ChangePseudoStates(st.pseudo_states.Map(func))
+    //  //def pseudo = ChildPseudo.Select(func);
+    //}
+    
+    
+    //public AddPseudo(node : PseudoStateNode) : FsmState
+    //{
+    //  ChangePseudoStates(pseudo_states.Append(node).NToList())
+    //}
+    
+    //public ChildPseudo : IEnumerable[PseudoStateNode]
+    //{
+    //  get
+    //  {
+    //    history.Value + pseudo_states
+    //  }
+    //}
+
+    //public ChildObjects : IEnumerable[IdObject]
+    //{
+    //  get
+    //  {
+    //    all_transitions_with_init + ChildPseudo + DefaultTransitions
+    //  }
+    //}
+
+
+    //public AllChilds : IEnumerable[int]
+    //{
+    //  get
+    //  {
+    //    sub_states.Select(_.Num) + ChildNodes
+    //  }
+    //}
+    
+    //public ChildNodes : IEnumerable[int]
+    //{
+    //  get
+    //  {
+    //    ChildObjects.Select(_.Num)
+    //  }
+    //}
+
+    //public SetNum(num : int) : FsmState
+    //{
+    //  def st = ChangeNum(num);
+    //  statemap.UpdateRefsToParent(st);
+    //  st
+    //}
+
+    //public SetNewId() : FsmState
+    //{
+    //  ChangeNum(statemap.GetNextGlobalNum())
+    //}
+
+    //public ChangeHistory(h : PseudoStateNode.History) : FsmState
+    //{
+    //  def check_hist(hist)
+    //  {
+    //    if (hist.Num == h.Num)
+    //    {
+    //      h
+    //    } else hist
+    //  }
       
-    [Accessor] mutable sub_states : list[FsmState] = [];
-    public mutable history : TwoOption[StateHistory] = TwoOption.None();
-    public mutable pseudo_states : list[PseudoStateNode] = [];
-    
-    [Accessor] mutable history_paths : list[string * HistoryPath] = []; // paths from outer history
-    
-    [Accessor] mutable path_from_out : StateTransition.Initial;
-    mutable state : StateNode.State;
-    
-    [Accessor] mutable initial : list[StateTransition] = [];
-    public mutable entry : list[StateAction.Entry] = [];
-    public mutable exit  : list[StateAction.Exit] = [];
-    [Accessor] mutable internal_tran : list[StateTransition] = [];
-    [Accessor] mutable transitions : list[StateTransition] = [];
-    [Accessor] mutable super_state  : FsmState;
-    public CopyNum : int {get;set;}
-    public paths : TransitionPaths {get;set;}
-    mutable lived : bool;
-    public Num : int {get;set;}
-    
-    /// <summary>
-    /// Indicates what fsm lived in this state and it not only composite for others
-    /// </summary>
-    public Lived : bool 
-    {
-      get
-      {
-        lived || clones.Exists(_.Lived)
-      }
-      set
-      {
-       
-        lived = value;
-      }
-    }
-    
-    public UsedInGenerate : bool
-    {
-      get
-      {
-        lived || !AllLivedSubStates.IsEmpty()
-      }
-    }
-    
-    /// <summary>
-    /// Hierarchy position
-    /// </summary>
-    public hierarchy_pos : int {get;set;}
-    [Accessor] mutable source_pos : int;
-    [Accessor] mutable cloneFor : FsmState;
-    
-    public IsTopState : bool
-    {
-      get
-      {
-        Name == TopStateName
-      }
-    }
-    
-    public static TopStateName  =  "[Top]";
+    //  HistoryMap(check_hist)
+    //}
 
-    [Accessor]
-    mutable reference : bool;
-    mutable name : string;
-
-    public mutable is_new : bool;
-    public Analyser : FsmAnalyser {get;set;}
-
-    public Id : IdType {get;set;}
-
-    CopyName : string
-    {
-      get
-      {
-        if (CopyNum == 0) "" else $"$CopyNum"
-      }
-    }
+    //public ChangeHistory(num : int, h : PseudoStateNode -> PseudoStateNode) : FsmState
+    //{
+    //  def check_hist(hist)
+    //  {
+    //    if (hist.Num == num)
+    //    {
+    //      h(hist) :> PseudoStateNode.History
+    //    } else hist
+    //  }
+      
+    //  HistoryMap(check_hist)
+    //}
     
-    public Name : string
+    //public HistoryMap(hist : PseudoStateNode.History -> PseudoStateNode.History) : FsmState
+    //{
+    //  ChangeHistory(history.Map(hist))
+    //}
+    //// copy constructor
+    //public this(st : FsmState)
+    //{
+    //  name = st.name;
+    //  analyser = st.analyser;
+    //  do_activity = st.do_activity;
+    //  internal_tran = st.internal_tran;
+    //  entry = st.entry;
+    //  exit = st.exit;
+    //  //history =  st.history.Map(_.ChangeState(this));
+    //  transitions = st.transitions;
+    //  initial = st.initial;
+    //  //super_state = st.super_state;
+    //  sub_states = st.sub_states;//.Map(_.ChangeSuperState(this));
+    //  pseudo_states = st.pseudo_states;
+    //  Num = st.Num;
+    //}
+
+
+
+    //[NeedChange]
+    //public PathFromOut : StateTransition;
+    ///// <summary>
+    ///// Indicates what fsm lived in this state and it not only composite for others
+    ///// </summary>
+    //public Lived : bool 
+    //{
+    //  get
+    //  {
+    //    lived || clones.Exists(_.Lived)
+    //  }
+    //}
+
+
+    //public hierarchy_pos : int
+    //{
+    //  get
+    //  {
+    //    if (calc_hierarchy_pos != -1) calc_hierarchy_pos else SuperStates.Count()
+    //  }
+    //}
+
+    public source_pos : int
     {
       get
       {
-        match (this)
-        {
-          | Final                       => $"$(super_state)Final$CopyName"
-          | State
-          | ConcurrentRegion
-          | ConcurrentSubRegion         => NativeName
-          | SubMachine(name = n)        => $"SubMachine$n$CopyName"
-          | InlinedSubMachine(name = n) => $"InlinedSubMachine$n$CopyName"
-        }
-      }
-      set
-      {
-        name = value;
+        state.pos
       }
     }
 
-    public OriginalName : string
+    //public IsTopState : bool
+    //{
+    //  get
+    //  {
+    //    Num == statemap.TopNum
+    //  }
+    //}
+
+    public CopyName : string
     {
       get
       {
-        match (this)
-        {
-          | ConcurrentSubRegion(index = idx, contained_in = r) => $"$(r)SubRegion$idx"
-          | _ => if (name != null) name else AstName
-        }
+        if (copy_num == 0) "" else $"$copy_num"
       }
     }
     
-    public NativeName : string
-    {
-      get
-      {
-        $"$OriginalName$CopyName"
-      }
-    }
-    
-    public join_completion_transitions : list[StateTransition]
-    {
-      get
-      {
-        completion_transitions.Filter(x => x.To is TransitionTarget.PseudoState(Join()))
-      }
-    }
-    
+
     public AstName : string
     {
       get
@@ -345,145 +371,35 @@ namespace Nemerle.Statechart
       }
     }
 
-    /// <summary>
-	  /// Events for which reacts state
-	  /// </summary>
-    public events : list[StateEvent]
-    {
-      get
-      {
-        def evts = work_transitions |> Trigger;
-        evts.RemoveDuplicatesSort(_.CompareTo(_))
-      }
-    }
 
-    /// <summary>
-	  /// Events for which reacts state or nested states
-	  /// </summary>    
-    public events_nested : list[StateEvent]
-    {
-      get
-      {
-        def evts = events + (AllLivedSubStates |>< events);
-        evts.RemoveDuplicatesSort(_.CompareTo(_));
-      }
-    }
-        
-    public SuperStatesInclude : list[FsmState]
-    {
-      get
-      {
-        this :: SuperStates
-      }
-    }
 
-    public PartOfStateMachine : bool
-    {
-      get
-      {
-        SuperStatesInclude.Exists(x => x is SubMachine(inlined = true))
-      }
-    }
-    
-    public AllHistory : list[StateHistory]
-    {
-      get
-      {
-        AllSubStates |>< history.Value
-      }
-    }
-    
-    public PartOfSubRegion : option[ConcurrentSubRegion]
-    {
-      get
-      {
-        SuperStatesInclude.FindType()[0]
-      }
-    }
 
-    public PartOfSubRegions : list[ConcurrentSubRegion]
-    {
-      get
-      {
-        SuperStatesInclude.FilterType()
-      }
-    }
+    public static NameComparer(x : GeneralTree[FsmState], y : GeneralTree[FsmState]) : int { string.Compare(x.Name(), y.Name()) }
 
-    public PartOfTopRegion : option[ConcurrentRegion]
-    {
-      get
-      {
-        match (PartOfRegions)
-        {
-          | [] => None()
-          | lst => Some(lst.Last())
-        }
-      }
-    }
-   
-    public PartOfRegion : option[ConcurrentRegion]
-    {
-      get
-      {
-        SuperStatesInclude.FindType()[0]
-      }
-    }
-    
-    public PartOfRegions : list[ConcurrentRegion]
-    {
-      get
-      {
-        SuperStatesInclude.FilterType()
-      }
-    }
 
-    public GetPathFrom(st : FsmState) : list[FsmState]
-    {
-      def super = SuperStatesInclude.FirstElems(x => x.Name == st.Name);
-      st :: super.Rev()
-    }
-    
-    public PathName : list[FsmState]
-    {
-      get
-      {
-        (this :: SuperStates.SplitLast()[1]).Rev()
-      }
-    }
-    
-    public static NameComparer : FsmState * FsmState -> int = (x, y) => string.Compare(x.Name, y.Name);
-    
-    public PartOfRegionsOf(st : FsmState) : list[ConcurrentRegion]
-    {
-      SuperStatesInclude.FirstElems(_ == st).FilterType();
-    }
-    
-    public RenameState() : void
-    {
-      entry.Iter(x => x.state = this);
-      exit.Iter(x => x.state = this);
-      history.Iter(x => x.state = this)
-    }
-    
-    public UpdateFromTarget(target : TransitionTarget) : void
-    {
-      def update_pseudo(op, p)
-      {
-        | (Choice(name = on), Choice(name = n))
-        | (Junction(name = on), Junction(name = n))
-        | (Join(name = on), Join(name = n)) 
-        | (Merge(name = on), Merge(name = n)) when (on == n) => p
-        | (Terminate(state = on), Terminate(state = n)) when (on.Name == n.Name) => p
-        | _ => op
-      }
-      
-      match (target)
-      {
-        | History(h)       => history = history.Map(x => if (x == h) h else x)
-        | Final(f)         => sub_states = sub_states.Map(x => if (f.Name == x.Name) f else x)
-        | PseudoState(p)   => pseudo_states = pseudo_states.Map(update_pseudo(_, p))
-        | _                => ()
-      }
-    }
+
+    //public GetChild() : IEnumerable[FsmState]
+    //{
+    //  match (this)
+    //  {
+    //    | ConcurrentRegion(sub_regions = r) => r.Select(_ : FsmState)
+    //    | _                                 => sub_states
+    //  }
+    //}
+
+    //public Rebuild(child : IEnumerable[FsmState]) : FsmState
+    //{
+    //  match (this)
+    //  {
+    //    | ConcurrentRegion as r => r.ChangeSubRegions(child.Map(_ :> FsmState.ConcurrentSubRegion))
+    //    | _                     => ChangeSubStates(child.NToList())
+    //  }
+    //}
+
+    //public UpdateHistory(hist : PseudoStateNode.History) : FsmState
+    //{
+    //  def hist = history.Map(x => if (x.type == hist.type) hist else x);
+    //  ChangeHistory(hist)
+    //}
   }
 }

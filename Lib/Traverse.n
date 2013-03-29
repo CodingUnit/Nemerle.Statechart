@@ -1,0 +1,405 @@
+﻿using Nemerle;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Collections;
+using System.Linq;
+using SCG = System.Collections.Generic;
+using System.Diagnostics;
+using NGenerics.DataStructures.Trees;
+
+namespace Nemerle.Statechart
+{
+
+  public interface ITree[T]
+  {
+    Current : T { get; }
+
+    MakeIter(iter_childs : IEnumerable[T]) : T;
+    SetChildCount(len : int)               : T;
+    ChildCount                             : int {get;}
+    GetCode()                       : int;
+  }
+
+  public interface ITraversable[T] : ITree[T]
+  {
+    Rebuild(child : IEnumerable[T]) : T;
+    GetChild()                      : IEnumerable[ITraversable[T]];
+  }
+
+  public class IIteratorContextBase[T]
+  {
+    setted : BitArray;
+    public manual_rebuild : bool;
+
+    public this() {}
+
+    public this(manual : bool, params lst : array[object]) 
+    {
+      this(lst);
+      manual_rebuild = manual;
+    }
+
+    public this(params lst : array[object])
+    {
+      setted = if (lst.IsMoreThanOne()) BitArray(lst.MapToArray(_ != null)) else null;
+    }
+
+    public IsSet(node : ITree[T]) : bool
+    {
+      def code = node.GetCode();
+      if (setted != null) setted[code] else true
+    }
+  }
+
+  public abstract class IIteratorContext[T, TAcc] : IIteratorContextBase[T]
+  {
+    public this() {}
+    public this(params lst : array[object])
+    {
+      base(lst)
+    }
+
+    public abstract Visit(obj : T, acc : IEnumerable[TAcc]) : TAcc;
+  }
+
+  public abstract class IReduceIteratorContext[T] : IIteratorContextBase[T]
+  {
+    public this() {}
+    public this(manual : bool, params lst : array[object])
+    {
+      base(manual, lst)
+    }
+
+    public this(params lst : array[object])
+    {
+      base(lst)
+    }
+
+    public abstract Visit(obj : T, acc : IEnumerable[T]) : T;
+  }
+
+  public abstract class IAccIteratorContext[T, TAcc] : IIteratorContextBase[T]
+  {
+    public this() {}
+
+    public this(manual : bool, params lst : array[object])
+    {
+      base(manual, lst)
+    }    
+
+    public this(params lst : array[object])
+    {
+      base(lst)
+    }
+
+    public abstract Visit(obj : T, acc : TAcc) : TAcc;
+  }
+
+  public abstract class ITwoAccIteratorContext[T, TAcc, TAcc2] : IIteratorContextBase[T]
+  {
+    public this(manual : bool, params lst : array[object])
+    {
+      base(manual, lst)
+    }
+
+    public this(params lst : array[object])
+    {
+      base(lst)
+    }
+
+    public abstract Visit(obj : T, acc : IEnumerable[TAcc], acc2 : TAcc2) : TAcc * TAcc2;
+  }
+
+  public abstract class IReduceTwoAccIteratorContext[T, TAcc] : IIteratorContextBase[T]
+  {
+    public this() {}
+
+    public this(manual : bool, params lst : array[object])
+    {
+      base(manual, lst)
+    }
+
+    public this(params lst : array[object])
+    {
+      base(lst)
+    }
+
+    public abstract Visit(obj : T, acc : IEnumerable[T], acc2 : TAcc) : T * TAcc;
+  }
+
+  public interface ICachedTraversable[T] : ITraversable[T]
+  {
+    CachedIterator      : IEnumerable[T] { get; }
+    CachedLevelIterator : IEnumerable[T] { get; }
+  }
+
+  /// <summary>
+  /// Description of Traverse.
+  /// </summary>
+  public module TraverseUtils
+  {
+
+    public ChangeValue[T](this opt : option[T], val : void -> T) : option[T] where T : class
+    {
+      match (opt)
+      {
+        | Some(v) as opt => def val = val();
+                            if (v != val : object) Some(val) else opt
+        | x              => x
+      }
+    }
+
+    public ChangeValue[T](this opt : option[T], val : T) : option[T] where T : class
+    {
+      match (opt)
+      {
+        | Some(v) as opt => if (v != val : object) Some(val) else opt
+        | x              => x
+      }
+    }
+
+    public Iterator[T](this obj : ICachedTraversable[T]) : IEnumerable[T]
+    {
+      obj.CachedIterator ?? Iterator(obj : ITraversable[T])
+    }
+
+    //public FoldDo[T, TAcc](this obj : GeneralTree[T], init : TAcc, ctx : IIteratorContext[T, TAcc]) : TAcc where T : class, ITree[T]
+    //{
+    //  def fold_func(x : GeneralTree[T], itacc)
+    //  {
+    //    def len = x.Count;
+    //    def (child, itacc) = itacc.PopRev(len);
+    //    if (ctx.IsSet(x.Data)) 
+    //    {
+    //      ctx.Visit(x.Data, child) :: itacc
+    //    } else itacc
+    //  }
+
+    //  def lst = obj.GetEnumerable(TreeTraversalType.PostOrder);
+    //  lst.FoldLeft([init], fold_func).Head
+    //}
+    
+    public FoldDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IIteratorContext[T, TAcc]) : TAcc  where T : class, ITraversable[T]
+    {
+      def fold_func(x, itacc)
+      {
+        def len = x.ChildCount;
+        def (child, itacc) = itacc.PopRev(len);
+        if (ctx.IsSet(x)) 
+        {
+          ctx.Visit(x : T, child) :: itacc
+        } else itacc
+      }
+
+      def lst = obj.Iterator(); 
+      lst.FoldLeft([init], fold_func).Head
+    }
+
+    public FoldDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IAccIteratorContext[T, TAcc]) : TAcc  where T : class, ITraversable[T]
+    {
+      def fold_func(x, a)
+      {
+        if (ctx.IsSet(x)) ctx.Visit(x : T, a) else a
+      }
+
+      def lst = obj.Iterator();
+      lst.FoldLeft(init, fold_func)
+    }
+
+    //public FoldDo[T, TAcc](this obj : GeneralTree[T], init : TAcc, ctx : IAccIteratorContext[T, TAcc]) : TAcc  where T : class, ITree[T]
+    //{
+    //  def fold_func(x, a)
+    //  {
+    //    if (ctx.IsSet(x.Data)) ctx.Visit(x.Data, a) else a
+    //  }
+
+    //  def lst = obj.GetEnumerable(TreeTraversalType.PostOrder);
+    //  lst.FoldLeft(init, fold_func)
+    //}
+    
+    public ReduceDo[T, TAcc](this obj : ICachedTraversable[T], init : TAcc, ctx : IReduceTwoAccIteratorContext[T, TAcc]) : T * TAcc where T : class, ITraversable[T]
+    {
+      def manual = ctx.manual_rebuild;
+      def deque = if (manual) null else List();
+
+      def fold_func(x, chacc, acc2)
+      {
+        def len = x.ChildCount;
+        def (child, lst) = chacc.PopRev(len);
+        def (acc, acc2) = if (ctx.IsSet(x)) 
+                           {
+                             ctx.Visit(x : T, child, acc2)
+                           } else (null, acc2);
+        def acc = if (acc != null && ctx.manual_rebuild) 
+                   {
+                     acc.SetChildCount(acc.GetChild().Count())
+                   } else 
+                   {
+                     (acc ?? x).Rebuild(child)
+                   }
+        def acc = acc.MakeIter(null); // clear cached iterator in tree because it is rebuilded
+        deque?.Add(acc);
+        (acc :: lst, acc2)
+      }
+
+      def lst = obj.Iterator();
+      match (lst.FoldLeft2([], init, fold_func))
+      {
+        | (head :: _, acc) => def head = head.MakeIter(deque);
+                              when (deque != null) deque[deque.Count - 1] = head;
+                              (head, acc)
+        | (_, acc)         => (null, acc)
+      }
+    }
+
+    public ReduceDo[T](this obj : ICachedTraversable[T], ctx : IReduceIteratorContext[T]) : T where T : class, ITraversable[T]
+    {
+      def manual = ctx.manual_rebuild;
+      def deque = if (manual) null else List();
+
+      def lst = obj.Iterator();
+
+      def fold_func(x, chacc)
+      {
+        def len = x.ChildCount;
+        def (child, lst) = chacc.PopRev(len);
+        def acc = if (ctx.IsSet(x))
+                   {
+                     ctx.Visit(x : T, child)
+                   } else null;
+        def acc = if (acc != null && ctx.manual_rebuild) 
+                   {
+                     acc.SetChildCount(acc.GetChild().Count())
+                   } else (acc ?? x).Rebuild(child);
+        def acc = acc.MakeIter(null); // clear cached iterator in tree because it is rebuilded
+        deque?.Add(acc);
+        acc :: lst
+      }
+
+      match (lst.FoldLeft([], fold_func))
+      {
+        | head :: _ => def head = head.MakeIter(deque);
+                      when (deque != null) deque[deque.Count - 1] = head;
+                      head
+        | _         => null
+      }
+    }
+
+    public Iterator[T](this obj : ITraversable[T]) : IEnumerable[T]
+    {
+      def child = SCG.Stack();
+      def parent = SCG.Stack();
+
+      def loop_init()
+      {
+        if (child.IsEmpty()) () else 
+        {
+          def curr = child.Pop();
+          parent.Push(curr.Current);
+          foreach (s in curr.GetChild()) child.Push(s);
+          loop_init()
+        }
+      }
+
+      child.Push(obj);
+      loop_init();
+      parent
+    }
+
+    public LevelOrderIterator[T](this obj : ICachedTraversable[T]) : IEnumerable[T]
+    {
+      def iter = obj.CachedLevelIterator;
+      if (iter == null) 
+      {
+        LevelOrderIterator(obj : ITraversable[_])
+      } else iter
+    }
+
+    public LevelOrderIterator[T](this obj : ITraversable[T]) : IEnumerable[T]
+    {
+      def queue = SCG.Queue();
+      queue.Enqueue(obj);
+
+      def loop()
+      {
+        if (queue.IsEmpty()) () else
+        {
+          def node = queue.Dequeue();
+          yield node.Current;
+          foreach (s in node.GetChild()) queue.Enqueue(s);
+          loop()
+        }
+      }
+
+      loop()
+    }
+
+    public LevelOrderMap[T](this obj : ICachedTraversable[T], func : T -> T) : list[T] where T : class, ITraversable[T]
+    {
+      def queue = SCG.Queue();
+      queue.Enqueue(obj);
+
+      def loop(res)
+      {
+        if (queue.IsEmpty()) res.Rev() else
+        {
+          def node  = queue.Dequeue();
+          def nnode = func(node.Current);
+          def node  = nnode ?? node.Current;
+          foreach (s in node.GetChild()) queue.Enqueue(s);
+          loop(node :: res)
+        }
+      }
+
+      loop([])
+    }
+
+    public PreOrderIterator[T](this obj : ITraversable[T]) : IEnumerable[T]
+    {
+      def stack = SCG.Stack();
+      stack.Push(obj);
+    //if (root == null ) return;
+
+    //Stack<Node> stack = new Stack<Node>( );
+    //stack.push( root );
+
+      def loop() 
+      {
+        if (stack.IsEmpty()) () else
+        {
+          def current = stack.Pop( );
+          foreach (c in current.GetChild())
+          {
+            stack.Push(c);
+          }
+          yield current.Current;
+        //stack.Push( current. );
+        //if( current.left != null ) stack.push( current.left );
+        //System.out.print( current.data + " " );
+        }
+      }
+
+      loop()
+    }
+
+    public SingleElement[T](elem : T) : IEnumerable[T]
+    {
+      yield elem
+    }
+
+    public DoubleElement[T](elem1 : T, elem2 : T) : IEnumerable[T]
+    {
+      yield elem1;
+      yield elem2;
+    }
+
+  }
+
+
+}
