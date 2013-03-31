@@ -1,4 +1,5 @@
-﻿using Nemerle;
+﻿// fsmnode.n
+using Nemerle;
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
@@ -89,90 +90,7 @@ namespace Nemerle.Statechart
       }
     }
   }
-  /// <summary>
-  /// Description of FsmNode.
-  /// </summary>
-  public variant FsmNode
-  {
-    | State       { [NeedChange] node : GeneralTree[FsmState]; }
-    | PseudoState { [NeedChange] node : NodeValue[FsmState, PseudoStateNode]; }
-
-    //public Analyser : FsmAnalyser
-    //{
-    //  get
-    //  {
-    //    match (this)
-    //    {
-    //      | State(node)       => node.Value.analyser
-    //      | PseudoState(node) => node.analyser
-    //    }
-    //  }
-    //}
-
-    public StateNode : GeneralTree[FsmState]
-    {
-      get
-      {
-        match (this)
-        {
-          | State(node) => node
-          | _           => null
-        }
-      }
-    }
-
-
-    public Analyser : FsmAnalyser
-    {
-      get
-      {
-        StateDecl.Analyser()
-      }
-    }
-
-    //public CompareTo(node : FsmNode) : int
-    //{
-    //  match (this, node)
-    //  {
-    //    | (State(a), State(b))             => a.Value.CompareTo(b.Value)
-    //    | (PseudoState(a), PseudoState(b)) => a.Num - b.Num
-    //    | (_, _)                           => -1
-    //  }
-    //}
-    public StateDecl : GeneralTree[FsmState]
-    {
-      get
-      {
-        match (this)
-        {
-          | FsmNode.State(st)       => st
-          | FsmNode.PseudoState(st) => st.Parent
-        }
-      }
-    }
-
-    public static PartOfRegion(this node : FsmNode) : option[GeneralTree[FsmState]]
-    {
-      node.StateDecl.PartOfRegion()
-    }
-
-    public static PartOfSubRegion(this node : FsmNode) : option[GeneralTree[FsmState]]
-    {
-      node.StateDecl.PartOfSubRegion()
-    }
-
-    public static ParentState(this node : GeneralTree[FsmNode]) : GeneralTree[FsmState]
-    {
-      match (node.Parent)
-      {
-        | null                                      => null
-        | GeneralTree(Data = FsmNode.State(st)) => st
-        | _                                         => null
-      }
-    }
-
-  }
-
+  
   public module TreeNode
   {
     public Parents[T](this node : GeneralTree[T]) : IEnumerable[GeneralTree[T]]
@@ -200,16 +118,21 @@ namespace Nemerle.Statechart
       node.Data = change(node.Data)
     }
 
-    public Reduce[T](this node : GeneralTree[T], folder : GeneralTree[T] * list[GeneralTree[T]] -> GeneralTree[T]) : GeneralTree[T]
+    public Reduce[T](this node : GeneralTree[T], manual_rebuild : bool, folder : GeneralTree[T] * list[GeneralTree[T]] -> GeneralTree[T]) : GeneralTree[T]
     {
-      //def folder(n, acc)
-      //{
-      //  folder(n, acc);
-      //  //if (acc != null) node.AddRange(acc); else ();
-      //}
+      def loop(n, acc)
+      {
+def (chacc, tail) = acc.PopRev(n.ChildNodes.Count());
+        def res = folder(n, acc);
+        def acc = if (res == null || !manual_rebuild) 
+{
+def acc = (n ?? res);
+ acc.ChildNodes = chacc;
+ acc
+} else res;
+       acc :: tail
+      }
 
-      Fold(node, null, folder)
-    }
 
     public Fold[T, TAcc](this node : GeneralTree[T], init : TAcc, folder : GeneralTree[T] * list[TAcc] -> TAcc) : TAcc
     {
@@ -397,80 +320,6 @@ namespace Nemerle.Statechart
 
     }
   }
-
-  [Record]
-  public variant TreeJunctionNode
-  {
-    | Node 
-    | Target 
-      { 
-        [NeedChange]
-        target : TransitionTarget; 
-        [NeedChange(OutPath, NodePath)]
-        dest   : TransitionDestination;
-      }
-
-    public pos    : int;
-    public guard  : GuardNode;
-    [NeedChange]
-    public action : list[Actions] = [];
-    [NeedChange]
-    public junc   : NodeValue[FsmState, PseudoStateNode];
-
-    [NeedChange(OutPath)]
-    [NeedChange]
-    public NodePath : IEnumerable[PathNode];
-    [NeedChange]
-    public OutPath  : IEnumerable[PathNode];
-    
-    public type : JunctionType
-    {
-      get
-      {
-         (junc.Value :> PseudoStateNode.Junction).type
-      }
-    }
-
-    public static Create(node : NodeValue[FsmState, PseudoStateNode]) : BinaryTree[TreeJunctionNode]
-    {
-      def convert(n)
-      {
-        | FsmJunctionNode(p, g, a, TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction) as n)) => def a = if (a is Some(a)) a :: [] else []; 
-                                                                                                                      Node(p, g, a, n)
-        | FsmJunctionNode(p, g, a, t)                                => def a = if (a is Some(a)) a :: [] else []; 
-                                                                    Target(p, g, a, null, t, null)
-      }
-
-      def merge(n)
-      {
-        n.FoldBack(null, BinaryTree(_, _, null));
-      }
-
-      def junc = node.Value :> PseudoStateNode.Junction;
-      def jnode = merge(junc.nodes);
-
-      def fold(n)
-      {
-        | FsmJunctionNode(to = TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction(nodes = n)))) => n
-        | _                                                                                                          => []
-      }
-
-      jnode.Unfold(fold, merge);
-      def jnode = jnode.Fold(convert);
-
-      def init_node(n, a)
-      {
-        match (n.Data)
-        {
-          | Node(junc = j) => j
-          | Target         => n.Update(x => x.ChangeJunc(a));
-                              a
-        }
-      }
-
-      _ = jnode.GetBreadthFirstEnumerable().Fold(node, init_node); // init empty target nodes
-      jnode
-    }
 
   }
 }

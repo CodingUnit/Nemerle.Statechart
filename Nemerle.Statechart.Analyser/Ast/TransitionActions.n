@@ -1,4 +1,5 @@
-﻿using Nemerle.Collections;
+// transitionactions.n
+using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
 
@@ -25,30 +26,25 @@ namespace Nemerle.Statechart
 
     public this(st : GeneralTree[FsmState], tran : StateNode.Transition)
     {
-      this(FsmNode.State(st), tran)
+      this(st, tran)
     }
     
-    public this(st : FsmNode, tran : StateNode.Transition)
+    public this(st : GeneralTree[FsmState], tran : StateNode.Transition)
     {
       def an = st.Analyser;
       this(an);
       //From = st;
       From = st;
       node = tran;
-      when (tran != null)
-      {
-        guard = tran.guard;
-        action = tran.action;
-      }
       To = if (tran.to != null) TransitionTarget.Create(st.StateDecl, tran.to) else TransitionTarget.Nowhere(analyser);
     }
 
     public this(st : GeneralTree[FsmState], to : GeneralTree[FsmState])
     {
-      this(FsmNode.State(st), TransitionTarget.State(st.Data.analyser, to))//TransitionTarget.State(st.analyser, to))
+      this(st, TransitionTarget.State(st.Data.analyser, to))//TransitionTarget.State(st.analyser, to))
     }
 
-    public this(st : FsmNode, to : TransitionTarget)
+    public this(st : GeneralTree[FsmState], to : TransitionTarget)
     {
       this(st.Analyser);
       //From = st;
@@ -62,8 +58,6 @@ namespace Nemerle.Statechart
     {
       this(tran.analyser);
       //From = tran.From;
-      guard = tran.guard;
-      action = tran.action;
       To = tran.To;
       omit_guard = tran.omit_guard;
       //ParentCrossed = tran.ParentCrossed;
@@ -76,7 +70,7 @@ namespace Nemerle.Statechart
     //[Accessor]
     //public num : int;
 
-    //public From : GeneralTree[FsmNode];
+    //public From : GeneralTree[FsmState];
 
     //public static Change(this changed : StateTransition) : void
     //{
@@ -85,12 +79,8 @@ namespace Nemerle.Statechart
 
     [NeedChange]
     [NeedChange(To)]
-    public From : FsmNode;
+    public From : GeneralTree[FsmState];
     
-    [NeedChange]
-    public guard : option[GuardNode] = None();
-    [NeedChange]
-    public action : option[Actions] = None();
     [NeedChange]
     public To : TransitionTarget;
     [NeedChange]
@@ -120,15 +110,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (omit_guard) None() else guard
-      }
-    }
-
-    public SourceGuard : option[GuardNode]
-    {
-      get
-      {
-        guard
+        if (omit_guard) None() else To.guard
       }
     }
 
@@ -185,6 +167,7 @@ namespace Nemerle.Statechart
       }
     }
 
+  
     public Name : string
     {
       get
@@ -214,12 +197,6 @@ namespace Nemerle.Statechart
       def eq = if (t1.ActionList.Equals(t2.ActionList, _ == _)) 0 else -1;
       Comparer(t1, t2) + GuardComparer(t1, t2) + eq
     }
-
-    ///// <summary>
-    ///// Transitions from parents crossed by events with this state
-    ///// </summary>
-    //[NeedChange]
-    //public ParentCrossed : list[StateTransition] = [];
 
     public ToChoice : IEnumerable[StateTransition]
     {
@@ -277,70 +254,9 @@ namespace Nemerle.Statechart
       }
     }
 
-    //[NeedChange]
-    //public PathEdges : GeneralTree[FsmNode];
-    
-    //public CreatePathEdges() : StateTransition
-    //{
-    //  def create_junc_tree(j : TreeJunctionNode)
-    //  {
-    //    | Node()
-    //  }
-      
-      
-    //  def unfold(n)
-    //  {
-    //    | TransitionTarget.PseudoState(n) => match (n.Value)
-    //                                         {
-    //                                           | PseudoStateNode.Fork(t, _) => t
-    //                                           | PseudoStateNode.Join(target = t) => TraverseUtils.SingleElement(t)
-    //                                           | PseudoStateNode.Junction(tree = t) => def t = t.Fold(create_junc_tree);
-                                                                                       
-    //                                         }
-    //                                         null
-    //  }
-      
-    //  tree.Unfold(unfold);
-      
-    //  this
-    //}
-    //public TargetIdObjects : IEnumerable[IdObject]
-    //{
-    //  get
-    //  {
-    //    To.IdObjects
-    //  }
-    //}
-
-    /// <summary>
-    /// Beginning state from which real executes transition
-    /// </summary>
-    /// <remarks>
-    /// (from From differs, what Source shows current active state from which executes transition, not from beginning on diagram
-    /// From determines beginning state from which follow out transition
-    /// Source as a rule is nested state or same as From, if From not have sub states
-    /// </remarks>
-    //public Source : GeneralTree[FsmState];
-
     [NeedChange]
     public Local : bool;
 
-
-    //public ChangeCopyAndNum(copy : int) : StateTransition
-    //{
-    //  def func(p)
-    //  {
-    //    p.ChangeNode(p => p.ChangeNumCopy(analyser.statemap.GetNextGlobalNum(), copy))
-    //  }
-
-    //  def to = To.Reduce(pseudo_state = func, junction = (t, _) => func(t));
-    //  ChangeTo(to)
-    //}
-
-    //public SetNewId() : StateTransition
-    //{
-    //  ChangeNum(analyser.statemap.GetNextGlobalNum())
-    //}
 
     public PathNode : IEnumerable[PathNode]
     {
@@ -440,29 +356,6 @@ namespace Nemerle.Statechart
         ChangeTo(To.Traverse(func))
     }
 
-//blic UpdateTargets(old_t : FsmState, new_t : FsmState) : StateTransition
-    //{
-    //  def old_num = old_t.Num;
-
-    //  def check_target(tar)
-    //  {
-    //    | TransitionTarget.State(st) as t when (st.Num == old_t.Num) => t.ChangeState(new_t)
-    //    | Qualified(_, State(st) as t) when (st.Num == old_t.Num)    => t.ChangeState(new_t)
-    //    | Final(st) as t when (st.Num == old_t.Num)                  => 
-    //        match (new_t)
-    //        {
-    //          | FsmState.Final as st => t.ChangeState(st)
-    //          | _                    => null
-    //        }
-    //    | PseudoState(node) as t when (node.state.Num == old_t.Num)  => t.ChangeNode(node.ChangeState(new_t))
-    //    | _                                                          => null
-    //  }
-
-    //  def from = if (From.Num == old_num) new_t else From;
-    //  def src  = if (Source.Num == old_num) new_t else Source;
-    //  def tr   = ChangeFromSource(from, src);
-    //  tr.TargetTraverse(check_target)
-    //}
 
     public ActionList : list[string]
     {
@@ -557,74 +450,6 @@ namespace Nemerle.Statechart
 
     public static completion_evt : StateEvent = StateEvent(TransitionNode.Event(0, null));
 
-    ///// <summary>
-    ///// Shows that transition is used
-    ///// </summary>
-    //[NeedChange(omit_guard)]
-    //[NeedChange]
-    //public used : bool;
-
-    ////public Updated : StateTransition
-    ////{
-    ////  get
-    ////  {
-    ////    def trans = match (this)
-    ////                 {
-    ////                   | Internal   => Source.internal_tran
-    ////                   | Initial    => Source.initial
-    ////                   | Transition => Source.transitions
-    ////                   | _          => Source.all_transitions_with_init
-    ////                 }
-    ////    match (trans.Find(x => x.Num == Num))
-    ////    {
-    ////      | Some(tr) => tr
-    ////      | _        => null
-    ////    }
-    ////  }
-    ////}
-
-    //public Used : bool
-    //{
-    //  get
-    //  {
-    //    used
-    //  }
-    //}
-
-    //public Used : bool
-    //{
-    //  get
-    //  {
-    //    used || clones.Exists(_.Used)
-    //  }
-    //  set
-    //  {
-    //    used = value
-    //  }
-    //}
-
-    //public UsedInGenerate : bool
-    //{
-    //  get
-    //  {
-    //    Used
-    //  }
-    //}
-
-    ///// <summary>
-    ///// Used in Choice of crossed transitions
-    ///// </summary>
-    //[NeedChange]
-    //public UsedInChoice : bool;
-    /// <summary>
-    /// Shows that transition is cross for other
-    /// </summary>
-    //[NeedChange]
-    //public CrossFor : bool;
-
-    //[NeedChange]
-    //public NotWork : bool;
-
     public Clone() : StateTransition
     {
       ChangeTo(To.Clone())
@@ -635,15 +460,6 @@ namespace Nemerle.Statechart
       Name
     }
 
-    //public FromRegion : GeneralTree[FsmState]
-    //{
-    //  get
-    //  {
-    //    From.PartOfSubRegion()
-    //  }
-    //}
-    /// <summary>
-    /// Shows what need name with GuardNode out of name crossing
     /// </summary>        
     [NeedChange]
     public NeedGuardedName : bool;
