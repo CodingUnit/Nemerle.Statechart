@@ -22,14 +22,14 @@ namespace Nemerle.Statechart
     {
       def def_initial(i)
       {
-        DefineTransBody(i |> _ : StateTransition, GenCtx.Normal());
+        DefineTransBody(i.Map(x => x.Value : StateTransition), GenCtx.Normal());
       }
 
-      def initial = def_initial(analyser.TopState.initial); // define initial transition
+      def initial = def_initial(analyser.TopState.InitialTransitions()); // define initial transition
       def events = analyser.Events |> <[ $_ ]>;
-      def states = analyser.LivedNestedStates.Exclude(_.IsTopState) |> Name |> <[ $_ ]>;
-      def state_names = $[(st.Name, $"State$(st)"), st in analyser.LivedNestedStates, st.UsedInGenerate && !st.IsTopState && !(st is FsmState.ConcurrentSubRegion)]; // создаем имена состояний      
-      def state_init_expr = state_names |> <[ $(_[2] : usesite) = State.$(_ : usesite)();]>;
+      def states = analyser.LivedNestedStates.Exclude(_.IsTopState()).Map(x => <[ $(x.Name() : usesite) ]>);
+      def state_names = $[(st.Name(), $"State$(st)"), st in analyser.LivedNestedStates, st.UsedInGenerate() && !st.IsTopState() && !(st.Data is FsmState.ConcurrentSubRegion)]; // создаем имена состояний      
+      def state_init_expr = state_names.Map((x, y) => <[ $(y : usesite) = State.$(x : usesite)();]>);
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
       def trans_complete_expr =  if (analyser.Fsm.flags.TransitionCompleted) <[ OnTransitionCompleted(); ]> else <[ () ]>;
       def dummy =  <[decl:
@@ -142,7 +142,7 @@ namespace Nemerle.Statechart
     {
       def stop_activity(st, act)
       {
-        def name = act.GetName(st);
+        def name = act.GetName(st.Data);
         <[
           $($"$(name)Stop" : usesite)();
         ]>
@@ -249,9 +249,9 @@ namespace Nemerle.Statechart
       //tran_events = analyser.Events.;
       events = analyser.Events.NToList();
       events_call = Map(events |> (_, <[ cur_state.$(_ : usesite)(this) ]>));
-      history_paths = analyser.HistoryPaths.Map(x => (x.Name, GenAction.CreateActions(x.Path, action_for)));
+      history_paths = analyser.HistoryPaths.MapToList(x => (x.Value.Name, GenAction.CreateActions(x.Value.Path, action_for)));
       //history_transitions = analyser.history_transitions.Map((x, y) => (x, GenAction.CreateActions(y.PathNode, action_for)));
-      history_def_transitions = analyser.history_default_transitions.Map(x => (x.Name, GenAction.CreateActions(x.PathNode, action_for)));
+      history_def_transitions = analyser.history_default_transitions.Map(x => (x.Value.Name, GenAction.CreateActions(x.Value.PathNode, action_for)));
     }
 
     InitActionNames() : void

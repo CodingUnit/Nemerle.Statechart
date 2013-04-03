@@ -10,9 +10,9 @@ using Nemerle.Compiler.Parsetree;
 
 namespace Nemerle.Statechart
 {
-  /// <summary>
-  /// Description of GeneratorImpl.
-  /// </summary>
+/// <summary>
+/// Description of GeneratorImpl.
+/// </summary>
   public partial class StaticGenerator
   {
     Define(f : ClassMember) : void
@@ -40,7 +40,7 @@ namespace Nemerle.Statechart
       when (WithSources)
       {
         def man = ty.TyManager;
-        man.GenerateFakeSourceCode(f);
+        man.GenerateFakeSourceCode(ty, f);
       }
       ty.DefineNestedType(f);
     }
@@ -62,8 +62,8 @@ namespace Nemerle.Statechart
       def evt = <[decl: public event $(name : usesite) : $type;]>;
       def method = <[decl: $($"On$name" : usesite)(..$pars) : void 
                     {
-                      def temp = $(name : usesite);
-                      when (temp != null) temp($body);
+                    def temp = $(name : usesite);
+                    when (temp != null) temp($body);
                     }]>;
       Define([method, evt]);
     }
@@ -82,25 +82,25 @@ namespace Nemerle.Statechart
                             def i = i.Select(x => (x.ExecExpr, false));
                             def lst = lst.Select((x, y) => (GetActions(x, action_for, false), y));
                             i.Concat(lst).NToList()
-                            
+
                         | _ => [(<[ () ]>, false)]
                       }
 
         def (after, before) = inline.Partition((_, x) => x);
         def after  = after.Split()[0];
         def before = before.Split()[0];
-          <[
-            {..$before}
+        <[
+        {..$before}
             $act_call;
             {..$after}
-          ]>
+        ]>
       }
 
       def events = name.Map(x => <[decl: public event $(x.exec_name : usesite) : Action;]>);
       def methods = name.Map(x => <[decl: $(x.end_name : usesite)() : void 
-                              {
+                            {
                                 $(get_body(x))
-                              }]>);
+                            }]>);
       Define(events + methods);
     }
 
@@ -115,34 +115,37 @@ namespace Nemerle.Statechart
       Define(defs)
     }
 
-    get_history_run_name(h : PseudoStateNode.History, x : string) : string
+    get_history_run_name(h : NodeValue[FsmState, PseudoStateNode], x : string) : string
     {
-      | (PseudoStateNode.History(state = FsmState(BothHistories = true), type = t), x) => $"$(t)HistoryFrom$x"
-      | (_, x)                                                              => $"HistoryFrom$x"
+      match (h.Value)
+      {
+        | PseudoStateNode.History(type = t) when (h.Parent.BothHistories()) => $"$(t)HistoryFrom$x"
+        | _                                                              => $"HistoryFrom$x"
+      }
     }
 
     get_action_call(act : string) : PExpr
     {
-      <[
-        def temp =  $(act : usesite);
+    <[
+      def temp =  $(act : usesite);
         when (temp != null) temp();
-      ]>;
+    ]>;
     }
 
     get_guard_call(act : string) : PExpr
     {
-      <[
-        def temp =  $(act : usesite);
+    <[
+      def temp =  $(act : usesite);
         if (temp != null) temp(); else false
-      ]>;
+    ]>;
     }
 
     get_event_call(act : string) : PExpr
     {
-      <[
-        def temp =  $(act : usesite);
+    <[
+      def temp =  $(act : usesite);
         when (temp != null) temp(this, null);
-      ]>;
+    ]>;
     }
 
     static MergeExprAnd(expr : IEnumerable[PExpr]) : PExpr
@@ -183,7 +186,7 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
+
     StateIdType : PExpr
     {
       get
@@ -214,9 +217,9 @@ namespace Nemerle.Statechart
         def pars = res.Select(x => <[ $x ]>);
         def pars = pars.MapIndex((x, i) => <[ id.$($"id$i" : usesite) = $x ]>).NToList();
         <[ 
-          def id = LongId();
-          {..$pars}
-          id
+        def id = LongId();
+        {..$pars}
+        id
         ]>
       }
 
