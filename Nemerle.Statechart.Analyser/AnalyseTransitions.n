@@ -233,7 +233,7 @@ namespace Nemerle.Statechart
                 if (tr.All(x => x.Parent.PartOfSubRegion().HasValue) &&
                     tr.ElementsEqual((x, y) => x.Parent.PartOfRegion().Value == y.Parent.PartOfRegion().Value : object))
                 {
-                  def tran = StateTransition.Create(j, tr.First().Value.Trigger, t);
+                  def tran = StateTransition.Transition(j.Parent, t, tr.First().Value.Trigger);
                   def reg = tr.First().Parent.PartOfRegion().Value.Data;
                   def tr = tr.OrderBy(x => x.Parent.PartOfSubRegion().Value.Index());
                   //j.joined_tran = tr;
@@ -247,11 +247,11 @@ namespace Nemerle.Statechart
                   jn.transition.Value = tran
                 } else 
                 {
-                  AddError(FsmError.JoinTransitionMustLeaveRegion(j, tr));
+                  AddError(FsmError.JoinTransitionMustLeaveRegion(j, tr.NToList()));
                 }
               } else 
               {
-                AddError(FsmError.JoinTransitionMustHaveSameTrigger(j, tr))
+                AddError(FsmError.JoinTransitionMustHaveSameTrigger(j, tr.NToList()))
               }
 
           | _ => ()
@@ -295,7 +295,7 @@ namespace Nemerle.Statechart
                 } else
                 {
                   //def reg = regs.First();
-                  def sub_trans = t.Map(x => NodeValue(f.Parent, StateTransition.Create(f, null, x)));
+                  def sub_trans = t.Map(x => NodeValue(f.Parent, StateTransition.Transition(f.Parent, x, null)));
                   f.Value = j.ChangeForkTran(sub_trans);
                   //def sub_trans = sub_trans.Map(x => x.ChangeLocal(true));
                   //tr.ToPseudo.SetValue(x => (x :> PseudoStateNode.Fork).ChangeForkTran(sub_trans))
@@ -323,7 +323,7 @@ namespace Nemerle.Statechart
       {
         match (node.Value.To)
         {
-          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction) as n) => CheckJunction(n);
+          //| TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction) as n) => CheckJunction(n);
           | _                                                                              => ()
         }
 
@@ -385,7 +385,7 @@ namespace Nemerle.Statechart
       //def tran = tran.Concat(dups);
       //def (dups, tran) = tran.DuplicatesPartition(x => x[0]);
       //def dups = dups.GroupBy(x => x[0]);
-      def err = dups.Map(FsmError.DuplicateTransition);
+      def err = dups.Map(x => FsmError.DuplicateTransition(x.NToList()));
       AddErrors(err);
     }
 

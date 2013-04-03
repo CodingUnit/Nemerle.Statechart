@@ -6,6 +6,7 @@ using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -66,6 +67,7 @@ namespace Nemerle.Statechart
       path = path.Add(node)
     }
 
+#if 0        
     TraverseChoice(j : NodeValue[FsmState, PseudoStateNode], tran : StateTransition) : TransitionDestination
     {
       match (j.Value)
@@ -78,7 +80,7 @@ namespace Nemerle.Statechart
           def init_path = path;
           //path = Empty();
 
-         
+
 
           def create_targ_tree(t, pst)
           {
@@ -89,9 +91,9 @@ namespace Nemerle.Statechart
                 def node_path = GetPath(pst, st, true, jst);
                 t.Update(x => x.ChangeNodePathOutPath(node_path, Enumerable.Empty()));
                 st
-                
+
             | TreeJunctionNode.Target(target = tar, junc = j) as tt=>
- 
+
                 def st = j.Parent;
                 path = init_path;
                 def node_path = GetPath(pst, st, true, jst);
@@ -101,14 +103,14 @@ namespace Nemerle.Statechart
                 t.Data = tt.ChangeDestOutPathNodePath(dest, out_path, node_path); 
                 st
               }
-                
+
           }
 
           traverser?.Log($"\nTraversing choice node $j");
           _ = t.GetBreadthFirstEnumerable().Fold(jst, create_targ_tree);//Reduce(j.state, (t, _, _, a) => create_tree_node(t, a), create_targ_tree);
           path = init_path;
           ChoiceNode(t)
-          
+
           | _ => ()
         }
     }
@@ -120,7 +122,7 @@ namespace Nemerle.Statechart
         null
     }
 
-#if 0    
+
     TraverseJunctionNode(j : TransitionTarget.JunctionNode, junc : PseudoStateNode.Junction) : TransitionDestination
     {
       | (JunctionNode(decisionTree = t), PseudoStateNode.Junction(state = jst)) =>
@@ -154,7 +156,7 @@ namespace Nemerle.Statechart
           path.TraverseJunctionNode(j, junc);
     }
 
-#endif
+
 
     TraverseMerge(j : PseudoStateNode.Junction, tr : StateTransition) : TransitionDestination
     {
@@ -175,27 +177,33 @@ namespace Nemerle.Statechart
       //    DefPath(j.state, t.ToState);
       //    TraverseTargetReg(t, tr)
     }
+#endif
 
-    TraversePseudo(st : PseudoStateNode, tr : StateTransition) : TransitionDestination
+    TraversePseudo(st : NodeValue[FsmState, PseudoStateNode], tr : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
-      match (st)
+      match (st.Value)
       {
-        | History as t                                => TraverseHistory(t)
-        | Terminate  as n                             => transition = tr.ChangeUsed(true);
-                                                         Terminate(n)
-        | Fork(target = t) as f                       => TraverseFork(f, t)
-        | Junction(type = JunctionType.Choice) as j   => TraverseChoice(j, tr)
-        | Junction(type = JunctionType.Merge)  as m   => TraverseMerge(m, tr)
-        | Junction as j                               => TraverseJunction(j, tr)
+        | History                                     => TraverseHistory(st)
+        | Terminate                                   => tr.Used(true);
+                                                        Terminate(st)
+        | Fork(target = t)                            => TraverseFork(st, t)
+        //| Junction(type = JunctionType.Choice) as j   => TraverseChoice(j, tr)
+        //| Junction(type = JunctionType.Merge)  as m   => TraverseMerge(m, tr)
+        //| Junction as j                               => TraverseJunction(j, tr)
         | _                                           => Unknown()
       }
     }
     /// <summary>
     /// Processing final state node
     /// </summary>
-    TraverseFinal(st : FsmState) : TransitionDestination
+    TraverseFinal(st : GeneralTree[FsmState]) : TransitionDestination
     {
-      | FsmState.Final(PartOfRegion = Some(r), PartOfSubRegion = Some(sr), completion_transitions = tran) =>
+      def reg = st.PartOfRegion();
+      def sr = st.PartOfSubRegion();
+      match (st.Data, reg, sr)
+      {
+        | (FsmState.Final, Some(r), Some(sr)) =>
+          def tran = st.CompletionTransitions();
           match (tran.NToList())
           {
             | []   => traverser?.Log($"\nEntering in final state $st of Region ($r:$sr) and live in it");
@@ -204,16 +212,16 @@ namespace Nemerle.Statechart
                 //st.Completion = tran;
                 traverser?.Log($"\nEntering in final state $st of Region ($r:$sr) transitions ..$tran may happen");
                 traverser?.Add(tran);
-                Final(st, sr, r, tran)
+                TransitionDestination.Final(st, sr, r, tran)
           }
 
         // if we not have completion transition and transitions from this or upper states, final state must recognised as terminate node
-      | Final(Super = parent, completion_transitions = [], transitions = []) => Terminate(PseudoStateNode.Terminate.Create(parent, analyser))
-          
-      | Final(Super = parent, completion_transitions = tran) =>
+        | (Final, _, _) when (st.CompletionTransitions().IsEmpty() && st.Transitions().IsEmpty()) => Terminate(NodeValue(st.Parent, PseudoStateNode.Terminate(0)))
 
-          def history = st.ParticipateInHistory;
-          def hist_clear = ClearHistory(history); // create clear history node
+        | (Final, _, _) =>
+          def tran = st.CompletionTransitions();
+          def history = st.ParticipateInHistory();
+          def hist_clear = ClearHistory(history.NToList()); // create clear history node
           traverser?.Log($"\nEntering in final state $st");
           // find completion transition
           match (tran.NToList())
@@ -222,10 +230,10 @@ namespace Nemerle.Statechart
               traverser?.Log("..and live in it");
               State(st)
                   // if have completion transition without guard
-            | [Transition(Guard = None) as tran]  =>
+            | [NodeValue(Value = Transition(Guard = None)) as tran] as tr =>
                   // if not defined transition path create it
                 traverser?.Log($"..and pass it by completion transition $tran");
-                traverser?.Add(tran);
+                traverser?.Add(tr);
                 AddNode(hist_clear); // get nodes and add to path
                 TransitionExecute(tran)
                   // if we have transition list
@@ -233,10 +241,11 @@ namespace Nemerle.Statechart
                 AddNode(hist_clear); // add node
                 traverser?.Add(tran);
                 traverser?.Log($"..and pass it by completion transitions ..$tran");
-                Choice(parent, tran, Some(st))
+                Choice(st.Parent, tran.NToList(), Some(st))
           }
 
-      | _ => null
+        | _ => null
+      }
     }
 
 
@@ -244,9 +253,9 @@ namespace Nemerle.Statechart
     {
       match (hist.Value)
       {
-        | PseudoStateNode.History(default = tran) as h =>
+        | PseudoStateNode.History(default = tran) =>
             tran.Iter(traverser?.Add);
-            hist.Update(_ => h.ChangeUsed(true));
+            hist.Used(true);
             History(hist)
         | _ => null
       }
@@ -258,113 +267,131 @@ namespace Nemerle.Statechart
     //  TransitionDestination.SubMachine(fsm, state)
     //}
 
-    TraverseDefaultTransition(tran : StateTransition.Default) : TransitionDestination
+    TraverseDefaultTransition(tran : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
-      | Default(history = hist, Source = src, From = from) =>
-
-          DefPath(src, from, tran); // unwind path from Source up to transition begining (From)
-          def st = tran.ToState;
+      match (tran.Value)
+      {
+        | Default(history = hist, From = from) as tr =>
+          DefPath(tran.Parent, from, tran); // unwind path from Source up to transition begining (From)
+          def st = tr.ToState;
           when (st == null) throw FsmErrorException(FsmError.DefaultTransitionMustGoToState(tran, hist));
-          transition = tran.ChangeUsed(true);
-          match (hist, st.history.Value.Find(x => x.type == HistoryType.Deep))
-          {
-            | (PseudoStateNode.History(type = HistoryType.Deep), Some(PseudoStateNode.History(default = t, type = HistoryType.Deep) as h)) =>
-                when (t is Some(tr)) traverser?.Add(tr);
-                History(h)
+          tran.Used(true);
+          TraverseTargetReg(tr.To, tran)
+          //match (hist, st.history.Value.Find(x => x.type == HistoryType.Deep))
+          //{
+          //  | (PseudoStateNode.History(type = HistoryType.Deep), Some(PseudoStateNode.History(default = t, type = HistoryType.Deep) as h)) =>
+          //      when (t is Some(tr)) traverser?.Add(tr);
+          //      History(h)
 
-            | _ => TraverseTargetReg(tran.To, tran)
-          }
+          //  | _ => TraverseTargetReg(tr.To, tr)
+          //}
+        | _ => null
+      }
     }
 
-    TraverseOrdinaryTransition(tran : StateTransition) : TransitionDestination
+    TraverseOrdinaryTransition(tran : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
-      DefPath(tran.Source, tran.From, tran); // unwind path from Source up to transition begining (From)
-      transition = tran.ChangeUsed(true);
-      TraverseTargetReg(tran.To, tran)
+      DefPath(tran.Parent, tran.Value.From, tran); // unwind path from Source up to transition begining (From)
+      tran.Used(true);
+      TraverseTargetReg(tran.Value.To, tran)
     }
 
-    TraverseHistoryPath(tran : StateTransition.History) : TransitionDestination
+    TraverseHistoryPath(tran : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
-      | History(From = from, Source = src, history = hist, ToState = st) =>
+      match (tran.Value)
+      {
+        | StateTransition.History(From = from, history = hist, ToState = st) =>
 
-          def tran = if (tran.From == null) tran.ChangeFromNum(tran.From) else tran;
+          def src = tran.Parent;
+          //def tran = if (tr.From == null) tr.ChangeFrom(tr.From) else tran;
           DefPath(src, from, tran); // unwind path from Source up to transition begining (From)
-          transition = tran.ChangeUsed(true);
-          if (st is ConcurrentRegion) HistoryRestore(hist) 
-          else TraverseStateTarget(st.Updated);
+          tran.Used(true);
+          if (st.Data is ConcurrentRegion) HistoryRestore(hist) 
+          else TraverseStateTarget(st);
+        | _ => null
+      }
     }
 
-    TraverseInitialTransition(tran : StateTransition.Initial) : TransitionDestination
+    TraverseInitialTransition(tran : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
-      DefPath(tran.Source, tran.From, tran); // unwind path from Source up to transition begining (From)
-      transition = tran.ChangeUsed(true);
-      TraverseTarget(tran.To, tran)
+      DefPath(tran.Parent, tran.Value.From, tran); // unwind path from Source up to transition begining (From)
+      tran.Used(true);
+      TraverseTarget(tran.Value.To, tran)
     }
 
-    TraverseStateTarget(st : FsmState) : TransitionDestination
+    TraverseStateTarget(st : GeneralTree[FsmState]) : TransitionDestination
     {
+      match (st.Data)
+      {
         // transition to region
-      | ConcurrentRegion as r => TraverseOrthogonalRegion(r)
-      | Final as st           => TraverseFinal(st)
-        // if simple state and no initial transition
-      | FsmState(initial = []) as st => 
-         traverser?.Log($"\nEntering state $st and live in it");
-         def st = st.ChangeLived(true);
-         traverser?.Add(st);
-         State(st) // end state
-          // if state with one initial transition without Guard
-      | FsmState(initial = [Initial(guard = None) as init])  => 
-          // check initial transition path, and traverse it if it null
+        | ConcurrentRegion      => TraverseOrthogonalRegion(st)
+        | Final                 => TraverseFinal(st)
+        | _ => match (st.InitialTransitions().NToList())// with (initial = [Initial(guard = None) as init]) => 
+            {
+              // if simple state and no initial transition
+              | [] => traverser?.Log($"\nEntering state $st and live in it");
+                      st.Lived(true);
+                      traverser?.Add(st);
+                      State(st) // end state
+                // if state with one initial transition without Guard
+              | [NodeValue(Value = Initial(guard = None)) as init] =>
+        // check initial transition path, and traverse it if it null
       // TODO: !!! update initial transition in fsm state from destination
-          traverser?.Log($"\nEntering state $st and pass through initial transition $init");
-          traverser?.Add(init);
-          TransitionExecute(init)
+                  traverser?.Log($"\nEntering state $st and pass through initial transition $init");
+                  traverser?.Add(init);
+                  TransitionExecute(init)
 
-      | FsmState(initial = init) as st  => 
-          traverser?.Log($"\nEntering state $st and pass through several initial transitions ..$init");
-          traverser?.Add(init);
-          def init = init.Map(_.ChangeUsed(true));
-          Choice(st, init, None()); // creating dynamic choice node
+              | init => 
+                  traverser?.Log($"\nEntering state $st and pass through several initial transitions ..$init");
+                  traverser?.Add(init);
+                  init.Iter(x => x.Used(true));
+                  Choice(st, init, None()); // creating dynamic choice node
+            }
+      }
     }
 
-    TraverseTarget(to : TransitionTarget, tr : StateTransition) : TransitionDestination
+    TraverseTarget(to : TransitionTarget, tr : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
       match (to)
       {
         | State(state = st) => TraverseStateTarget(st)
           // if target is orthogonal state
         | Final(state = st) => TraverseFinal(st) // process final node
-        | PseudoState(value = st)   => TraversePseudo(st, tr)
+        | PseudoState(node = st)   => TraversePseudo(st, tr)
         //| SubMachine(m, s)  => TraverseSubMachine(m, s)
         | _                 => Unknown()
       }
     }
 
-    TraverseTargetReg(to : TransitionTarget, tr : StateTransition) : TransitionDestination
+    TraverseTargetReg(to : TransitionTarget, tr : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
       match (to)
       {
-        | TransitionTarget(PartOfSubRegion = Some(r)) when (!transition.WithinRegion) => TraverseSubRegion(r, to, tr)
-        | _                                                                           => TraverseTarget(to, tr)
+        | TransitionTarget(PartOfSubRegion = Some(r)) when (!tr.Value.WithinRegion) => TraverseSubRegion(r, to, tr)
+        | _                                                                         => TraverseTarget(to, tr)
       }
     }
 
-    TraverseTransition(tran : StateTransition) : TransitionDestination
+    TraverseTransition(tran : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
-      | Internal                                => transition = tran.ChangeUsed(true);
-                                                   NoStateChange()
-      | Default as tr                           => TraverseDefaultTransition(tr)
-      | Initial as tr                           => TraverseInitialTransition(tr)
-      | History as tr                           => TraverseHistoryPath(tr)
+      match (tran.Value)
+      {
+        | Internal                                => tran.Used(true);
+                                                  NoStateChange()
+        | Default                                 => TraverseDefaultTransition(tran)
+        | Initial                                 => TraverseInitialTransition(tran)
+        | History                                 => TraverseHistoryPath(tran)
           // if not exit from region
-      | Transition(WithinRegion = true)         => TraverseWithinRegionTransition(tran)
+        | Transition(WithinRegion = true)         => TraverseWithinRegionTransition(tran)
           // if go to join pseudo state
-      | Transition(To = PseudoState(value = Join as j)) => TraverseJoinTransition(j, tran)
+        | Transition(To = TransitionTarget.PseudoState(node = NodeValue(Value = Join) as j)) => TraverseJoinTransition(j, tran)
           // if from state in orthogonal region, and transition begins in orthogonal regions boundary or upper
-      | Transition(Source = FsmState(PartOfSubRegion = Some(r))) 
-                                                => TraverseTransitionFromRegion(r, tran)
+        | _ 
+                                                  => 
+            if (tran.Parent.PartOfSubRegion() is Some(r))
+              TraverseTransitionFromRegion(r, tran) else TraverseOrdinaryTransition(tran)
                                                 // else ordinary transition
-      | _                                       => TraverseOrdinaryTransition(tran)
+      }
     }
 
     /// <summary>
@@ -380,10 +407,10 @@ namespace Nemerle.Statechart
         | Choice(_, _, Some(st))
         | Final(state = st)
         | State(st)                              =>
-                                                def st = st.ChangeLived(true);
+                                                st.Lived(true);
                                                 when (recursive) traverser?.Add(st);
                                                 st
-        | Terminate(PseudoStateNode(state = st)) 
+        | Terminate(NodeValue(Parent =  st))
         | Region(st)
         | Choice(st, _, _)                       => st
         | _                                      => null
@@ -391,10 +418,10 @@ namespace Nemerle.Statechart
 
 
       //recursive = rec;
-      def to = TraverseTransition(transition.Value); // traversing transition
+      def to = TraverseTransition(transition); // traversing transition
       traverser?.Log($"transition: $transition destination:$to");
       def actual = check_actual_to(to);
-      
+
       transition.Update(x => x.ChangeDestinationActualToPath(to, actual, this));
     }
 

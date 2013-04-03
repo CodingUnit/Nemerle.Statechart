@@ -5,6 +5,7 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -21,122 +22,130 @@ namespace Nemerle.Statechart
   public partial class TransitionPath
   {
 
-    TraverseJoinTransition(join : PseudoStateNode.Join, tr : StateTransition) : TransitionDestination
+    TraverseJoinTransition(join : NodeValue[FsmState, PseudoStateNode], tr : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
-      | (Join(joined_tran = jtran, state = st, transition = tran), StateTransition(Source = src)) =>
+      | (NodeValue(Value = Join(joined_tran = jtran, transition = tran), Parent = st), NodeValue(Parent = src)) =>
 
-          def tr = tr.ChangeUsedOmitGuard(true, true);
+          tr.Update(_.ChangeOmitGuard(true));
+          tr.Used(true);
           DefExitPath(src, st);
           traverser?.Add(tran);
-          def (node, tran) = if (tr.FromRegion == jtran.Last().FromRegion)
+          def (node, tran) = if (tr.FromRegion().Value : object == jtran.Last().FromRegion().Value)
           {
-            def tr = tr.AddCheck(Join(join, tr));
+            tr.Update(x => x.AddCheck(CheckNode.Join(join, tr)));
             (JoinedTransition(join, tran), tr)
           } else
-          if (tr.FromRegion == jtran.First().FromRegion)
+          if (tr.FromRegion().Value : object == jtran.First().FromRegion().Value)
           {
-            def tr = tr.AddCheck(RegionStates(jtran |> From));
-            def has_guard = jtran.Exists(x => x.SourceGuard.HasValue);
-            def tr = if (has_guard) tr.AddCheck(Guard(jtran.FilterValues(_.Guard))); else tr;
+            tr.Update(x => x.AddCheck(RegionStates(jtran.Map(x => x.Value.From))));
+            def has_guard = jtran.Exists(x => x.Value.guard.HasValue);
+            when (has_guard) tr.Update(x => x.AddCheck(Guard(jtran.FilterValues(x => x.Value.Guard).NToList())));
             (Join(join), tr)
           }
           else
           {
-            def tr=  tr.AddCheck(Join(join, tr));
+            tr.Update(x => x.AddCheck(Join(join, tr)));
             (Join(join), tr)
           }
           transition = tran;
           node
+      | _ => null
     }
 
-    TraverseFork(fork : PseudoStateNode.Fork, targets : list[TransitionTarget]) : TransitionDestination
+    TraverseFork(fork : NodeValue[FsmState, PseudoStateNode], targets : list[TransitionTarget]) : TransitionDestination
     {
-      | (Fork(fork_tran = ftran), t) => 
+      | (NodeValue(Value = Fork(fork_tran = ftran)), t) => 
 
-        def st = t |> ToState;
-        def reg = st |> PartOfSubRegions;
-        def sreg = reg |> Last();
-        def reg = sreg.Head.contained_in;
+        def st = t.Map(x => x.ToState);
+        def reg = st.Map(x => x.PartOfSubRegions());
+        def sreg = reg.Map(x => x.Last());
+        def reg = sreg.Head.ContainedIn();
         traverser?.Add(ftran);
         Fork(reg, ftran)
+        | _ => null
     }
 
-    TraverseOrthogonalRegion(reg : ConcurrentRegion) : TransitionDestination
+    TraverseOrthogonalRegion(reg : GeneralTree[FsmState]) : TransitionDestination
     {
-      def initial = reg.sub_regions |> initial;
+      def initial = reg.SubRegions().Map(x => x.InitialTransitions());
       when (!initial.All(x => !x.IsEmpty())) throw FsmErrorException(FsmError.RegionMustContainInitial(reg, transition));
       def init = initial.Flatten();
-      def init = init.Map(_.TraversePath());
-      def sub = reg.sub_regions.Map(x => x.UpdateTransitions(init) :> ConcurrentSubRegion);
-      def reg = reg.ChangeSubRegions(sub);
+      init.Iter(_.TraversePath());
+      //def sub = reg.SubRegions();//.Map(x => x.UpdateTransitions(init) :> ConcurrentSubRegion);
+      //def reg = reg.ChangeSubRegions(sub);
       def target = Region(reg);
-      if (transition is Initial) target else TraverseCompletionTransition(target, target)
+      if (transition.Value is Initial) target else TraverseCompletionTransition(target, target)
     }
 
     TraverseCompletionTransition(target : TransitionDestination, to : TransitionDestination) : TransitionDestination
     {
       match (target)
       {
-        | Region(ConcurrentRegion(sub_regions = sr)) =>
-
-          def init = sr.SelectMany(_.initial);
-          def st = init.Map(_.Destination);
-          def st = st |> TraverseCompletionTransition(_, to);
+        | Region(GeneralTree(Data = ConcurrentRegion) as st) =>
+          def sr = st.SubRegions();
+          def init = sr.SelectMany(x => x.InitialTransitions());
+          def st = init.Map(x => x.Value.Destination);
+          def st = st.Map(TraverseCompletionTransition(_, to));
           match (st.Find(_ is CheckAfter))
           {
           | Some(c) => c
           | _       => to
           }
 
-        | SubRegion(reg = FsmState(join_completion_transitions = (_ :: _) as tr))
-        | State(FsmState(join_completion_transitions = (_ :: _) as tr)) => 
+        | SubRegion(reg = s)
+        | State(s) => 
 
-            def (reg, joined) = match (tr.Head.To)
+            def tr = s.join_completion_transitions();
+            if (tr.IsEmpty()) to else
             {
-              | PseudoState(value = Join(joined_tran = tran, region = reg)) => (reg, tran)
+            def (reg, joined) = match (tr.First().Value.To)
+            {
+              | TransitionTarget.PseudoState(node = NodeValue(Value = Join(joined_tran = tran, region = reg))) => (reg, tran)
               | _                                                           => (null, null)
             }
             traverser?.Add(tr);
             ForceStateChange(TransitionPostConditions.RegionCompletion(reg, joined), to)
+            }
 
         | _ => to// end state
       }
     }
 
-    TraverseSubRegion(reg : FsmState, to : TransitionTarget, tran : StateTransition) : TransitionDestination
+    TraverseSubRegion(reg : GeneralTree[FsmState], to : TransitionTarget, tran : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
-      match (reg)
+      match (reg.Data)
       {
-        | ConcurrentSubRegion as reg =>
+        | ConcurrentSubRegion =>
 
-          def region = reg.contained_in;
+          def region = reg.ContainedIn();
           def st = to.ToState;
           def omitted = region.RegionsExcept(st); // other omitted regions
-          def initial = omitted |> initial;
-          when (!initial.All(_ is _ :: _)) throw FsmErrorException(FsmError.SubRegionsMustContainInitial(omitted, transition));
+          def initial = omitted.Map(x => x.InitialTransitions());
+          when (!initial.All(_ is _ :: _)) throw FsmErrorException(FsmError.SubRegionsMustContainInitial(omitted.NToList(), transition));
           def init = initial.Flatten();
           traverser?.Add(init);
           def target = TraverseTarget(to, tran);
-          def res = SubRegion(reg, target, transition.From);
+          def res = SubRegion(reg, target, tran.Value.From);
           TraverseCompletionTransition(target, res)
 
         | _ => null
       }
     }
 
-    TraverseWithinRegionTransition(tran : StateTransition) : TransitionDestination
+    TraverseWithinRegionTransition(tran : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
       def to = TraverseOrdinaryTransition(tran);
       TraverseCompletionTransition(to, to)
     }
 
-    TraverseTransitionFromRegion(reg : ConcurrentSubRegion, tran : StateTransition) : TransitionDestination
+    TraverseTransitionFromRegion(_reg : GeneralTree[FsmState], tran : NodeValue[FsmState, StateTransition]) : TransitionDestination
     {
-      | (ConcurrentSubRegion, StateTransition(Source = src, From = from)) =>
-
-          DefPath(src, from, tran);
-          def tran = tran.ChangeUsed(true);
-          ForceStateChange(TraverseTargetReg(tran.To, tran)) // traversing transition target
+      //| (ConcurrentSubRegion, StateTransition(Source = src, From = from)) =>
+      def src = tran.Parent;
+      def from = tran.Value.From;
+      DefPath(src, from, tran);
+      tran.Used(true);
+      ForceStateChange(TraverseTargetReg(tran.Value.To, tran)) // traversing transition target
     }
 
   }

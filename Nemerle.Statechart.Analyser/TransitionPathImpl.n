@@ -70,7 +70,7 @@ namespace Nemerle.Statechart
       {
         match (st.Data)
         {
-        | FsmState(do_activity = do_act, entry = en) => 
+          | FsmState(do_activity = do_act, entry = en) => 
           def act = Actions(st.Data.entry.SelectMany(_.actions).NToList());
           def inl = do_act.Map(x => (RunDoActivity(x, st), true));
           if (!en.IsEmpty() || !inl.IsEmpty()) Entry(act, inl, st) :: a else a
@@ -97,7 +97,7 @@ namespace Nemerle.Statechart
       {
         match (st.Data)
         {
-        | FsmState.ConcurrentRegion(exit = e) => 
+          | FsmState.ConcurrentRegion(exit = e) => 
             def get_source()
             {
               match (transition.Value.To)
@@ -106,8 +106,8 @@ namespace Nemerle.Statechart
                     def src = jtran.Map(x => x.Parent);
                     match (jtran.Last().FromRegion(), transition.FromRegion())
                     {
-                      | (Some(a), Some(b)) when (a == b) => (reg, src, true) 
-                      | _                                => (reg, src, false)
+                      | (Some(a), Some(b)) when (a : object == b) => (reg, src, true) 
+                      | _                                         => (reg, src, false)
                     }
                 | _ => (null, [transition.Parent], true)
               }
@@ -130,12 +130,12 @@ namespace Nemerle.Statechart
                 | p     => node :: p :: a
               }
             }
-          
-        | _ => match (GetExitNode(st))
-               {
-                 | Empty => a
-                 | x     => x :: a
-               }
+
+          | _ => match (GetExitNode(st))
+              {
+                | Empty => a
+                | x     => x :: a
+              }
         }
       }
 
@@ -148,24 +148,24 @@ namespace Nemerle.Statechart
       {
         match (st.Data)
         {
-        | FsmState.ConcurrentRegion(exit = e)  => 
+          | FsmState.ConcurrentRegion(exit = e)  => 
             def regs = st.RegionsExcept(src);
             def node = RegionExit(regs, st);
             if (e.IsEmpty()) TraverseUtils.SingleElement(node) else TraverseUtils.DoubleElement(GetExitNode(st), node)
 
-        | _ => TraverseUtils.SingleElement(GetExitNode(st))
-      }
+          | _ => TraverseUtils.SingleElement(GetExitNode(st))
+        }
       }
 
       nodes.SelectMany(exiting_state)
     }
 
-    NodesCreate(ex : IEnumerable[GeneralTree[FsmState]], tran : StateTransition) : IEnumerable[PathNode]
+    NodesCreate(ex : IEnumerable[GeneralTree[FsmState]], tran : NodeValue[FsmState, StateTransition]) : IEnumerable[PathNode]
     {
       def (exit, en) = TraverseTransitionPath(tran);
       def ex = ex.Concat(exit);
       def node = ExitNodeCreate(ex); // create nodes for exit exit actions
-      def node = AddAction(node, tran.action); // add transition action
+      def node = AddAction(node, tran.Value.action); // add transition action
       def entry_nodes = EntryNodeCreate(en); // create nodes for entry exit actions
       node.Concat(entry_nodes) // merge together
     }
@@ -177,19 +177,22 @@ namespace Nemerle.Statechart
       node.Concat(entry_nodes) // merge together
     }
 
-    TraverseTransitionPath(tran : StateTransition) : IEnumerable[GeneralTree[FsmState]] * IEnumerable[GeneralTree[FsmState]]
+    TraverseTransitionPath(tran : NodeValue[FsmState, StateTransition]) : IEnumerable[GeneralTree[FsmState]] * IEnumerable[GeneralTree[FsmState]]
     {
-      // initial и pseudo is local transitions by default
-      | Initial(AtLeastStaticTo = st, From = from)
-      | Transition(To = PseudoState(node = NodeValue(Parent = st)), From = from)
-      | History(From = from, ToState = st)
-      // fork transition
-      | Transition(From = from, Local = true, AtLeastStaticTo = st)
-      | Default(ToState = st, From = from)            => FindPath(from.StateDecl, st, Enumerable.Empty(), Enumerable.Empty())
+      match (tran.Value)
+      {
+        // initial и pseudo is local transitions by default
+        | Initial(AtLeastStaticTo = st, From = from)
+        | Transition(To = PseudoState(node = NodeValue(Parent = st)), From = from)
+        | History(From = from, ToState = st)
+        // fork transition
+        | Transition(From = from, Local = true, AtLeastStaticTo = st)
+        | Default(ToState = st, From = from)            => FindPath(from, st, Enumerable.Empty(), Enumerable.Empty())
       // transition to pseudo state
-      | Transition(AtLeastStaticTo = st, From = from) => FindLCA(from.StateDecl, st)
-      | Internal  // no path for internal transition
-      | _        => (Enumerable.Empty(), Enumerable.Empty())
+        | Transition(AtLeastStaticTo = st, From = from) => FindLCA(from, st)
+        | Internal  // no path for internal transition
+        | _        => (Enumerable.Empty(), Enumerable.Empty())
+      }
     }
 
     DefExitPath(src : GeneralTree[FsmState], dest : GeneralTree[FsmState]) : void
@@ -210,12 +213,12 @@ namespace Nemerle.Statechart
       {
         def (ex, en) = if (local) FindPath(src, dest, Enumerable.Empty(), Enumerable.Empty()) else FindLCA(src, dest);
         def ex = if (ex.IsEmpty()) ex else 
-                  if (skip != null && ex.First() == skip : object) ex.Skip(1) else ex;
+                   if (skip != null && ex.First() == skip : object) ex.Skip(1) else ex;
         NodesCreate(ex, en)
       }
     }
 
-    DefPath(src : GeneralTree[FsmState], dest : GeneralTree[FsmState], tr : StateTransition, ex_node : IEnumerable[PathNode] = null) : void
+    DefPath(src : GeneralTree[FsmState], dest : GeneralTree[FsmState], tr : NodeValue[FsmState, StateTransition], ex_node : IEnumerable[PathNode] = null) : void
     {
       def ex = FindPath(src, dest, Enumerable.Empty(), Enumerable.Empty())[0];
       def node = NodesCreate(ex, tr);

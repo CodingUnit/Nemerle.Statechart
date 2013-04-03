@@ -24,19 +24,20 @@ namespace Nemerle.Statechart
       this.analyser = an
     }
 
-    public this(st : GeneralTree[FsmState], tran : StateNode.Transition)
-    {
-      this(st, tran)
-    }
     
     public this(st : GeneralTree[FsmState], tran : StateNode.Transition)
     {
-      def an = st.Analyser;
-      this(an);
+      def an = st.Analyser();
+      this.analyser = an;
       //From = st;
       From = st;
       node = tran;
-      To = if (tran.to != null) TransitionTarget.Create(st.StateDecl, tran.to) else TransitionTarget.Nowhere(analyser);
+      when (tran != null)
+      {
+        guard = tran.guard;
+        action = tran.action;
+      }
+      To = if (tran.to != null) TransitionTarget.Create(st, tran.to) else TransitionTarget.Nowhere(analyser);
     }
 
     public this(st : GeneralTree[FsmState], to : GeneralTree[FsmState])
@@ -46,7 +47,7 @@ namespace Nemerle.Statechart
 
     public this(st : GeneralTree[FsmState], to : TransitionTarget)
     {
-      this(st.Analyser);
+      this(st.Analyser());
       //From = st;
       To = to;
       From = st
@@ -59,6 +60,8 @@ namespace Nemerle.Statechart
       this(tran.analyser);
       //From = tran.From;
       To = tran.To;
+      guard = tran.guard;
+      action = tran.action;
       omit_guard = tran.omit_guard;
       //ParentCrossed = tran.ParentCrossed;
       From = tran.From;
@@ -80,7 +83,10 @@ namespace Nemerle.Statechart
     [NeedChange]
     [NeedChange(To)]
     public From : GeneralTree[FsmState];
-    
+    [NeedChange]
+    public guard : option[GuardNode] = None();
+    [NeedChange]
+    public action : option[Actions] = None();
     [NeedChange]
     public To : TransitionTarget;
     [NeedChange]
@@ -110,7 +116,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (omit_guard) None() else To.guard
+        if (omit_guard) None() else guard
       }
     }
 
@@ -152,8 +158,7 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | Transition(From = FsmNode.State(st))       => $"Transition$(st.Data)To$(To)By$(FriendlyTriggerName)"
-          | Transition(From = FsmNode.PseudoState(st)) => $"Transition$(st.Value)To$(To)"
+          | Transition(From = st)            => $"Transition$(st.Data)To$(To)By$(FriendlyTriggerName)"
           | Internal(TriggerName = t)        => $"InternalTransition$(From)By$(t)"
           | Initial                          => $"InitialTransitionFrom$(From)To$To"
           | History                          => $"HistoryFrom$(From)To$ToState"
@@ -198,17 +203,17 @@ namespace Nemerle.Statechart
       Comparer(t1, t2) + GuardComparer(t1, t2) + eq
     }
 
-    public ToChoice : IEnumerable[StateTransition]
-    {
-      get
-      {
-        match (Destination)
-        {
-          | Choice(_, tran, _) => tran
-          | _                  => Enumerable.Empty()
-        }
-      }
-    }
+    //public ToChoice : IEnumerable[StateTransition]
+    //{
+    //  get
+    //  {
+    //    match (Destination)
+    //    {
+    //      | Choice(_, tran, _) => tran
+    //      | _                  => Enumerable.Empty()
+    //    }
+    //  }
+    //}
 
     public ToState : GeneralTree[FsmState]
     {
@@ -277,7 +282,7 @@ namespace Nemerle.Statechart
         match (Destination)
         {
           | null               => PathNode
-          | JunctionNode(node) => PathNode.Concat(node.Paths)
+          //| JunctionNode(node) => PathNode.Concat(node.Paths)
           | _                  => PathNode
         }
       }
@@ -316,7 +321,7 @@ namespace Nemerle.Statechart
         def targ_ok = match (Destination)
                        {
                          | ForceStateChange                                  => false
-                         | JunctionNode(DecisionNode(Paths = p, Guards = g)) => path_inlined(p) && g is [] 
+                         //| JunctionNode(DecisionNode(Paths = p, Guards = g)) => path_inlined(p) && g is [] 
                          | _                                                 => true
                        }
         path_ok && targ_ok
@@ -328,15 +333,11 @@ namespace Nemerle.Statechart
       get
       {
         def to = To.Guards;
-        match (SourceGuard)
+        match (guard)
         {
           | Some(g) => to.AddBefore(g)
           | _       => to
         }
-        //SourceGuard %:: To.Guards
-          //| TransitionTarget.PseudoState(PseudoStateNode.Merge(to = TransitionTarget.JunctionNode(Guards = g)))
-          //| TransitionTarget.PseudoState(PseudoStateNode.Junction(Guards = g)) => g.Append(SourceGuard)//SourceGuard %:: g
-          //| _                                                                  => Enumerable.Empty().Append(SourceGuard)//SourceGuard %:: []
       }
     }
 
@@ -448,7 +449,7 @@ namespace Nemerle.Statechart
       ChangeExecuteCheck(executeCheck + node)
     }
 
-    public static completion_evt : StateEvent = StateEvent(TransitionNode.Event(0, null));
+    public static completion_evt : StateEvent = StateEvent(TransitionEvent(null, 0));
 
     public Clone() : StateTransition
     {

@@ -60,7 +60,7 @@ namespace Nemerle.Statechart
       match (target)
       {
         | PseudoState as t                  => PseudoState(st, t)
-        | Final                             => TransitionTarget.Final(an, null)
+        | State(StateNode.State(type = StateType.Final)) => TransitionTarget.Final(an, null)
         | State       as t                  => State(an, t)
         | Named       as t                  => Named(st, t)
         | SubMachine(_m, s)                 => SubMachine(an, null, s)//SubMachine(m, null), s)
@@ -96,18 +96,19 @@ namespace Nemerle.Statechart
     //  | _                                      => false
     //}
 
-    //public PartOfSubRegion : option[ConcurrentSubRegion]
-    //{
-    //  get
-    //  {
-    //    match (ToState)
-    //    {
-    //      | null                      => None()
-    //      | ConcurrentSubRegion as st => Some(st)
-    //      | st                        => st.PartOfSubRegion
-    //    }
-    //  }
-    //}
+    public PartOfSubRegion : option[GeneralTree[FsmState]]
+    {
+      get
+      {
+        def st = ToState;
+        match (st.Data)
+        {
+          | null                => None()
+          | ConcurrentSubRegion => Some(st)
+          | _                   => st.PartOfSubRegion()
+        }
+      }
+    }
 
     public ToState : GeneralTree[FsmState]
     {
@@ -141,7 +142,7 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | TransitionTarget.PseudoState(NodeValue(Value = Junction as j)) => j.Guards
+          //| TransitionTarget.PseudoState(NodeValue(Value = Junction as j)) => j.Guards
           | _                                                              => Enumerable.Empty()
         }
         //JunctionNodeParts.Select(_.guard)
@@ -150,28 +151,27 @@ namespace Nemerle.Statechart
 
     public Traverse(func : TransitionTarget -> TransitionTarget) : TransitionTarget
     {
-        def traverse(n)
-        {
-          match (n.Data)
-          {
-            | TreeJunctionNode.Target(target = t) as node => n.Update(_ => node.ChangeTarget(func(t)))
-            | _                                           => ()
-          }
-        }
+        //def traverse(n)
+        //{
+        //  match (n.Data)
+        //  {
+        //    | TreeJunctionNode.Target(target = t) as node => n.Update(_ => node.ChangeTarget(func(t)))
+        //    | _                                           => ()
+        //  }
+        //}
         
         def to = func(this);
         def to = to ?? this;
         match (to)
         {
           | null                                                                                        => ()
-          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction(tree = t)))         => t.GetBreadthFirstEnumerable().Iter(traverse);
+          //| TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction(tree = t)))         => t.GetBreadthFirstEnumerable().Iter(traverse);
           | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Fork(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(t.Map(func)));
           | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(func(t)));
           | _                                                                                           => ()
         }
         to
     }
-    
     //public Rebuild(child : IEnumerable[TransitionTarget]) : TransitionTarget
     //{
     //  match (this)

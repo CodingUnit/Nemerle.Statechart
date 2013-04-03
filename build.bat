@@ -1,3 +1,3 @@
-msbuild Nemerle.Statechart_dev.sln
-
+set MSBuild="%SystemRoot%\Microsoft.NET\Framework\v4.0.30319\msbuild.exe"
+%MSBuild% Nemerle.Statechart_dev.sln
 pause
