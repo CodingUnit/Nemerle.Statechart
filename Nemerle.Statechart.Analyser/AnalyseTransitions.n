@@ -449,14 +449,15 @@ namespace Nemerle.Statechart
 
     CreateHistoryPaths() : void
     {
-      def create_hist_path(h)
+      def create_hist_path(h, a)
       {
         match (h.Value)
         {
-          | PseudoStateNode.History() => def sub = h.SubStatesParticipateIn();
-                                         def parent = h.Parent;
-                                         sub.Iter(x => HistoryPaths[x] = HistoryPath(parent, x, h).CreatePath());
-          | _ => ()
+          | PseudoStateNode.History => def sub = h.SubStatesParticipateIn();
+                                       def parent = h.Parent;
+                                       //node.ParticipateInHistory().Select(x => (x.Parent, HistoryPath(x.state, this, x)).CreatePath()));
+                                       sub.FoldLeft(a, (x, a) => HistoryPath(parent, x, h).CreatePath() :: a)
+          | _                       => a
         }
         //def shist = st.SuperStates().Where(x => x.ParticipateInHistory().Exists(x => x.Value is PseudoStateNode.History(type = HistoryType.Shallow)));
         //def spaths = shist.SelectMany(x => x.Value.HistoryPaths);
@@ -465,7 +466,10 @@ namespace Nemerle.Statechart
         //st.ChangeHistoryPaths(paths)
       } 
 
-      HistoryStates.Iter(create_hist_path)
+      def paths = HistoryStates.FoldLeft([], create_hist_path);
+      def paths = paths.GroupBy(x => x.From).Select(x => (x.Key, x.NToList()));
+      HistoryPaths = Hashtable(paths);
+      //HistoryPaths = paths;
       //States.Iter(create_hist_path);
       //def top = TopState.ReduceSingle(create_hist_path);
       //UpdateStateMap(top)

@@ -27,9 +27,9 @@ namespace Nemerle.Statechart
     DefineState(ty : TypeBuilder, type : ClassMember.TypeDeclaration, st : GeneralTree[FsmState]) : TypeBuilder
     {
       def type = DefineNested(ty, type);
-      DefineActions(type, st.Data);
-      DefineTransitions(type, st.Data); // define transitions in state
-      DefineHistoryPaths(type, st.Data); // define history paths
+      DefineActions(type, st);
+      DefineTransitions(type, st); // define transitions in state
+      DefineHistoryPaths(type, st); // define history paths
       match (st.Data)
       {
         | SubMachine as st            => DefineSubMachine(type, st);
@@ -100,12 +100,6 @@ namespace Nemerle.Statechart
                   } ]>;
       def ty = DefineState(ty, top, st);
       def builders = TopState.Fold(ty :: compile_list, 
-                                   (s, a) => DefineState(a, ty, s), 
-                                   (s, a) => DefineState(a, ty, s), 
-                                   null, 
-                                   null, 
-                                   (s, a) => DefineState(a, ty, s), 
-                                   null, 
                                    (s, a) => DefineState(a, ty, s));
       compile_list = builders;
     }
@@ -173,10 +167,10 @@ namespace Nemerle.Statechart
 
     DefineActions() : void
     {
-      def st = analyser.LivedStates.Filter(x => x.PartOfSubRegion.HasValue);
+      def st = analyser.LivedStates.Where(x => x.Value).Filter(x => x.Key.PartOfSubRegion().HasValue).Map(_.Key);
 
-      def st_exit = st.Map(x => ($"ExitFrom$(x.PartOfRegion.Value)In$(x.Name)", GetActions(x.region_exit_path, action_for)));
-      def exit_acts = st.SelectMany(x => GenAction.CreateActions(x.region_exit_path, action_for));
+      def st_exit = st.Map(x => ($"ExitFrom$(x.PartOfRegion().Value)In$(x.Name())", GetActions(x.region_exit_path(), action_for)));
+      def exit_acts = st.SelectMany(x => GenAction.CreateActions(x.region_exit_path(), action_for));
       def actions = actions.Exclude(_.IsDeclared).Concat(exit_acts);
       def actions = actions.RemoveDuplicatesSort(_.end_name);
 

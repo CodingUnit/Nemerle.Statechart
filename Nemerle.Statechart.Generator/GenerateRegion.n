@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Compiler;
+using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -19,9 +20,9 @@ namespace Nemerle.Statechart
   {
     
 
-    DefineActions(type : TypeBuilder,st : FsmState) : void
+    DefineActions(type : TypeBuilder,st : GeneralTree[FsmState]) : void
     {
-      if (st.IsTopState)
+      if (st.IsTopState())
       {
         def get_exit(r)
         {
@@ -33,17 +34,20 @@ namespace Nemerle.Statechart
         Define(type, exit);
       } else
       {
-        match (st.PartOfSubRegion)
+        if (st.PartOfSubRegion() is Some(r))
         {
-          | Some(ConcurrentSubRegion where (Lived = true, contained_in = ConcurrentRegion where (MayTakePlaceForcedTransitions = true) as reg)) => 
-              def name = $"ExitFrom$reg";
+          def reg = r.ContainedIn();
+           if (r.Lived() && reg.MayTakePlaceForcedTransitions())
+           {
+              def name = $"ExitFrom$(reg.Name())";
               def exit = <[decl: public override $(name : usesite)(fsm : $(ChartName : usesite)) : void
                  {
-                   fsm.$($"$(name)In$st" : usesite)();
+                   fsm.$($"$(name)In$(st.Name())" : usesite)();
                  }]>;
               Define(type,exit);
-          | _ => ()
-        }
+          
+            } else ();
+          } else ();
       }
         
     }
@@ -52,9 +56,9 @@ namespace Nemerle.Statechart
     DefineRegions(ty : TypeBuilder) : void
     {
           
-      def create_regions(reg)
+      def create_regions(reg : GeneralTree[_])
       {        
-        def regs = reg.sub_regions;
+        def regs = reg.SubRegions();
         def cur_st = regs.Map(get_sub_region_name);
         def states = cur_st.Map(x => <[ $(x : usesite) ]>);
 
@@ -91,7 +95,7 @@ namespace Nemerle.Statechart
         
         def create_reaction_body(evt)
         {
-          match (regs.Filter(r => r.events_nested.Exists(_ == evt)))
+          match (regs.Filter(r => r.events_nested().Exists(_ == evt)))
           {
             | [] => <[ _ = fsm; null ]>
             | act =>  
@@ -111,7 +115,7 @@ namespace Nemerle.Statechart
         def def_init_body(r)
         {
           def name = get_sub_region_name(r);
-          def init = r.initial |> _ : StateTransition;
+          def init = r.InitialTransitions().Map(_.Value);
           def tran = DefineTransBody(init, GenCtx.InEventHandler());
           <[ $(name : usesite) = $tran ]>
         }
@@ -174,12 +178,12 @@ namespace Nemerle.Statechart
           MergeExpr(final, merge_and)
         }
         
-        def st_names = regs.Map(x => $"st$(x.index)");
+        def st_names = regs.Map(x => $"st$(x.Index())");
         def st_pars = st_names.Map(x => <[parameter: $(x : usesite) : State]>);
         
         def get_fork_method()
         {
-          def names = regs.Map(x => (x, <[ $($"cur_state$(x.index)" : usesite) ]>, $"st$(x.index)"));
+          def names = regs.Map(x => (x, <[ $($"cur_state$(x.Index())" : usesite) ]>, $"st$(x.Index())"));
           def init_body = names.Map((x, z, y) => <[ if ($(y : usesite) != null) $z = $(y : usesite) else $(def_init_body(x)); ]>);          
           def init_pars = <[parameter: fsm : $(ChartName : usesite)]> :: st_pars;
           
@@ -191,7 +195,7 @@ namespace Nemerle.Statechart
         
         def get_is_in_state()
         {
-          def regs = regs.Map(x => ($"st$(x.index)", get_sub_region_name(x)));
+          def regs = regs.Map(x => ($"st$(x.Index())", get_sub_region_name(x)));
           def pars = regs.Map((x, _) => <[parameter: $(x : usesite) : State]>);
           def body = regs.Map((x, y) => <[ if ($(x : usesite) != null) $(ChartName : usesite).IsInState($(y : usesite), $(x : usesite)) else true ]>);
           def concrete = regs.Map((x, y) => <[ if ($(x : usesite) != null) $(y : usesite) : object == $(x : usesite) else true]>);
@@ -227,16 +231,16 @@ namespace Nemerle.Statechart
             ]>
           }
           
-          def orig = <[decl: original : $(reg.Name : usesite); ]>;
-          def init = analyser.HistoryStates.Map(_ => <[ $(reg.Name : usesite)(this) ]>);
+          def orig = <[decl: original : $(reg.Name() : usesite); ]>;
+          def init = analyser.HistoryStates.Map(_ => <[ $(reg.Name() : usesite)(this) ]>);
           def cons2 = <[decl: public this() {original = this; copy_holder = array[..$init]} ]>;
-          def cons = <[decl: public this(orig : $(reg.Name : usesite)) {original = orig;} ]>;
+          def cons = <[decl: public this(orig : $(reg.Name() : usesite)) {original = orig;} ]>;
           def get_copy = <[decl: public override GetCopy(num : int) : State {$(get_copy_body())} ]>;
-          def holder = <[decl: copy_holder : array[$(reg.Name : usesite)];]>;
+          def holder = <[decl: copy_holder : array[$(reg.Name() : usesite)];]>;
           [orig, cons, cons2, get_copy, holder]
         }
 
-        def evt = reg.events_nested;
+        def evt = reg.events_nested();
         def evt = evt.Map(x => (x, create_reaction_body(x)));
         def trans = evt.Map((x, body)  => <[decl: public override $(x.Name : usesite)(fsm : $(ChartName : usesite)) : State {$body}]>);        
         def type = StateIdType;
@@ -247,14 +251,14 @@ namespace Nemerle.Statechart
         def defs = state_defs + trans;
         def names = states.Map(x => <[ $x.ToString() ]>);
         def names = MergeExpr(names, (x, y) => <[$x + "|" + $y]>);
-        def type = <[variant_option: | $(reg.Name : usesite)
+        def type = <[variant_option: | $(reg.Name() : usesite)
                    {
                      mutable exited : bool;
                      public override get_id() : $type {$get_id}
                      
                      public override ToString() : string 
                      {
-                       def reg = $(reg.Name);
+                       def reg = $(reg.Name() : string);
                        def str = $names;
                        $<#$(reg):($str)#>
                      }
@@ -271,7 +275,7 @@ namespace Nemerle.Statechart
                      } ]>;
         def is_in_state = get_is_in_state();
         def defs = exit :: defs + is_in_state;
-        def defs = if (reg.HaveFinal) <[ decl: public IsFinal : bool
+        def defs = if (reg.HaveFinal()) <[ decl: public IsFinal : bool
                                          {
                                            get
                                            {
@@ -280,19 +284,19 @@ namespace Nemerle.Statechart
                                          }
                                       ]> :: defs else defs;
         def patterns = get_patterns();
-        def defs = if (reg.MayTakePlaceForcedTransitions) 
+        def defs = if (reg.MayTakePlaceForcedTransitions()) 
                    {
                      def exit_pat = patterns.Map(get_exit_pattern);
                      defs + exit_pat
                    } else defs;
         def enter_pat = patterns.Map(get_enter_pattern);
         def defs = defs + enter_pat;
-        def defs = if (reg.MayForkingFromOut)
+        def defs = if (reg.MayForkingFromOut())
                    {
                      def fork_pat = get_fork_method();
                      fork_pat :: defs
                    } else defs;
-        def defs = if (reg.NeedHistorySave)
+        def defs = if (reg.NeedHistorySave())
                    {
                      get_history_members() + defs
                    } else 
