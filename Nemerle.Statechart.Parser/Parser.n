@@ -53,12 +53,12 @@ namespace Nemerle.Statechart
           | "h*" with hist = HistoryType.Deep
           | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateAstNode.History(pos, StateNode.History(pos, hist, None(), p, true)))
           | "final"
-          | "$0"       => TargetType.State(name.pos, StateNode.State(null))
+          | "$0"       => TargetType.State(name.pos, StateNode.State(null, StateType.Final()))
           | "terminate"
           | "x"
           | "X"        => TargetType.PseudoState(name.pos, PseudoStateAstNode.Terminate(0))
           | x when (x.IndexOf('(') != -1 ) => TargetType.Named(name.pos, p, name.TargetName.Trim('(',')'))
-          | _ => TargetType.State(name.pos, State(n))
+          | _ => TargetType.State(name.pos, State(n, StateType.State()))
         }
       }
 
@@ -67,7 +67,7 @@ namespace Nemerle.Statechart
         | Name(name = n) => get_target(null, n)
         | QualifiedName(parts = n) => def (tar, lst) = n.SplitLast();
             def st = $<#..$(lst;".")#>;
-            TargetType.Qualified(name.pos, st, get_target(State(st), tar))
+            TargetType.Qualified(name.pos, st, get_target(State(st, StateType.State()), tar))
       }
     }
 
@@ -199,7 +199,12 @@ namespace Nemerle.Statechart
       Transition(name.StartPos, tran, TransitionType.Initial())
     }
 
-    state(attr : option[List[StateAttribute]], name : NToken, nodes : List[StateNode]) : State
+    parent(_ : NToken, name : NameIdentifier) : NameIdentifier
+    {
+      name
+    }
+    
+    state(attr : option[List[StateAttribute]], name : NToken, _parent : option[NameIdentifier], nodes : List[StateNode]) : State
     {
       def name_text = GetText(name);
       def attr = attr.WithDefault(Enumerable.Empty());

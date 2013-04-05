@@ -50,8 +50,8 @@ namespace Nemerle.Statechart
       //tr.Value.TargetTraverse(x => ResolveTargets(st, st, x, tr))
       //targ.ReduceSingle(true, ResolveTargets(st, st, _, tr, _))
     }
-    
-    UpdateTargetReference(_tr : NodeValue[FsmState, StateTransition], _st : GeneralTree[FsmState]) : void
+
+    UpdateTargetReference(tr : NodeValue[FsmState, StateTransition], st : GeneralTree[FsmState]) : void
     {
       //def from = match (tr.Value.From)
       //            {
@@ -61,13 +61,13 @@ namespace Nemerle.Statechart
       //              | FsmNode.State(s) as n       => UpdateStateReference(s);n
       //            }
 
-      //def recursive_resolve(prev)
-      //{
-      //  def to = ResolveTarget(st, prev, tr);
-      //  if (to : object != prev) recursive_resolve(to) else to
-      //}
+      def recursive_resolve(prev)
+      {
+        def to = ResolveTarget(st, prev, tr);
+        if (to : object != prev) recursive_resolve(to) else to
+      }
 
-      //tr.Update(x => x.ChangeFromTo(from, recursive_resolve(x.To)))
+      tr.Update(x => x.ChangeTo(recursive_resolve(x.To)))
     }
 
     //public NewReferences : bool {get;set;}
@@ -82,7 +82,7 @@ namespace Nemerle.Statechart
             {
               | Some(st) => TransitionTarget.State(Analyser, st)
               | _            =>
-              
+
             def states = PseudoStates.Values.Filter(x => x.Value.NativeName.HasValue);
             match (states.Find(x => x.Value.NativeName.Value == n))
             {
@@ -134,7 +134,7 @@ namespace Nemerle.Statechart
         //| ExitPoint =>
             //ParentFor(p.Num, st);
             //st.Super
-            
+
             def st = SuperForPseudo(st, tran);
             np.Parent = st;
             pseudo_states.Add(st, np);
@@ -158,8 +158,8 @@ namespace Nemerle.Statechart
             {
               | Some(null)          => np
               | Some(NodeValue(Value = Junction) as j) => j// update childs resolved
-                    
-                     //ChangeMan.Add(st.Super.Num, x => x.AddPseudo(j));
+
+                    //ChangeMan.Add(st.Super.Num, x => x.AddPseudo(j));
                   //np.Fix(j.Num); // fix target
                                                           //def tar = ResolveTarget(st, j.to, tran) :> TransitionTarget.JunctionNode;
                                                           //fixed.SetValue(j => (j :> PseudoStateNode.Junction).ChangeTo(tar));
@@ -202,18 +202,25 @@ namespace Nemerle.Statechart
             def res = Get(res);
             match (res, t)
             {
+              | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
+                            t
               | (GeneralTree(Data = FsmState.SubMachine as m), TransitionTarget.State(state = st)) with n = st.Name() =>
                   def m = m.Scan(); // scan external sub machine for states
                   when (!m.ref_sub_states.Contains(n)) Analyser.AddError(FsmError.SubMachineStateNotFound(m, n));
                   TransitionTarget.Nowhere(Analyser)//TransitionTarget.SubMachine(Analyser, m, n)
 
-              | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
-                             t
+
               | (res, t)  => ResolveTargets(st, res, t, tran)
             }
         | PseudoState(p) as t => def np = CheckPseudo(st, res, p, t, tran);
-                                if (np == null) null else t.ChangeNode(np)
-
+                                 if (np == null) null else t.ChangeNode(np)
+        | State(s) as t       => match (States.Find(x => x.NativeName() == s.NativeName()))
+                                 {
+                                  | Some(s) => t.ChangeState(s)
+                                  | _       => Analyser.AddError(FsmError.StateNotFound(s.Data));
+                                               null
+                                 }
+                                 
         | _                   => null
       }
     }
