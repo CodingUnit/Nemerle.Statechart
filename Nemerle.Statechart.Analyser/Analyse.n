@@ -48,7 +48,11 @@ namespace Nemerle.Statechart
                     | (Final as t, _) with super = st.Parent => 
                         match (super.ChildNodes.Find(x => x.Data is FsmState.Final))
                         {
-                          | None => def fin = FsmState.Final(this);
+                          | None when (super.IsTopState()) => 
+                            TransitionTarget.PseudoState(this, NodeValue(super, PseudoStateNode.Terminate(0)))
+                            
+                          | None =>   
+                            def fin = FsmState.Final(this);
                             def fin = GeneralTree(fin);
                             //super.Add(fin);
                             statemap.Add(super, fin);
@@ -64,12 +68,18 @@ namespace Nemerle.Statechart
         tran.Value = tran.Value.ChangeTo(to)
       } 
      
+      def change_name(st)
+      {
+        def super = st.Super();
+        st.Update(x => x.ChangeName($"$(super)Final"))
+      }
+      
       TransitionEnumerate.Iter(check_target);
-
-     
+      def final = States.Where(x => x.Data is FsmState.Final); // final state rename
+      final.Iter(change_name)
     }
 
-    States : IEnumerable[GeneralTree[FsmState]]
+    public States : IEnumerable[GeneralTree[FsmState]]
     {
       get
       {
@@ -168,15 +178,22 @@ namespace Nemerle.Statechart
       def set_hierarchy_pos(st)
       {
         if (st.IsTopState()) st.Update(x => x.ChangeCalcHierarchyPos(0)); 
-        else st.Data = st.Data.ChangeCalcHierarchyPos(st.Parent.Data.calc_hierarchy_pos + 1)
+        else st.Data = st.Data.ChangeCalcHierarchyPos(st.Parent.Data.calc_hierarchy_pos + 1);
+        LivedStates.Add(st, false);
       }
 
-      States.Iter(set_hierarchy_pos)
+      States.Iter(set_hierarchy_pos);
     }
 
 
     CreateSubMachines() : void
     {
+      def init_clones(st)
+      {
+        Clones.Add(st, []);
+      }
+      
+      States.Iter(init_clones);
       /*def inlined = States.Where(x => x.Data is FsmState.InlinedSubMachineInstance);
       inlined.Iter(x => x.InitInline());*/
             // TODO: надо делать обновление ссылок только один раз
