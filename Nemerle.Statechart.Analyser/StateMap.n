@@ -28,18 +28,18 @@ namespace Nemerle.Statechart
     state_tree : GeneralTree[FsmState];
     //[Accessor]
     //tree       : GeneralTree[FsmNode];
-    
+
     //map : NC.Hashtable[GeneralTree[FsmState], GeneralTree[FsmNode]] = NC.Hashtable();
     [Accessor]
     pseudo_states : ValueMap[FsmState, PseudoStateNode] = ValueMap();
     [Accessor]
     transitions   : ValueMap[FsmState, StateTransition] = ValueMap();
-    
+
     //public GetNode(node : GeneralTree[FsmState]) : GeneralTree[FsmNode]
     //{
     //  map[node]
     //}
-    
+
     //public Add(node : GeneralTree[FsmState], st : GeneralTree[FsmState]) : GeneralTree[FsmNode]
     //{
     //  _ = node.Children.Add(st);
@@ -59,7 +59,7 @@ namespace Nemerle.Statechart
     //  }
     //  tnode
     //}
-    
+
     //public ParentFor(num : int) : FsmState
     //{
     //  if (super_map.Length > num) 
@@ -218,6 +218,13 @@ namespace Nemerle.Statechart
     //  UpdateInternal(top)
     //}
 
+    public Add(parent : GeneralTree[FsmState], st : GeneralTree[FsmState]) : void
+    {
+      parent.Add(st);
+      pseudo_states.Add(st, []);
+      transitions.Add(st, []);
+    }
+    
     public static Create(an : FsmAnalyser, state : StateNode.State) : void
     {
       def create_node(s, sb : IEnumerable[_] = null) : GeneralTree[_]
@@ -226,18 +233,18 @@ namespace Nemerle.Statechart
         when (sb != null) node.AddRange(sb);
         node 
       }
-      
-      def top = state.Fold(null, 
-                      (s, sb) => create_node(FsmState.CreateState(s, an), sb),
-                      (s, sr) => create_node(FsmState.ConcurrentRegion(s, an), sr));
 
-                      def pseudo_map = ValueMap();
-                      def tran_map   = ValueMap();
-                      
+      def top = state.Fold(null, 
+                           (s, sb) => create_node(FsmState.CreateState(s, an), sb),
+                           (s, sr) => create_node(FsmState.ConcurrentRegion(s, an), sr));
+
+      def pseudo_map = ValueMap();
+      def tran_map   = ValueMap();
+
       def create_tree(n)
       {
         //def node = GeneralTree(FsmNode.State(n));
-        
+
         //when (sb != null) node.AddRange(sb);
         def pseudo = n.Data.state.pseudo_states.Select(x => PseudoStateNode.Create(n, x.node));
         def pseudo = pseudo.Map(NodeValue(n, _));
@@ -249,15 +256,15 @@ namespace Nemerle.Statechart
         //node.Children.AddRange(pseudo);
         //node
       }
-                      
+
       top.GetBreadthFirstEnumerable().Iter(create_tree);
-           
-      
+
+
       def map = StateMap(an, top, pseudo_map, tran_map);
       an.statemap = map;
       map.UpdateReferences();
     }
-    
+
     //public Update(top : FsmState) : void
     //{
     //  BeginUpdate();
