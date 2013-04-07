@@ -71,32 +71,26 @@ namespace Nemerle.Statechart
         def (init, _)         = other.Partition(x => x.type is TransitionType.Initial);
         def (do_act, decls)   = decls.PartitionType();
         
-        def (hist, decls) = decls.PartitionType();
         def (pseudo, decls) = decls.PartitionType();
-        def history = match (hist.NToList()) 
-                      {
-                        | [head]  => TwoOption.One(head)
-                        | [f, s]  => TwoOption.Two(f, s)
-                        | _       => TwoOption.None() // TODO: надо отслеживать ошибку и выдавать пользователю
-                      }
-        (en, ex, states, trans, in_trans, do_act, init, history, pseudo, decls)
+        
+        (en, ex, states, trans, in_trans, do_act, init, pseudo, decls)
       } 
       
       def create_sub_regions(reg)
       {
-        def (en, ex, states, trans, in_trans, do_act, init, hist, pseudo, _) = get_decls(reg);
-        State(0, null, init, [], en, ex, in_trans, trans, do_act, hist, states, pseudo, StateType.SubRegion(), [])
+        def (en, ex, states, trans, in_trans, do_act, init, pseudo, _) = get_decls(reg);
+        State(0, null, init, [], en, ex, in_trans, trans, do_act, states, pseudo, StateType.SubRegion(), [])
       }
       
       def decls = decls.OrderBy(_.pos).NToList();
       def (reg_trans, reg) = decls.Partition(_ is StateNode.Transition);
       def regions = reg.FindDelimited(_ is State(type = StateType.SubRegion)); // split list by regions
       def (regions, decls) = if (regions.IsEmpty()) ([], decls) else (regions.Map(create_sub_regions), reg_trans); // create regions
-      def (en, ex, states, trans, in_trans, do_act, init, hist, pseudo, decls) = get_decls(decls);
+      def (en, ex, states, trans, in_trans, do_act, init, pseudo, decls) = get_decls(decls);
       //def regions =  // if some create node
       def trans  = trans.Map(check_tran(State(name, StateType.State()), _));
       def (states, type) = if (regions.IsEmpty()) (states, type) else (regions, StateType.Region());
-      State(pos, name, init, attr.NToList(), en, ex, in_trans, trans, do_act, hist, states, pseudo, type, decls.Map(x => Error(x.pos, x)))
+      State(pos, name, init, attr.NToList(), en, ex, in_trans, trans, do_act, states, pseudo, type, decls.Map(x => Error(x.pos, x)))
       }
 
     def_history(hist : HistoryType, tok : NToken, tran : option[StateNode.Transition]) : StateNode
@@ -105,11 +99,11 @@ namespace Nemerle.Statechart
       
       def check_tran(t)
       {
-        | StateNode.Transition(type = TransitionType.Default as t) as tr => tr.ChangeTypePos(t.ChangeHistory(History(pos, null)), pos)
+        | StateNode.Transition(type = TransitionType.Default as t) as tr => tr.ChangeTypePos(t.ChangeHistory(PseudoStateAstNode.History(pos, null)), pos)
         | _                                                              => null
       }
       
-      History(pos, hist, tran.Map(check_tran))
+      StateNode.PseudoState(pos, PseudoStateAstNode.History(pos, hist, tran.Map(check_tran)))
     }
     
   }

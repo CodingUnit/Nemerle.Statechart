@@ -143,82 +143,29 @@ namespace Nemerle.Statechart
 
       def check_init_ext_trans(func)
       {
-        States.Iter(x => check_trans(x, x => x.ExternalTransitions(), func));
+        States.Iter(x => check_trans(x, x => x.EventTransitions(), func));
         States.Iter(x => check_trans(x, x => x.InitialTransitions(), func));
       }
 
+      def set_super_state_transition(st)
+      {
+        def super = st.Super();
+        when (super != null) 
+        {
+          st.DefineTransitions(super.EventTransitions());
+        }
+      }
+      
+      
       check_init_ext_trans(check_duplicate_tran);
       check_init_ext_trans(check_override);
 
       def (simple, other) = States.PartitionLazy(_.IsSimpleState());
-      simple.Iter(x => check_trans(x, x => x.ExternalTransitions() + x.SuperStates().SelectMany(x => x.ExternalTransitions()), resolve_conflict));
+      States.Iter(set_super_state_transition);
+      simple.Iter(x => check_trans(x, x => x.EventTransitions(), resolve_conflict));
       other.Iter(_.DeleteTransitions());
     }
-
-  //  CheckCrossTransitions() : void
-  //  {
-  //    def group(tr, st : GeneralTree[FsmState])
-  //    {
-  //      match (tr)
-  //      {
-  //        | _ :: []  => st // if not have group exit
-  //        | StateTransition(Guard = Some) as head :: tail  => 
-  //            def (path, end) = tail.SplitFind(x => x.Guard.IsNone); // get all include last without GuardNode
-  //            head.ChangeParentCrossed(path).Change();
-  //            def path = path.Map(_.ChangeCrossFor(true));
-  //            def st = st.Update(x => x.DeleteTransitions(end)); // delete from usual transitions in state
-
-  //            st.UpdateTransitions(tr :: path)
-
-  //        | _ :: tail  => st.DeleteTransitions(tail)
-
-  //        | _  => st
-  //      }
-  //    }
-
-  //    def check_cross_tran(tr, st)
-  //    {
-  //      single_func
-  //      {
-  //        tr.NToList().Sort((x, y) => StateTransition.GuardComparer(y, x));
-  //        __.Sort((x, y) => y.From.Depth - x.From.Depth); // sort on hierarchy position
-  //        group(__, st); // group transitions
-  //      }
-  //    }
-
-  //    def check_cross(st)
-  //    {
-  //      def tran = st.AllTransitions();
-  //      def group = FsmState.create_transition_group(tran).Where((_, x) => x.IsMoreThanOne()).Values();
-  //      //group.FoldLeft(st, check_cross_tran)
-  //    }
-
-
-  //    States.Iter(check_cross); // check from the top state
-  //  }
-
-  //  check_duplicates(tr : IEnumerable[StateTransition]) : void
-  //  {
-
-
-  //    def group = FsmState.create_transition_group(tr).Values();
-  //    def group = group.Where(_.IsMoreThanOne());
-  //    group.Iter(check_duplicate_tran);
-  //    group.Iter(check_override);
-  //  }
-
-  ///// <summary>
-  ///// Check duplicates
-  ///// </summary>
-  //  CheckDuplicates() : void
-  //  {
-  //    States.Iter(x => check_duplicates(x.this_transitions));
-  //    States.Iter(x => check_duplicates(x.initial));
-  //  }
-
-
-
-
+    
     create_join_transitions() : void
     {
 

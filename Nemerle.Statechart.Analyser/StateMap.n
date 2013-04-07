@@ -18,80 +18,15 @@ namespace Nemerle.Statechart
   //[Record]
   public partial class StateMap
   {
-    //mutable states : array[FsmState] = array[];
-
     public Analyser : FsmAnalyser;
-
-    //mutable super_map : array[int] = array[];
 
     [Accessor]
     state_tree : GeneralTree[FsmState];
-    //[Accessor]
-    //tree       : GeneralTree[FsmNode];
-
-    //map : NC.Hashtable[GeneralTree[FsmState], GeneralTree[FsmNode]] = NC.Hashtable();
+    
     [Accessor]
     pseudo_states : ValueMap[FsmState, PseudoStateNode] = ValueMap();
     [Accessor]
     transitions   : ValueMap[FsmState, StateTransition] = ValueMap();
-
-    //public GetNode(node : GeneralTree[FsmState]) : GeneralTree[FsmNode]
-    //{
-    //  map[node]
-    //}
-
-    //public Add(node : GeneralTree[FsmState], st : GeneralTree[FsmState]) : GeneralTree[FsmNode]
-    //{
-    //  _ = node.Children.Add(st);
-    //  map[st] = node;
-    //  node
-    //}
-
-    //public Add(node : GeneralTree[FsmState], st : GeneralTree[FsmNode]) : GeneralTree[FsmNode]
-    //{
-    //  def tnode = map[node];
-    //  _ = tnode.Children.Add(st);
-    //  match (st.Value)
-    //  {
-    //    | FsmNode.State(state) => _ = node.Children.Add(state);
-    //                              map[state] = st;
-    //    | _                    => ()                          
-    //  }
-    //  tnode
-    //}
-
-    //public ParentFor(num : int) : FsmState
-    //{
-    //  if (super_map.Length > num) 
-    //  {
-    //    def num = super_map[num];
-    //    if (num == -1) null else
-    //    {
-    //      def st = states[num];
-    //      ChangeMan.GetChanged(st)
-    //    }
-    //  } else null
-    //}
-
-    //public ParentFor(num : int, st : FsmState) : void
-    //{
-    //  when (super_map.Length <= num)
-    //  {
-    //    Array.Resize(ref super_map, num + 1);
-    //  }
-    //  super_map[num] = st.Num
-    //}
-
-
-    //[Accessor]
-    //mutable global_id : int;
-
-    //public GetNextGlobalNum() : int
-    //{
-    //  def num = global_id;
-    //  global_id++;
-    //  num
-    //}
 
     public States : IEnumerable[GeneralTree[FsmState]]
     {
@@ -109,30 +44,6 @@ namespace Nemerle.Statechart
       transitions = tr;
       ///tr.GetBreadthFirstEnumerable().Iter(x => when (x.Value is FsmNode.State(n)) map[n] = x)
     }
-
-    //public Contains(state : FsmState) : bool
-    //{
-    //  states.Length - 1 >= state.Num
-    //}
-
-    //public static GetFullName(st : list[FsmState]) : string
-    //{
-    //  string.Join(".", st |> NativeName)
-    //}
-
-    //public Get(state : FsmState) : FsmState
-    //{
-    //  if (state == null) null else
-    //  {
-    //    def num = state.Num;
-    //    def st = if (num == -1) Get(state.NativeName) else Get(num);
-    //    match (st)
-    //    {
-    //      | null => state//throw InvalidOperationException($"state is not correctly mapped $state")
-    //      | st   => st
-    //    }
-    //  }
-    //}
 
     public Get(state : list[string]) : GeneralTree[FsmState]
     {
@@ -178,46 +89,6 @@ namespace Nemerle.Statechart
       Get(st)
     }
 
-    //public Get(num : int) : FsmState
-    //{
-    //  if (num != -1) ChangeMan.GetChanged(states[num]) else null
-    //}
-
-    //public Item[index : int] : FsmState
-    //{
-    //  get
-    //  {
-    //    Get(index)
-    //  }
-    //}
-
-    //public ChangeMan : ChangeManager;
-
-    //public Update(st : IEnumerable[FsmState], top : FsmState = null) : void
-    //{
-    //  BeginUpdate();
-    //  UpdateInternal(st, top);
-    //  EndUpdate();
-    //}
-
-    //UpdateInternal(st : IEnumerable[FsmState], top : FsmState = null) : void
-    //{
-
-    //  def check_name(n, _)
-    //  {
-    //    match (st.Find(_.StateEquals(n)))
-    //    {
-    //      | Some(n) => n
-    //        // if no new state use old
-    //      | _       => null
-    //    }
-    //  }
-
-    //  def top = Top ?? top;
-    //  def top = top.ReduceSingle(check_name); // replace old states with new ones
-    //  UpdateInternal(top)
-    //}
-
     public Add(parent : GeneralTree[FsmState], st : GeneralTree[FsmState]) : void
     {
       parent.Add(st);
@@ -246,9 +117,12 @@ namespace Nemerle.Statechart
         //def node = GeneralTree(FsmNode.State(n));
 
         //when (sb != null) node.AddRange(sb);
-        def pseudo = n.Data.state.pseudo_states.Select(x => PseudoStateNode.Create(n, x.node));
-        def pseudo = pseudo.Map(NodeValue(n, _));
+		def st = n.Data.state;
+        def pseudo = st.pseudo_states.Select(x => PseudoStateNode.Create(n, x.node));				        
+		
         def tran   = StateTransition.Create(n, n.Data.state.transitions);
+		def tran   = StateTransition.Create(n, n.Data.state.initial).Concat(tran);
+		def tran   = StateTransition.Create(n, n.Data.state.internal_tran).Concat(tran);
         def tran   = tran.Map(NodeValue(n, _));
         pseudo_map.Add(n, pseudo);
         tran_map.Add(n, tran);

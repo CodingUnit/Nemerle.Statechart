@@ -300,7 +300,7 @@ namespace Nemerle.Statechart
 
     public Transitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
-      node.AllTransitions().Where(x => x.Value is StateTransition.Transition)
+      node.AllTransitions()
     }
     
     public AllTransitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
@@ -308,9 +308,14 @@ namespace Nemerle.Statechart
       node.Data.statemap.Transitions[node]
     }
     
-    public ExternalTransitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
+    public EventTransitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
       node.AllTransitions().Where(x => !(x.Value is StateTransition.Initial))
+    }
+    
+    public ExternalTransitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
+    {
+      node.AllTransitions().Where(x => x.Value is StateTransition.Transition)
     }
     
     public InitialTransitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
@@ -332,7 +337,13 @@ namespace Nemerle.Statechart
 
     public DefineTransitions(this st : GeneralTree[FsmState], tr : IEnumerable[NodeValue[FsmState, StateTransition]]) : void
     {
-      st.Data.statemap.Transitions.Add(st, tr);
+      def create_copy(tr)
+      {
+        tr.Clone(x => x.ChangeFrom(st))
+      }
+      
+      def copy = tr.Map(create_copy);
+      st.Data.statemap.Transitions.Add(st, copy);
       //def (tran : IEnumerable[StateTransition.Transition], other)   = tr.PartitionType();
       //def (intern : IEnumerable[StateTransition.Internal], other)   = other.PartitionType();
       //def (init : IEnumerable[StateTransition.Initial], _)          = other.PartitionType();
@@ -354,7 +365,7 @@ namespace Nemerle.Statechart
     
     public DeleteTransitions(this st : GeneralTree[FsmState]) : void
     {
-      def tran = st.Data.statemap.Transitions[st].Where(x => x.Value is StateTransition.Transition);//Clear(st)
+      def tran = st.Data.statemap.Transitions[st].Where(x => !(x.Value is StateTransition.Initial));//Clear(st)
       st.Data.statemap.Transitions.Rem(st, tran)
     }
     
@@ -381,10 +392,15 @@ namespace Nemerle.Statechart
       node.Analyser().Used[node] = res
     }
     
-    public Lived(this node : GeneralTree[FsmState]) : bool
+    public static Lived(this st : GeneralTree[FsmState]) : bool
+    {
+        st.Analyser().Used[st]
+    }
+    
+    public LivedState(this node : GeneralTree[FsmState]) : bool
     {
       def an = node.Analyser();
-      an.LivedStates[node] || an.Clones[node].Exists(x => x.Lived())
+      node.Lived() || an.Clones[node].Exists(x => x.Lived())
     }
     
       //public GetFsmNode(this node : GeneralTree[FsmState]) : GeneralTree[FsmNode]
@@ -569,7 +585,7 @@ namespace Nemerle.Statechart
     /// </summary>
     public WorkTransitions(this node : GeneralTree[FsmState]) : IEnumerable[NodeValue[FsmState, StateTransition]]
     {
-            node.AllTransitions().Where(x => x.Used())
+            node.EventTransitions().Where(x => x.Used())
             //__.Exclude(_.CrossFor);
             //__.Exclude(_.NotWork);
             //__.Where(_.UsedInGenerate)
