@@ -28,24 +28,15 @@ namespace Nemerle.Statechart
   {
     | History 
       {
-        public this(hist : StateNode.History)
+        public this(hist : PseudoStateAstNode.History)
         {
-          base(0);
+          base(hist.pos);
       //history = hist;
       //state = if (hist.state != null) FsmState.State(hist.state, null, analyser, true); else st;
           type = hist.type;
           //default = hist.default.Map(x => StateTransition.Default(an, _))
         }
 
-        public Create(st : GeneralTree[FsmState], hist : StateNode.History) : NodeValue[FsmState, PseudoStateNode]
-        {
-          def h      = History(hist);
-          def node   = NodeValue(st, h);
-          def deflt  = hist.default.Map(StateTransition.Default(st, node, _));
-          def deflt  = deflt.Map(NodeValue(st, _));
-          node.Value = h.ChangeDefault(deflt);
-          node
-        }
     //public history : StateNode.History;
 
     //public state : FsmState
@@ -349,17 +340,23 @@ namespace Nemerle.Statechart
     | ExitPoint
     | Terminate
 
-    public static Create(st : GeneralTree[FsmState], pseudo : PseudoStateAstNode) : PseudoStateNode
+    public static Create(st : GeneralTree[FsmState], pseudo : PseudoStateAstNode) : NodeValue[FsmState, PseudoStateNode]
     {
       match (pseudo)
       {
-        | History                                    => History.Create(st, pseudo)
+        | History(default = d) as hist     =>
+            def hist   = History(hist);		
+            def h      = NodeValue(st, hist);
+            def deflt  = d.Map(StateTransition.Default(st, _, h));
+            def deflt  = deflt.Map(NodeValue(st, _));
+            h.Update(_ => hist.ChangeDefault(deflt));
+			h
         //| Junction as j                              => Junction.Create(st, j)
-        | Fork(target = lst)                         => Fork(0, lst.Map(TransitionTarget.Create(st, _)), [])
-        | Join(name = n, target = t)                 => Join(0, n, TransitionTarget.Create(st, t), null, null, null)
-        | EntryPoint                                 //EntryPoint(0, num, an)
+        | Fork(target = lst)                         => NodeValue(st, Fork(0, lst.Map(TransitionTarget.Create(st, _)), []))
+        | Join(name = n, target = t)                 => NodeValue(st, Join(0, n, TransitionTarget.Create(st, t), null, null, null))
+        | EntryPoint                                 //EntryPoint(0, num, an))
         | ExitPoint                                  => null//ExitPoint(0, num, an)
-        | Terminate                                  => Terminate(0)
+        | Terminate                                  => NodeValue(st, Terminate(0))
       }
     }
 
