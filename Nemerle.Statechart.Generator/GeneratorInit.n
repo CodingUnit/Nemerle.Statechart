@@ -27,9 +27,9 @@ namespace Nemerle.Statechart
 
       def initial = def_initial(analyser.TopState.InitialTransitions()); // define initial transition
       def events = analyser.Events |> <[ $_ ]>;
-      def states = analyser.LivedNestedStates.Exclude(_.IsTopState()).Map(x => <[ $(x.Name() : usesite) ]>);
-      def state_names = $[(st.Name(), $"State$(st)"), st in analyser.LivedNestedStates, st.UsedInGenerate() && !st.IsTopState() && !(st.Data is FsmState.ConcurrentSubRegion)]; // создаем имена состояний      
-      def state_init_expr = state_names.Map((x, y) => <[ $(y : usesite) = State.$(x : usesite)();]>);
+      def states = analyser.LivedNestedStates.Exclude(_.IsTopState()).Map(x => <[ $(x.Name() : string) ]>);
+      def state_names = $[(st.Name(), $"State$(st.Name())"), st in analyser.LivedNestedStates, st.UsedInGenerate() && !st.IsTopState() && !(st.Data is FsmState.ConcurrentSubRegion)]; // создаем имена состояний      
+      //def state_init_expr = state_names.Map((x, y) => <[ $(y : usesite) = State.$(x : usesite)();]>);
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
       def trans_complete_expr =  if (analyser.Fsm.flags.TransitionCompleted) <[ OnTransitionCompleted(); ]> else <[ () ]>;
       def dummy =  <[decl:
@@ -41,7 +41,7 @@ namespace Nemerle.Statechart
                     public this()
                     {
                         // constructor body
-                        {..$state_init_expr}
+                        //{..$state_init_expr}
                         {..$init_exprs}
                         $cons_expr;
                     }
@@ -119,7 +119,7 @@ namespace Nemerle.Statechart
 
                   ]>;
 
-      Define(state_names |> <[decl: $(_[2] : usesite) : State.$(_ : usesite);]>); // create state variables for fast using 
+      Define(state_names.Map((x, y) =>  <[decl: $(y : usesite) : State.$(x : usesite) = State.$(x : usesite)(); ]>)); // create state variables for fast using 
       Define(dummy.td.GetMembers());
     }
 
