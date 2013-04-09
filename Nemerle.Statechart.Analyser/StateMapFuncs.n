@@ -1,0 +1,72 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of StateMapFuncs.
+  /// </summary>
+  partial class StateMap
+  {
+   
+
+    
+    
+    GetNamed(n : string, st : FsmState) : TransitionTarget
+    {
+      def (states, pseudo) = if (st != null) (st.sub_states, st.pseudo_states) else 
+                            (states.NToList().Reverse(), all_pseudo.NToList().Reverse());
+      match (states.Find(x => x.NativeName == n))
+      {
+        | Some(st) => TransitionTarget.State(Analyser, st)
+        | _        => GetPseudoIn(n, pseudo)
+      }
+    }
+    
+    GetPseudoIn(n : string, st : FsmState) : TransitionTarget
+    {
+      GetPseudoIn(n, st.pseudo_states)
+    }
+    
+    GetPseudoIn(n : string, st : IEnumerable[PseudoStateNode]) : TransitionTarget
+    {
+      def states = st.Filter(x => x.NativeName.HasValue);
+      match (states.Find(x => x.NativeName.Value == n))
+      {
+        | Some(t) => TransitionTarget.PseudoState(Analyser, t)
+        | _       => null
+      }
+    }
+    //public UpdateRefsToParent(st : FsmState) : void
+    //{
+    //  def num = st.Num;
+    //  st.AllChilds.Iter(x => super_map[x] = num)
+    //}
+
+    GetNode[T](name : string, err : int -> void) : option[PseudoStateNode] where T : PseudoStateNode
+    {
+      def pseudo = PseudoStates.Values.Where(x : NodeValue[_, _] => x.Value is T);
+      def pseudo = if (name != null) pseudo.Where(x => if (x.Value.NativeName is Some(n)) name == n else false) else pseudo;
+      match (pseudo.NToList())
+      {
+        | []     => err(1);
+                    Some(null)
+        | [node] => Some(node)
+        | _      => err(2);
+                    None()
+      }
+    }
+
+    SuperForPseudo(st : FsmState, tran : StateTransition) : FsmState
+    {
+      if (tran.Value is StateTransition.Initial) st else st.Super()
+    }
+
+  }
+}
