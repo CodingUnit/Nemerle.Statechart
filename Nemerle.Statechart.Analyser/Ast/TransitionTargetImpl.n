@@ -54,9 +54,9 @@ namespace Nemerle.Statechart
     //  if (fix) node.Fix(val.Num) else node
     //}
     
-    public static Create(st : GeneralTree[FsmState], target : TargetType) : TransitionTarget
+    public static Create(st : FsmState, target : TargetType) : TransitionTarget
     {
-      def an = st.Analyser();
+      def an = st.analyser;
       match (target)
       {
         | PseudoState as t                  => PseudoState(st, t)
@@ -96,27 +96,27 @@ namespace Nemerle.Statechart
     //  | _                                      => false
     //}
 
-    public PartOfSubRegion : option[GeneralTree[FsmState]]
+    public PartOfSubRegion : option[FsmState]
     {
       get
       {
         def st = ToState;
-        match (st.Data)
+        match (st)
         {
-          | null                => None()
-          | ConcurrentSubRegion => Some(st)
-          | _                   => st.PartOfSubRegion()
+          | null                              => None()
+          | FsmState(Type = StateType.Region) => Some(st)
+          | _                                 => st.PartOfSubRegion()
         }
       }
     }
 
-    public ToState : GeneralTree[FsmState]
+    public ToState : FsmState
     {
       get
       {
         match (this)
         {
-          | PseudoState(NodeValue(Parent = st))
+          | PseudoState(st)
           //| History(PseudoStateNode.History(state = st))
           | Final(state = st)
           //| SubMachine(machine = st)
@@ -166,8 +166,8 @@ namespace Nemerle.Statechart
         {
           | null                                                                                        => ()
           //| TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction(tree = t)))         => t.GetBreadthFirstEnumerable().Iter(traverse);
-          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Fork(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(t.Map(func)));
-          | TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join(target = t) as j) as n) => n.Update(_ => j.ChangeTarget(func(t)));
+          | TransitionTarget.PseudoState(PseudoStateNode.Fork(target = t) as j)  => n.Update(_ => j.ChangeTarget(t.Map(func)));
+          | TransitionTarget.PseudoState(PseudoStateNode.Join(target = t) as j)  => n.Update(_ => j.ChangeTarget(func(t)));
           | _                                                                                           => ()
         }
         to
@@ -197,17 +197,17 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public Clone() : TransitionTarget
-    {
-      match (this)
-      {
-        | PseudoState(node = n) as j => def n = n.Clone();
-                                        n.Update(x => x.Clone());
-                                        j.ChangeNode(n)
-        | State(state = n) as j      => j.ChangeState(n.Clone())
-        | _                          => this
-      }
-    }
+    //public Clone() : TransitionTarget
+    //{
+    //  match (this)
+    //  {
+    //    | PseudoState(node = n) as j => def n = n.Clone();
+    //                                    n.Update(x => x.Clone());
+    //                                    j.ChangeNode(n)
+    //    | State(state = n) as j      => j.ChangeState(n.Clone())
+    //    | _                          => this
+    //  }
+    //}
     
     public override ToString() : string
     {

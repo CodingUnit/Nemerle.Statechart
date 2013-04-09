@@ -17,49 +17,49 @@ namespace Nemerle.Statechart
   public variant TransitionDestination
   {
     | Unknown
-    | History {state : NodeValue[FsmState, PseudoStateNode];}
-    | State {state : GeneralTree[FsmState];}
+    | History {state : PseudoStateNode;}
+    | State {state : FsmState;}
     | NoStateChange
     | Choice 
       {
-        state      : GeneralTree[FsmState];
-        choice     : list[NodeValue[FsmState, StateTransition]];
-        else_state : option[GeneralTree[FsmState]] = None();
+        state      : FsmState;
+        choice     : list[StateTransition];
+        else_state : option[FsmState] = None();
       }
-    | Terminate {node : NodeValue[FsmState, PseudoStateNode];}
-    | Region {reg : GeneralTree[FsmState];}
-    | SubRegion {reg : GeneralTree[FsmState];state : TransitionDestination;from : GeneralTree[FsmState];}
-    | Fork {reg : GeneralTree[FsmState];sub_tran : list[NodeValue[FsmState, StateTransition]];}
-    | Join {join : NodeValue[FsmState, PseudoStateNode];}
-    | Final {state : GeneralTree[FsmState];sub_region : GeneralTree[FsmState];region : GeneralTree[FsmState];completion : list[NodeValue[FsmState, StateTransition]];}
+    | Terminate {node : PseudoStateNode;}
+    | Region {reg : FsmState;}
+    | SubRegion {reg : FsmState;state : TransitionDestination;from : FsmState;}
+    | Fork {reg : FsmState;sub_tran : list[StateTransition];}
+    | Join {join : PseudoStateNode;}
+    | Final {state : FsmState;sub_region : FsmState;region : FsmState;completion : list[StateTransition];}
     | ForceStateChange {nested : TransitionDestination;}
-    | HistoryRestore {history : NodeValue[FsmState, PseudoStateNode];}
-    | EventSend {st : GeneralTree[FsmState];evt : StateEvent;}
+    | HistoryRestore {history : PseudoStateNode;}
+    | EventSend {st : FsmState;evt : StateEvent;}
     | CheckAfter {check : CheckNode;before : TransitionDestination;nested : TransitionDestination;}
-    | JoinedTransition {join : NodeValue[FsmState, PseudoStateNode];transition : NodeValue[FsmState, StateTransition];}
-    | SubMachine {machine : GeneralTree[FsmState];state : string;}
+    | JoinedTransition {join : PseudoStateNode;transition : StateTransition;}
+    | SubMachine {machine : FsmState;state : string;}
     //| JunctionNode {node : DecisionNode;}
     //| ChoiceNode {node : BinaryTree[TreeJunctionNode];}
-    | TransitionExecute {tran : NodeValue[FsmState, StateTransition];}
+    | TransitionExecute {tran : StateTransition;}
 
     public override ToString() : string
     {
       match (this)
       {
         | Unknown                   => "Unknown"
-        | History(st)               => $"History$(st.GetName())"
-        | State(st)                 => $"State$(st.Name())"
+        | History(st)               => $"History$(st)"
+        | State(st)                 => $"State$(st)"
         | NoStateChange             => "NoStateChange"
-        | Choice(st, ch, els)       => $"Choice $(st.Name()) trans:..$ch else: $els"
+        | Choice(st, ch, els)       => $"Choice $(st) trans:..$ch else: $els"
         | Terminate(n)              => $"Terminate$n"
-        | Region(r)                 => $"Region$(r.Name())"
-        | SubRegion(r, st, fr)      => $"SubRegion: $(r.Name()) state:$st from:$(fr.Name())"
-        | Fork(r, sub)              => $"Fork: $(r.Name()) to ..$sub"
+        | Region(r)                 => $"Region$(r)"
+        | SubRegion(r, st, fr)      => $"SubRegion: $(r) state:$st from:$(fr)"
+        | Fork(r, sub)              => $"Fork: $(r) to ..$sub"
         | Join(j)                   => $"Join$j"
-        | Final(st, sub, r, comp)   => $"Final$(st.Name()) sub_reg:$(sub.Name()) reg:$(r.Name()) comp: ..$comp"
+        | Final(st, sub, r, comp)   => $"Final$(st) sub_reg:$(sub) reg:$(r) comp: ..$comp"
         | ForceStateChange(nest)    => $"ForceStateChange$nest"
         | HistoryRestore(rest)      => $"HistoryRestore$rest"
-        | EventSend(st, evt)        => $"EventSend$(st.Name()) evt: $evt"
+        | EventSend(st, evt)        => $"EventSend$(st) evt: $evt"
         | CheckAfter(ch, bef, nest) => $"CheckAfter$ch before:$bef nest:$nest"
         | JoinedTransition(j, tran) => $"JoinedTransition: $j tran:$tran"
         | SubMachine(m, st)         => $"SubMachine$m state:$st"
@@ -71,7 +71,7 @@ namespace Nemerle.Statechart
     /// <summary>
     /// Concrete State for where transition ends known at compile time
     /// </summary>
-    public ConcreteTo : GeneralTree[FsmState]
+    public ConcreteTo : FsmState
     {
       get
       {
@@ -111,7 +111,7 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public ToState : GeneralTree[FsmState]
+    public ToState : FsmState
     {
       get
       {
@@ -125,8 +125,8 @@ namespace Nemerle.Statechart
           | Choice(st, _, _)        => st
           | History(st)
           | Terminate(st)
-          | Join(st) => st.Parent
-          | TransitionExecute(tran) => tran.Value.ToState
+          | Join(st) => st.state
+          | TransitionExecute(tran) => tran.ToState
           | ForceStateChange(nest)  => nest.ToState
           | _                       => null
         }
@@ -162,6 +162,6 @@ namespace Nemerle.Statechart
   public variant TransitionPostConditions
   {
     | None
-    | RegionCompletion {reg : GeneralTree[FsmState]; tran : IEnumerable[NodeValue[FsmState, StateTransition]];}
+    | RegionCompletion {reg : FsmState; tran : IEnumerable[StateTransition];}
   }
 }

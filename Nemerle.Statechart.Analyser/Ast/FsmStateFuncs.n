@@ -1,0 +1,646 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using NGenerics.DataStructures.Trees;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of FsmStateFuncs.
+  /// </summary>
+  public partial class FsmState
+  {
+
+    public IsTopState : bool
+    {
+      get
+      {	  
+        Super == null
+	  }
+    }
+
+    public SubRegions : IEnumerable[FsmState]
+    {
+      get
+      {
+        if (Type is StateType.Region) sub_states else Enumerable.Empty()
+      }
+    }
+
+    
+
+    ///// <summary>
+    ///// Is it Lived state, consider on nesting lived states
+    ///// </summary>
+    //public LivedNested : bool
+    //{
+    //  node.Lived() || !node.AllLivedSubStates().IsEmpty()
+    //}
+
+    ///// <summary>
+    ///// Direct lived substates with consider of nesting state life
+    ///// </summary>
+    //public LivedSubStatesNested : IEnumerable[FsmState]
+    //{
+    //  node.ChildNodes.Where(x => x.LivedNested())
+    //}
+
+    ///// <summary>
+    ///// All Lived substates with consider of nesting state life on all nesting levels
+    ///// </summary>
+    //public AllLivedSubStatesNested : IEnumerable[FsmState]
+    //{
+    //  node.GetBreadthFirstEnumerable().Where(_.LivedNested())
+    //    //sub_states.Filter(_.LivedNested) + (sub_states |>< AllLivedSubStatesNested)
+    //}
+
+    ///// <summary>
+    ///// Direct lived sub states without consider of living nesting states of this substates
+    ///// </summary>
+    //public LivedSubStates : IEnumerable[FsmState]
+    //{
+    //  node.SubStates().Where(x => x.Lived())
+    //}
+
+    //public Analyser : FsmAnalyser
+    //{
+    //  node.Data.analyser
+    //}
+    
+    public AllPseudo : IEnumerable[PseudoStateNode]
+    {
+      get
+      {
+      AllStates.SelectMany(x => x.pseudo)
+    }
+    }
+    //  /// <summary>
+    ///// All sub states at all nesting levels
+    ///// </summary>
+    //public AllSubStates : IEnumerable[FsmState]
+    //{
+    //  node.AllStates().Skip(1)
+    //    //sub_states + (sub_states |>< AllSubStates)
+    //}
+
+    /// <summary>
+    /// All sub states include this at all nesting levels
+    /// </summary>
+    public AllStates : IEnumerable[FsmState]
+    {
+      get
+      {
+        GetBreadthFirstEnumerable()
+      }
+    }
+
+
+    ///// <summary>
+    ///// All lived sub states
+    ///// </summary>
+    //public AllLivedSubStates : IEnumerable[FsmState]
+    //{
+    //  node.AllSubStates().Where(x => x.Lived())
+    //}
+
+    //public DefineInitial(this node : FsmState, st : FsmState) : void
+    //{
+    //  def tran = StateTransition.Initial(node, st);
+    //  node.Data.analyser.statemap.Transitions.Add(node, NodeValue(node, tran));
+    //  //node.Update(x => x.ChangeInitial(tran :: x.initial))
+    //}
+
+    //    /// <summary>
+    ///// Sub states included in the history of this state
+    ///// </summary>
+    //public SubStatesParticipateInHistory : IEnumerable[FsmState]
+    //{
+    //  node.History().Value.SelectMany(x => x.SubStatesParticipateIn())
+    //}
+
+    public history : TwoOption[PseudoStateNode]
+    {
+     get 
+     {
+        def hist = pseudo_states.Filter(_ is PseudoStateNode.History);//FoldLeft([], (x, a) => if (x.Value is PseudoStateNode.History) x :: a else a);
+        TwoOption.FromList(hist)
+      }
+    }
+
+    //public SubStatesParticipateIn(this node : PseudoStateNode) : IEnumerable[FsmState]
+    //{
+    //  match (node.Value)
+    //  {
+    //    | PseudoStateNode.History(type = HistoryType.Deep)     => node.Parent.AllLivedSubStates()
+    //    | PseudoStateNode.History(type = HistoryType.Shallow)  => node.Parent.LivedSubStatesNested()
+    //    | _                                                    => Enumerable.Empty()
+    //  }
+    //}
+
+    //public PartOfRegion : option[FsmState]
+    //{
+    //  node.SuperStatesInclude().Find(x => x.Data is FsmState.ConcurrentRegion)
+    //}
+
+    //public PartOfSubRegion : option[FsmState]
+    //{
+    //  node.SuperStatesInclude().Find(x => x.Data is FsmState.ConcurrentSubRegion)
+    //}
+    
+    /////// <summary>
+    /////// History pseudo-states in which participate this state
+    /////// </summary>
+    //public ParticipateInHistory : IEnumerable[PseudoStateNode]
+    //{
+    //  node.Data.analyser.HistoryStates.Where(x => x.SubStatesParticipateIn().Contains(node))
+    //}
+
+    //public SuperStates : IEnumerable[FsmState]
+    //{
+    //  node.Parents()
+    //}
+
+    //public SuperStatesFromTop : IEnumerable[FsmState]
+    //{
+    //  Enumerable.Reverse(node.SuperStates())
+    //}
+
+    //public SuperStatesFromTopInclude : IEnumerable[FsmState]
+    //{
+    //  node.SuperStatesFromTop().Append(node)
+    //}    
+
+    //public HaveFinal : bool
+    //{
+    //  match (node.Data)
+    //  {
+    //    | ConcurrentRegion => node.SubStates().All(x => x.HaveFinal())
+    //    | _                => node.SubStates().Exists(x => x.Data is FsmState.Final)
+    //  }
+    //}
+
+    //public FinalSubState : option[GeneralTree[FsmState.Final]]
+    //{
+    //  node.SubStates().FindType()
+    //}
+
+    //public DefaultTransitions : IEnumerable[StateTransition]
+    //{
+    //  node.History().Value.FoldLeft([], (x, a) => if ((x.Value :> PseudoStateNode.History).default is Some(t)) t :: a else a)
+    //}
+
+    //public UsedInGenerate : bool
+    //{
+    //    node.Lived() || !node.AllLivedSubStates().IsEmpty()
+    //}
+
+
+    //    /// <summary>
+    ///// Transitions defined direct from this state
+    ///// </summary>
+    //public this_transitions : IEnumerable[StateTransition]
+    //{
+    //  node.AllTransitions().Where(x  => x.Parent == node : object)
+    //}
+
+    ////public IsSubStateOf(this node : FsmState, st : FsmState) : bool
+    ////{
+    ////  node.SuperStates().Exists(_ == st)
+    ////}
+
+    //public Index : int
+    //{
+    //  node.Parent.ChildNodes.IndexOf(node)
+    //}
+
+    //public Super : FsmState
+    //{
+    //  node.Parent
+    //}
+
+    //    //[TraverseIgnore] 
+    //    //[NeedChange(index)] 
+    //public ContainedIn : FsmState
+    //{
+    //  node.Super()
+    //}
+
+    //public static all_transitions_nested : IEnumerable[StateTransition]
+    //{
+    //  node.GetBreadthFirstEnumerable().SelectMany(x => x.AllTransitions())
+    //}
+    //          /// <summary>
+    //      /// Indicates that maybe external transitions from some points of orthogonal state out of region not only completion
+    //      /// </summary>
+    //public MayTakePlaceForcedTransitions : bool 
+    //{
+    //  node.all_transitions_nested().Exists(x => x.Value.OutOfRegion)
+    //}
+
+    //public NeedHistorySave : bool
+    //{
+    //  !node.ParticipateInHistory().IsEmpty()
+    //}
+
+    //public get_pattern(reg : IEnumerable[FsmState]) : string
+    //{
+    //  def idx = reg.Select(x => x.Index()).OrderBy(x => x).NToList();
+    //  $<#..$(idx;"")#>
+    //}
+
+
+    //public RegionExcept(this node : FsmState, st : IEnumerable[FsmState]) : FsmState
+    //{
+    //  match (node.SubRegions().Except(st))
+    //  {
+    //    | [sub]     => sub
+    //    | head :: _ => head
+    //    | _         => null
+    //  }
+    //}
+
+    //public RegionsExcept(this node : FsmState, st : IEnumerable[FsmState]) : IEnumerable[FsmState]
+    //{
+    //  node.SubRegions().Where(x => !x.AllSubStates().Exists(y => st.Exists(y : object == _)) && !st.Exists(_ == x : object))
+    //}
+
+    //public RegionsExcept(this node : FsmState, st : FsmState) : IEnumerable[FsmState]
+    //{
+    //  node.SubRegions().Where(x => !x.AllSubStates().Contains(st) && x : object != st)
+    //}
+
+    //public GetPseudo(this tran : IEnumerable[StateTransition], is_pseudo : PseudoStateNode -> bool) : IEnumerable[PseudoStateNode]
+    //{
+    //  def get_pseudo(t, lst)
+    //  {
+    //    match (t.Value)
+    //    {
+    //      | StateTransition(To = TransitionTarget.PseudoState(NodeValue(Value = j) as t)) when (is_pseudo(j)) => t :: lst
+    //      | _                                                                                                 => lst
+    //    }
+    //  }
+
+    //  tran.FoldLeft([], get_pseudo).Distinct()
+    //}
+
+    //public Joins : IEnumerable[PseudoStateNode]
+    //{
+    //  node.AllLivedSubStatesNested().SelectMany(x => x.AllTransitions().GetPseudo(_ is PseudoStateNode.Join))
+    //}
+
+    //public HaveJoinTransitions : bool
+    //{
+    //  !node.Joins().IsEmpty()
+    //}
+
+    //public Transitions : IEnumerable[StateTransition]
+    //{
+    //  node.AllTransitions()
+    //}
+    
+    //public AllTransitions : IEnumerable[StateTransition]
+    //{
+    //  node.Data.statemap.Transitions[node]
+    //}
+    
+    //public EventTransitions : IEnumerable[StateTransition]
+    //{
+    //  node.AllTransitions().Where(x => !(x.Value is StateTransition.Initial))
+    //}
+    
+    //public ExternalTransitions : IEnumerable[StateTransition]
+    //{
+    //  node.AllTransitions().Where(x => x.Value is StateTransition.Transition)
+    //}
+    
+    //public InitialTransitions : IEnumerable[StateTransition]
+    //{
+    //  node.AllTransitions().Where(x => x.Value is StateTransition.Initial)
+    //}
+
+    //public InternalTransitions : IEnumerable[StateTransition]
+    //{
+    //  node.AllTransitions().Where(x => x.Value is StateTransition.Internal)
+    //}
+    
+    //public AddSubState(this st : FsmState, sub : FsmState) : void
+    //{
+    //  //st.analyser = Analyser;
+    //  st.Add(sub)
+    //  //if (sub_states.Exists(x => x.Num == st.Num)) this else ChangeSubStates(sub_states.Append(st).NToList())//sub_states = sub_states + [st];
+    //}
+
+    //public DefineTransitions(this st : FsmState, tr : IEnumerable[StateTransition]) : void
+    //{
+    //  def create_copy(tr)
+    //  {
+    //    tr.Clone(x => x.ChangeFrom(st))
+    //  }
+      
+    //  def copy = tr.Map(create_copy);
+    //  st.Data.statemap.Transitions.Add(st, copy);
+    //  //def (tran : IEnumerable[StateTransition.Transition], other)   = tr.PartitionType();
+    //  //def (intern : IEnumerable[StateTransition.Internal], other)   = other.PartitionType();
+    //  //def (init : IEnumerable[StateTransition.Initial], _)          = other.PartitionType();
+    //  //def intern = internal_tran + intern.Select(_ : StateTransition);
+    //  //def init = initial + init.Select(_ : StateTransition);
+    //  //def tran = transitions + tran.Select(_ : StateTransition);
+    //  //ChangeTransitionsInitialInternalTran(tran.NToList(), init.NToList(), intern.NToList())
+    //}
+
+    //public static Compare(comparer : StateTransition * StateTransition -> int) :  StateTransition *  StateTransition -> int
+    //{
+    //  (x, y) => comparer(x.Value, y.Value)
+    //}
+    
+    //public DeleteTransitions(this st : FsmState, tr : IEnumerable[StateTransition]) : void
+    //{
+    //  st.Data.statemap.Transitions.Rem(st, tr)
+    //}
+    
+    //public DeleteTransitions(this st : FsmState) : void
+    //{
+    //  def tran = st.Data.statemap.Transitions[st].Where(x => !(x.Value is StateTransition.Initial));//Clear(st)
+    //  st.Data.statemap.Transitions.Rem(st, tran)
+    //}
+    
+    //public IsSimpleState : bool
+    //{
+    //  node.SubStates().IsEmpty()
+    //}
+
+    ///// <summary>
+    ///// Use both types of history in state
+    ///// </summary>
+    //public BothHistories : bool
+    //{
+    //    node.History().IsTwo
+    //}
+
+    //public UsedHistory : IEnumerable[PseudoStateNode]
+    //{
+    //    node.History().Value.Where(x => node.Data.analyser.Used[x])
+    //}
+    
+    //public Lived(this node : FsmState, res : bool) : void
+    //{
+    //  node.Analyser().Used[node] = res
+    //}
+    
+    //public static Lived(this st : FsmState) : bool
+    //{
+    //    st.Analyser().Used[st]
+    //}
+    
+    //public LivedState : bool
+    //{
+    //  def an = node.Analyser();
+    //  node.Lived() || an.Clones[node].Exists(x => x.Lived())
+    //}
+    
+    //  //public GetFsmNode : GeneralTree[FsmNode]
+    ////{
+    ////  node.Value.statemap.GetNode(node)
+    ////}
+    
+    ////public HaveFinalCompletion() : bool
+    ////{
+    ////  def st = SuperStatesInclude;
+    ////  HaveFinal && st.Exists(x => !x.completion_transitions.IsEmpty())
+    ////}
+
+
+    ////public FinalStates : IEnumerable[FsmState]
+    ////{
+    ////    sub_regions.Select(x => x.FinalSubState.Value) else Enumerable.Empty()
+    ////}
+
+    ///// <summary>
+    ///// Events for which reacts state or nested states
+    ///// </summary>
+    //public events_nested : IEnumerable[StateEvent]
+    //{
+    //  def evts = node.AllLivedSubStates().SelectMany(x => x.Events());
+    //  evts.Distinct()
+    //}
+
+    //public PartOfRegionsOf(this node : FsmState, st : FsmState) : IEnumerable[FsmState]
+    //{
+    //  node.SuperStatesInclude().NToList().FirstElems(_ == st : object).Where(x => x.Data is FsmState.ConcurrentRegion)
+    //}
+    
+    //public SuperStatesInclude : IEnumerable[FsmState]
+    //{
+    //  node.SuperStates().AddBefore(node)
+    //}
+
+    //public PartOfStateMachine : option[FsmState]
+    //{
+    //  node.SuperStatesInclude().Find(x => x.Data is FsmState.InlinedSubMachine)
+    //}
+
+    ////public AllPseudo  : IEnumerable[PseudoStateNode]
+    ////{
+    ////    node.AllStates().SelectMany(_.ChildPseudo)
+    ////}
+
+    ////public AllHistory : IEnumerable[PseudoStateNode.History]
+    ////{
+    ////  get
+    ////  {
+    ////    AllSubStates.SelectMany(x => x.history.Value)
+    ////  }
+    ////}
+
+    //public PartOfSubRegions : IEnumerable[FsmState]
+    //{
+    //    node.SuperStatesInclude().Where(x => x.Data is FsmState.ConcurrentSubRegion)
+    //}
+
+    ////public PartOfTopRegion : option[ConcurrentRegion]
+    ////{
+    ////  get
+    ////  {
+    ////    match (PartOfRegions)
+    ////    {
+    ////      | []  => None()
+    ////      | lst => Some(lst.Last())
+    ////    }
+    ////  }
+    ////}
+
+    ////public PartOfRegion : option[ConcurrentRegion]
+    ////{
+    ////  get
+    ////  {
+    ////    SuperStatesInclude.FindType()
+    ////  }
+    ////}
+
+    ////public PartOfRegions : IEnumerable[ConcurrentRegion]
+    ////{
+    ////  get
+    ////  {
+    ////    SuperStatesInclude.FilterType()
+    ////  }
+    ////}    
+    //public TraverseTransitions : void
+    //{
+    //  def paths = TransitionPaths(node);
+    //  node.Update(x => x.ChangePaths(paths.TraverseTransitions(true)));
+    //  //UpdateTransitions(trans).ChangePaths(paths)
+    //}
+    
+   
+    //public HierarchyPos : int
+    //{
+    //  if (node.Data.calc_hierarchy_pos != -1) node.Data.calc_hierarchy_pos else node.Height
+    //}
+    
+    //public Name : string
+    //{
+    //    match (node.Data)
+    //    {
+    //      | Final
+    //      | State
+    //      | ConcurrentRegion
+    //      | ConcurrentSubRegion                 => node.NativeName()
+    //      | SubMachine(name = n)                => $"SubMachine$n$(node.Data.CopyName)"
+    //      | InlinedSubMachine(name = n)         => $"InlinedSubMachine$n$(node.Data.CopyName)"
+    //      | InlinedSubMachineInstance(name = n) => $"InlinedSubMachineInstance$n$(node.Data.CopyName)"
+    //    }
+    //}
+
+    //public OriginalName : string
+    //{
+    //    match (node.Data)
+    //    {
+    //      | Final               => $"$(node.Super())Final"
+    //      | ConcurrentSubRegion => def idx = node.Index();
+    //                               def reg = node.Super(); 
+    //                               $"$(reg)SubRegion$idx"
+    //      | x                   => $"$x"
+    //    }
+    //}
+
+    public NativeName : string
+    {
+      get
+      {
+        $"$OriginalName"
+      }
+    }
+    
+    //public GetHistory(this node : FsmState, type : PseudoStateNode) : PseudoStateNode
+    //{
+    //  match (node.History(), type.Value)
+    //  {
+    //    | (One(h), _)                                                                                              => h
+    //    | (Two(NodeValue(Value = PseudoStateNode.History(type = t1)) as f, s), PseudoStateNode.History(type = t))  => if (t1 == t) f else s
+    //    | _                                                                                                        => null
+    //  }
+    //}
+    
+    //public CompletionTransitions : IEnumerable[StateTransition]
+    //{
+    //  node.AllTransitions().Where(x => x.Value.IsCompletion)
+    //}
+    
+    //public join_completion_transitions : IEnumerable[StateTransition]
+    //{
+    //    node.CompletionTransitions().Where(x => x.Value.To is TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join)))
+    //}
+
+    //public HistoryPaths : list[HistoryPath]
+    //{
+    ////  ublic HistoryPaths : IEnumerable[string * HistoryPath] // paths from outer history
+    ////{
+    ////  get
+    ////  {
+    ////    def shist = SuperStates.Where(x => x.ParticipateInHistory.Exists(x => x.type == HistoryType.Shallow));
+    ////    def spaths = shist.SelectMany(_.HistoryPaths);
+    ////    def paths = ParticipateInHistory.Select(x => (x.state.name, HistoryPath(x.state, this, x).CreatePath()));
+    ////    paths.Concat(spaths)
+    ////  }
+    ////}
+    //  //node.ParticipateInHistory().Select(x => (x.Parent, HistoryPath(x.Parent, node, x)).CreatePath());
+    //  def hist = node.Analyser().HistoryPaths;
+    //  if (hist != null && hist.ContainsKey(node))
+    //  {
+    //    hist[node]
+    //  } else null
+    //}
+    
+    //public HaveHistoryPaths : bool
+    //{
+    //  node.HistoryPaths() != null
+    //  //node.Analyser().HistoryPaths != null && HistoryPaths[node] HistoryPaths[node].IsEmpty()
+    //}
+
+    
+    ///// <summary>
+    ///// Work transitions
+    ///// </summary>
+    //public WorkTransitions : IEnumerable[StateTransition]
+    //{
+    //        node.EventTransitions().Where(x => x.Used())
+    //        //__.Exclude(_.CrossFor);
+    //        //__.Exclude(_.NotWork);
+    //        //__.Where(_.UsedInGenerate)
+    //}
+    
+    //    /// <summary>
+    ///// Events for which reacts state
+    ///// </summary>
+    //public Events : IEnumerable[StateEvent]
+    //{
+    //    node.WorkTransitions().Select(x => x.Value.Trigger).Distinct()
+    //}
+
+    //    public region_exit_path : IEnumerable[PathNode]
+    //{
+    //    match (node.PartOfRegion())
+    //    {
+    //      | Some(r) => def (exit, _) = TransitionPath.FindPath(node, r, Enumerable.Empty(), Enumerable.Empty()); // exit state nested in region
+    //                   TransitionPath.ExitNodeCreate(node, exit); // create exit state node
+                       
+    //      | _       => Enumerable.Empty()
+    //    }
+    //}
+
+    //          /// <summary>
+    //      /// Indicates that maybe transitions from outer states forking control to this orthogonal region
+    //      /// </summary>
+    //   public MayForkingFromOut : bool 
+    //    {
+    //        def is_this(r)
+    //        {
+    //          | null => false
+    //          | _    => match (r.PartOfRegion())
+    //              {
+    //                | Some(r) when (r : object == node) => true
+    //                | _                                 => false
+    //              }
+    //        }
+
+    //        node.Analyser().forks.Exists(x => (x.Value :> PseudoStateNode.Fork).target.Exists(x => is_this(x.ToState)))
+    //    }
+
+    //   public NCopy : int
+    //    {
+    //      node.Analyser().Clones[node].Length
+    //    }
+
+  }
+  
+  
+        
+        
+  
+}
+

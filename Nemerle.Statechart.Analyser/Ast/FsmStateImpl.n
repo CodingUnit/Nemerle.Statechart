@@ -21,11 +21,27 @@ namespace Nemerle.Statechart
   /// Description of FsmStateImpl.
   /// </summary>
   //[RefNode]
-  public partial variant FsmState
+  public partial class FsmState : IGeneralTree[FsmState]
   {
     public override ToString() : string { if (name != null) name else AstName }
 
-    public static GetCopy(this node : GeneralTree[FsmState], _copy : int) : GeneralTree[FsmState]
+    public Type : StateType
+    {
+      get
+      {
+        state.type
+      }
+    }
+    
+    public ChildNodes : IEnumerable[IFsmState]
+    {
+      get
+      {
+        sub_states
+      }
+    }
+    
+    public static GetCopy(this node : FsmState, _copy : int) : FsmState
     {
       node
       
@@ -91,7 +107,7 @@ namespace Nemerle.Statechart
         //  tr.TargetTraverse((x, _) => check_target(x))
         //}
 
-        //def s        = s.AllTransitions().Iter(x : NodeValue[FsmState, StateTransition] => x.Update(y => check_target(y.To)));
+        //def s        = s.AllTransitions().Iter(x : StateTransition => x.Update(y => check_target(y.To)));
         //def hist     = s.history.Map(_.ChangeDefault(check_tran));
         //s.ChangeHistory(hist)
         //s.Data
@@ -113,14 +129,19 @@ namespace Nemerle.Statechart
       this.name = name;
     }
 
-    public this(st : StateNode.State, analyser : FsmAnalyser)
+    public this(st : StateNode.State, sb : IEnumerable[FsmState], analyser : FsmAnalyser)
     {
       this(analyser);
       state = st;
+      sub_states = sb.NToList();
+      sub_states.Iter(x => x.Super = this); // set superstate to this
       name = st.name;
-      do_activity = st.do_activity.Map(x => StateAction.Do(x.action.actions, x.flags));
-      entry = st.entry.Map(x => StateAction.Entry(x.action.actions, x.attrib));
-      exit = st.exit.Map(x => StateAction.Exit(x.action.actions, x.attrib));
+      def tran = st.transitions.Concat(st.initial).Concat(st.internal_tran).NToList();
+      transitions = StateTransition.Create(this, tran).NToList();
+      pseudo_states = st.pseudo_states.Map(x => PseudoStateNode.Create(this, x.node));
+      do_activity = st.do_activity.Map(x => StateAction.Do(x.action.actions, this, x.flags));
+      entry = st.entry.Map(x => StateAction.Entry(x.action.actions, this, x.attrib));
+      exit = st.exit.Map(x => StateAction.Exit(x.action.actions, this, x.attrib));
     }
    
     public source_pos : int
@@ -148,10 +169,9 @@ namespace Nemerle.Statechart
       }
     }
 
+    public Super : FsmState {get;set;}
 
-
-
-    public static NameComparer(x : GeneralTree[FsmState], y : GeneralTree[FsmState]) : int { string.Compare(x.Name(), y.Name()) }
+    public static NameComparer(x : FsmState, y : FsmState) : int { string.Compare(x.Name(), y.Name()) }
 
     
   }

@@ -28,13 +28,13 @@ namespace Nemerle.Statechart
   {
     | History 
       {
-        public this(hist : PseudoStateAstNode.History)
+        public this(st : FsmState, hist : PseudoStateAstNode.History)
         {
-          base(hist.pos);
+          base(st, hist.pos);
       //history = hist;
       //state = if (hist.state != null) FsmState.State(hist.state, null, analyser, true); else st;
           type = hist.type;
-          //default = hist.default.Map(x => StateTransition.Default(an, _))
+          default = hist.default.Map(x => StateTransition.Default(st, x, this))
         }
 
     //public history : StateNode.History;
@@ -47,8 +47,7 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-        [NeedChange]
-        public default : option[NodeValue[FsmState, StateTransition]];
+        public default : option[StateTransition] {get;set;}
 
         //public ChangeDefault(tran : StateTransition -> StateTransition) : History
         //{
@@ -162,13 +161,13 @@ namespace Nemerle.Statechart
           this.type = type;
         }
 
-        static CreateTree(node : NodeValue[FsmState, PseudoStateNode]) : void
+        static CreateTree(node : PseudoStateNode) : void
         {
           def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
           node.Update(x => (x :> Junction).ChangeTree(tree))
         }
         
-        Create(an : FsmAnalyser, st : GeneralTree[FsmState], node : PseudoStateAstNode.Junction) : NodeValue[FsmState, PseudoStateNode]
+        Create(an : FsmAnalyser, st : FsmState, node : PseudoStateAstNode.Junction) : PseudoStateNode
         {
           def (name, unnamed) =  match (node) 
           {
@@ -270,7 +269,7 @@ namespace Nemerle.Statechart
     | Fork 
       {
         [NeedChange] target    : list[TransitionTarget] = [];
-        [NeedChange] fork_tran : list[NodeValue[FsmState, StateTransition]]  = [];
+        [NeedChange] fork_tran : list[StateTransition]  = [];
 
         //override UpdateReference() : PseudoStateNode
         //{ 
@@ -293,11 +292,11 @@ namespace Nemerle.Statechart
       {
         name : string;
         [NeedChange] target : TransitionTarget;
-        [NeedChange(joined_tran, transition)] region : GeneralTree[FsmState];
+        [NeedChange(joined_tran, transition)] region : FsmState;
 
         [NeedChange]
-        joined_tran : IEnumerable[NodeValue[FsmState, StateTransition]] = Enumerable.Empty();
-        transition : NodeValue[FsmState, StateTransition];
+        joined_tran : IEnumerable[StateTransition] = Enumerable.Empty();
+        transition : StateTransition;
 
         trigger : StateEvent
         {
@@ -340,34 +339,30 @@ namespace Nemerle.Statechart
     | ExitPoint
     | Terminate { override ToString() : string {"Terminate"} }
 
-    public static Create(st : GeneralTree[FsmState], pseudo : PseudoStateAstNode) : NodeValue[FsmState, PseudoStateNode]
+    public static Create(st : FsmState, pseudo : PseudoStateAstNode) : PseudoStateNode
     {
       match (pseudo)
       {
-        | History(default = d) as hist     =>
-            def hist   = History(hist);		
-            def h      = NodeValue(st, hist);
-            def deflt  = d.Map(StateTransition.Default(st, _, h));
-            def deflt  = deflt.Map(NodeValue(st, _));
-            h.Update(_ => hist.ChangeDefault(deflt));
-			h
+        | History as hist     => History(st, hist)
         //| Junction as j                              => Junction.Create(st, j)
-        | Fork(target = lst)                         => NodeValue(st, Fork(0, lst.Map(TransitionTarget.Create(st, _)), []))
-        | Join(name = n, target = t)                 => NodeValue(st, Join(0, n, TransitionTarget.Create(st, t), null, null, null))
+        //| Fork(target = lst)                         => Fork(0, lst.Map(TransitionTarget.Create(st, _)), [])
+        //| Join(name = n, target = t)                 =>  Join(0, n, TransitionTarget.Create(st, t), null, null, null))
         | EntryPoint                                 //EntryPoint(0, num, an))
         | ExitPoint                                  => null//ExitPoint(0, num, an)
-        | Terminate                                  => NodeValue(st, Terminate(0))
+        | Terminate                                  => Terminate(st, 0)
+        | _                                          => throw NotImplementedException("this TransitionTarget not implemented")
       }
     }
 
-    copy_name : string
-    {
-      get
-      {
-        if (copy == 0) "" else $"$copy"
-      }
-    }
+    //copy_name : string
+    //{
+    //  get
+    //  {
+    //    if (copy == 0) "" else $"$copy"
+    //  }
+    //}
 
+    public state : FsmState {get;set;}
     ////[NeedChange]
     //public state : FsmState
     //{
@@ -382,8 +377,8 @@ namespace Nemerle.Statechart
     //  StateMap.ParentFor(Num, st)
     //}
     //[RecordIgnore] [Accessor] cloneFor : PseudoStateNode;
-    [NeedChange]
-    public copy : int;
+    //[NeedChange]
+    //public copy : int;
 
 
     public NativeName : option[string]
