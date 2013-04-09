@@ -19,7 +19,11 @@ namespace Nemerle.Statechart
     | BreadthFirst
   }
   
-  
+  public interface IGeneralTree[T]
+  {
+    Current : T {get;}
+    ChildNodes : IEnumerable[IGeneralTree[T]] {get;}
+  }
   /// <summary>
   /// Description of Tree.
   /// </summary>
@@ -31,22 +35,57 @@ namespace Nemerle.Statechart
       lst.Iter(x => _ = tree.Add(x))
     }
     
-    public AddRange[T](this tree : GeneralTree[T], lst : IEnumerable[GeneralTree[T]]) : void
+    //public AddRange[T](this tree : GeneralTree[T], lst : IEnumerable[T]) : void
+    //{
+    //  lst.Iter(x => _ = tree.Add(x))
+    //}
+    
+    public GetEnumerable[T](this tree : GeneralTree[T], type : TreeTraversalType) : IEnumerable[GeneralTree[T]]
     {
-      lst.Iter(x => _ = tree.Add(x))
+      GetEnumerable(tree, _.ChildNodes, type)
     }
     
-    public GetEnumerable[T](this tree : GeneralTree[T], TraversalType : TreeTraversalType) : IEnumerable[GeneralTree[T]]
+    public GetPreOrderEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T]
+    {
+      GetPreOrderEnumerable(tree, _.ChildNodes).Select(x => x.Current)
+    }
+    
+    public GetPostOrderEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T]
+    {
+      GetPostOrderEnumerable(tree, _.ChildNodes).Select(x => x.Current)
+    }
+    
+    public  GetBreadthFirstEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T]
+    {
+      GetBreadthFirstEnumerable(tree, _.ChildNodes).Select(x => x.Current)
+    }
+    
+    public GetPreOrderEnumerable[T](this tree : GeneralTree[T]) : IEnumerable[GeneralTree[T]]
+    {
+      GetPreOrderEnumerable(tree, _.ChildNodes)
+    }
+    
+    public GetPostOrderEnumerable[T](this tree : GeneralTree[T]) : IEnumerable[GeneralTree[T]]
+    {
+      GetPostOrderEnumerable(tree, _.ChildNodes)
+    }
+    
+    public  GetBreadthFirstEnumerable[T](this tree : GeneralTree[T]) : IEnumerable[GeneralTree[T]]
+    {
+      GetBreadthFirstEnumerable(tree, _.ChildNodes)
+    }
+    
+    public GetEnumerable[T](tree : T, childs : T -> IEnumerable[T], TraversalType : TreeTraversalType) : IEnumerable[T]
     {
       match (TraversalType)
       {
-        | TreeTraversalType.PreOrder     => tree.GetPreOrderEnumerable();
-        | TreeTraversalType.BreadthFirst => tree.GetBreadthFirstEnumerable();
-        | TreeTraversalType.PostOrder    => tree.GetPostOrderEnumerable();
+        | TreeTraversalType.PreOrder     => GetPreOrderEnumerable(tree, childs)
+        | TreeTraversalType.BreadthFirst => GetBreadthFirstEnumerable(tree, childs)
+        | TreeTraversalType.PostOrder    => GetPostOrderEnumerable(tree, childs)
       }
     }
 
-    public GetPreOrderEnumerable[T](this tree : GeneralTree[T]) : IEnumerable[GeneralTree[T]]
+    public GetPreOrderEnumerable[T](tree : T, childs : T -> IEnumerable[T]) : IEnumerable[T]
     {
       def stack = SCG.Stack();
       stack.Push(tree);
@@ -56,9 +95,10 @@ namespace Nemerle.Statechart
         if (stack.Count != 0)
         {
           def current = stack.Pop();
-          foreach (c in current.ChildNodes)
+          def childs = childs(current);
+          foreach (c in childs)
           {
-            stack.Push(c);
+            stack.Push(c)
           }
           yield current;
         } else ()
@@ -67,7 +107,7 @@ namespace Nemerle.Statechart
       loop()
     }
 
-    public GetPostOrderEnumerable[T](this tree : GeneralTree[T]) : IEnumerable[GeneralTree[T]]
+    public GetPostOrderEnumerable[T](tree : T, childs : T -> IEnumerable[T]) : IEnumerable[T]
     {
       def child = SCG.Stack();
       def parent = SCG.Stack();
@@ -78,12 +118,13 @@ namespace Nemerle.Statechart
       {
         def curr = child.Pop();
         parent.Push(curr);
-        foreach (s in curr.ChildNodes) child.Push(s);
+        def childs = childs(curr);
+        foreach (s in childs) child.Push(s);
       }
       parent
     }
 
-    public  GetBreadthFirstEnumerable[T](this tree : GeneralTree[T]) : IEnumerable[GeneralTree[T]]
+    public  GetBreadthFirstEnumerable[T](tree : T, childs : T -> IEnumerable[T]) : IEnumerable[T]
     {
       def queue = SCG.Queue();
       queue.Enqueue(tree);
@@ -92,7 +133,8 @@ namespace Nemerle.Statechart
       {
         def node = queue.Dequeue();
         yield node;
-        foreach (s in node.ChildNodes) queue.Enqueue(s)
+        def childs = childs(node);
+        foreach (s in childs) queue.Enqueue(s)
       }
     }
 
@@ -156,5 +198,255 @@ namespace Nemerle.Statechart
       }
     }
 
+    public Parents[T](this node : GeneralTree[T]) : IEnumerable[GeneralTree[T]]
+    {
+      def loop(node)
+      {
+        if (node != null) 
+        {
+          yield node;
+          loop(node.Parent)
+        } else ()
+
+      }
+
+      loop(node.Parent)
+    }
+
+    public Update[T](this node : GeneralTree[T], change : T -> T) : void
+    {
+      node.Data = change(node.Data)
+    }
+
+    public Update[T](this node : BinaryTree[T], change : T -> T) : void
+    {
+      node.Data = change(node.Data)
+    }
+
+    //public Reduce[T](this node : GeneralTree[T], manual_rebuild : bool, folder : GeneralTree[T] * list[GeneralTree[T]] -> GeneralTree[T]) : GeneralTree[T]
+    //{
+    //  def loop(n, acc)
+    //  {
+    //    def (chacc, tail) = acc.PopRev(n.ChildNodes.Count());
+    //    def res = folder(n, acc);
+    //    def acc = if (res == null || !manual_rebuild)  
+    //               {
+    //                 def acc = (n ?? res);
+    //                 def res = GeneralTree(acc.Data);
+    //                 acc.AddRange(chacc);
+    //                 res
+    //               } else res;
+    //    acc :: tail
+    //  }
+
+    //  node.GetPostOrderEnumerable().FoldLeft(null, loop).Head
+    //}
+
+    public Fold[T, TAcc](node : T, init : TAcc, childs : T -> IEnumerable[T], folder : T * TAcc -> TAcc) : TAcc
+    {
+      def fold(n, acc)
+      {
+        folder(n, acc)// :: tail
+      }
+
+      GetPostOrderEnumerable(node, childs).FoldLeft(init, fold)
+    }
+    
+    public FoldTree[T, TAcc, TAcc2](node : T, init : TAcc, childs : T -> IEnumerable[T], folder : T * IEnumerable[TAcc] -> TAcc) : TAcc
+    {
+      def loop(n, acc)
+      {
+        def (chacc, tail) = acc.PopRev(childs(n).Count());
+        folder(n, chacc) :: tail;
+      }
+      
+      GetPostOrderEnumerable(node, childs).FoldLeft([init], loop).Head
+    }
+    
+    public Fold[T, TAcc](this node : GeneralTree[T], init : TAcc, folder : GeneralTree[T] * TAcc -> TAcc) : TAcc
+    {
+      def fold(n, acc)
+      {
+        //def (chacc, tail) = acc.PopRev(n.ChildNodes.Count());
+        folder(n, acc)// :: tail
+      }
+
+      node.GetPostOrderEnumerable().FoldLeft(init, fold)
+    }
+
+    public Fold[T, TAcc](this node : BinaryTree[T], init : TAcc, folder : BinaryTree[T] * TAcc * TAcc -> TAcc) : TAcc where TAcc : class
+    {
+      def fold(n, acc)
+      {
+        //def left = if (n.Left != null) (Some(acc.Head), acc.Tail); else (null)
+        match (n.Left, n.Right, acc)
+        {
+          | (null, null, a)          => folder(n, null, null) :: a
+          | (null, _, a :: tail)     => folder(n, null, a)    :: tail
+          | (_, null, a :: tail)     => folder(n, a, null)    :: tail
+          | (_, _, ll :: rr :: tail) => folder(n, ll, rr)     :: tail
+          | _                        => acc
+        }
+        //def (chacc, tail) = acc.PopRev(n.Count);
+      }
+
+      node.GetPostOrderEnumerable().FoldLeft([init], fold).Head
+    }
+
+    public Fold[T, TAcc](this node : BinaryTree[T], folder : T -> TAcc) : BinaryTree[TAcc] where TAcc : class
+    {
+      def create(t, l, r)
+      {
+        BinaryTree(folder(t.Data), l, r)
+      }
+
+      Fold(node, null, create)
+    }
+
+    public Reduce[T](this node : GeneralTree[T], folder : GeneralTree[T] -> T, type : TreeTraversalType = TreeTraversalType.PostOrder) : void
+    {
+      def reduce(n)
+      {
+        n.Data = folder(n)
+      }
+
+      node.GetEnumerable(type).Iter(reduce)
+    }
+
+    public Reduce[T](this node : BinaryTree[T], folder : BinaryTree[T] -> T) : void
+    {
+      def reduce(n)
+      {
+        n.Data = folder(n)
+      }
+
+      node.GetBreadthFirstEnumerable().Iter(reduce)
+    }
+
+    public Reduce[T](this node : BinaryTree[T], folder : BinaryTree[T] * BinaryTree[T] * BinaryTree[T] -> BinaryTree[T]) : BinaryTree[T]
+    {
+      node.Fold(null, folder)
+    //node.GetBreadthFirstEnumerable().Iter(reduce)
+    }
+
+    //public Reduce[T, TAcc](this node : BinaryTree[T], init : TAcc, folder : BinaryTree[T] * BinaryTree[T] * BinaryTree[T] * TAcc -> BinaryTree[T] * TAcc) : BinaryTree[T] * TAcc
+    //{
+    //  def fold(n, (ch, acc : TAcc))
+    //  {
+    //    match (n.Left, n.Right, ch )
+    //    {
+    //      | (null, null, tail)          => def (n, acc) = folder(n, null, null, acc);
+    //                                    (n :: tail, acc)
+    //      | (null, _, a :: tail)     => def (n, acc) = folder(n, null, a, acc);
+    //                                    (n :: tail, acc)
+    //      | (_, null, a :: tail)     => def (n, acc) = folder(n, a, null, acc);
+    //                                    (n :: tail, acc)
+    //      | (_, _, ll :: rr :: tail) => def (n, acc) = folder(n, ll, rr, acc);
+    //                                    (n :: tail, acc)
+    //      | _                        => (ch, acc)
+    //    }
+    //  }
+
+    //  def (res, acc) = node.GetPostOrderEnumerable().FoldLeft(([node], init), fold);
+    //  (res.Head, acc)
+    //  //(a.Head, b)
+    //  //node.GetBreadthFirstEnumerable().Iter(reduce)
+    //}
+
+    //public Unfold[T](this node : GeneralTree[T], func : T -> IEnumerable[T]) : void
+    //{
+    //  def unfold(n)
+    //  {
+    //    def childs = func(n.Data);
+    //    def nodes = childs.Select(GeneralTree);
+    //    n.AddRange(nodes);
+    //    nodes
+    //  }
+
+    //  def lst = SCG.Queue();
+
+    //  def loop()
+    //  {
+    //    if (lst.IsEmpty()) () else 
+    //    {
+    //      def node = lst.Dequeue();
+    //      def childs = node.GetBreadthFirstEnumerable().SelectMany(unfold);
+    //      childs.Iter(lst.Enqueue);
+    //      loop()
+    //    }
+    //  }
+
+    //  lst.Enqueue(node);
+    //  loop()
+    //}
+
+    public Clone[T](this node : BinaryTree[T]) : BinaryTree[T]
+    {
+      node.Reduce((n, l, r) => BinaryTree(n.Data, l, r))
+    }
+
+    //public Clone[T](this node : GeneralTree[T]) : GeneralTree[T]
+    //{
+    //  def clone(n, c)
+    //  {
+    //    def tree = GeneralTree(n.Data);
+    //    tree.AddRange(c);
+    //    tree
+    //  }
+
+    //  node.Reduce(true, clone)
+    //}
+
+    //public Unfold[T](this node : GeneralTree[T], func : T -> IEnumerable[GeneralTree[T]]) : void
+    //{
+    //  def unfold(n)
+    //  {
+    //    def childs = func(n.Data);
+    //    //def nodes = childs.Select(GeneralTree);
+    //    n.AddRange(childs);
+    //    childs
+    //  }
+
+    //  def lst = SCG.Queue();
+
+    //  def loop()
+    //  {
+    //    if (lst.IsEmpty()) () else 
+    //    {
+    //      def node = lst.Dequeue();
+    //      def childs = node.GetBreadthFirstEnumerable().SelectMany(unfold);
+    //      childs.Iter(lst.Enqueue);
+    //      loop()
+    //    }
+    //  }
+
+    //  lst.Enqueue(node);
+    //  loop()
+    //}
+
+    //public Unfold[T](this node : BinaryTree[T], func : T -> list[T], merge : list[T] -> BinaryTree[T]) : void
+    //{
+
+    //  def loop(acc)
+    //  {
+    //    | []           => ()
+    //    | head :: tail =>
+
+    //        def tail = match (func(head.Data))
+    //        {
+    //        | []  => tail
+    //        | lst => def new_node = merge(lst);
+    //                head.Right = new_node;
+    //                new_node :: tail
+    //        }
+
+    //        loop(tail)
+    //    //childs.Iter(lst.Enqueue);
+    //    //childs.FoldBack(null, (x, a) => BinaryTree(x, a, null));
+    //  }
+
+    //  loop(node :: [])
+
+    //}
   }
 }
