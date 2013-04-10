@@ -39,21 +39,20 @@ namespace Nemerle.Statechart
     {
       def check_target(tran)
       {
-       def to = tran.Value.To;
-       def st = tran.Parent;
-       def to = match (to, tran.Value)
+       def to = tran.To;
+       def st = tran.From;
+       def to = match (to, tran)
                   {
                 // TODO: check later for need of termination of fsm if we reach final state
                     | (TransitionTarget.Final as t, StateTransition.Initial) with super = st
-                    | (Final as t, _) with super = st.Parent => 
-                        match (super.ChildNodes.Find(x => x.Data is FsmState.Final))
+                    | (Final as t, _) with super = st.Super => 
+                        match (super.sub_states.Find(x => x.IsFinal))
                         {
-                          | None when (super.IsTopState()) => 
-                            TransitionTarget.PseudoState(this, NodeValue(super, PseudoStateNode.Terminate(0)))
+                          | None when (super.IsTopState) => 
+                            TransitionTarget.PseudoState(this, PseudoStateNode.Terminate(super))
                             
                           | None =>   
-                            def fin = FsmState.Final(this);
-                            def fin = GeneralTree(fin);
+                            def fin = FsmState(this, StateType.Final());
                             //super.Add(fin);
                             statemap.Add(super, fin);
                             t.ChangeState(fin);
@@ -65,17 +64,17 @@ namespace Nemerle.Statechart
 
                   }
                   
-        tran.Value = tran.Value.ChangeTo(to)
+        tran.To = to
       } 
      
       def change_name(st)
       {
-        def super = st.Super();
-        st.Update(x => x.ChangeName($"$(super)Final"))
+        def super = st.Super;
+        st.name = $"$(super)Final"
       }
       
-      TransitionEnumerate.Iter(check_target);
-      def final = States.Where(x => x.Data is FsmState.Final); // final state rename
+      AllTransitions.Iter(check_target);
+      def final = States.Where(_.IsFinal); // final state rename
       final.Iter(change_name)
     }
 
@@ -87,26 +86,25 @@ namespace Nemerle.Statechart
       }
     }
 
-    TransitionEnumerate : IEnumerable[StateTransition]
+    AllTransitions : IEnumerable[StateTransition]
     {
       get
       {
-        def en = statemap.StateTree.GetEnumerable(TreeTraversalType.BreadthFirst);
-        en.SelectMany(x => x.AllTransitions())
+        statemap.Transitions
       }
     }
     
     RenameDuplicates() : void
     {
-      def rename_group(st)
-      {
-        st.IterI((i, x) => x.Update(x => x.ChangeCopyNum(i)))
-      }
+      //def rename_group(st)
+      //{
+      //  st.IterI((i, x) => x.Update(x => x.ChangeCopyNum(i)))
+      //}
 
-      def dups = States.NToList().Duplicates((x, y) => FsmState.NameComparer(x, y));
-      def dups = dups.GroupBy(x => x.Name());
+      //def dups = States.NToList().Duplicates((x, y) => FsmState.NameComparer(x, y));
+      //def dups = dups.GroupBy(x => x.Name());
 
-      dups.Iter(rename_group)
+      //dups.Iter(rename_group)
     }
 
     CreateHistoryStates() : void
@@ -114,15 +112,15 @@ namespace Nemerle.Statechart
     // check history duplicates in state
       def check_dup_history(st)
       {
-        match (st.History())
+        match (st.history)
         {
         // duplicate variants
           | TwoOption.Two(n, n2) =>
-              match (n.Value, n2.Value)
+              match (n.type, n2.type)
               {
-                | (PseudoStateNode.History(type = HistoryType.Deep), PseudoStateNode.History(type = HistoryType.Deep))
-                | (PseudoStateNode.History(type = HistoryType.Shallow), PseudoStateNode.History(type = HistoryType.Shallow)) => AddError(FsmError.DuplicateHistory(st.Data, st.History().Value.First()))
-                | _                                                                                                           => ()
+                | (HistoryType.Deep, HistoryType.Deep)
+                | (HistoryType.Shallow, HistoryType.Shallow) => AddError(FsmError.DuplicateHistory(st, n))
+                | _                                          => ()
               }
           | _ => ()
         }
@@ -130,16 +128,16 @@ namespace Nemerle.Statechart
 
       def check_exit_actions(st)
       {
-        | FsmState(exit = ex) when ex.IsEmpty() => st.ChangeExit(StateAction.Exit([], ActionFlags.None) :: [])
-        | _                                     => st
+        | FsmState(exit = []) => st.exit = StateAction.Exit([], st, ActionFlags.None) :: []
+        | _                   => ()
       }
 
       def update_hist(st)
       {
-        when (st.History().HasValue)
+        when (st.history.HasValue)
         {
           check_dup_history(st);
-          st.Update(check_exit_actions);
+          check_exit_actions(st)
         }
       }
 
@@ -160,10 +158,10 @@ namespace Nemerle.Statechart
         }
 
         def act = act.Map(check);
-        st.Update(x => x.ChangeDoActivity(act))
+        st.do_activity = act//Update(x => x.ChangeDoActivity(act))
       }
 
-      States.Iter(x => check_do(x, x.Data.do_activity));
+      States.Iter(x => check_do(x, x.do_activity));
     }
 
     CreateConcurrentRegion() : void
@@ -177,9 +175,8 @@ namespace Nemerle.Statechart
 
       def set_hierarchy_pos(st)
       {
-        if (st.IsTopState()) st.Update(x => x.ChangeCalcHierarchyPos(0)); 
-        else st.Data = st.Data.ChangeCalcHierarchyPos(st.Parent.Data.calc_hierarchy_pos + 1);
-        //LivedStates.Add(st, false);
+        st.hierarchy_pos = if (st.IsTopState) 0
+        else  st.Super.hierarchy_pos + 1;
       }
 
       States.Iter(set_hierarchy_pos);

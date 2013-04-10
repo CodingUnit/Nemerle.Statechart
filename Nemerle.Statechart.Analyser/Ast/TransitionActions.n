@@ -29,7 +29,7 @@ namespace Nemerle.Statechart
     {
       def an = st.analyser;
       this.analyser = an;
-      //From = st;
+      Source = st;
       From = st;
       node = tran;
       when (tran != null)
@@ -50,7 +50,8 @@ namespace Nemerle.Statechart
       this(st.analyser);
       //From = st;
       To = to;
-      From = st
+      From = st;
+      Source = From;
     }
 
     public node : StateNode.Transition;
@@ -65,6 +66,7 @@ namespace Nemerle.Statechart
       omit_guard = tran.omit_guard;
       //ParentCrossed = tran.ParentCrossed;
       From = tran.From;
+      Source = From;
       Local = tran.Local;
       //ImplicitFrom = tran.ImplicitFrom;
     }
@@ -79,9 +81,10 @@ namespace Nemerle.Statechart
     //{
     //  changed.Source.Update(x => x.UpdateTransition(changed))
     //}
-
-    [NeedChange]
-    public From : FsmState;
+    // state in from start transition in real time app
+    public Source : FsmState {get;set;}
+    // state in from arrow start in diagram
+    public From : FsmState {get;set;}
     public guard : option[GuardNode];
     public action : option[Actions];
     public To : TransitionTarget {get;set;}
@@ -444,7 +447,13 @@ namespace Nemerle.Statechart
 
     public Clone() : StateTransition
     {
-      ChangeTo(To.Clone())
+      match (this)
+      {
+        | Initial        => Initial(this)
+        | Default(h)     => Default(this, h)
+        | Transition(e)  => Transition(this, e)
+        | History as h   => History(h)
+      }
     }
     
     public override ToString() : string
@@ -452,9 +461,8 @@ namespace Nemerle.Statechart
       Name
     }
 
-    /// </summary>        
-    [NeedChange]
-    public NeedGuardedName : bool;
+    /// </summary>            
+    public NeedGuardedName : bool {get;set;default false}
     public static NameComparer : StateTransition * StateTransition -> bool = (x, y) => x.Name == y.Name;
 
   }

@@ -24,63 +24,50 @@ namespace Nemerle.Statechart
     {
       def check_auto_initial(st)
       {
-        match (st.Data)
-        {
-          | FsmState.Final 
-          | ConcurrentRegion       => ()
-          | _ when st.InitialTransitions().IsEmpty()  =>
-          
-              match (st.SubStates().NToList())
-              {
-                | head :: _ => if (head.Data is FsmState.Final) () else st.DefineInitial(head);
-                | _         => ()
-              }
-
-          | _                      => ()
-        }
+          | FsmState(type = StateType.Final)
+          | FsmState(type = StateType.Region) => ()
+          | FsmState(initial_tran = [], sub_states = head :: _) when (!head.IsFinal)      
+              => st.DefineInitial(head);
+          | _ => ()
       }
 
       //States.Iter(x => check_duplicates(x.InitialTransitions().Select(_.Value)));  // check duplicates
       when (FsmFlags.AutoInitial) States.Iter(check_auto_initial);
 
-      def top = TopState;
-      when (top.InitialTransitions().IsEmpty()) // if not have initial transition in top state
-        when (top.Transitions().IsEmpty()) // if not have other transitions
-          check_auto_initial(top) // initial is first substate
+      match (TopState)
+      {
+        | FsmState(transitions = []) as st => check_auto_initial(st)
+        | _                                => ()
+      }
+       
 
-      //def create_path_from_out(st, _)
-      //{
-      //  def path = StateTransition.Initial(TopState, st).Create();
-      //  def path = path.TraversePath();
-      //  st.ChangePathFromOut(path)
-      //}
-
-      //UpdateStateMap(top);
-      //def top = top.ReduceSingle(create_path_from_out);
-      //UpdateStateMap(top);
+      
     }
 
     is_crossed_orthogonal(tr : StateTransition, st : FsmState) : bool
     {
-      match (tr.Value, st)
-      {
-        | (StateTransition(To = TransitionTarget.State(state = n)), _) when n.PartOfRegion() == st.PartOfRegion() : object => n.PartOfSubRegion() != st.PartOfSubRegion() : object
-        | _                                                                                                                => false
-      }
+        | (StateTransition(To = TransitionTarget.State(state = st)), s2) 
+            =>  match (st, s2)
+                {
+                  | (FsmState(PartOfRegion = Some(r), PartOfSubRegion = Some(sr)), FsmState(PartOfRegion = Some(r2), PartOfSubRegion = Some(sr2))) => 
+                    r : object == r2 && sr : object != sr2
+                  | _ => false  
+                }
+        | _  => false
     }
 
     CreateAndCheckSuperStateTransitions() : void
     {
       def resolve_conflict(trans)
       {
-        def conflict = trans.OrderByDescending(x => x.Parent.HierarchyPos()).NToList();
+        def conflict = trans.OrderByDescending(x => x.Source.hierarchy_pos).NToList();
         match (conflict)
         {
           // if first transition is guarded then dynamic choice with left in hierarchy
-          | NodeValue(Value = StateTransition(Guard = Some)) as head :: tail  => 
-              def (path, _) = tail.SplitFind(x => x.Value.Guard.IsNone); // get all include last without GuardNode
+          | StateTransition(Guard = Some) as head :: tail  => 
+              def (path, _) = tail.SplitFind(x => x.Guard.IsNone); // get all include last without GuardNode
               //def st = st.Update(x => x.DeleteTransitions(end)); // delete from usual transitions in state
-              head.Parent.DefineTransitions(path);
+              head.Source.DefineTransitions(path);
               //st.UpdateTransitions(tr :: path)
 
           // if without guard it overrides all in 
@@ -98,7 +85,7 @@ namespace Nemerle.Statechart
             lst.Equals(lst2, _ == _);
           }
 
-          def acts = tr.Select(x => x.Value.ActionList);
+          def acts = tr.Select(x => x.ActionList);
           def res = acts.ElementsEqual(equal);
           when (res) AddError(FsmError.DuplicateTransition(tr));
         }
@@ -109,7 +96,7 @@ namespace Nemerle.Statechart
           AddError(FsmError.DuplicateTransition(dups))
         } else
         {
-          def begin_and_end_eq = tr.NToList().DuplicatesGroup((x, y) => x.Value.To.CompareTo(y.Value.To));
+          def begin_and_end_eq = tr.NToList().DuplicatesGroup((x, y) => x.To.CompareTo(y.To));
           begin_and_end_eq.Iter(check_begin_and_ends)
         }
       }
@@ -117,11 +104,11 @@ namespace Nemerle.Statechart
       def check_override(tr)
       {
         // без гуарда переопределяет на том же уровне с гуардами и без гуардов, если такое возникает то необходимо сигнализировать
-        match (tr.Find(x => x.Value.Guard.IsNone))
+        match (tr.Find(x => x.Guard.IsNone))
         {
           | Some(t) => 
                   def tr = tr.Except(t);
-                  def warn = tr.Map(x => FsmWarning.TransitionOverriden(x.Value, t.Value));
+                  def warn = tr.Map(x => FsmWarning.TransitionOverriden(x, t));
                   AddWarnings(warn)
 
           | _ => ()
@@ -133,7 +120,7 @@ namespace Nemerle.Statechart
 
         def parent_trans = get_tran(st); // get the super states transitions and concatinate with current
         //def parent_trans = parent_trans.Select(x => (x.Value.FriendlyTriggerName, x)); // get with trigger names
-        def by_trigger   = parent_trans.GroupBy(x => x.Value.FriendlyTriggerName);
+        def by_trigger   = parent_trans.GroupBy(x => x.FriendlyTriggerName);
         def conflict     = by_trigger.Where(x => x.IsMoreThanOne());
 
         //def conflict     = conflict.OrderBy(x => x.);
@@ -143,16 +130,16 @@ namespace Nemerle.Statechart
 
       def check_init_ext_trans(func)
       {
-        States.Iter(x => check_trans(x, x => x.EventTransitions(), func));
-        States.Iter(x => check_trans(x, x => x.InitialTransitions(), func));
+        States.Iter(x => check_trans(x, x => x.EventTransitions, func));
+        States.Iter(x => check_trans(x, x => x.initial_tran, func));
       }
 
       def set_super_state_transition(st)
       {
-        def super = st.Super();
+        def super = st.Super;
         when (super != null) 
         {
-          st.DefineTransitions(super.EventTransitions());
+          st.DefineTransitions(super.EventTransitions);
         }
       }
       
@@ -160,9 +147,9 @@ namespace Nemerle.Statechart
       check_init_ext_trans(check_duplicate_tran);
       check_init_ext_trans(check_override);
 
-      def (simple, other) = States.PartitionLazy(_.IsSimpleState());
+      def (simple, other) = States.PartitionLazy(_.IsSimpleState);
       States.Iter(set_super_state_transition);
-      simple.Iter(x => check_trans(x, x => x.EventTransitions(), resolve_conflict));
+      simple.Iter(x => check_trans(x, x => x.EventTransitions, resolve_conflict));
       other.Iter(_.DeleteTransitions());
     }
     
@@ -171,27 +158,27 @@ namespace Nemerle.Statechart
 
       def check_join(j, tr : IEnumerable[_])
       {
-        match (j.Value)
+        match (j)
         {
           | PseudoStateNode.Join(target = t) as jn =>
 
-              if (tr.ElementsEqual((x, y) => x.Value.Trigger == y.Value.Trigger))
+              if (tr.ElementsEqual((x, y) => x.Trigger == y.Trigger))
               {
-                if (tr.All(x => x.Parent.PartOfSubRegion().HasValue) &&
-                    tr.ElementsEqual((x, y) => x.Parent.PartOfRegion().Value == y.Parent.PartOfRegion().Value : object))
+                if (tr.All(x => x.Source.PartOfSubRegion.HasValue) &&
+                    tr.ElementsEqual((x, y) => x.Source.PartOfRegion.Value == y.Source.PartOfRegion.Value : object))
                 {
-                  def tran = StateTransition.Transition(j.Parent, t, tr.First().Value.Trigger);
-                  def reg = tr.First().Parent.PartOfRegion().Value.Data;
-                  def tr = tr.OrderBy(x => x.Parent.PartOfSubRegion().Value.Index());
+                  def tran = StateTransition.Transition(j.state, t, tr.First().Trigger);
+                  def reg = tr.First().Source.PartOfRegion.Value;
+                  def tr = tr.OrderBy(x => x.Source.PartOfSubRegion.Value.Index);
                   //j.joined_tran = tr;
                   //j.region = reg;
 
                   //j.transition = tran;
                   /// !!! mutable
                   //tr.Iter(x => x.ToPseudo.SetValue(x => (x :> PseudoStateNode.Join).ChangeRegionJoinedTranTransition(reg, tr, tran)));
-                  jn.region.Data = reg;
-                  def jn = jn.ChangeJoinedTran(tr);
-                  jn.transition.Value = tran
+                  jn.region = reg;
+                  jn.joined_tran = tr.NToList();
+                  jn.transition = tran;
                 } else 
                 {
                   AddError(FsmError.JoinTransitionMustLeaveRegion(j, tr.NToList()));
@@ -207,10 +194,10 @@ namespace Nemerle.Statechart
 
       def get_join(t, lst)
       {
-        match (t.Value)
+        match (t)
         {
-          | StateTransition(To = TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join) as j)) => (j, t) :: lst
-          | _                                                                                                => lst
+          | StateTransition(To = TransitionTarget.PseudoState(PseudoStateNode.Join as j)) => (j, t) :: lst
+          | _                                                                             => lst
         }
       }
 
@@ -222,10 +209,8 @@ namespace Nemerle.Statechart
 
     create_fork_transitions() : void
     {
-      def check_fork(f : PseudoStateNode)
+      def check_fork(f)
       {
-        match (f.Value)
-        {
           | PseudoStateNode.Fork(target = t) as j =>
 
               def st = t.Select(x => x.ToState);
@@ -233,8 +218,8 @@ namespace Nemerle.Statechart
               if (!reg.IsEmpty() && reg.All(x => x.HasValue))
               {
                 //def sreg = reg |> Last();
-                def dups = reg.DuplicatesGroup(x => x.Value.Index());
-                def regs = st.Select(x => x.PartOfRegion().Value);
+                def dups = reg.DuplicatesGroup(x => x.Value.Index);
+                def regs = st.Select(x => x.PartOfRegion.Value);
                 if (dups.Count() != 0 || !regs.ElementsEqual((x, y) => x == y : object)) 
                 {
 
@@ -242,8 +227,8 @@ namespace Nemerle.Statechart
                 } else
                 {
                   //def reg = regs.First();
-                  def sub_trans = t.Map(x => NodeValue(f.Parent, StateTransition.Transition(f.Parent, x, null)));
-                  f.Value = j.ChangeForkTran(sub_trans);
+                  def sub_trans = t.Map(x => StateTransition.Transition(f.state, x, null));
+                  f.fork_tran = sub_trans;
                   //def sub_trans = sub_trans.Map(x => x.ChangeLocal(true));
                   //tr.ToPseudo.SetValue(x => (x :> PseudoStateNode.Fork).ChangeForkTran(sub_trans))
                 }
@@ -253,7 +238,7 @@ namespace Nemerle.Statechart
               }
 
           | _ => ()
-        }
+        
       }
 
       def tran = AllTransitions.GetPseudo(_ is PseudoStateNode.Fork);
@@ -302,7 +287,7 @@ namespace Nemerle.Statechart
 
       def check_cross_orthogonal(tr)
       {
-        when (is_crossed_orthogonal(tr, tr.Parent)) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr));
+        when (is_crossed_orthogonal(tr, tr.Source)) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr));
       }
 
       //def check_tran(st, _)
@@ -311,20 +296,19 @@ namespace Nemerle.Statechart
         //st.TraverseTargets(resolve_targets(st, _, _)) // second pass final
       //}
 
-      foreach (st in States)
-      {
+      
         //st.AllTransitions().Iter(proc_tran(st, _));
-        st.AllTransitions().Iter(check_cross_orthogonal)
-      }
+        AllTransitions.Iter(check_cross_orthogonal)
+      
 
       //UpdateStateMap(TopState.ReduceSingle(check_tran))
     }
 
     RenameTransition(tran : IEnumerable[StateTransition]) : void
     {
-      def dups = tran.NToList().Duplicates((x, y) => x.Value.Name.CompareTo(y.Value.Name));
-      dups.Iter(x => x.Update(x => x.ChangeNeedGuardedName(true)));
-      def dups = tran.DuplicatesGroup(x => x.Value.Name);
+      def dups = tran.NToList().Duplicates((x, y) => x.Name.CompareTo(y.Name));
+      dups.Iter(x => x.NeedGuardedName = true);
+      def dups = tran.DuplicatesGroup(x => x.Name);
       dups.Iter(x => x.Iter(x => Used[x] = false));
       //def dups = tran.Duplicates((x, y) => x.Value.Name.CompareTo(y.Value.Name));
       //def dups = dups.Map(x => (x.Value.GuardedName, x));
@@ -341,7 +325,7 @@ namespace Nemerle.Statechart
       def traverse()
       {
         traverser = TransitionTraverser(this);
-        traverser.Add(TopState.InitialTransitions());
+        traverser.Add(TopState.initial_tran);
         traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
         traverser = null;
       }
@@ -364,7 +348,7 @@ namespace Nemerle.Statechart
       //  //def top = TopState.ReduceSingle(update_hist);
       //  //UpdateStateMap(top)
       //}
-      def obj = States.Concat(AllTransitions.Select(_ : object)).Concat(PseudoStates.Values.Select(_ : object));
+      def obj = States.Concat(AllTransitions.Select(_ : object)).Concat(PseudoStates.Select(_ : object));
       obj.Iter(Used.Add(_, false)); // init used properties
       
       traverse(); // traverse paths
@@ -400,10 +384,10 @@ namespace Nemerle.Statechart
     {
       def create_hist_path(h, a)
       {
-        match (h.Value)
+        match (h)
         {
           | PseudoStateNode.History => def sub = h.SubStatesParticipateIn();
-                                       def parent = h.Parent;
+                                       def parent = h.state;
                                        //node.ParticipateInHistory().Select(x => (x.Parent, HistoryPath(x.state, this, x)).CreatePath()));
                                        sub.FoldLeft(a, (x, a) => HistoryPath(parent, x, h).CreatePath() :: a)
           | _                       => a

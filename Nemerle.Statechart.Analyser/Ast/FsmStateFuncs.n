@@ -16,6 +16,14 @@ namespace Nemerle.Statechart
   public partial class FsmState
   {
 
+    public IsFinal : bool
+    {
+      get
+      {
+        type is StateType.Final
+      }
+    }
+    
     public IsTopState : bool
     {
       get
@@ -28,7 +36,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (Type is StateType.Region) sub_states else Enumerable.Empty()
+        if (type is StateType.Region) sub_states else Enumerable.Empty()
       }
     }
 
@@ -108,12 +116,12 @@ namespace Nemerle.Statechart
     //  node.AllSubStates().Where(x => x.Lived())
     //}
 
-    //public DefineInitial(this node : FsmState, st : FsmState) : void
-    //{
-    //  def tran = StateTransition.Initial(node, st);
-    //  node.Data.analyser.statemap.Transitions.Add(node, NodeValue(node, tran));
-    //  //node.Update(x => x.ChangeInitial(tran :: x.initial))
-    //}
+    public DefineInitial(st : FsmState) : void
+    {
+      def tran = StateTransition.Initial(this, st);
+      transitions = transitions.Append(tran).NToList();
+      //node.Update(x => x.ChangeInitial(tran :: x.initial))
+    }
 
     //    /// <summary>
     ///// Sub states included in the history of this state
@@ -123,11 +131,12 @@ namespace Nemerle.Statechart
     //  node.History().Value.SelectMany(x => x.SubStatesParticipateIn())
     //}
 
-    public history : TwoOption[PseudoStateNode]
+    public history : TwoOption[PseudoStateNode.History]
     {
      get 
      {
-        def hist = pseudo_states.Filter(_ is PseudoStateNode.History);//FoldLeft([], (x, a) => if (x.Value is PseudoStateNode.History) x :: a else a);
+        def hist = pseudo_states.FilterType();//FoldLeft([], (x, a) => if (x.Value is PseudoStateNode.History) x :: a else a);
+        //def hist = hist.NToList();
         TwoOption.FromList(hist)
       }
     }
@@ -142,15 +151,22 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    //public PartOfRegion : option[FsmState]
-    //{
-    //  node.SuperStatesInclude().Find(x => x.Data is FsmState.ConcurrentRegion)
-    //}
+    public PartOfRegion : option[FsmState]
+    {
+      get
+      {
+      SuperStatesInclude.Find(x => x.type is StateType.Region)
+    }
+    }
 
-    //public PartOfSubRegion : option[FsmState]
-    //{
-    //  node.SuperStatesInclude().Find(x => x.Data is FsmState.ConcurrentSubRegion)
-    //}
+    public PartOfSubRegion : option[FsmState]
+    {
+      get
+      {
+        
+      SuperStatesInclude.Find(x => x.type is StateType.SubRegion)
+    }
+    }
     
     /////// <summary>
     /////// History pseudo-states in which participate this state
@@ -160,10 +176,19 @@ namespace Nemerle.Statechart
     //  node.Data.analyser.HistoryStates.Where(x => x.SubStatesParticipateIn().Contains(node))
     //}
 
-    //public SuperStates : IEnumerable[FsmState]
-    //{
-    //  node.Parents()
-    //}
+    public SuperStates : IEnumerable[FsmState]
+    {
+      get
+      {
+        def loop(st)
+        {
+          yield st;
+          if (st.Super != null) loop(st.Super) else ()
+        }
+        
+        loop(Super)
+      }
+    }
 
     //public SuperStatesFromTop : IEnumerable[FsmState]
     //{
@@ -213,10 +238,13 @@ namespace Nemerle.Statechart
     ////  node.SuperStates().Exists(_ == st)
     ////}
 
-    //public Index : int
-    //{
-    //  node.Parent.ChildNodes.IndexOf(node)
-    //}
+    public Index : int
+    {
+      get
+      {
+        Super.sub_states.IndexOf(this)
+    }
+    }
 
     //public Super : FsmState
     //{
@@ -308,20 +336,29 @@ namespace Nemerle.Statechart
     //  node.Data.statemap.Transitions[node]
     //}
     
-    //public EventTransitions : IEnumerable[StateTransition]
-    //{
-    //  node.AllTransitions().Where(x => !(x.Value is StateTransition.Initial))
-    //}
+    public EventTransitions : IEnumerable[StateTransition]
+    {
+      get
+      {
+      transitions.Where(x => !(x is StateTransition.Initial))
+      }
+    }
     
-    //public ExternalTransitions : IEnumerable[StateTransition]
-    //{
-    //  node.AllTransitions().Where(x => x.Value is StateTransition.Transition)
-    //}
+    public ExternalTransitions : IEnumerable[StateTransition]
+    {
+      get
+      {
+      transitions.Where(x => x is StateTransition.Transition)
+    }
+    }
     
-    //public InitialTransitions : IEnumerable[StateTransition]
-    //{
-    //  node.AllTransitions().Where(x => x.Value is StateTransition.Initial)
-    //}
+    public initial_tran : list[StateTransition.Initial]
+    {
+      get
+      {
+        transitions.FilterType()
+      }
+    }
 
     //public InternalTransitions : IEnumerable[StateTransition]
     //{
@@ -335,15 +372,18 @@ namespace Nemerle.Statechart
     //  //if (sub_states.Exists(x => x.Num == st.Num)) this else ChangeSubStates(sub_states.Append(st).NToList())//sub_states = sub_states + [st];
     //}
 
-    //public DefineTransitions(this st : FsmState, tr : IEnumerable[StateTransition]) : void
-    //{
-    //  def create_copy(tr)
-    //  {
-    //    tr.Clone(x => x.ChangeFrom(st))
-    //  }
+    public DefineTransitions(tr : IEnumerable[StateTransition]) : void
+    {
+      def create_copy(tr)
+      {
+        def tr = tr.Clone();
+        tr.From = this;
+        tr.Source = this;
+        tr
+      }
       
-    //  def copy = tr.Map(create_copy);
-    //  st.Data.statemap.Transitions.Add(st, copy);
+      def copy = tr.Map(create_copy);
+      transitions = transitions.Concat(copy).NToList();
     //  //def (tran : IEnumerable[StateTransition.Transition], other)   = tr.PartitionType();
     //  //def (intern : IEnumerable[StateTransition.Internal], other)   = other.PartitionType();
     //  //def (init : IEnumerable[StateTransition.Initial], _)          = other.PartitionType();
@@ -351,28 +391,30 @@ namespace Nemerle.Statechart
     //  //def init = initial + init.Select(_ : StateTransition);
     //  //def tran = transitions + tran.Select(_ : StateTransition);
     //  //ChangeTransitionsInitialInternalTran(tran.NToList(), init.NToList(), intern.NToList())
-    //}
+    }
 
     //public static Compare(comparer : StateTransition * StateTransition -> int) :  StateTransition *  StateTransition -> int
     //{
     //  (x, y) => comparer(x.Value, y.Value)
     //}
     
-    //public DeleteTransitions(this st : FsmState, tr : IEnumerable[StateTransition]) : void
-    //{
-    //  st.Data.statemap.Transitions.Rem(st, tr)
-    //}
+    public DeleteTransitions(tr : IEnumerable[StateTransition]) : void
+    {
+      transitions = transitions.Except(tr).NToList()
+    }
     
-    //public DeleteTransitions(this st : FsmState) : void
-    //{
-    //  def tran = st.Data.statemap.Transitions[st].Where(x => !(x.Value is StateTransition.Initial));//Clear(st)
-    //  st.Data.statemap.Transitions.Rem(st, tran)
-    //}
+    public DeleteEventTransitions() : void
+    {
+      transitions = transitions.Except(EventTransitions).NToList()
+    }
     
-    //public IsSimpleState : bool
-    //{
-    //  node.SubStates().IsEmpty()
-    //}
+    public IsSimpleState : bool
+    {
+      get
+      {
+      sub_states.IsEmpty()
+    }
+    }
 
     ///// <summary>
     ///// Use both types of history in state
@@ -434,10 +476,13 @@ namespace Nemerle.Statechart
     //  node.SuperStatesInclude().NToList().FirstElems(_ == st : object).Where(x => x.Data is FsmState.ConcurrentRegion)
     //}
     
-    //public SuperStatesInclude : IEnumerable[FsmState]
-    //{
-    //  node.SuperStates().AddBefore(node)
-    //}
+    public SuperStatesInclude : IEnumerable[FsmState]
+    {
+      get
+      {
+        SuperStates.AddBefore(this)
+    }
+    }
 
     //public PartOfStateMachine : option[FsmState]
     //{
