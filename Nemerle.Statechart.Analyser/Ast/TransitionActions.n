@@ -24,7 +24,7 @@ namespace Nemerle.Statechart
       this.analyser = an
     }
 
-    
+
     public this(st : FsmState, tran : StateNode.Transition)
     {
       def an = st.analyser;
@@ -159,14 +159,14 @@ namespace Nemerle.Statechart
           | Default(history = h)             => 
               match (Destination)
               {
-                | History(NodeValue(Parent = st)) => $"DefaultTransition$(h)To$st"
-                | _                               => $"DefaultTransition$(h)To$ActualTo"
+                | History(state = st) => $"DefaultTransition$(h)To$st"
+                | _                   => $"DefaultTransition$(h)To$ActualTo"
               }
         }
       }
     }
 
-  
+
     public Name : string
     {
       get
@@ -253,8 +253,8 @@ namespace Nemerle.Statechart
       }
     }
 
-    [NeedChange]
-    public Local : bool;
+    //[NeedChange]
+    public Local : bool {get;set;}
 
 
     public PathNode : IEnumerable[PathNode]
@@ -315,7 +315,7 @@ namespace Nemerle.Statechart
         def targ_ok = match (Destination)
                        {
                          | ForceStateChange                                  => false
-                         //| JunctionNode(DecisionNode(Paths = p, Guards = g)) => path_inlined(p) && g is [] 
+                        //| JunctionNode(DecisionNode(Paths = p, Guards = g)) => path_inlined(p) && g is [] 
                          | _                                                 => true
                        }
         path_ok && targ_ok
@@ -345,10 +345,10 @@ namespace Nemerle.Statechart
       }
     }
 
-    
+
     public TargetTraverse(func : TransitionTarget -> TransitionTarget) : void
     {
-        To = To.Traverse(func)
+      To = To.Traverse(func)
     }
 
 
@@ -426,7 +426,7 @@ namespace Nemerle.Statechart
           | SubRegion(state = st) => check_dest(st)
           | Terminate(j)
           | Join(j)    
-          | History(j) => j.Parent
+          | History(j) => j.state
           | _ => null
         }
 
@@ -434,16 +434,27 @@ namespace Nemerle.Statechart
       }
     }
 
-    [NeedChange]
-    [Accessor]
-    public executeCheck : CheckNode = CheckNode.Empty();
+    //[NeedChange]
+    public executeCheck : CheckNode {get;set;default CheckNode.Empty()} 
 
-    public AddCheck(node : CheckNode) : StateTransition
+    public AddCheck(node : CheckNode) : void
     {
-      ChangeExecuteCheck(executeCheck + node)
+      executeCheck = executeCheck + node
     }
 
     public static completion_evt : StateEvent = StateEvent(TransitionEvent(null, 0));
+
+    public Used : bool
+    {
+      get
+      {
+        analyser.Used[this]
+      }
+      set
+      {
+        analyser.Used[this] = value
+      }
+    }
 
     public Clone() : StateTransition
     {
@@ -453,9 +464,10 @@ namespace Nemerle.Statechart
         | Default(h)     => Default(this, h)
         | Transition(e)  => Transition(this, e)
         | History as h   => History(h)
+        | Internal(t)    => Internal(this, t)
       }
     }
-    
+
     public override ToString() : string
     {
       Name
