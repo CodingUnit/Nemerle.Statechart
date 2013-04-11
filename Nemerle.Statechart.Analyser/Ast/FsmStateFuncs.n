@@ -23,13 +23,13 @@ namespace Nemerle.Statechart
         type is StateType.Final
       }
     }
-    
+
     public IsTopState : bool
     {
       get
       {	  
         Super == null
-	  }
+      }
     }
 
     public SubRegions : IEnumerable[FsmState]
@@ -40,7 +40,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    
+
 
     /// <summary>
     /// Is it Lived state, consider on nesting lived states
@@ -49,17 +49,20 @@ namespace Nemerle.Statechart
     {
       get
       {
-      Lived || !AllLivedSubStates.IsEmpty()
-    }
+        Lived || !AllLivedSubStates.IsEmpty()
+      }
     }
 
-    ///// <summary>
-    ///// Direct lived substates with consider of nesting state life
-    ///// </summary>
-    //public LivedSubStatesNested : IEnumerable[FsmState]
-    //{
-    //  node.ChildNodes.Where(x => x.LivedNested())
-    //}
+    /// <summary>
+    /// Direct lived substates with consider of nesting state life
+    /// </summary>
+    public LivedSubStatesNested : IEnumerable[FsmState]
+    {
+      get
+      {
+        sub_states.Where(x => x.LivedNested)
+      }
+    }
 
     /// <summary>
     /// All Lived substates with consider of nesting state life on all nesting levels
@@ -67,26 +70,24 @@ namespace Nemerle.Statechart
     public AllLivedSubStatesNested : IEnumerable[FsmState]
     {
       get
-        {
+      {
         //GetBreadthFirstEnumerable().Where(_.LivedNested)
         AllStates.Where(_.Lived)
-    }
+      }
         //sub_states.Filter(_.LivedNested) + (sub_states |>< AllLivedSubStatesNested)
     }
 
-    ///// <summary>
-    ///// Direct lived sub states without consider of living nesting states of this substates
-    ///// </summary>
-    //public LivedSubStates : IEnumerable[FsmState]
-    //{
-    //  node.SubStates().Where(x => x.Lived())
-    //}
+    /// <summary>
+    /// Direct lived sub states without consider of living nesting states of this substates
+    /// </summary>
+    public LivedSubStates : IEnumerable[FsmState]
+    {
+      get
+      {
+        sub_states.Where(_.Lived)
+      }
+    }
 
-    //public Analyser : FsmAnalyser
-    //{
-    //  node.Data.analyser
-    //}
-    
     public AllPseudo : IEnumerable[PseudoStateNode]
     {
       get
@@ -112,7 +113,7 @@ namespace Nemerle.Statechart
     public AllStates : IEnumerable[FsmState]
     {
       get
-      {
+      { // TODO: caching of iterators
         GetBreadthFirstEnumerable()
       }
     }
@@ -125,8 +126,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-      AllSubStates.Where(x => x.Lived)
-    }
+        AllSubStates.Where(x => x.Lived)
+      }
     }
 
     public DefineInitial(st : FsmState) : void
@@ -136,58 +137,56 @@ namespace Nemerle.Statechart
       //node.Update(x => x.ChangeInitial(tran :: x.initial))
     }
 
-    //    /// <summary>
-    ///// Sub states included in the history of this state
-    ///// </summary>
-    //public SubStatesParticipateInHistory : IEnumerable[FsmState]
-    //{
-    //  node.History().Value.SelectMany(x => x.SubStatesParticipateIn())
-    //}
+    /// <summary>
+    /// Sub states included in the history of this state
+    /// </summary>
+    public SubStatesParticipateInHistory : IEnumerable[FsmState]
+    {
+      get
+      {
+        history.Value.SelectMany(x => x.SubStatesParticipateIn())
+      }
+    }
 
     public history : TwoOption[PseudoStateNode.History]
     {
-     get 
-     {
+      get 
+      {
         def hist = pseudo_states.FilterType();//FoldLeft([], (x, a) => if (x.Value is PseudoStateNode.History) x :: a else a);
         //def hist = hist.NToList();
         TwoOption.FromList(hist)
       }
     }
 
-    //public SubStatesParticipateIn(this node : PseudoStateNode) : IEnumerable[FsmState]
-    //{
-    //  match (node.Value)
-    //  {
-    //    | PseudoStateNode.History(type = HistoryType.Deep)     => node.Parent.AllLivedSubStates()
-    //    | PseudoStateNode.History(type = HistoryType.Shallow)  => node.Parent.LivedSubStatesNested()
-    //    | _                                                    => Enumerable.Empty()
-    //  }
-    //}
+    
 
     public PartOfRegion : option[FsmState]
     {
       get
       {
-      SuperStatesInclude.Find(x => x.type is StateType.Region)
-    }
+        SuperStatesInclude.Find(x => x.type is StateType.Region)
+      }
     }
 
     public PartOfSubRegion : option[FsmState]
     {
       get
       {
-        
-      SuperStatesInclude.Find(x => x.type is StateType.SubRegion)
+
+        SuperStatesInclude.Find(x => x.type is StateType.SubRegion)
+      }
     }
+
+    ///// <summary>
+    ///// History pseudo-states in which participate this state
+    ///// </summary>
+    public ParticipateInHistory : IEnumerable[PseudoStateNode.History]
+    {
+      get
+      {
+        analyser.HistoryStates.Where(x => x.SubStatesParticipateIn().Contains(this))
+      }
     }
-    
-    /////// <summary>
-    /////// History pseudo-states in which participate this state
-    /////// </summary>
-    //public ParticipateInHistory : IEnumerable[PseudoStateNode]
-    //{
-    //  node.Data.analyser.HistoryStates.Where(x => x.SubStatesParticipateIn().Contains(node))
-    //}
 
     public SuperStates : IEnumerable[FsmState]
     {
@@ -198,44 +197,62 @@ namespace Nemerle.Statechart
           yield st;
           if (st.Super != null) loop(st.Super) else ()
         }
-        
+
         loop(Super)
       }
     }
 
-    //public SuperStatesFromTop : IEnumerable[FsmState]
-    //{
-    //  Enumerable.Reverse(node.SuperStates())
-    //}
+    public SuperStatesFromTop : IEnumerable[FsmState]
+    {
+      get
+      {
+        Enumerable.Reverse(SuperStates)
+      }
+    }
 
-    //public SuperStatesFromTopInclude : IEnumerable[FsmState]
-    //{
-    //  node.SuperStatesFromTop().Append(node)
-    //}    
+    public SuperStatesFromTopInclude : IEnumerable[FsmState]
+    {
+      get
+      {
+        SuperStatesFromTop.Append(this)
+      }
+    }    
 
-    //public HaveFinal : bool
-    //{
-    //  match (node.Data)
-    //  {
-    //    | ConcurrentRegion => node.SubStates().All(x => x.HaveFinal())
-    //    | _                => node.SubStates().Exists(x => x.Data is FsmState.Final)
-    //  }
-    //}
+    public HaveFinal : bool
+    {
+      get
+      {
+        match (type)
+        {
+          | StateType.Region => sub_states.All(x => x.HaveFinal)
+          | _                => sub_states.Exists(x => x.type is StateType.Final)
+        }
+      }
+    }
 
-    //public FinalSubState : option[GeneralTree[FsmState.Final]]
-    //{
-    //  node.SubStates().FindType()
-    //}
+    public FinalSubState : option[FsmState]
+    {
+      get
+      {
+        sub_states.Find(x => x.type is StateType.Final)
+      }
+    }
 
-    //public DefaultTransitions : IEnumerable[StateTransition]
-    //{
-    //  node.History().Value.FoldLeft([], (x, a) => if ((x.Value :> PseudoStateNode.History).default is Some(t)) t :: a else a)
-    //}
+    public all_transitions_nested : IEnumerable[StateTransition]
+    {
+      get
+      {
+        AllStates.SelectMany(x => x.transitions)
+      }
+    }
 
-    //public UsedInGenerate : bool
-    //{
-    //    node.Lived() || !node.AllLivedSubStates().IsEmpty()
-    //}
+    public UsedInGenerate : bool
+    {
+      get
+      {
+        Lived || !AllLivedSubStates.IsEmpty()
+      }
+    }
 
 
     //    /// <summary>
@@ -256,32 +273,19 @@ namespace Nemerle.Statechart
       get
       {
         Super.sub_states.IndexOf(this)
+      }
     }
+
+              /// <summary>
+          /// Indicates that maybe external transitions from some points of orthogonal state out of region not only completion
+          /// </summary>
+    public MayTakePlaceForcedTransitions : bool 
+    {
+      get
+      {
+        all_transitions_nested.Exists(x => x.OutOfRegion)
+      }
     }
-
-    //public Super : FsmState
-    //{
-    //  node.Parent
-    //}
-
-    //    //[TraverseIgnore] 
-    //    //[NeedChange(index)] 
-    //public ContainedIn : FsmState
-    //{
-    //  node.Super()
-    //}
-
-    //public static all_transitions_nested : IEnumerable[StateTransition]
-    //{
-    //  node.GetBreadthFirstEnumerable().SelectMany(x => x.AllTransitions())
-    //}
-    //          /// <summary>
-    //      /// Indicates that maybe external transitions from some points of orthogonal state out of region not only completion
-    //      /// </summary>
-    //public MayTakePlaceForcedTransitions : bool 
-    //{
-    //  node.all_transitions_nested().Exists(x => x.Value.OutOfRegion)
-    //}
 
     //public NeedHistorySave : bool
     //{
@@ -343,28 +347,28 @@ namespace Nemerle.Statechart
     //{
     //  node.AllTransitions()
     //}
-    
+
     //public AllTransitions : IEnumerable[StateTransition]
     //{
     //  node.Data.statemap.Transitions[node]
     //}
-    
+
     public EventTransitions : IEnumerable[StateTransition]
     {
       get
       {
-      transitions.Where(x => !(x is StateTransition.Initial))
+        transitions.Where(x => !(x is StateTransition.Initial))
       }
     }
-    
+
     public ExternalTransitions : IEnumerable[StateTransition]
     {
       get
       {
-      transitions.Where(x => x is StateTransition.Transition)
+        transitions.Where(x => x is StateTransition.Transition)
+      }
     }
-    }
-    
+
     public initial_tran : list[StateTransition.Initial]
     {
       get
@@ -377,7 +381,7 @@ namespace Nemerle.Statechart
     //{
     //  node.AllTransitions().Where(x => x.Value is StateTransition.Internal)
     //}
-    
+
     //public AddSubState(this st : FsmState, sub : FsmState) : void
     //{
     //  //st.analyser = Analyser;
@@ -394,7 +398,7 @@ namespace Nemerle.Statechart
         tr.Source = this;
         tr
       }
-      
+
       def copy = tr.Map(create_copy);
       transitions = transitions.Concat(copy).NToList();
     //  //def (tran : IEnumerable[StateTransition.Transition], other)   = tr.PartitionType();
@@ -410,23 +414,23 @@ namespace Nemerle.Statechart
     //{
     //  (x, y) => comparer(x.Value, y.Value)
     //}
-    
+
     public DeleteTransitions(tr : IEnumerable[StateTransition]) : void
     {
       transitions = transitions.Except(tr).NToList()
     }
-    
+
     public DeleteEventTransitions() : void
     {
       transitions = transitions.Except(EventTransitions).NToList()
     }
-    
+
     public IsSimpleState : bool
     {
       get
       {
-      sub_states.IsEmpty()
-    }
+        sub_states.IsEmpty()
+      }
     }
 
     ///// <summary>
@@ -441,35 +445,35 @@ namespace Nemerle.Statechart
     //{
     //    node.History().Value.Where(x => node.Data.analyser.Used[x])
     //}
-    
+
     public Lived : bool
     {
       get
       {
-      analyser.Used[this]
+        analyser.Used[this]
+      }
+      set
+      {
+        analyser.Used[this] = value
+      }
     }
-    set
-    {
-      analyser.Used[this] = value
-    }
-    }
-    
+
     //public static Lived(this st : FsmState) : bool
     //{
     //    st.Analyser().Used[st]
     //}
-    
+
     //public LivedState : bool
     //{
     //  def an = node.Analyser();
     //  node.Lived() || an.Clones[node].Exists(x => x.Lived())
     //}
-    
+
     //  //public GetFsmNode : GeneralTree[FsmNode]
     ////{
     ////  node.Value.statemap.GetNode(node)
     ////}
-    
+
     ////public HaveFinalCompletion() : bool
     ////{
     ////  def st = SuperStatesInclude;
@@ -495,13 +499,13 @@ namespace Nemerle.Statechart
     //{
     //  node.SuperStatesInclude().NToList().FirstElems(_ == st : object).Where(x => x.Data is FsmState.ConcurrentRegion)
     //}
-    
+
     public SuperStatesInclude : IEnumerable[FsmState]
     {
       get
       {
         SuperStates.AddBefore(this)
-    }
+      }
     }
 
     //public PartOfStateMachine : option[FsmState]
@@ -560,13 +564,13 @@ namespace Nemerle.Statechart
     //  node.Update(x => x.ChangePaths(paths.TraverseTransitions(true)));
     //  //UpdateTransitions(trans).ChangePaths(paths)
     //}
-    
-   
+
+
     //public HierarchyPos : int
     //{
     //  if (node.Data.calc_hierarchy_pos != -1) node.Data.calc_hierarchy_pos else node.Height
     //}
-    
+
     //public Name : string
     //{
     //    match (node.Data)
@@ -600,7 +604,7 @@ namespace Nemerle.Statechart
         $"$OriginalName"
       }
     }
-    
+
     public GetHistory(h : PseudoStateNode.History) : PseudoStateNode
     {	  
       match (history, h.type)
@@ -610,12 +614,12 @@ namespace Nemerle.Statechart
         | _                                                                                                        => null
       }
     }
-    
+
     //public CompletionTransitions : IEnumerable[StateTransition]
     //{
     //  node.AllTransitions().Where(x => x.Value.IsCompletion)
     //}
-    
+
     //public join_completion_transitions : IEnumerable[StateTransition]
     //{
     //    node.CompletionTransitions().Where(x => x.Value.To is TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Join)))
@@ -640,14 +644,14 @@ namespace Nemerle.Statechart
     //    hist[node]
     //  } else null
     //}
-    
+
     //public HaveHistoryPaths : bool
     //{
     //  node.HistoryPaths() != null
     //  //node.Analyser().HistoryPaths != null && HistoryPaths[node] HistoryPaths[node].IsEmpty()
     //}
 
-    
+
     /// <summary>
     /// Work transitions
     /// </summary>
@@ -655,14 +659,14 @@ namespace Nemerle.Statechart
     {
       get
       {
-        
-            EventTransitions.Where(_.Used)
+
+        EventTransitions.Where(_.Used)
             //__.Exclude(_.CrossFor);
             //__.Exclude(_.NotWork);
             //__.Where(_.UsedInGenerate)
-          }
+      }
     }
-    
+
     //    /// <summary>
     ///// Events for which reacts state
     ///// </summary>
@@ -677,7 +681,7 @@ namespace Nemerle.Statechart
     //    {
     //      | Some(r) => def (exit, _) = TransitionPath.FindPath(node, r, Enumerable.Empty(), Enumerable.Empty()); // exit state nested in region
     //                   TransitionPath.ExitNodeCreate(node, exit); // create exit state node
-                       
+
     //      | _       => Enumerable.Empty()
     //    }
     //}
@@ -706,10 +710,10 @@ namespace Nemerle.Statechart
     //    }
 
   }
-  
-  
-        
-        
-  
+
+
+
+
+
 }
 
