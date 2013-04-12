@@ -22,37 +22,37 @@ namespace Nemerle.Statechart
   public partial class TransitionPath
   {
 
-    TraverseJoinTransition(join : PseudoStateNode, tr : StateTransition) : TransitionDestination
+    TraverseJoinTransition(join : PseudoStateNode.Join, tr : StateTransition) : TransitionDestination
     {
-      | (NodeValue(Value = Join(joined_tran = jtran, transition = tran), Parent = st), NodeValue(Parent = src)) =>
+      | (Join(joined_tran = jtran, transition = tran), StateTransition(Source = src)) =>
 
-          tr.Update(_.ChangeOmitGuard(true));
-          tr.Used(true);
+          tr.omit_guard = true;
+          tr.Used = true;
           DefExitPath(src, st);
           traverser?.Add(tran);
-          def (node, tran) = if (tr.FromRegion().Value : object == jtran.Last().FromRegion().Value)
+          def (node, tran) = if (tr.FromRegion : object == jtran.Last().FromRegion)
           {
-            tr.Update(x => x.AddCheck(CheckNode.Join(join, tr)));
+            tr.AddCheck(CheckNode.Join(join, tr));
             (JoinedTransition(join, tran), tr)
           } else
-          if (tr.FromRegion().Value : object == jtran.First().FromRegion().Value)
+          if (tr.FromRegion: object == jtran.First().FromRegion)
           {
-            tr.Update(x => x.AddCheck(RegionStates(jtran.Map(x => x.Value.From))));
-            def has_guard = jtran.Exists(x => x.Value.guard.HasValue);
-            when (has_guard) tr.Update(x => x.AddCheck(Guard(jtran.FilterValues(x => x.Value.Guard).NToList())));
+            tr.AddCheck(RegionStates(jtran.Map(x => x.From)));
+            def has_guard = jtran.Exists(x => x.guard.HasValue);
+            when (has_guard) tr.AddCheck(Guard(jtran.FilterValues(x => x.Guard).NToList()));
             (Join(join), tr)
           }
           else
           {
-            tr.Update(x => x.AddCheck(Join(join, tr)));
+            tr.AddCheck(Join(join, tr));
             (Join(join), tr)
           }
           transition = tran;
           node
-      | _ => null
+     
     }
 
-    TraverseFork(fork : PseudoStateNode, targets : list[TransitionTarget]) : TransitionDestination
+    TraverseFork(fork : PseudoStateNode.Fork, targets : list[TransitionTarget]) : TransitionDestination
     {
       | (NodeValue(Value = Fork(fork_tran = ftran)), t) => 
 
