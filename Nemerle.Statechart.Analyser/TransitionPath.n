@@ -183,10 +183,10 @@ namespace Nemerle.Statechart
     {
       match (st)
       {
-        | History as p                                    => TraverseHistory(p)
-        | Terminate                                   => tr.Used = true;
-                                                        Terminate(st)
-        | Fork(target = t)                            => TraverseFork(st, t)
+        | History as p                                => TraverseHistory(p)
+        | Terminate as p                              => tr.Used = true;
+                                                         Terminate(p)
+        | Fork(target = t) as p                       => TraverseFork(p, t)
         //| Junction(type = JunctionType.Choice) as j   => TraverseChoice(j, tr)
         //| Junction(type = JunctionType.Merge)  as m   => TraverseMerge(m, tr)
         //| Junction as j                               => TraverseJunction(j, tr)
@@ -212,9 +212,9 @@ namespace Nemerle.Statechart
                 traverser?.Log($"\nEntering in final state $st of Region ($r:$sr) transitions ..$tran may happen");
                 traverser?.Add(tran);
                 TransitionDestination.Final(st, sr, r, tran)
-              }
-              
-              | _ => 
+            }
+
+        | _ => 
         def history = st.ParticipateInHistory;
         def hist_clear = ClearHistory(history.NToList()); // create clear history node
         traverser?.Log($"\nEntering in final state $st");
@@ -238,14 +238,14 @@ namespace Nemerle.Statechart
                 traverser?.Log($"..and pass it by completion transitions ..$tran");
                 Choice(st.Super, tran, Some(st))
 
-      
+
             }
-          }
-      }    
+      }
+    }    
 
     TraverseHistory(hist : PseudoStateNode.History) : TransitionDestination
     {
-        | PseudoStateNode.History(default = tran) =>
+      | PseudoStateNode.History(default = tran) =>
             tran.Iter(traverser?.Add);
             hist.Used = true;
             History(hist)
@@ -259,8 +259,8 @@ namespace Nemerle.Statechart
 
     TraverseDefaultTransition(tran : StateTransition) : TransitionDestination
     {
-      
-        | Default(history = hist, From = from) as tr =>
+
+      | Default(history = hist, From = from) as tr =>
           DefPath(tran.Source, from, tran); // unwind path from Source up to transition begining (From)
           def st = tr.ToState;
           when (st == null) throw FsmErrorException(FsmError.DefaultTransitionMustGoToState(tran, hist));
@@ -274,7 +274,7 @@ namespace Nemerle.Statechart
 
           //  | _ => TraverseTargetReg(tr.To, tr)
           //}
-          | _ => null
+      | _ => null
     }
 
     TraverseOrdinaryTransition(tran : StateTransition) : TransitionDestination
@@ -286,8 +286,8 @@ namespace Nemerle.Statechart
 
     TraverseHistoryPath(tran : StateTransition) : TransitionDestination
     {
-      
-        | StateTransition.History(From = from, history = hist, ToState = st) =>
+
+      | StateTransition.History(From = from, history = hist, ToState = st) =>
 
           def src = tran.Source;
           //def tran = if (tr.From == null) tr.ChangeFrom(tr.From) else tran;
@@ -295,7 +295,7 @@ namespace Nemerle.Statechart
           tran.Used = true;
           if (st.type is StateType.Region) HistoryRestore(hist) 
           else TraverseStateTarget(st);
-        | _ => null
+      | _ => null
     }
 
     TraverseInitialTransition(tran : StateTransition) : TransitionDestination
@@ -361,21 +361,21 @@ namespace Nemerle.Statechart
 
     TraverseTransition(tran : StateTransition) : TransitionDestination
     {
-      
-        | Internal                                => tran.Used = true;
+
+      | Internal                                => tran.Used = true;
                                                       NoStateChange()
-        | Default                                 => TraverseDefaultTransition(tran)
-        | Initial                                 => TraverseInitialTransition(tran)
-        | History                                 => TraverseHistoryPath(tran)
+      | Default                                 => TraverseDefaultTransition(tran)
+      | Initial                                 => TraverseInitialTransition(tran)
+      | History                                 => TraverseHistoryPath(tran)
           // if not exit from region
-        | Transition(WithinRegion = true)         => TraverseWithinRegionTransition(tran)
+      | Transition(WithinRegion = true)         => TraverseWithinRegionTransition(tran)
           // if go to join pseudo state
-        | Transition(To = TransitionTarget.PseudoState(node = Join as j)) => TraverseJoinTransition(j, tran)
+      | Transition(To = TransitionTarget.PseudoState(node = Join as j)) => TraverseJoinTransition(j, tran)
           // if from state in orthogonal region, and transition begins in orthogonal regions boundary or upper
-        | _ 
+      | _ 
                                                   => 
-            if (tran.Source.PartOfSubRegion is Some(r))
-              TraverseTransitionFromRegion(r, tran) else TraverseOrdinaryTransition(tran)
+          if (tran.Source.PartOfSubRegion is Some(r))
+            TraverseTransitionFromRegion(r, tran) else TraverseOrdinaryTransition(tran)
                                                 // else ordinary transition
     }
 
@@ -411,7 +411,7 @@ namespace Nemerle.Statechart
       transition.Destination = to;
       transition.ActualTo = actual;
       transition.Path = this;
-     // Update(x => x.ChangeDestinationActualToPath(to, actual, this));
+    // Update(x => x.ChangeDestinationActualToPath(to, actual, this));
     }
 
     public this(tran : StateTransition, rec : bool = false)

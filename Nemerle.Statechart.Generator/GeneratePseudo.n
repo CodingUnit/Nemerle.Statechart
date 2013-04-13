@@ -135,46 +135,46 @@ namespace Nemerle.Statechart
                 ]>
     }
 
-    DefineHistoryPaths(builder : TypeBuilder, st : GeneralTree[FsmState]) : void
+    DefineHistoryPaths(builder : TypeBuilder, st : FsmState) : void
     {
       def create_body(hist)
       {
-        def body = <[ fsm.$(hist.GetName() : usesite)(); ]>;
-        if (st.Data is FsmState.ConcurrentRegion && st.HaveFinal())
+        def body = <[ fsm.$(hist.Name : usesite)(); ]>;
+        if (st.type is StateType.Region && st.HaveFinal)
         {
-          def tran = (hist.Value :> PseudoStateNode.History).default.Value;
+          def tran = hist.default.Value;
         <[
-          if (IsFinal) fsm.$(tran.Value.Name : usesite)() else $body;
+          if (IsFinal) fsm.$(tran.Name : usesite)() else $body;
         ]>
         } else body
       }
 
-      if (st.IsTopState()) // if it is top state
+      if (st.IsTopState) // if it is top state
       {
-        def names = analyser.HistoryStates |> get_history_run_name(_, _.Parent.Name()); // get name of history states
-        def decls = names |> <[decl: public virtual $(_ : usesite)(_ : $(ChartName : usesite)) : State {null} ]>; // create transition methods for history states
+        def names = analyser.HistoryStates.Map(x => get_history_run_name(x, x.state.Name)); // get name of history states
+        def decls = names.Map(x => <[decl: public virtual $(x : usesite)(x : $(ChartName : usesite)) : State {null} ]>); // create transition methods for history states
         Define(builder, decls);
       } else
       {
-        if (st.Lived() && st.Data is FsmState.Final) 
+        if (st.Lived && st.type is StateType.Final) 
         {
           def create_body(hist)
           {
-            | NodeValue(Value = PseudoStateNode.History(default = Some(d))) => 
+            | PseudoStateNode.History(default = Some(d)) => 
             //def tran = hist.Value.default.Value;
-              <[ fsm.$(d.Value.Name : usesite)() ]>
+              <[ fsm.$(d.Name : usesite)() ]>
             | _ => <[ () ]>
           }
 
-          def hist  =  st.ParticipateInHistory();
-          def name  =  hist |> (_, get_history_run_name(_, _.Parent.Name())); // create transition names
+          def hist  =  st.ParticipateInHistory;
+          def name  =  hist.Map(x => (x, get_history_run_name(x, x.state.Name))); // create transition names
           def decl  =  name.MapToList((x, y) => <[decl: public override $(y : usesite)(fsm : $(ChartName : usesite)) : State {$(create_body(x))}]>);
           Define(builder, decl)
         } else
-          when (st.HaveHistoryPaths() && (st.Lived() || st.Data is FsmState.ConcurrentRegion)) // if state has history paths or it is lived
+          when (st.HaveHistoryPaths && (st.Lived || st.type is StateType.Region)) // if state has history paths or it is lived
           {
-            def paths  =  st.HistoryPaths();
-            def name  =  paths.Map(x => (x.History, get_history_run_name(x.History, x.From.Name()))); // create transition names
+            def paths  =  st.HistoryPaths;
+            def name  =  paths.Map(x => (x.History, get_history_run_name(x.History, x.From.Name))); // create transition names
             def decl  =  name.MapToList((x, y) => <[decl: public override $(y : usesite)(fsm : $(ChartName : usesite)) : State {$(create_body(x))}]>);
             Define(builder, decl)
           }
@@ -187,8 +187,8 @@ namespace Nemerle.Statechart
       def get_run_hist_body(hist)
       {
         | StateTransition.Default(From = from, history = hist) as t =>
-            def name = hist.GetName();
-            def hname = get_history_run_name(hist, from.Name());
+            def name = hist.Name;
+            def hname = get_history_run_name(hist, from.Name);
                 <[ 
                 if ($(name : usesite) != null) // определяем выбор в случае если есть переход по умолчанию в случ.если нет истории
                     $(name : usesite).$(hname : usesite)(this); else $(DefineTransBody([t], GenCtx.Normal()));
@@ -199,43 +199,42 @@ namespace Nemerle.Statechart
       {
         def create_history(hist)
         {
-          def hist_field =  <[decl: mutable $(hist.GetName() : usesite) : State;]>;
+          def hist_field =  <[decl: mutable $(hist.Name : usesite) : State;]>;
           def clear = <[decl: $($"$(hist)Clear" : usesite)() : void 
             {
-                $(hist.GetName() : usesite) = null
+                $(hist.Name : usesite) = null
             }]>;    
-          def create_default(x)
+          def create_default(tr)
           {
-            def tr = x.Value :> StateTransition.Default;
             [<[decl: $($"$(tr.history)Run" : usesite)() : State {$(get_run_hist_body(tr));} ]>]
           }
-          def default = (hist.Value :> PseudoStateNode.History).default.Map(create_default).WithDefault([]);
+          def default = hist.default.Map(create_default).WithDefault([]);
           [hist_field, clear] + default
         }
 
         def save_body(hist)
         {
-          def idx = hist.Parent.Data.Id.UInt;
-          def st : GeneralTree[_] = hist.Parent;
-          def reg = st.PartOfRegion();
-          def sreg = st.PartOfSubRegion();
+          def idx = hist.state.Id.UInt;
+          def st = hist.state;
+          def reg = st.PartOfRegion;
+          def sreg = st.PartOfSubRegion;
           match (reg, sreg)
           {
             | (Some(r), Some(sr)) => 
             //| FsmState(PartOfRegion = Some(r), PartOfSubRegion = Some(sr)) => 
                 def name = GetExecStateName(r, GenCtx.Normal());
-                def reg = <[ $name.$($"cur_state$(sr.Index())" : usesite); ]>;
-                <[ $(hist.GetName() : usesite) = if ($reg != null) $reg.GetCopy($idx) else null ]>
+                def reg = <[ $name.$($"cur_state$(sr.Index)" : usesite); ]>;
+                <[ $(hist.Name : usesite) = if ($reg != null) $reg.GetCopy($idx) else null ]>
              | _ => 
                 // in case where deal with concurrent states
-             if (hist.SubStatesParticipateIn().Exists(x => x.Data is FsmState.ConcurrentRegion)) <[ $(hist.GetName() : usesite) = cur_state.GetCopy($idx);]> else
+             if (hist.SubStatesParticipateIn().Exists(x => x.type is StateType.Region)) <[ $(hist.Name : usesite) = cur_state.GetCopy($idx);]> else
                    // in normal case
-                   <[ $(hist.GetName() : usesite) = cur_state; ]>
+                   <[ $(hist.Name : usesite) = cur_state; ]>
           }
         }
 
         def head = h.First();
-        def hist_func =  head.SimpleName();
+        def hist_func =  head.SimpleName;
 
         def body = h.Map(save_body);
             // save history function
@@ -252,9 +251,9 @@ namespace Nemerle.Statechart
 
       def def_hist(st)
       {
-        when (st.History().HasValue)
+        when (st.history.HasValue)
         {
-          def hist = st.UsedHistory();
+          def hist = st.UsedHistory;
           when (!hist.IsEmpty()) def_history(hist);
         }
       }
@@ -268,7 +267,7 @@ namespace Nemerle.Statechart
       {
         match (j)
         {
-          | NodeValue(Value = Join(name = n)) => 
+          | Join(name = n) => 
 
               def fname = $"join$n";
               <[ decl: mutable $(fname : usesite) : int; ]> :: a
@@ -281,7 +280,7 @@ namespace Nemerle.Statechart
       //  | Junction(Name = n, DecisionTree = t) => <[decl: $(n : usesite)() : State {$(get_junction_body(t, GenCtx.Normal()))} ]>
       //}
 
-      def pseudo = analyser.PseudoStates.Values;
+      def pseudo = analyser.PseudoStates;
       def defs = pseudo.FoldLeft([], get_join);
       //def junc = $[get_junction(x), x in analyser.Junctions, x.DecisionTree.IsSetDestination];
       //def defs = joins + junc;

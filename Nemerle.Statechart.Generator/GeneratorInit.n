@@ -22,13 +22,13 @@ namespace Nemerle.Statechart
     {
       def def_initial(i)
       {
-        DefineTransBody(i.Map(x => x.Value : StateTransition), GenCtx.Normal());
+        DefineTransBody(i.Map(x => x : StateTransition), GenCtx.Normal());
       }
 
-      def initial = def_initial(analyser.TopState.InitialTransitions()); // define initial transition
-      def events = analyser.Events |> <[ $_ ]>;
-      def states = analyser.LivedNestedStates.Exclude(_.IsTopState()).Map(x => <[ $(x.Name() : string) ]>);
-      def state_names = $[(st.Name(), $"State$(st.Name())"), st in analyser.LivedNestedStates, st.UsedInGenerate() && !st.IsTopState() && !(st.Data is FsmState.ConcurrentSubRegion)]; // создаем имена состояний      
+      def initial = def_initial(analyser.TopState.initial_tran); // define initial transition
+      def events = analyser.Events.Map(x => <[ $x ]>);
+      def states = analyser.LivedNestedStates.Exclude(_.IsTopState).Map(x => <[ $(x.Name : string) ]>);
+      def state_names = $[(st.Name, $"State$(st)"), st in analyser.LivedNestedStates, st.UsedInGenerate && !st.IsTopState && !(st.type is StateType.SubRegion)]; // создаем имена состояний      
       //def state_init_expr = state_names.Map((x, y) => <[ $(y : usesite) = State.$(x : usesite)();]>);
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
       def trans_complete_expr =  if (analyser.Fsm.flags.TransitionCompleted) <[ OnTransitionCompleted(); ]> else <[ () ]>;
@@ -140,9 +140,9 @@ namespace Nemerle.Statechart
 
     DefineTerminate() : void
     {
-      def stop_activity(st, act)
+      def stop_activity(act)
       {
-        def name = act.GetName(st);
+        def name = act.Name;
         <[
           $($"$(name)Stop" : usesite)();
         ]>
@@ -194,9 +194,9 @@ namespace Nemerle.Statechart
           def names = ListUtils.Init(ids.Length, i => $"id$i");
           def mem = if (ids.IsStruct)
                      {
-                       def ids = names |> <[decl: public $(_ : usesite) : uint; ]>;
+                       def ids = names.Map(x => <[decl: public $(x : usesite) : uint; ]>);
                        def vars = names.Map(x => <[parameter: $(x : usesite) : uint]>);
-                       def assign = names |> <[ this.$(_ : usesite) = $(_ : usesite)]>;
+                       def assign = names.Map(x => <[ this.$(x : usesite) = $(x : usesite)]>);
                        def ctor = <[decl: public this(..$vars)
                                                       {
                                                         ..$assign
@@ -208,7 +208,7 @@ namespace Nemerle.Statechart
                           } ]>
                      } else
                      {
-                       def ids = names |> <[decl: public mutable $(_ : usesite) : uint; ]>;
+                       def ids = names.Map(x => <[decl: public mutable $(x : usesite) : uint; ]>);
                         <[decl: class LongId
                           {
                           ..$ids
@@ -248,10 +248,10 @@ namespace Nemerle.Statechart
 
       //tran_events = analyser.Events.;
       events = analyser.Events.NToList();
-      events_call = Map(events |> (_, <[ cur_state.$(_ : usesite)(this) ]>));
+      events_call = Map(events.Map(x => (x, <[ cur_state.$(x : usesite)(this) ]>)));
       //history_paths = analyser.HistoryPaths.Select(x => (x.Key, x.Value)).Map((x, y) => (x.Name(), GenAction.CreateActions(y.Path, action_for)));
       //history_transitions = analyser.history_transitions.Map((x, y) => (x, GenAction.CreateActions(y.PathNode, action_for)));
-      history_def_transitions = analyser.history_default_transitions.Map(x => (x.Value.Name, GenAction.CreateActions(x.Value.PathNode, action_for)));
+      history_def_transitions = analyser.history_default_transitions.Map(x => (x.Name, GenAction.CreateActions(x.PathNode, action_for)));
     }
 
     InitActionNames() : void
@@ -263,11 +263,11 @@ namespace Nemerle.Statechart
       }
 
       def class_decls  =  ty.GetParsedMembers(false);
-      method_decls = class_decls.Filter(_ is ClassMember.Function) |> Name;
-      def macros = class_decls |> (Name, _.ParsedAttributsAndModifiers.ParsedCustomAttributes);
+      method_decls = class_decls.Filter(_ is ClassMember.Function).Map(x => x.Name);
+      def macros = class_decls.Map(x => (x.Name, x.ParsedAttributsAndModifiers.ParsedCustomAttributes));
       def macros = macros.Filter((_, x)  => !x.IsEmpty());
       macro_actions  =  Map(macros);
-      decls = Map(class_decls |> (Name, _));
+      decls = Map(class_decls.Map(x => (x.Name, x)));
 
       def declared = decls.Keys();
       def action_for_decls =  macros.FindSingleList(_ is <[ ActionFor($_) ]>);
@@ -275,13 +275,13 @@ namespace Nemerle.Statechart
       def guard_for_decls = macros.FindSingleList(_ is <[ GuardFor($_) ]>);
       constructor =  macros.FindSingle(_ is <[Constructor]>).Map(x => x[0]);
 
-      def decl = declared |> (_, _);
-      def action = action_for_decls |> (action_for_name(_[2]), _);
-      def evt = event_for_decls |> (action_for_name(_[2]), _);
-      def methods = method_decls |> (_, _);
+      def decl = declared.Map(x => (x, x)).NToList();
+      def action = action_for_decls.Map((x, y) => (action_for_name(y), x));
+      def evt = event_for_decls.Map((x, y) => (action_for_name(y), x));
+      def methods = method_decls.Map(x => (x, x));
       action_for = Map(action + methods);
       event_for = Map(evt + methods);
-      def guard = guard_for_decls |> (action_for_name(_[2]), _);
+      def guard = guard_for_decls.Map((x, y) => (action_for_name(y), x));
       def guard = guard + decl;
       def guard = guard.RemoveDuplicatesSort(((k1, _), (k2, _))  => k1.CompareTo(k2));
       guard_for = Map(guard);

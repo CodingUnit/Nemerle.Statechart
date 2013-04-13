@@ -24,7 +24,7 @@ namespace Nemerle.Statechart
 
     TraverseJoinTransition(join : PseudoStateNode.Join, tr : StateTransition) : TransitionDestination
     {
-      | (Join(joined_tran = jtran, transition = tran), StateTransition(Source = src)) =>
+      | (Join(state = st, joined_tran = jtran, transition = tran), StateTransition(Source = src)) =>
 
           tr.omit_guard = true;
           tr.Used = true;
@@ -49,42 +49,39 @@ namespace Nemerle.Statechart
           }
           transition = tran;
           node
-     
+
     }
 
     TraverseFork(fork : PseudoStateNode.Fork, targets : list[TransitionTarget]) : TransitionDestination
     {
-      | (NodeValue(Value = Fork(fork_tran = ftran)), t) => 
+      | (Fork(fork_tran = ftran), t) => 
 
         def st = t.Map(x => x.ToState);
-        def reg = st.Map(x => x.PartOfSubRegions());
-        def sreg = reg.Map(x => x.Last());
-        def reg = sreg.Head.ContainedIn();
+        def reg = st.Head.PartOfRegion.Value;
         traverser?.Add(ftran);
         Fork(reg, ftran)
-        | _ => null
     }
 
     TraverseOrthogonalRegion(reg : FsmState) : TransitionDestination
     {
-      def initial = reg.SubRegions().Map(x => x.InitialTransitions());
+      def initial = reg.sub_states.Map(x => x.initial_tran);
       when (!initial.All(x => !x.IsEmpty())) throw FsmErrorException(FsmError.RegionMustContainInitial(reg, transition));
       def init = initial.Flatten();
       init.Iter(_.TraversePath());
       //def sub = reg.SubRegions();//.Map(x => x.UpdateTransitions(init) :> ConcurrentSubRegion);
       //def reg = reg.ChangeSubRegions(sub);
       def target = Region(reg);
-      if (transition.Value is Initial) target else TraverseCompletionTransition(target, target)
+      if (transition is Initial) target else TraverseCompletionTransition(target, target)
     }
 
     TraverseCompletionTransition(target : TransitionDestination, to : TransitionDestination) : TransitionDestination
     {
       match (target)
       {
-        | Region(GeneralTree(Data = ConcurrentRegion) as st) =>
-          def sr = st.SubRegions();
-          def init = sr.SelectMany(x => x.InitialTransitions());
-          def st = init.Map(x => x.Value.Destination);
+        | Region(FsmState(type = StateType.Region) as st) =>
+          def sr = st.sub_states;
+          def init = sr.SelectMany(x => x.initial_tran);
+          def st = init.Map(x => x.Destination);
           def st = st.Map(TraverseCompletionTransition(_, to));
           match (st.Find(_ is CheckAfter))
           {
@@ -95,13 +92,13 @@ namespace Nemerle.Statechart
         | SubRegion(reg = s)
         | State(s) => 
 
-            def tr = s.join_completion_transitions();
+            def tr = s.join_completion_transitions;
             if (tr.IsEmpty()) to else
             {
-            def (reg, joined) = match (tr.First().Value.To)
+            def (reg, joined) = match (tr.First().To)
             {
-              | TransitionTarget.PseudoState(node = NodeValue(Value = Join(joined_tran = tran, region = reg))) => (reg, tran)
-              | _                                                           => (null, null)
+              | TransitionTarget.PseudoState(node = Join(joined_tran = tran, region = reg)) => (reg, tran)
+              | _                                                                           => (null, null)
             }
             traverser?.Add(tr);
             ForceStateChange(TransitionPostConditions.RegionCompletion(reg, joined), to)
@@ -113,19 +110,19 @@ namespace Nemerle.Statechart
 
     TraverseSubRegion(reg : FsmState, to : TransitionTarget, tran : StateTransition) : TransitionDestination
     {
-      match (reg.Data)
+      match (reg.type)
       {
-        | ConcurrentSubRegion =>
+        | SubRegion =>
 
-          def region = reg.ContainedIn();
+          def region = reg.Super;
           def st = to.ToState;
           def omitted = region.RegionsExcept(st); // other omitted regions
-          def initial = omitted.Map(x => x.InitialTransitions());
+          def initial = omitted.Map(x => x.initial_tran);
           when (!initial.All(_ is _ :: _)) throw FsmErrorException(FsmError.SubRegionsMustContainInitial(omitted.NToList(), transition));
           def init = initial.Flatten();
           traverser?.Add(init);
           def target = TraverseTarget(to, tran);
-          def res = SubRegion(reg, target, tran.Value.From);
+          def res = SubRegion(reg, target, tran.From);
           TraverseCompletionTransition(target, res)
 
         | _ => null
@@ -141,11 +138,11 @@ namespace Nemerle.Statechart
     TraverseTransitionFromRegion(_reg : FsmState, tran : StateTransition) : TransitionDestination
     {
       //| (ConcurrentSubRegion, StateTransition(Source = src, From = from)) =>
-      def src = tran.Parent;
-      def from = tran.Value.From;
+      def src = tran.Source;
+      def from = tran.From;
       DefPath(src, from, tran);
-      tran.Used(true);
-      ForceStateChange(TraverseTargetReg(tran.Value.To, tran)) // traversing transition target
+      tran.Used = true;
+      ForceStateChange(TraverseTargetReg(tran.To, tran)) // traversing transition target
     }
 
   }

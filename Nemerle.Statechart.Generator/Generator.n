@@ -24,33 +24,33 @@ namespace Nemerle.Statechart
   public partial class StaticGenerator
   {
 
-    DefineState(ty : TypeBuilder, type : ClassMember.TypeDeclaration, st : GeneralTree[FsmState]) : TypeBuilder
+    DefineState(ty : TypeBuilder, type : ClassMember.TypeDeclaration, st : FsmState) : TypeBuilder
     {
       def type = DefineNested(ty, type);
       DefineActions(type, st);
       DefineTransitions(type, st); // define transitions in state
       DefineHistoryPaths(type, st); // define history paths
-      match (st.Data)
+      match (st)
       {
-        | SubMachine as st            => DefineSubMachine(type, st);
-        | _ when st.IsTopState()      => DefineRegions(type);
-        | _                           => ()
+        //| SubMachine as st            => DefineSubMachine(type, st);
+        | _ when st.IsTopState      => DefineRegions(type);
+        | _                         => ()
       }
       type
     }
 
-    DefineState(builders : list[TypeBuilder], ty : TypeBuilder, st : GeneralTree[FsmState]) : list[TypeBuilder]
+    DefineState(builders : list[TypeBuilder], ty : TypeBuilder, st : FsmState) : list[TypeBuilder]
     {
-      match (st.Data)
+      match (st)
       {
         //| Final
-        | _ when (!st.IsTopState() && st.UsedInGenerate()) => 
+        | _ when (!st.IsTopState && st.UsedInGenerate) => 
         //| InlinedSubMachineInstance
         //| InlinedSubMachine => 
           def id_type = StateIdType;
-          def (expr, _) = GetId(st.Data.Id);
+          def (expr, _) = GetId(st.Id);
 
-          def type = <[ variant_option: |  $(st.Name() : usesite)
+          def type = <[ variant_option: |  $(st.Name : usesite)
                             {
                                 public override get_id() : $id_type {$expr}
 
@@ -61,7 +61,7 @@ namespace Nemerle.Statechart
 
                                 public override ToString() : string
                                 {
-                                    $(st.Name())
+                                    $(st.Name)
                                 }
                             } 
                      ]>;
@@ -72,7 +72,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    TopState : GeneralTree[FsmState]
+    TopState : FsmState
     {
       get
       {
@@ -104,10 +104,10 @@ namespace Nemerle.Statechart
       compile_list = builders;
     }
 
-    DefineSubMachine(type : TypeBuilder, st : FsmState.SubMachine) : void
+    DefineSubMachine(_type : TypeBuilder, _st : FsmState) : void
     {
-      def field = <[decl: machine : $(st.type : usesite);]>;
-      type.Define(field);
+      //def field = <[decl: machine : $(st.type : usesite);]>;
+      //type.Define(field);
     }
 
     DefineEvents() : void
@@ -123,13 +123,13 @@ namespace Nemerle.Statechart
       }
 
       def decl_events = events;
-      def decl_events = decl_events |> <[decl: | $(_ : usesite) ]>;
+      def decl_events = decl_events.Map(x =>  <[decl: | $(x : usesite) ]>);
       DefineNested(<[ decl:
             public enum Event
             {
               ..$decl_events
             }]>).Compile();
-      def events = events |> GenElement(_, event_for);
+      def events = events.Map(x => GenElement(x, event_for));
       def (hiden, defs) = events.Partition(_.IsDeclared);
       def def_events = events.Map(x => (x, x.Declared));
       def hiden = hiden.Filter(x => !method_decls.Contains(x.name));
@@ -159,7 +159,7 @@ namespace Nemerle.Statechart
       need_body.Iter((x, _)  => guard_for = guard_for.Replace(x.condition, x.Name));
       def cond_body = need_body.Map((x, y)  => <[decl: $(x.Name : usesite)() : bool {$y}]>);
       def gnames = actions.Map((x, e) => (e.exec_name, x.Name));
-      def methods = gnames |> <[decl: $(_ : usesite)() : bool {$(get_guard_call(_[2]))}]>;
+      def methods = gnames.Map((x, y) =>  <[decl: $(x : usesite)() : bool {$(get_guard_call(y))}]>);
       def props = gnames.Map((_, y) => <[decl: public $(y : usesite) : void -> bool {get;set;}]>);
       def defs = methods + props + cond_body;
       Define(defs);
@@ -167,10 +167,10 @@ namespace Nemerle.Statechart
 
     DefineActions() : void
     {
-      def st = analyser.LivedStates.Filter(x => x.PartOfSubRegion().HasValue);
+      def st = analyser.LivedStates.Filter(x => x.PartOfSubRegion.HasValue);
 
-      def st_exit = st.Map(x => ($"ExitFrom$(x.PartOfRegion().Value)In$(x.Name())", GetActions(x.region_exit_path(), action_for)));
-      def exit_acts = st.SelectMany(x => GenAction.CreateActions(x.region_exit_path(), action_for));
+      def st_exit = st.Map(x => ($"ExitFrom$(x.PartOfRegion.Value)In$(x)", GetActions(x.region_exit_path, action_for)));
+      def exit_acts = st.SelectMany(x => GenAction.CreateActions(x.region_exit_path, action_for));
       def actions = actions.Exclude(_.IsDeclared).Concat(exit_acts);
       def actions = actions.RemoveDuplicatesSort(_.end_name);
 

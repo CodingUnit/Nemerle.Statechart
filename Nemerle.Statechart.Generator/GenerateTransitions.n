@@ -22,12 +22,12 @@ namespace Nemerle.Statechart
 
     GetTransitionFunction(tran : list[StateTransition]) : list[ClassMember]
     {
-      tran |> <[ decl: $(_.Name : usesite)() : State {$(GetTransitionBody(_, GenCtx.Normal()))} ]>;
+      tran.Map(x => <[ decl: $(x.Name : usesite)() : State {$(GetTransitionBody(x, GenCtx.Normal()))} ]>);
     }
 
     GetTransitionFunction(tran : list[string * StateTransition]) : list[ClassMember]
     {
-      tran |> <[ decl: $(_ : usesite)() : State {$(GetTransitionBody(_[2], GenCtx.Normal()))} ]>;
+      tran.Map((x, y) => <[ decl: $(x : usesite)() : State {$(GetTransitionBody(y, GenCtx.Normal()))} ]>);
     }
 
     //GetActions(act : PathNode, inline_suppress : bool = true) : PExpr
@@ -57,23 +57,23 @@ namespace Nemerle.Statechart
 
         | NoStateChange => if (ctx.IsInEventHandler) <[ fsm.cur_state ]> else <[ cur_state ]>
         | Choice(_, tran, Some(st)) => def target = GetExecStateName(st, ctx);
-            DefineTransBody(tran.Select(x => x.Value).NToList(), ctx, target)
+            DefineTransBody(tran, ctx, target)
 
-        | Choice(_, tran, _) => DefineTransBody(tran.Select(x => x.Value).NToList(), ctx)
+        | Choice(_, tran, _) => DefineTransBody(tran, ctx)
 
         | Terminate => 
             def after = if (ctx.HaveActionsAfter) <[ () ]> else <[ null ]>;
             if (ctx.IsInEventHandler) <[ fsm.Terminate();$after ]> else <[ Terminate();$after ]>
 
-        | History(NodeValue(Value = PseudoStateNode.History(default = Some())) as h) => def name = $"$(h.GetName())Run";
+        | History(PseudoStateNode.History(default = Some()) as h) => def name = $"$(h.Name)Run";
             if (ctx.IsInEventHandler) <[ fsm.$(name : usesite)();]> else <[ $(name : usesite)();]>
 
-        | History(NodeValue(Value = PseudoStateNode.History(type = t)) as h) =>
+        | History(PseudoStateNode.History(type = t) as h) =>
             //Name = n, state = p
-            def p = h.Parent;
-            def n = h.GetName();
-            def t = if (p.BothHistories()) $"$t" else "";
-            def name = $"$(t)HistoryFrom$(p.Name())"; // call function of run history
+            def p = h.state;
+            def n = h.Name;
+            def t = if (p.BothHistories) $"$t" else "";
+            def name = $"$(t)HistoryFrom$(p.Name)"; // call function of run history
             if (ctx.IsInEventHandler) <[ fsm.$(n : usesite).$(name : usesite)(fsm) ]> else <[ $(n : usesite).$(name : usesite)(this) ]>;
 
         | SubRegion(reg, st, from) =>
@@ -85,7 +85,7 @@ namespace Nemerle.Statechart
               | head :: tail => 
 
                   def other = head.RegionsExcept(st.ToState);
-                  def pat = FsmStateFuncs.get_pattern(other);
+                  def pat = FsmState.get_pattern(other);
                   def reg = GetExecStateName(head, ctx);
                   def name = $"Initial$pat";
                   def refsm = if (ctx.IsInEventHandler) <[fsm]> else <[ this ]>;
@@ -111,14 +111,14 @@ namespace Nemerle.Statechart
                 $target
               ]>
 
-        | HistoryRestore(h) => <[ $(h.GetName() : usesite).GetCopy(0) ]>
+        | HistoryRestore(h) => <[ $(h.Name : usesite).GetCopy(0) ]>
         | Fork(reg, tran) => def target = GetExecStateName(reg, ctx);
             def sub_region(t)
             {
-              match (t.Value.AtLeastTo)
+              match (t.AtLeastTo)
               {
-                | GeneralTree(Data = FsmState.ConcurrentSubRegion) as st => st
-                | x                                                      => x.PartOfSubRegion().Value
+                | FsmState(type = StateType.SubRegion) as st => st
+                | x                                          => x.PartOfSubRegion.Value
               }
             }
 
@@ -131,25 +131,25 @@ namespace Nemerle.Statechart
               }
             }
 
-            def trans = tran.Map(x => (sub_region(x), if (ctx.IsInEventHandler) <[ fsm.$(x.Value.Name : usesite)(); ]> else <[ $(x.Value.Name : usesite)(); ]>));
+            def trans = tran.Map(x => (sub_region(x), if (ctx.IsInEventHandler) <[ fsm.$(x.Name : usesite)(); ]> else <[ $(x.Name : usesite)(); ]>));
             def def_this = if (ctx.IsInEventHandler) <[ fsm ]> else <[this]>;
-            def parms = def_this :: reg.SubRegions().Map(find(trans, _));
+            def parms = def_this :: reg.sub_states.Map(find(trans, _));
             <[
               $(target).Initial(..$parms);
               $target
             ]>
 
-        | Join(join = NodeValue(Value = Join(name = n))) => 
+        | Join(join = Join(name = n)) => 
             def fname = $"join$n";
             if (ctx.IsInEventHandler) <[ fsm.$(fname : usesite)++;null ]> else <[ $(fname : usesite)++;null ]>
 
         | Final(st, sr, reg, tran) => 
             def regname = GetExecStateName(reg, ctx);
             def target = GetExecStateName(st, ctx);
-            def trans = DefineTransBody(tran.Map(_.Value), ctx);
-            if (reg.HaveFinal())
+            def trans = DefineTransBody(tran, ctx);
+            if (reg.HaveFinal)
             {
-              def hist = reg.ParticipateInHistory();
+              def hist = reg.ParticipateInHistory;
               def hist = GetHistoryClear(hist);
             <[
               $regname.$(get_sub_region_name(sr) : usesite) = $target;
@@ -169,11 +169,11 @@ namespace Nemerle.Statechart
             def before = GetDestination(before, ctx);
             def nest = GetDestination(after, ctx);
             <[ def st = $before; if ($check) $nest else st ]>
-        | JoinedTransition(NodeValue(Value = Join(name = n)), tran) => def fname = $"join$n";
-            def body = DefineTransBody([tran.Value], ctx);
+        | JoinedTransition(Join(name = n), tran) => def fname = $"join$n";
+            def body = DefineTransBody([tran], ctx);
             <[ $(fname : usesite) = 0;$body ]>
         | EventSend(st, evt)    => 
-            if (st.PartOfRegion() is Some(r))
+            if (st.PartOfRegion is Some(r))
             {
               def name = GetExecStateName(r, ctx);
               <[ $name.$(evt.Name : usesite)(this) ]>
@@ -183,7 +183,7 @@ namespace Nemerle.Statechart
             
         //| JunctionNode(j)       => get_junction_body(j, ctx)
         //| ChoiceNode(j)         => get_choice_body(j, ctx)
-        | TransitionExecute(tr) => if (ctx.IsInEventHandler) <[ fsm.$(tr.Value.Name : usesite)() ]> else <[ $(tr.Value.Name : usesite)() ]>
+        | TransitionExecute(tr) => if (ctx.IsInEventHandler) <[ fsm.$(tr.Name : usesite)() ]> else <[ $(tr.Name : usesite)() ]>
         | SubMachine            => throw NotImplementedException();
         | _                     => throw InvalidOperationException("unknown destination")
       }
@@ -237,40 +237,40 @@ namespace Nemerle.Statechart
       match (node)
       {
         | Empty         => <[ () ]>
-        | Sequence(lst) => def check = lst |> GetCheck(_, ctx);
+        | Sequence(lst) => def check = lst.Map(x => GetCheck(x, ctx));
                           MergeExprAnd(check)
         | RegionStates(st) => 
 
             def get_check(reg, st)
             {
 
-              def check_st = reg.SubRegions().Map(x => {
-                                                  match (st.Find(y => y.PartOfSubRegion().Value : object == x)) 
+              def check_st = reg.sub_states.Map(x => {
+                                                  match (st.Find(y => y.PartOfSubRegion.Value : object == x)) 
                                                   {
                                                     | Some(st) => GetExecStateName(st, ctx) 
                                                     | _        => <[ null ]>
                                                   }});
 
               def reg_state = GetExecStateName(reg, ctx);
-              if (st.All(x => x.Lived() && x.LivedSubStatesNested().IsEmpty()))
+              if (st.All(x => x.Lived && x.LivedSubStatesNested.IsEmpty()))
                 <[ $reg_state.IsInStateConcrete(..$check_st) ]>
               else 
                 <[ $reg_state.IsInState(..$check_st) ]>
             }
 
-            def reg = st.Map(x => x.PartOfRegion().Value);
+            def reg = st.Map(x => x.PartOfRegion.Value);
             if (reg.ElementsEqual((x, y) => x : object == y))
             {
               get_check(reg.Head, st)
             } else
             {
-              def group = st.GroupBy(x => x.PartOfRegion().Value.Name);
-              def check = group.Select(x => get_check(x.First().PartOfRegion().Value, x));
+              def group = st.GroupBy(x => x.PartOfRegion.Value.Name);
+              def check = group.Select(x => get_check(x.First().PartOfRegion.Value, x));
               MergeExprAnd(check);
             }
 
-        | Join(NodeValue(Value = Join(name = n, joined_tran = jtran)), tran) => 
-            def reg = jtran.Map(x => x.FromRegion());
+        | Join(Join(name = n, joined_tran = jtran), tran) => 
+            def reg = jtran.Map(x => x.FromRegion);
             def idx = reg.FindIndex(tran.FromRegion : object == _);
             def fname = $"join$n";
           <[ $(fname : usesite) == $idx ]>
@@ -282,7 +282,7 @@ namespace Nemerle.Statechart
 
     GetGuards(g : IEnumerable[GuardNode], ctx : GenCtx) : PExpr
     {
-      def body = g |> get_guard_cond_expr(_, ctx);
+      def body = g.Map(get_guard_cond_expr(_, ctx));
       MergeExprAnd(body)
     }
 
@@ -323,8 +323,8 @@ namespace Nemerle.Statechart
       match (post)
       {
         | RegionCompletion(reg, tr) => 
-          def check_reg = CheckNode.RegionStates(tr.Map(x => x.Value.From));
-          def check_guard = if (tr.Exists(x => x.Value.guard.HasValue)) CheckNode.Guard(tr.FilterValues(x => x.Value.Guard).NToList()) else CheckNode.Empty();
+          def check_reg = CheckNode.RegionStates(tr.Map(x => x.From));
+          def check_guard = if (tr.Exists(x => x.guard.HasValue)) CheckNode.Guard(tr.FilterValues(x => x.Guard).NToList()) else CheckNode.Empty();
           def check = check_reg + check_guard;
           def check = GetCheck(check, ctx);
           def name = GetExecStateName(reg, ctx);
@@ -367,7 +367,7 @@ namespace Nemerle.Statechart
       GetGuardedBody(tran, body, ctx)
     }
 
-    DefineTransBody(tr : list[StateTransition], ctx : GenCtx, alt : PExpr = null) : PExpr
+    DefineTransBody(tr : IEnumerable[StateTransition], ctx : GenCtx, alt : PExpr = null) : PExpr
     {
       def get_body(tr)
       {
@@ -379,7 +379,7 @@ namespace Nemerle.Statechart
           if (ctx.IsInEventHandler) <[ fsm.$(name : usesite)(); ]> else <[ $(name : usesite)();]>
       }
 
-      match (tr)
+      match (tr.NToList())
       {
         //| [StateTransition(IsCrossed = true) as tr] => 
         //    def body =  get_body(tr);
@@ -408,7 +408,7 @@ namespace Nemerle.Statechart
       } 
     }
 
-    DefineTransitions(ty : TypeBuilder, st : GeneralTree[FsmState]) : void
+    DefineTransitions(ty : TypeBuilder, st : FsmState) : void
     {
       def defs = 
 
@@ -442,13 +442,13 @@ namespace Nemerle.Statechart
                       //def from_top = <[decl:
                       //                 public override PathFromTop(fsm : $(ChartName : usesite)) : State {$(DefineTransBody([st.PathFromOut], GenCtx.InEventHandler()))}
                       //               ]>;
-                        if (st.IsTopState()) 
+                        if (st.IsTopState) 
                          {
-                           analyser.Events |> <[decl: public virtual $(_ : usesite)(_ : $(ChartName : usesite)) : State {null}]>;
+                           analyser.Events.Map(x => <[decl: public virtual $(x : usesite)(x : $(ChartName : usesite)) : State {null}]>);
                          } else
-                        if (st.Lived())
+                        if (st.Lived)
                         {
-                          def group = st.WorkTransitions().GroupBy(x => x.Value.FriendlyTriggerName).Select(x => (x.Key, x.Map(x => x.Value)));
+                          def group = st.WorkTransitions.GroupBy(x => x.FriendlyTriggerName).Select(x => (x.Key, x.NToList()));
                           group.MapToList((x, y) => <[decl: 
                             public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(DefineTransBody(y, GenCtx.InEventHandler()))}]>)
                         } else 
@@ -462,14 +462,13 @@ namespace Nemerle.Statechart
     DefineTransitionActions() : void
     {
       def trans = analyser.all_transitions.NToList();
-      def trans = trans.RemoveDuplicatesSort((x, y) => StateTransition.Comparer(x.Value, y.Value));
+      def trans = trans.RemoveDuplicatesSort((x, y) => StateTransition.Comparer(x, y));
       def (init : list[StateTransition.Initial], trans) = trans.PartitionType();
-      def trans = trans.Map(x => x.Value);
       def trans = trans.Filter(x => !(x.MaybeInlined && IsEmpty(x.PathNode)));
       def trans = init &+ trans;
       def body = GetTransitionFunction(trans);
       // history paths
-      def body_name = analyser.HistoryPaths.FoldLeft([], (x, a) => x.Value.FoldLeft(a, (x, a) => (x.From.Name(), x.transition.Value) :: a));//.Map((x, y) => (x.Name(), y.Map(x => x.transition.Value)));
+      def body_name = analyser.HistoryPaths.FoldLeft([], (x, a) => x.Value.FoldLeft(a, (x, a) => (x.From.Name, x.transition) :: a));//.Map((x, y) => (x.Name(), y.Map(x => x.transition.Value)));
       //def body = body_name.Map((x, y) => );
       def hist = GetTransitionFunction(body_name);
       Define(hist + body);

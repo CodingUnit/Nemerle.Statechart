@@ -230,17 +230,17 @@ namespace Nemerle.Statechart
       if (ctx.IsInEventHandler) <[ $(st : usesite)() ]> else <[ $(name : usesite) ]>
     }
     
-    public static GetExecStateName(st : GeneralTree[FsmState], ctx : GenCtx) : PExpr
+    public static GetExecStateName(st : FsmState, ctx : GenCtx) : PExpr
     {
       def name = $"State$st";
       if (ctx.IsInEventHandler)
-        if (st.Data is FsmState.ConcurrentRegion) <[ fsm.$(name : usesite) ]> else <[ $(st.Name() : usesite)() ]>
+        if (st.type is StateType.Region) <[ fsm.$(name : usesite) ]> else <[ $(st.Name : usesite)() ]>
        else <[ $(name : usesite) ]>
     }
     
-    public static GetSubRegionsExit(reg : IEnumerable[GeneralTree[FsmState]]) : string
+    public static GetSubRegionsExit(reg : IEnumerable[FsmState]) : string
     {
-      def pat = FsmStateFuncs.get_pattern(reg);
+      def pat = FsmState.get_pattern(reg);
       $"Exit$pat"
     }
     
@@ -250,15 +250,15 @@ namespace Nemerle.Statechart
       node.PathActions().IsEmpty() && !implicit
     }
         
-    public static GetHistoryClear(hist : IEnumerable[NodeValue[FsmState, PseudoStateNode]]) : PExpr
+    public static GetHistoryClear(hist : IEnumerable[PseudoStateNode.History]) : PExpr
     {
-      def expr = hist.Map(x => <[ $($"$(x.GetName())Clear" : usesite)(); ]>); 
+      def expr = hist.Map(x => <[ $($"$(x)Clear" : usesite)(); ]>); 
       <[ {..$expr} ]>
     }
     
-    public static get_sub_region_name(r : GeneralTree[FsmState]) : string
+    public static get_sub_region_name(r : FsmState) : string
     {
-      $"cur_state$(r.Index())"
+      $"cur_state$(r.Index)"
     }
 
     public GetActions(node : PathNode, map : Map[string, string], supress_inline : bool = false) : PExpr
@@ -276,9 +276,9 @@ namespace Nemerle.Statechart
         | ClearHistory(hist)  => GetHistoryClear(hist)
         | SaveHistory(hist) => if (supress_inline) <[ () ]> else
                                {
-                                 match (hist.Filter(x => x.Used()))
+                                 match (hist.Filter(x => x.Used))
                                  {
-                                   | h :: _ => def name = h.SimpleName();
+                                   | h :: _ => def name = h.SimpleName;
                                                <[ $($"$(name)Save" : usesite)() ]>
                                    | _      => <[ () ]>
                                  }
@@ -291,12 +291,12 @@ namespace Nemerle.Statechart
             def reg_exit = GetSubRegionsExit(st);
             <[ $reg_state.$(reg_exit : usesite)(this) ]>
         | _  => def act =  GenAction.CreateActions(n, map);
-                def act = act |> end_name;
-                def acts = act |> <[$(_ : usesite)();]>;
+                def act = act.Map(x => x.end_name);
+                def acts = act.Map(x => <[$(x : usesite)();]>);
                 <[ {..$acts} ]>
       }
       
-      def body = node |> get_act(_);
+      def body = node.Map(get_act);
       <[ {..$body} ]>
     }
       
@@ -307,10 +307,10 @@ namespace Nemerle.Statechart
       match (nest)
       {
         | ForceStateChange(n) => GetForceStateChange(n, ctx)
-        | State(state = st) when st.PartOfRegion().HasValue => 
+        | State(state = st) when st.PartOfRegion.HasValue => 
             
-                def r = st.PartOfRegion().Value;
-                def sr = st.PartOfSubRegion().Value;
+                def r = st.PartOfRegion.Value;
+                def sr = st.PartOfSubRegion.Value;
             def reg = GetExecStateName(r, ctx);
             def sreg = get_sub_region_name(sr);
             <[ def st = $body;$reg.$(sreg : usesite) = st; st ]>
@@ -325,7 +325,7 @@ namespace Nemerle.Statechart
                     if (ctx.IsInEventHandler) <[ fsm.TrySwitch($body) ]> else <[ TrySwitch($body) ]>
         | Terminate => <[ _ = $body; null]>
         | Join
-        | Final(region = st) when (st.HaveFinal()) 
+        | Final(region = st) when (st.HaveFinal) 
         | TransitionExecute
         //| JunctionNode
         | NoStateChange => body
