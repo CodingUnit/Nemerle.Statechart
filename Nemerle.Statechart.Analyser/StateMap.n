@@ -15,6 +15,14 @@ namespace Nemerle.Statechart
 {
   using FsmState;
 
+  [System.Flags]
+  public enum RebuildObject
+  {
+    | State      = 1
+    | Pseudo     = 2
+    | Transitions = 4
+  }
+  
   //[Record]
   public partial class StateMap
   {
@@ -23,36 +31,64 @@ namespace Nemerle.Statechart
     [Accessor]
     state_tree : FsmState;
     
-    [Accessor]
     mutable pseudo_states : array[PseudoStateNode];// = NC.Hashtable();
-    [Accessor]
-    mutable transitions   : array[StateTransition];    
-    [Accessor]
-    mutable states : array[FsmState];
+    mutable transitions   : array[StateTransition];
+    mutable states        : array[FsmState];
     
-    // if changed tree added new states or pseudo create new cached tree iterator and structures
-    public Rebuild() : void
+    public States : array[FsmState]
     {
-      states = state_tree.GetBreadthFirstEnumerable().ToArray();      
-      pseudo_states = states.SelectMany(_.pseudo_states).ToArray();
-      transitions = states.SelectMany(_.transitions).ToArray();
+      get
+      {
+        when (need_rebuild & RebuildObject.State != 0) 
+        {
+          states = state_tree.GetBreadthFirstEnumerable().ToArray();
+          need_rebuild &= ~RebuildObject.State;
+        }
+        states
+      }
     }
     
+    public Transitions   : array[StateTransition]
+    {
+      get
+      {
+        when (need_rebuild & RebuildObject.Transitions != 0) 
+        {
+          transitions = States.SelectMany(_.transitions).ToArray();
+          need_rebuild &= ~RebuildObject.Transitions;
+        }
+        transitions
+      }
+    }
+    
+    public PseudoStates : array[PseudoStateNode]
+    {
+      get
+      {
+        when (need_rebuild & RebuildObject.Pseudo != 0) 
+        {
+          pseudo_states = States.SelectMany(_.pseudo_states).ToArray();
+          need_rebuild &= ~RebuildObject.Pseudo;
+        }
+        pseudo_states
+      }
+    }
+    
+    need_rebuild : RebuildObject {get;set;}
+    // if changed tree added new states or pseudo create new cached tree iterator and structures
+    public Rebuild(obj : RebuildObject) : void
+    {
+      need_rebuild |= obj
+    }
+       
     public this(an : FsmAnalyser, stree : FsmState) 
     { 
       state_tree = stree;
       Analyser = an; 
-      Rebuild()
+      need_rebuild = RebuildObject.Transitions | RebuildObject.Pseudo | RebuildObject.State;
       ///tr.GetBreadthFirstEnumerable().Iter(x => when (x.Value is FsmNode.State(n)) map[n] = x)
     }    
 
-    public Add(parent : FsmState, st : FsmState) : void
-    {
-      parent.Add(st);
-      Rebuild()
-      //transitions.Add(st, []);
-    }
-    
     public static Create(an : FsmAnalyser, state : StateNode.State) : void
     {
       def top = TreeUtils.FoldTree(state, null, _.sub_states, FsmState(_, _, an));
