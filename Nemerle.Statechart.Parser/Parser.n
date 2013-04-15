@@ -55,7 +55,9 @@ namespace Nemerle.Statechart
           | "terminate"
           | "x"
           | "X"        => TargetType.PseudoState(name.pos, PseudoStateAstNode.Terminate(0))
-          | x when (x.IndexOf('(') != -1 ) => TargetType.Named(name.pos, name.TargetName.Trim('(',')'))
+          | x when (x.IndexOf('(') != -1 ) => 
+              def n = string(n.Explode().Except(['(', ')']).ToArray());
+              TargetType.Named(name.pos, n)
           //| _ => TargetType.Named(name.pos, name.TargetName.Trim('(',')'))
           | _                      => TargetType.State(name.pos, State(n, StateType.State()))
       }
@@ -202,11 +204,11 @@ namespace Nemerle.Statechart
       name
     }
     
-    state(attr : option[List[StateAttribute]], name : NToken, _parent : option[NameIdentifier], nodes : List[StateNode]) : State
+    state(attr : option[List[StateAttribute]], name : NToken, parent : option[NameIdentifier], nodes : List[StateNode]) : State
     {
       def name_text = GetText(name);
       def attr = attr.WithDefault(Enumerable.Empty());
-      CreateState(name.StartPos, name_text, attr, nodes, StateType.State())
+      CreateState(name.StartPos, name_text, attr, nodes, StateType.State(), parent)
     }
 
     flags(tok : List[NToken]) : MachineFlags
@@ -321,7 +323,7 @@ namespace Nemerle.Statechart
     {
       def pos = nkey.StartPos;
       def name = GetText(name);
-      CreateState(pos, name, [], body, StateType.InlinedSubMachine(GetText(type)));
+      CreateState(pos, name, [], body, StateType.InlinedSubMachine(GetText(type)), None());
     }
 
     statemachine(name : NToken, _ : NToken, type : NToken, tran : List[StateNode.Transition]) : StateNode
@@ -331,7 +333,7 @@ namespace Nemerle.Statechart
 
     stateMachine(sp : NToken, flags : option[MachineFlags], st : List[StateNode]) : StateMachine
     {
-      def st = CreateState(sp.StartPos, null, [], st.NToList(), StateType.State());
+      def st = CreateState(sp.StartPos, null, [], st.NToList(), StateType.State(), None());
       def flags = flags.WithDefault(MachineFlags(MachineFlag.None, []));
       StateMachine(flags, st)
     }

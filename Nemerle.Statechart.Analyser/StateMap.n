@@ -29,7 +29,7 @@ namespace Nemerle.Statechart
     public Analyser : FsmAnalyser;
 
     [Accessor]
-    state_tree : FsmState;
+    mutable state_tree : FsmState;
     
     mutable cached_pseudo_states : array[PseudoStateNode];// = NC.Hashtable();
     mutable cached_transitions   : array[StateTransition];
@@ -81,21 +81,41 @@ namespace Nemerle.Statechart
       need_rebuild |= obj
     }
        
-    public this(an : FsmAnalyser, stree : FsmState) 
+    public this(an : FsmAnalyser) 
     { 
-      state_tree = stree;
+      
       Analyser = an; 
-      need_rebuild = RebuildObject.Transitions | RebuildObject.Pseudo | RebuildObject.State;
+      
       ///tr.GetBreadthFirstEnumerable().Iter(x => when (x.Value is FsmNode.State(n)) map[n] = x)
     }    
 
-    public static Create(an : FsmAnalyser, state : StateNode.State) : StateMap
+    CreateSuperStates() : void
     {
-      def top = TreeUtils.FoldTree(state, null, _.sub_states, FsmState(_, _, an));
-      def map = StateMap(an, top);
-      //an.statemap = map;
-      map.UpdateReferences();
-      map
+      def set_super(st)
+      {
+        | FsmState(state = StateNode.State(parent = Some(p))) => 
+           match (Get(p.name))
+           {
+             | null => Analyser.AddError(FsmError.ParentStateNotFound(st, FsmState(p.name, Analyser, StateType.State())));
+             | s    => def old_super = st.Super;
+                       st.Super = s;
+                       old_super.Rem(st);
+                       s.Add(st)
+           }
+        | _ => ()
+      }
+      
+      States.Iter(set_super)
+    }
+    
+    public Create(state : StateNode.State) : void
+    {
+      need_rebuild = RebuildObject.Transitions | RebuildObject.Pseudo | RebuildObject.State;
+      def top = TreeUtils.FoldTree(state, null, _.sub_states, FsmState(_, _, Analyser));
+      top.name = FsmState.TopStateName;
+      state_tree = top;
+      CreateSuperStates();
+      UpdateReferences();
     }
 
   }
