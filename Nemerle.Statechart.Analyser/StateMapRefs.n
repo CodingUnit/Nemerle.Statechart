@@ -18,7 +18,8 @@ namespace Nemerle.Statechart
 
     UpdateReferences() : void
     {
-      States.Iter(UpdateStateReference)
+      PseudoStates.Iter(x => UpdatePseudoStateReference(x, x.state));
+      Transitions.Iter(x => UpdateTransitionReference(x, x.From));
     }
 
     UpdatePseudoStateReference(p : PseudoStateNode, st : FsmState) : void
@@ -29,39 +30,14 @@ namespace Nemerle.Statechart
        | _            => ()
       }
     }
-    //UpdateHistoryReference(hist : PseudoStateNode.History, st : FsmState) : void
-    //{
-    //  hist.default.Iter(UpdateTargetReference(_, st))
-    //}
-
-    UpdateStateReference(state : FsmState) : void
-    {
-      //match (state.Data)
-      //{
-      //  | FsmState.SubMachine(type = type) as st =>
-      //    def fsm = States.Where(x => x.Data is FsmState.InlinedSubMachine);
-      //    match (fsm.Find(x => (x.Data :> FsmState.InlinedSubMachine).type == type))
-      //    {
-      //      | Some(f) => st.Instance(f)
-      //      | _       => ()
-      //    }
-      //  | _ =>
-
-      state.transitions.Iter(UpdateTransitionReference(_, state));
-      state.pseudo_states.Iter(UpdatePseudoStateReference(_, state));
-    // }
-    }
 
     UpdateTransitionReference(tr : StateTransition, st : FsmState) : void
     {
-      def recursive_resolve(prev)
-      {        
-        def to = ResolveTarget(st, prev, tr);
-        if (to == null) prev else to
+      match (ResolveTarget(st, tr.To, tr))
+      {
+        | null => ()
+        | t    => tr.To = t
       }
-
-      def to = recursive_resolve(tr.To);  
-      tr.To = to
     }
 
     ResolvePseudoState(p : PseudoStateNode, st : FsmState) : PseudoStateNode
