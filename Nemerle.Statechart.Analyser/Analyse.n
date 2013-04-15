@@ -165,7 +165,23 @@ namespace Nemerle.Statechart
         st.do_activity = act//Update(x => x.ChangeDoActivity(act))
       }
 
-      States.Iter(x => check_do(x, x.do_activity));
+      def check_actions(st)
+      {
+        check_do(st, st.do_activity);
+        when (FsmFlags.AutoEntryExitActions) 
+        {
+         when (st.entry.IsEmpty())
+         {
+           st.entry = [StateAction.Entry([], st, ActionFlags.None)];
+         }
+         when (st.exit.IsEmpty())
+         {
+           st.exit = [StateAction.Exit([], st, ActionFlags.None)];
+         }
+       }
+      }
+      
+      States.Iter(check_actions);
     }
 
     CreateConcurrentRegion() : void
@@ -213,12 +229,12 @@ namespace Nemerle.Statechart
         CreateHierarchy(); // create hierarchy
         CheckInitialTransitions();
         CreateTransitions();
+        CreateActions();
         BreakIfError();
         CreateTransitionPaths();
         CreateHistoryPaths(); // create history paths
         CreateConcurrentRegion();
         UpdateInitial();
-        CreateActions();
         FinalizeAnalyse();
       }
       catch 
