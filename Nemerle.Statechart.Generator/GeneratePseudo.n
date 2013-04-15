@@ -137,12 +137,12 @@ namespace Nemerle.Statechart
 
     DefineHistoryPaths(builder : TypeBuilder, st : FsmState) : void
     {
-      def create_body(hist)
+      def create_body(hist : HistoryPath)
       {
         def body = <[ fsm.$(hist.Name : usesite)(); ]>;
         if (st.type is StateType.Region && st.HaveFinal)
         {
-          def tran = hist.default.Value;
+          def tran = hist.History.default.Value;
         <[
           if (IsFinal) fsm.$(tran.Name : usesite)() else $body;
         ]>
@@ -152,7 +152,7 @@ namespace Nemerle.Statechart
       if (st.IsTopState) // if it is top state
       {
         def names = analyser.HistoryStates.Map(x => get_history_run_name(x, x.state.Name)); // get name of history states
-        def decls = names.Map(x => <[decl: public virtual $(x : usesite)(x : $(ChartName : usesite)) : State {null} ]>); // create transition methods for history states
+        def decls = names.Map(x => <[decl: public virtual $(x : usesite)(_ : $(ChartName : usesite)) : State {null} ]>); // create transition methods for history states
         Define(builder, decls);
       } else
       {
@@ -174,7 +174,7 @@ namespace Nemerle.Statechart
           when (st.HaveHistoryPaths && (st.Lived || st.type is StateType.Region)) // if state has history paths or it is lived
           {
             def paths  =  st.HistoryPaths;
-            def name  =  paths.Map(x => (x.History, get_history_run_name(x.History, x.From.Name))); // create transition names
+            def name  =  paths.Map(x => (x, get_history_run_name(x.History, x.From.Name))); // create transition names
             def decl  =  name.MapToList((x, y) => <[decl: public override $(y : usesite)(fsm : $(ChartName : usesite)) : State {$(create_body(x))}]>);
             Define(builder, decl)
           }
