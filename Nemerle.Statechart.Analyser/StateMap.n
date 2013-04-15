@@ -31,9 +31,9 @@ namespace Nemerle.Statechart
     [Accessor]
     state_tree : FsmState;
     
-    mutable pseudo_states : array[PseudoStateNode];// = NC.Hashtable();
-    mutable transitions   : array[StateTransition];
-    mutable states        : array[FsmState];
+    mutable cached_pseudo_states : array[PseudoStateNode];// = NC.Hashtable();
+    mutable cached_transitions   : array[StateTransition];
+    mutable cached_states        : array[FsmState];
     
     public States : array[FsmState]
     {
@@ -41,10 +41,10 @@ namespace Nemerle.Statechart
       {
         when (need_rebuild & RebuildObject.State != 0) 
         {
-          states = state_tree.GetBreadthFirstEnumerable().ToArray();
+          cached_states = state_tree.GetBreadthFirstEnumerable().ToArray();
           need_rebuild &= ~RebuildObject.State;
         }
-        states
+        cached_states
       }
     }
     
@@ -54,10 +54,10 @@ namespace Nemerle.Statechart
       {
         when (need_rebuild & RebuildObject.Transitions != 0) 
         {
-          transitions = States.SelectMany(_.transitions).ToArray();
+          cached_transitions = States.SelectMany(_.transitions).ToArray();
           need_rebuild &= ~RebuildObject.Transitions;
         }
-        transitions
+        cached_transitions
       }
     }
     
@@ -67,14 +67,14 @@ namespace Nemerle.Statechart
       {
         when (need_rebuild & RebuildObject.Pseudo != 0) 
         {
-          pseudo_states = States.SelectMany(_.pseudo_states).ToArray();
+          cached_pseudo_states = States.SelectMany(_.pseudo_states).ToArray();
           need_rebuild &= ~RebuildObject.Pseudo;
         }
-        pseudo_states
+        cached_pseudo_states
       }
     }
     
-    need_rebuild : RebuildObject {get;set;}
+    mutable need_rebuild : RebuildObject;
     // if changed tree added new states or pseudo create new cached tree iterator and structures
     public Rebuild(obj : RebuildObject) : void
     {
@@ -89,12 +89,13 @@ namespace Nemerle.Statechart
       ///tr.GetBreadthFirstEnumerable().Iter(x => when (x.Value is FsmNode.State(n)) map[n] = x)
     }    
 
-    public static Create(an : FsmAnalyser, state : StateNode.State) : void
+    public static Create(an : FsmAnalyser, state : StateNode.State) : StateMap
     {
       def top = TreeUtils.FoldTree(state, null, _.sub_states, FsmState(_, _, an));
       def map = StateMap(an, top);
-      an.statemap = map;
+      //an.statemap = map;
       map.UpdateReferences();
+      map
     }
 
   }
