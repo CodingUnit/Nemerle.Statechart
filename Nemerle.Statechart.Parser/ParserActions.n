@@ -50,61 +50,42 @@ namespace Nemerle.Statechart
 
     CreateState(pos : int, name : string, attr : IEnumerable[StateAttribute], decls : IEnumerable[StateNode], type : StateType, parent : option[NameIdentifier]) : StateNode.State
     {
-      
-      def check_tran(state, tr)
-      {
-        match (tr)
-        {
-          | StateNode.Transition(to = State(st) as t) as tr when st.name == "@" ||  st.name == "self"  => tr.ChangeTo(t.ChangeState(state));
-          | x  => x
-        } 
-      }
-          
       def get_decls(decls) 
       {
         def (en, decls)       = decls.PartitionType();
         def (ex, decls)       = decls.PartitionType();
         def (states, decls)   = decls.PartitionType();
         def (trans, decls)    = decls.PartitionType();
-        def (trans, other)    = trans.Partition(x => x.type is TransitionType.Transition);
-        def (in_trans, other) = other.Partition(x => x.type is TransitionType.Internal);
-        def (init, _)         = other.Partition(x => x.type is TransitionType.Initial);
+        //def (trans, other)    = trans.Partition(x => x.type == TransitionType.Transition);
+        //def (in_trans, other) = other.Partition(x => x.type == TransitionType.Internal);
+        //def (init, _)         = other.Partition(x => x.type == TransitionType.Initial);
         def (do_act, decls)   = decls.PartitionType();
         
         def (pseudo, decls) = decls.PartitionType();
         
-        (en, ex, states, trans, in_trans, do_act, init, pseudo, decls)
+        (en, ex, states, trans, do_act, pseudo, decls)
       } 
       
       def create_sub_regions(reg)
       {
-        def (en, ex, states, trans, in_trans, do_act, init, pseudo, _) = get_decls(reg);
-        State(0, null, None(), init, [], en, ex, in_trans, trans, do_act, states, pseudo, StateType.SubRegion(), [])
+        def (en, ex, states, trans, do_act, pseudo, _) = get_decls(reg);
+        State(0, null, None(), [], en, ex, trans, do_act, states, pseudo, StateType.SubRegion(), [])
       }
       
       def decls = decls.OrderBy(_.pos).NToList();
       def (reg_trans, reg) = decls.Partition(_ is StateNode.Transition);
       def regions = reg.FindDelimited(_ is State(type = StateType.SubRegion)); // split list by regions
       def (regions, decls) = if (regions.IsEmpty()) ([], decls) else (regions.Map(create_sub_regions), reg_trans); // create regions
-      def (en, ex, states, trans, in_trans, do_act, init, pseudo, decls) = get_decls(decls);
-      //def regions =  // if some create node
-      def trans  = trans.Map(check_tran(State(name, StateType.State()), _));
+      def (en, ex, states, trans, do_act, pseudo, decls) = get_decls(decls);
       def (states, type) = if (regions.IsEmpty()) (states, type) else (regions, StateType.Region());
       def parent = parent.Map(_.GetState());
-      State(pos, name, parent, init, attr.NToList(), en, ex, in_trans, trans, do_act, states, pseudo, type, decls.Map(x => Error(x.pos, x)))
+      State(pos, name, parent, attr.NToList(), en, ex, trans, do_act, states, pseudo, type, decls.Map(x => Error(x.pos, x)))
       }
 
     def_history(hist : HistoryType, tok : NToken, tran : option[StateNode.Transition]) : StateNode
     {
       def pos = tok.StartPos;
-      
-      def check_tran(t)
-      {
-        | StateNode.Transition(type = TransitionType.Default as t) as tr => tr.ChangeTypePos(t.ChangeHistory(PseudoStateAstNode.History(pos)), pos)
-        | _                                                              => null
-      }
-      
-      StateNode.PseudoState(pos, PseudoStateAstNode.History(pos, hist, tran.Map(check_tran)))
+      StateNode.PseudoState(pos, PseudoStateAstNode.History(pos, hist, tran))
     }
     
   }

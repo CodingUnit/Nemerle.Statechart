@@ -49,7 +49,7 @@ namespace Nemerle.Statechart
           | "H"  with hist = HistoryType.Shallow
           | "h"  with hist = HistoryType.Shallow
           | "h*" with hist = HistoryType.Deep
-          | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateAstNode.History(pos, hist, None(), true))
+          | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateAstNode.History(pos, hist, None()))
           | "final"
           | "$0"       => TargetType.State(name.pos, StateNode.State(null, StateType.Final()))
           | "terminate"
@@ -71,14 +71,14 @@ namespace Nemerle.Statechart
       }
     }
 
-    transition_mark(guard : option[GuardNode], act : option[Actions], target : TargetType) : StateNode.Transition
-    {
-      StateNode.Transition(guard, act, target)
-    }
+    //transition_mark(guard : option[GuardNode], act : option[Actions], target : TargetType) : StateNode.Transition
+    //{
+    //  StateNode.Transition(guard, act, target)
+    //}
 
     default_transition(act : option[Actions], target : TargetType) : StateNode.Transition
     {
-      StateNode.Transition(target.pos, Enumerable.Empty(), None(), act, target, TransitionType.Default(null))
+      StateNode.Transition(target.pos, Enumerable.Empty(), None(), act, target, TransitionType.Default)
     }
 
     events(id : NToken, evt : List[NToken]) : List[TransitionEvent]
@@ -87,9 +87,10 @@ namespace Nemerle.Statechart
       lst.Select(create_event).ToList()
     }
 
-    simple_transition(evt : List[TransitionEvent], tran : StateNode.Transition) : StateNode.Transition
+    simple_transition(evt : List[TransitionEvent], guard : option[GuardNode], act : option[Actions], to : TargetType) : StateNode.Transition
     {
-      Transition(evt, tran, TransitionType.Transition())
+      def pos = evt.First().pos;
+      Transition(pos, evt, guard, act, to, TransitionType.Transition)
     }
 
     simp_transition(tran : StateNode.Transition) : StateNode
@@ -191,12 +192,12 @@ namespace Nemerle.Statechart
 
     internal_trans(evt : NToken, guard : option[GuardNode], acts : Actions) : StateNode.Transition
     {
-      Transition(evt.StartPos, create_event(evt) :: [], guard, Some(acts), null, TransitionType.Internal())
+      Transition(evt.StartPos, create_event(evt) :: [], guard, Some(acts), null, TransitionType.Internal)
     }
 
-    initial_trans(name : NToken, tran : StateNode.Transition) : StateNode.Transition
+    initial_trans(name : NToken, guard : option[GuardNode], act : option[Actions], to : TargetType) : StateNode.Transition
     {
-      Transition(name.StartPos, tran, TransitionType.Initial())
+      Transition(name.StartPos, Enumerable.Empty(), guard, act, to, TransitionType.Initial)
     }
 
     parent(_ : NToken, name : NameIdentifier) : NameIdentifier
@@ -335,7 +336,7 @@ namespace Nemerle.Statechart
     {
       def st = CreateState(sp.StartPos, null, [], st.NToList(), StateType.State(), None());
       def flags = flags.WithDefault(MachineFlags(MachineFlag.None, []));
-      StateMachine(flags, st)
+      StateMachine(sp.StartPos, flags, st)
     }
 
     region(beg : NToken, _ : NToken) : StateNode.State

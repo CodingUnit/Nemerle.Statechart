@@ -26,8 +26,8 @@ namespace Nemerle.Statechart
     {
       match (p)
       {
-       | History as h => h.default.Iter(UpdateTransitionReference(_, st))
-       | _            => ()
+        | History as h => h.default.Iter(UpdateTransitionReference(_, st))
+        | _            => ()
       }
     }
 
@@ -46,12 +46,12 @@ namespace Nemerle.Statechart
       {                                   // get history from state
         | PseudoStateNode.History as h => st.GetHistory(h)
         | Terminate                    => match (PseudoStates.Find(x => x is PseudoStateNode.Terminate))
-                                          {
-                                            | Some(ft) => ft
-                                            | _        => def t = PseudoStateNode.Terminate(state_tree);
+            {
+              | Some(ft) => ft
+              | _        => def t = PseudoStateNode.Terminate(state_tree);
                                                           state_tree.AddPseudo(t);                                                          
                                                           t
-                                          }
+            }
         | _ => match (p.NativeName) // find for name
             {
               | Some(p)   => GetPseudoIn(p, null)
@@ -68,17 +68,17 @@ namespace Nemerle.Statechart
         // TODO: продумать алгоритм разрешения неоднозначности из того в каком состояниии
         // осуществляется переход
         | Named(par, n)   => match (GetNamed(n, par))
-                              {
-                                | null => Analyser.AddError(FsmError.UnknownNode(tran));
+            {
+              | null => Analyser.AddError(FsmError.UnknownNode(tran));
                                           null
-                                | t    => t
-                              }
+              | t    => t
+            }
         | Qualified(parent = par, target = t) => 
             def res = Get(par);
             match (res, t)
             {
               | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
-                             null
+                            null
               | (res, _)  => ResolveTarget(res, t, tran)
             }
         | PseudoState(p) as t    => match (ResolvePseudoState(p, st))
@@ -87,11 +87,18 @@ namespace Nemerle.Statechart
                         null
               | n    => t.ChangeNode(n)
             }
-        | State(s) as t          => match (Get(s.NativeName))
+        | State(s) as t          => def name = s.NativeName;
+                                    match (name)
                                     {
-                                      | null    => Analyser.AddError(FsmError.StateNotFound(s));t
-                                      | s       => t.ChangeState(s)
+                                      | "self"
+                                      | "@" => t.ChangeState(tran.From)
+                                      | n   => match (Get(n))
+                                              {
+                                                | null    => Analyser.AddError(FsmError.StateNotFound(s));t
+                                                | s       => t.ChangeState(s)
+                                              }
                                     }
+
 
         | _                   => null // other not supported yet
       }
