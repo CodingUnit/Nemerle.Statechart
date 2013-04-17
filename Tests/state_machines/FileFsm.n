@@ -1,0 +1,244 @@
+﻿using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Windows.Forms;
+using Nemerle.Statechart;
+
+namespace Nemerle.Statechart.Tests
+{  
+
+  [statechart(<#
+
+  flags : auto_initial transition_completed_events;
+
+  state FileWorking
+  {
+    NewFile   => NeedSaving;
+    FileSaved => Saved;
+    Exited / ForceExit => $0;
+
+    state NotNeedSaving
+    {
+        entry / SaveDis;
+
+        state Waiting
+        {
+            entry / SaveAllDis CaptionProgName;
+        }
+
+        state Saved
+        {
+            entry / CaptionFileName LastFileCur SaveAsEna;
+            Change => Changed;
+        }
+    }
+
+    state NeedSaving
+    {
+        entry / SaveEna;
+
+        state New
+        {
+            entry / CaptionFile LastFileEmpty SaveAsEna;
+        }
+
+        state Changed
+        {
+            entry / CaptionChanged;
+        }
+    }
+    
+  }
+  #>
+  )]
+  public class FileFsm
+  {
+    LastFileCur() : void
+    {
+      LastSaved = CurFile;
+    }
+
+    LastFileEmpty() : void
+    {
+      LastSaved = "";
+    }
+
+    [Constructor]
+    Init() : void
+    {
+      OpenDialog = OpenFileDialog();
+      SaveDialog = SaveFileDialog();
+      CurWantToSave = "Want to save file?";
+      CurOverwrite = "Want to overwrite file?";
+    }
+
+    ViewOpenDialog() : bool
+    {
+      OpenDialog.ShowDialog() == DialogResult.OK
+    }
+
+    ViewSaveAsDialog() : DialogResult
+    {
+      SaveDialog.ShowDialog()
+    }
+
+    ViewNewDialog() : bool
+    {
+      NewDialog == null || NewDialog()
+    }
+
+    ОткрытиеДиалога() : bool
+    {
+      res:
+        {
+          when (DoSaving()) 
+            when (ViewOpenDialog())
+            {
+              CurFile = OpenDialog.FileName;
+              res(OnOpenFileAction())
+            }
+          false
+        }
+    }
+
+    OnOpenFileAction() : bool
+    {
+      OpenFileAction == null || OpenFileAction(CurFile)
+    }
+
+    OnNewFileAction() : bool
+    {
+      NewFileAction == null || NewFileAction()
+    }
+
+    НовыйДиалог() : bool
+    {
+      res:
+        {
+          when (DoSaving()) 
+            when (ViewNewDialog()) res(OnNewFileAction());
+          false
+        }
+    }
+
+    SaveCurrentFile() : bool
+    {
+      SaveFileAction == null || SaveFileAction(CurFile)
+    }
+
+    ViewOverwrite() : DialogResult
+    {
+      MessageBox.Show(CurOverwrite, "Warning", MessageBoxButtons.YesNoCancel);
+    }
+
+    ViewWantToSave() : DialogResult
+    {
+      MessageBox.Show(CurWantToSave, "Warning", MessageBoxButtons.YesNoCancel);
+    }
+
+    SaveAsDialog() : bool
+    {
+      SaveDialog.FileName = CurFile;
+      def res = ViewSaveAsDialog();
+      if (res == DialogResult.OK)
+      {
+        CurFile = SaveDialog.FileName;
+        SaveCurrentFile()
+      }
+      else false
+    }
+
+    DoSaveFile() : bool
+    {
+      if (IsNewFile)
+      {
+        SaveAsDialog()
+      }
+      else
+      {
+        match (ViewOverwrite())
+        {
+          | Yes => CurFile = LastSaved;
+                   SaveCurrentFile()
+          | No  => SaveAsDialog()
+          | _   => false
+        }
+      }
+    }
+
+    DoSaving() : bool
+    {
+      if (IsNeedSave)
+      {
+        match (ViewWantToSave())
+        {
+          | Yes    => DoSaveFile()
+          | No     => true
+          | _      => false
+        }
+      } else true
+    }
+
+    public IsNewFile : bool
+    {
+      get
+      {
+        IsInState(State.New());
+      }
+    }
+
+    public IsNeedSave : bool
+    {
+      get
+      {
+        IsInState(State.NeedSaving());
+      }
+    }
+
+    public OpenDialog : OpenFileDialog {get;set;}
+    public SaveDialog : SaveFileDialog {get;set;}
+    public NewDialog  : void -> bool {get;set;}
+
+    public LastSaved : string {get;private set;}
+    public CurFile   : string {get;private set;}
+    public NewFileAction  : void -> bool {get;set;}
+    public OpenFileAction : string -> bool {get;set;}
+    public SaveFileAction : string -> bool {get;set;}
+    public CurWantToSave  : string {get;set;}
+    public CurOverwrite   : string {get;set;}
+
+    check_save(func : void -> bool) : void
+    {
+      when (func()) FileSaved()
+    }
+
+    public Open() : void
+    {
+      check_save(ОткрытиеДиалога)
+    }
+
+    public Save() : void
+    {
+      check_save(DoSaveFile)
+    }
+
+    public SaveAs() : void
+    {
+      check_save(SaveAsDialog)
+    }
+
+    public Exit() : void
+    {
+      when (DoSaving()) Exited()
+    }
+
+    public New() : void
+    {
+      when (НовыйДиалог()) NewFile()
+    }
+  }
+}

@@ -12,10 +12,11 @@ using System.Diagnostics;
 using Nemerle.Statechart;
 using System.Threading.Tasks;
 using System.Threading;
-using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
+  
+  
   using GuardNode;
   // TODO: Action events with flag
   /// <summary>
@@ -99,6 +100,7 @@ namespace Nemerle.Statechart
                       }
                   } ]>;
       def ty = DefineState(ty, top, st);
+      
       def builders = TopState.Fold(ty :: compile_list, 
                                    (s, a) => DefineState(a, ty, s));
       compile_list = builders;
@@ -146,6 +148,16 @@ namespace Nemerle.Statechart
                 }
             }
             ]>);
+      def evts = def_events.FoldRight([<[case: | _ => throw InvalidOperationException("Unknown event") ]>], ((x, y), a) => <[case: | $(x.name : string) => this.$(y : usesite)();]> :: a);
+      Define(<[ decl:
+            public SendEvent(evt : string) : void
+            {
+                match (evt)
+                {
+                  ..$evts
+                }
+            }
+            ]>);
       Define(defs);
     }
 
@@ -171,6 +183,7 @@ namespace Nemerle.Statechart
 
       def st_exit = st.Map(x => ($"ExitFrom$(x.PartOfRegion.Value)In$(x)", GetActions(x.region_exit_path, action_for)));
       def exit_acts = st.SelectMany(x => GenAction.CreateActions(x.region_exit_path, action_for));
+      
       def actions = actions.Exclude(_.IsDeclared).Concat(exit_acts);
       def actions = actions.RemoveDuplicatesSort(_.end_name);
 

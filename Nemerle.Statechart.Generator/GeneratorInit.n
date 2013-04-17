@@ -24,7 +24,7 @@ namespace Nemerle.Statechart
       {
         DefineTransBody(i.Map(x => x : StateTransition), GenCtx.Normal());
       }
-
+      
       def initial = def_initial(analyser.TopState.initial_tran); // define initial transition
       def events = analyser.Events.Map(x => <[ $x ]>);
       def states = analyser.LivedNestedStates.Exclude(_.IsTopState).Map(x => <[ $(x.Name : string) ]>);
@@ -32,6 +32,9 @@ namespace Nemerle.Statechart
       //def state_init_expr = state_names.Map((x, y) => <[ $(y : usesite) = State.$(x : usesite)();]>);
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
       def trans_complete_expr =  if (analyser.Fsm.flags.TransitionCompleted) <[ OnTransitionCompleted(); ]> else <[ () ]>;
+      def actions = actions.Exclude(_.IsDeclared);
+      def actions = actions.RemoveDuplicatesSort(_.end_name);
+      def actions = actions.Map(x => <[ $(x.exec_name) ]>);
       def dummy =  <[decl:
                   class Test
                   {
@@ -111,6 +114,7 @@ namespace Nemerle.Statechart
 
                     public static ContainsStates : array[string] = array[..$states];
                     public static ProcessEvents  : array[string] = array[..$events];
+                    public static ExecActions    : array[string] = array[..$actions];
                     
                     mutable queue_thread : Thread;
                     queue : ConcurrentQueue[Event] = ConcurrentQueue();
@@ -118,7 +122,7 @@ namespace Nemerle.Statechart
                   }
 
                   ]>;
-
+      when (analyser.FsmFlags.TestingFeatures) ty.AddImplementedInterface(<[ Nemerle.Statechart.IStateMachine ]>);
       Define(state_names.Map((x, y) =>  <[decl: $(y : usesite) : State.$(x : usesite) = State.$(x : usesite)(); ]>)); // create state variables for fast using 
       Define(dummy.td.GetMembers());
     }
@@ -136,6 +140,7 @@ namespace Nemerle.Statechart
       }
       DefineIsInState();
       DefineTerminate();
+      DefineTesting();
     }
 
     DefineTerminate() : void
@@ -184,9 +189,9 @@ namespace Nemerle.Statechart
           {
             | <[ $(_ : usesite) ]> => <[ cur_state.get_id() & id == id ]>
             | _ => <[
-                def id = $st_id;
-                              cur_state.get_id() & id  == id 
-                            ]>
+                      def id = $st_id;
+                      cur_state.get_id() & id  == id 
+                   ]>
           }
         } else
         {
@@ -234,10 +239,19 @@ namespace Nemerle.Statechart
             ]>;
       def st_is_in_state = <[decl: static IsInState(cur_state : State, st : State) : bool
                             {
-                              $(get_body(<[st.get_id()]>))
+                              $(get_body(<[ st.get_id() ]>))
                             }
                             ]>;
-      Define([is_in_state, is_in_state2, st_is_in_state]);
+                            
+      def states = analyser.States.Where(x => !x.IsTopState);
+      def mexpr = states.FoldRight([<[case: | _ => throw InvalidOperationException("Invalid state") ]>], 
+                                   (x, a) => <[case: | $(x.Name : string) => State.$(x.Name : usesite).Id()]> :: a);
+      def str_is_in_state = <[decl: public IsInState(st : string) : bool
+                              {
+                                def id = match (st) {..$mexpr };
+                                IsInState(id)
+                              } ]>;
+      Define([is_in_state, is_in_state2, st_is_in_state, str_is_in_state]);
     }
 
 
