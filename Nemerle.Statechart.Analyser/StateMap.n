@@ -31,7 +31,7 @@ namespace Nemerle.Statechart
     [Accessor]
     mutable state_tree : FsmState;
 
-    mutable cached_pseudo_states : array[PseudoStateNode];// = NC.Hashtable();
+    mutable cached_pseudo_states : array[PseudoStateNode];
     mutable cached_transitions   : array[StateTransition];
     mutable cached_states        : array[FsmState];
 
@@ -83,12 +83,12 @@ namespace Nemerle.Statechart
 
     public this(an : FsmAnalyser) 
     { 
-
       Analyser = an; 
-
-      ///tr.GetBreadthFirstEnumerable().Iter(x => when (x.Value is FsmNode.State(n)) map[n] = x)
     }    
 
+    /// <summary>
+    /// create super states setted with " : parent" syntax
+    /// </summary>
     CreateSuperStates() : void
     {
       def set_super(st)
@@ -109,14 +109,19 @@ namespace Nemerle.Statechart
       States.Iter(set_super)
     }
 
+    /// <summary>
+    /// create state tree map and specific structures, update references etc
+    /// </summary>
     public Create(state : StateNode.State) : void
     {
-      need_rebuild = RebuildObject.Transitions | RebuildObject.Pseudo | RebuildObject.State;
+      // fold general rose tree and convert it to FsmState general rose tree
       def top = TreeUtils.FoldTree(state, null, _.sub_states, FsmState(_, _, Analyser));
-      top.name = FsmState.TopStateName;
+      top.name = FsmState.TopStateName; // change name
       state_tree = top;
-      CreateSuperStates();
-      UpdateReferences();
+      // need rebuild all
+      Rebuild(RebuildObject.Transitions | RebuildObject.Pseudo | RebuildObject.State);
+      CreateSuperStates(); // check create super states setted with : parent syntax
+      UpdateReferences(); // resolve references
     }
 
   }
