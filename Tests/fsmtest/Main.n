@@ -15,6 +15,8 @@ namespace Nemerle.Statechart.Tests {
   using FileFsm.Event;
   using FileFsm.State;
 
+  using FsmTester;
+  
   class Test
   {       
     rand : Random = Random(123456789);
@@ -251,33 +253,41 @@ namespace Nemerle.Statechart.Tests {
     public PathCoverTest() : void
     {
       def fsm = PathCoverFsm();
-      fsm.AEntry+= () => WriteLine("A entry");
-      fsm.AExit+= () => WriteLine("A exit");
-      fsm.BEntry+= () => WriteLine("B entry");
-      fsm.BExit+= () => WriteLine("B exit");
-      fsm.CEntry+= () => WriteLine("C entry");
-      fsm.CExit+= () => WriteLine("C exit");
-      fsm.DEntry+= () => WriteLine("D entry");
-      fsm.DExit+= () => WriteLine("D exit");
-      fsm.EEntry+= () => WriteLine("E entry");
-      fsm.EExit+= () => WriteLine("E exit");
+      fsm.ActionExecuted += WriteLine;
+      def tester = FsmTester(fsm);
+      tester.Print += x => WriteLine($"\n$x");
+      tester.Send += x => WriteLine($"Processing a '$x' ");
+      tester.OkTest += _ => WriteLine("Ok");
+      tester.Failed += _ => WriteLine("Failed");
+      //fsm.AEntry+= () => WriteLine("A entry");
+      //fsm.AExit+= () => WriteLine("A exit");
+      //fsm.BEntry+= () => WriteLine("B entry");
+      //fsm.BExit+= () => WriteLine("B exit");
+      //fsm.CEntry+= () => WriteLine("C entry");
+      //fsm.CExit+= () => WriteLine("C exit");
+      //fsm.DEntry+= () => WriteLine("D entry");
+      //fsm.DExit+= () => WriteLine("D exit");
+      //fsm.EEntry+= () => WriteLine("E entry");
+      //fsm.EExit+= () => WriteLine("E exit");
       WriteLine("Beginning Statechart test...");	
       
-      fsm.InitiateTest(PathCoverFsm.State.C(), PathCoverFsm.FromEntry("A", "B", "C"));
+      tester.Initiate("Starting state machine", "C", Entry("A", "B", "C"));
+      //fsm.InitiateTest(PathCoverFsm.State.C(), PathCoverFsm.FromEntry("A", "B", "C"));
       
 	    // Internal transition.
-      WriteLine("Processing an 'a'");	
-      fsm.a();	
-      fsm.FeatureTest(PathCoverFsm.Event.a, PathCoverFsm.State.C(), array[]);
+      tester.Test("Testing Internal transition", "a", null);
+      //fsm.a();	
       
 	// Testing simple-to-simple transition.
-      WriteLine("Processing a 'b'");	
-      fsm.b();
+      //WriteLine("Processing a 'b'");
+      tester.Test("Testing simple-to-simple transition", "b", "E", ["C"], [], ["E"]);
+      //fsm.b();
 
 	// Testing simple-to-composite transition
 	// (transition to outermost state).
-      WriteLine("Processing a 'j'");
-      fsm.j();
+      tester.Test("Testing simple-to-composite transition", "j", "C", ["E", "B", "A"], [], ["A", "B", "C"]);
+      //WriteLine("Processing a 'j'");
+      //fsm.j();
 
 	// Testing simple-to-simple, via composite.
       WriteLine("Processing a 'd'");
