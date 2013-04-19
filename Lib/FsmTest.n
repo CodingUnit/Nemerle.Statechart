@@ -1,0 +1,155 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  public interface IStateMachine
+  {
+    Initiate() : void;
+    SendEvent(evt : string) : void;
+    IsInState(st : string)  : bool;
+    event ActionExecuted    : Action[string];
+  }
+  
+  public class FsmTester
+  {
+    fsm : IStateMachine;
+    queue : List[string] = List();
+    
+    public event OkTest : Action;
+    public event Failed : Action;
+    public event Print  : Action[string];
+    public event Send   : Action[string];
+    
+    OnOkTest() : void
+    {
+      OkTest?.Invoke()
+    }
+    
+    OnPrint(str : string) : void
+    {
+      Print?.Invoke(str)
+    }
+    
+    OnFailed() : void
+    {
+      Failed?.Invoke();
+    }
+    
+    public this(fsm : IStateMachine)
+    {
+      this.fsm = fsm;
+      fsm.ActionExecuted += queue.Add;
+    }
+
+    static EntryImpl(en : IEnumerable[string]) : IEnumerable[string]
+    {
+      en.Select(x => $"$(x)Entry")
+    }
+    
+    static ExitImpl(ex : IEnumerable[string]) : IEnumerable[string]
+    {
+      ex.Select(x => $"$(x)Exit")
+    }
+    
+    static ActionsImpl(act : IEnumerable[string]) : IEnumerable[string]
+    {
+      act.Select(x => $"$(x)Action")
+    }
+    
+    public static Entry(params en : array[string]) : array[string]
+    {
+      EntryImpl(en).ToArray()
+    }
+    
+    public static Exit(params ex : array[string]) : array[string]
+    {
+      ExitImpl(ex).ToArray()
+    }
+    
+    public static Actions(params act : array[string]) : array[string]
+    {
+      ActionsImpl(act).ToArray()
+    }
+    
+    prepare() : void
+    {
+      queue.Clear()
+    }
+    
+    Test(func : void -> void, res : string, params acts : array[string]) : bool
+    {
+      prepare();
+      func();
+      
+      if (res == null || fsm.IsInState(res))
+      {
+        acts.ZipLazy(queue).All(_ == _)
+      } else false
+    }
+    
+    SendEvent(evt : string) : void
+    {
+      Send?.Invoke(evt);
+      fsm.SendEvent(evt);
+    }
+    
+    public TestCond(evt : string, res : string, params acts : array[string]) : bool
+    {
+      Test(_ => SendEvent(evt), res, acts)
+    }
+    
+    public TestCond(evt : string, res : string, ex : list[string], act : list[string], en : list[string]) : bool
+    {
+      def acts = ExitImpl(ex).Concat(ActionsImpl(act)).Concat(EntryImpl(en)).ToArray();
+      Test(_ => SendEvent(evt), res, acts)
+    }
+    
+    public Initiate(name : string, res : string, params acts : array[string]) : void
+    {
+      OnPrint(name);
+      if (Initiate(res, acts)) OnOkTest() else OnFailed();
+    }
+    
+    public Test(name : string, evt : string, res : string, params acts : array[string]) : void
+    {
+      OnPrint(name);
+      if (TestCond(evt, res, acts)) OnOkTest() else OnFailed();
+    }
+    
+    public Test(name : string, evt : string, res : string, ex : list[string], act : list[string], en : list[string]) : void
+    {
+      OnPrint(name);
+      if (TestCond(evt, res, ex, act, en)) OnOkTest() else OnFailed();
+    }
+
+    public Test(name : string, evt : string, ex : list[string], en : list[string]) : void
+    {
+      Test(name, evt, ex, [], en)
+    }
+    
+    public Test(name : string, evt : string, ex : list[string], act : list[string], en : list[string]) : void
+    {
+      def res = en.Last();
+      Test(name, evt, res, ex, act, en);
+    }
+    
+    public Initiate(res : string, params acts : array[string]) : bool
+    {
+      Test(_ => fsm.Initiate(), res, acts)
+    }
+    
+    public Initiate(name : string, en : list[string]) : void
+    {
+      def res = en.Last();
+      Initiate(name, res, EntryImpl(en).ToArray())
+    }
+  }
+  
+}
