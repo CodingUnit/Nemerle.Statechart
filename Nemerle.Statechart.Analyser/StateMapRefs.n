@@ -40,18 +40,13 @@ namespace Nemerle.Statechart
       }
     }
 
+    
     ResolvePseudoState(p : PseudoStateNode, st : FsmState) : PseudoStateNode
     {
       match (p)
       {                                   // get history from state
         | PseudoStateNode.History as h => st.GetHistory(h)
-        | Terminate                    => match (PseudoStates.Find(x => x is PseudoStateNode.Terminate))
-            {
-              | Some(ft) => ft
-              | _        => def t = PseudoStateNode.Terminate(state_tree);
-                                                          state_tree.AddPseudo(t);                                                          
-                                                          t
-            }
+        | Terminate as p               => p // it is must be resolved
         | _ => match (p.NativeName) // find for name
             {
               | Some(p)   => GetPseudoIn(p, null)
@@ -60,47 +55,46 @@ namespace Nemerle.Statechart
       }
 
     }
-    // TODO: решить проблему с двойным обходом узлов до разрешения и после
+    
     ResolveTarget(st : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
     {
       match (tr)
       {
         // TODO: продумать алгоритм разрешения неоднозначности из того в каком состояниии
         // осуществляется переход
-        | Named(par, n)   => match (GetNamed(n, par))
-            {
-              | null => Analyser.AddError(FsmError.UnknownNode(tran));
-                                          null
-              | t    => t
-            }
-        | Qualified(parent = par, target = t) => 
-            def res = Get(par);
-            match (res, t)
-            {
-              | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
-                            null
-              | (res, _)  => ResolveTarget(res, t, tran)
-            }
-        | PseudoState(p) as t    => match (ResolvePseudoState(p, st))
-            {
-              | null => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
-                        null
-              | n    => t.ChangeNode(n)
-            }
-        | State(s) as t          => def name = s.NativeName;
-                                    match (name)
-                                    {
-                                      | "self"
-                                      | "@" => t.ChangeState(tran.From)
-                                      | n   => match (Get(n))
-                                              {
-                                                | null    => Analyser.AddError(FsmError.StateNotFound(s));t
-                                                | s       => t.ChangeState(s)
-                                              }
-                                    }
+        | Named(par, n)                       => match (GetNamed(n, par))
+                                                 {
+                                                   | null => Analyser.AddError(FsmError.UnknownNode(tran));
+                                                             null
+                                                   | t    => t
+                                                 }
+        | Qualified(parent = par, target = t) => def res = Get(par);
+                                                 match (res, t)
+                                                 {
+                                                   | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
+                                                                  null
+                                                   | (res, _)  => ResolveTarget(res, t, tran)
+                                                 }
+        | PseudoState(p) as t                 => match (ResolvePseudoState(p, st))
+                                                  {
+                                                    | null => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
+                                                              null
+                                                    | n    => t.ChangeNode(n)
+                                                  }
+        | State(s) as t                       => def name = s.NativeName;
+                                                  match (name)
+                                                  {
+                                                    | "self"
+                                                    | "@" => t.ChangeState(tran.From)
+                                                    | n   => match (Get(n))
+                                                            {
+                                                              | null    => Analyser.AddError(FsmError.StateNotFound(s));t
+                                                              | s       => t.ChangeState(s)
+                                                            }
+                                                  }
 
 
-        | _                   => null // other not supported yet
+        | _                                   => null // other skipped
       }
     }
 

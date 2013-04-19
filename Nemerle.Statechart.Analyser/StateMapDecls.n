@@ -1,0 +1,74 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of StateMapDecls.
+  /// </summary>
+  partial class StateMap
+  {
+
+    CreateAndResolvePreDecl(tar : TransitionTarget, tr : StateTransition) : TransitionTarget
+    {
+      match (tar)
+      {
+        | TransitionTarget.PseudoState(p) as t => 
+              def p = match (p)
+              {
+                | PseudoStateNode.Terminate => // 
+                        // search for terminate in automata
+                        match (PseudoStates.Find(x => x is PseudoStateNode.Terminate))
+                        {
+                          // if not find add to top state
+                          | None        => def t = PseudoStateNode.Terminate(state_tree);
+                                           state_tree.AddPseudo(t);                                                          
+                                           t
+                            // if find select it
+                          | Some(t)     => t
+                        }
+                // another pseudo state is not used
+                | t => t
+              }
+              t.ChangeNode(p)
+        | TransitionTarget.Final as t    => def st = tr.From; // begining of transition
+                                            def super = if (tr is StateTransition.Initial) st else st.Super; // if transition is initial use super this state or super state of this
+                                            // if super is top state it is terminate
+                                            if (super.IsTopState) CreateAndResolvePreDecl(TransitionTarget.PseudoState(PseudoStateNode.Terminate(state_tree)), tr) else
+                                            {
+                                              // search for final state in super
+                                              match (super.sub_states.Find(x => x.type is StateType.Final))
+                                              {
+                                                // if find select it
+                                                | Some(st) => t.ChangeState(st)
+                                                | _        => def fin = FsmState(Analyser, StateType.Final()); // else create and add and select
+                                                              fin.name = $"$(super)Final";
+                                                              super.Add(fin);
+                                                              t.ChangeState(fin);
+                                              }
+                                            }
+        | _ => null
+
+      }
+    }
+
+    CreatePreDecls() : void
+    {
+      foreach (tr in Transitions)
+      {
+        match (CreateAndResolvePreDecl(tr.To, tr))
+        {
+          | null => ()
+          | t    => tr.To = t
+        }
+      }
+    }
+
+  }
+}
