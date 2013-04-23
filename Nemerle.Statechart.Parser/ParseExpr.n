@@ -1,0 +1,50 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Peg;
+
+namespace Nemerle.Statechart
+{
+  
+  
+  [PegGrammar(Options  =  EmitDebugSources, expr,
+  grammar
+  {
+      any                                             =  ['\u0000'..'\uFFFF'];
+      newLine                                         =  "\r\n" / '\n' / '\r' / '\u2028' / '\u2029' / '\u0085';
+      singleLineComment                               =  "//" (!('\n' / '\r') [Any])* newLine?;
+      delimitedComment                                =  "/*" (!"*/" [Any])* "*/";
+      comment                                         =  singleLineComment / delimitedComment;
+      spaces_def                                      =  (' ' / '\t' / '\u000B' / '\u000C' / newLine / comment)*;
+      spaces : void                                   =  spaces_def;
+      letter                                          =  [Lu,  Ll,  Lt,  Lm,  Lo,  Nl,  Nd] / '_' / '@';
+      target_letter                                   =  letter / '(' / ')' / '[' / ']';
+      end_symb  : void                                =  ';'s;
+      delimiter : void                                =  ',' / spaces_def;
+      s : void                                        =  spaces;
+      identifier                                      =  letter+;
+      
+      
+      variable                         : GuardExpr    = identifier s;
+      equal                            : GuardExpr    = variable "=="s variable;
+      expr                             : GuardExpr    = equal;
+  }    
+  )]
+  class ParseExpr
+  {
+    variable(n : NToken) : GuardExpr
+    {
+      GuardExpr.Var(n.StartPos, GetText(n))
+    }
+    
+    equal(a : GuardExpr, _ : NToken, b : GuardExpr) : GuardExpr
+    {
+      GuardExpr.Equal(a.pos, a, b)
+    }
+  }
+}
