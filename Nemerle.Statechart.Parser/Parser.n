@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nemerle.Statechart;
 
 namespace Nemerle.Statechart
 {
@@ -51,7 +50,9 @@ namespace Nemerle.Statechart
           | "h*" with hist = HistoryType.Deep
           | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateAstNode.History(pos, hist, None()))
           | "final"
-          | "$0"       => TargetType.State(name.pos, StateNode.State(null, StateType.Final()))
+          | "$0"       => TargetType.Final(pos)
+          | "self"
+          | "@"        => TargetType.Self(pos)
           | "terminate"
           | "x"
           | "X"        => TargetType.PseudoState(name.pos, PseudoStateAstNode.Terminate(0))
@@ -59,7 +60,7 @@ namespace Nemerle.Statechart
               def n = string(n.Explode().Except(['(', ')']).ToArray());
               TargetType.Named(name.pos, n)
           //| _ => TargetType.Named(name.pos, name.TargetName.Trim('(',')'))
-          | _                      => TargetType.State(name.pos, State(n, StateType.State()))
+          | _                      => TargetType.Named(name.pos, n)
       }
 
       match (name)
@@ -122,24 +123,29 @@ namespace Nemerle.Statechart
       attr.Map(get_attr).ToList()
     }
 
-    trans_act_list(lst : List[NToken]) : Actions
+    trans_act_list(act : NToken, lst : List[FsmAction]) : Actions
     {
-      create_action(lst)
+      create_action(act, lst)
     }
 
-    block_action_list(lst : List[NToken]) : Actions
+    block_action_list(start : NToken, _ : NToken, lst : List[FsmAction], _ : NToken) : Actions
     {
-      create_action(lst)
+      create_action(start, lst)
     }
 
-    empty_action_list(tok : NToken) : Actions
-    {
-      Actions(tok.StartPos, [])
-    }
+    //empty_action_list(tok : NToken) : Actions
+    //{
+    //  Actions(tok.StartPos, [])
+    //}
 
-    delim_action_list(lst : List[NToken]) : Actions
+    empty_action(s : NToken, _ : NToken) : FsmAction
     {
-      create_action(lst)
+      FsmAction(s.StartPos, null, [])
+    }
+    
+    delim_action_list(tok : NToken, lst : List[FsmAction]) : Actions
+    {
+      create_action(tok, lst)
     }
 
     entry(attr : option[List[NToken]], key : NToken, acts : option[Actions]) : Entry
@@ -200,19 +206,7 @@ namespace Nemerle.Statechart
       Transition(name.StartPos, Enumerable.Empty(), guard, act, to, TransitionType.Initial)
     }
 
-    parent(_ : NToken, name : NameIdentifier) : NameIdentifier
-    {
-      name
-    }
-    
-    state(attr : option[List[StateAttribute]], name : NToken, parent : option[NameIdentifier], nodes : List[StateNode]) : State
-    {
-      def name_text = GetText(name);
-      def attr = attr.WithDefault(Enumerable.Empty());
-      CreateState(name.StartPos, name_text, attr, nodes, StateType.State(), parent)
-    }
-
-    flags(tok : List[NToken]) : MachineFlags
+    flags(s : NToken, tok : List[NToken]) : StateNode
     {
       def err = List();
       
@@ -236,7 +230,8 @@ namespace Nemerle.Statechart
 
       def flags = tok.FoldLeft(MachineFlag.None, proc_tok);
       def flags = if (flags & MachineFlag.TestingFeatures != 0) flags | MachineFlag.AutoEntryExitActions else flags; 
-      MachineFlags(flags, err);
+      def flags = MachineFlags(flags, err);
+      StateNode.Flags(s.StartPos, flags)
     }
 
     history_deep(tok : NToken, tran : option[StateNode.Transition]) : StateNode
@@ -322,28 +317,33 @@ namespace Nemerle.Statechart
       }
     }
 
-    inlined_fsm(nkey : NToken, name : NToken, _ : NToken, type : NToken, body : List[StateNode]) : StateNode
-    {
-      def pos = nkey.StartPos;
-      def name = GetText(name);
-      CreateState(pos, name, [], body, StateType.InlinedSubMachine(GetText(type)), None());
-    }
+    //inlined_fsm(nkey : NToken, name : NToken, _ : NToken, type : NToken, body : List[StateNode]) : StateNode
+    //{
+    //  def pos = nkey.StartPos;
+    //  def name = GetText(name);
+    //  CreateState(pos, name, [], body, StateType.InlinedSubMachine(GetText(type)), None());
+    //}
 
-    statemachine(name : NToken, _ : NToken, type : NToken, tran : List[StateNode.Transition]) : StateNode
-    {
-      State(GetText(name), name.StartPos, StateType.SubMachine(GetText(type)), tran.NToList())
-    }
+    //statemachine(name : NToken, _ : NToken, type : NToken, tran : List[StateNode.Transition]) : StateNode
+    //{
+    //  State(GetText(name), name.StartPos, StateType.SubMachine(GetText(type)), tran.NToList())
+    //}
 
-    stateMachine(sp : NToken, flags : option[MachineFlags], st : List[StateNode]) : StateMachine
-    {
-      def st = CreateState(sp.StartPos, null, [], st.NToList(), StateType.State(), None());
-      def flags = flags.WithDefault(MachineFlags(MachineFlag.None, []));
-      StateMachine(sp.StartPos, flags, st)
-    }
 
-    region(beg : NToken, _ : NToken) : StateNode.State
+    region(beg : NToken, _ : NToken) : StateNode
     {
-      State(beg.StartPos, StateType.SubRegion())
+      StateNode.Region(beg.StartPos)
+      //State(beg.StartPos, StateType.SubRegion())
+    }
+    
+    parameters(lst : List[NToken]) : List[string]
+    {
+      lst.Select(GetText).ToList()
+    }
+    
+    normal_action(n : NToken, pars : option[List[string]]) : FsmAction
+    {
+      FsmAction(n.StartPos, GetText(n), pars.MapDefault(x => x.NToList(), []))
     }
   }
 

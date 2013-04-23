@@ -1,0 +1,51 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+using Nemerle.Peg;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of ParseStates.
+  /// </summary>
+  public partial class FsmParser
+  {
+    name(s : NToken, name : NToken) : StateNode
+    {
+      def name = GetText(name);
+      StateNode.Name(s.StartPos, name)
+    }
+    
+    stateMachine(sp : NToken, nodes : List[StateNode]) : StateNode.StateMachine
+    {
+      def (flags, nodes) = nodes.PartitionType();
+      def (name, nodes) = nodes.PartitionType();
+      
+      def state = CreateState(sp.StartPos, null, [], nodes, StateType.State(), None());
+      
+      def flags = match (flags.NToList())
+                  {
+                    | StateNode.Flags as head :: _ => head.flags
+                    | _               => MachineFlags(MachineFlag.None, [])
+                  }
+      def name = match (name.NToList())
+                 {
+                   | StateNode.Name as n :: _ => n.name
+                   | _                        => null
+                 }
+      StateNode.StateMachine(sp.StartPos, flags, name, state)
+    }
+
+    state(attr : option[List[StateAttribute]], name : NToken, parent : option[NameIdentifier], nodes : List[StateNode]) : StateNode.State
+    {
+      def name_text = GetText(name);
+      def attr = attr.WithDefault(Enumerable.Empty());
+      CreateState(name.StartPos, name_text, attr, nodes, StateType.State(), parent)
+    }
+  }
+}

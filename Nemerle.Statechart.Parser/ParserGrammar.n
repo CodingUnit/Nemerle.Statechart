@@ -142,13 +142,15 @@ namespace Nemerle.Statechart
       exit_key                                        =  ("exit" / "$<")s;
       state_key   : void                              =  "state"s;
       initial_key                                     =  ("initial" / "0")s;
-      flags_key   : void                              =  "flags"s;
+      //flags_key   : void                              =  "flags"s;
       history_key : void                              =  "history"s;
       attr_begin  : void                              =  '['s;
       attr_end    : void                              =  ']'s;
       colon       : void                              =  ':'s;
       point       : void                              =  '.';
       comma       : void                              =  ','s;
+      open_round_brace : void                         =  '('s;
+      close_round_brace : void                         =  ')'s;
       terminate_key                                   = ("terminate" / "X" / "x") s;
       fsm_key     : void                              =  "statemachine"s;
       // terminal rules
@@ -160,17 +162,14 @@ namespace Nemerle.Statechart
       simple_attrs       : List[NToken]               =  (attr_begin (identifier s comma?)+ attr_end s)+;
 
       attributes         : List[StateAttribute]       =  simple_attrs;
-      delim_action_list  : Actions                    =  (!end_symb identifier s delimiter)* s end_symb;
-      simple_action_list : Actions                    =  delim_action_list;
-      block_action_list  : Actions                    =  open_brace (!close_brace identifier s delimiter)* close_brace;
-      empty_action_list  : Actions                    =  "()"s end_symb;
-      not_empty_list     : Actions                    =  simple_action_list / block_action_list;
+      delim_action_list  : Actions                    =  '/'s (!end_symb action delimiter)* s end_symb;
+      block_action_list  : Actions                    =  '/'s "{"s (!close_brace action delimiter)* "}"s end_symb?;
       
-      action_list        : Actions                    =  slash (empty_action_list / not_empty_list);
+      action_list        : Actions                    =   delim_action_list / block_action_list;
       
       entry              : StateNode                  =  simple_attrs? entry_key action_list? end_symb?;
       exit               : StateNode                  =  simple_attrs? exit_key action_list? end_symb?;
-      do_activity        : StateNode                  =  simple_attrs? "do"s not_empty_list end_symb?;
+      do_activity        : StateNode                  =  simple_attrs? "do"s action_list end_symb?;
       
       terminate_node     : StateNode                  =  terminate_key end_symb;
       pseudo_state       : StateNode                  =  history / terminate_node / join; // / junction / choice / merge;
@@ -185,7 +184,11 @@ namespace Nemerle.Statechart
       trans_target       : TargetType                 =  (simple_target s (!end_symb simple_target s delimiter)* end_symb);
       transition_target  : TargetType                 =  /*choice_target / junction_target /*/ trans_target;
       
-      trans_act_list     : Actions                    =  slash (!goto identifier s delimiter)*;
+      parameters         : List[string]               =  (!close_round_brace identifier s comma)*;
+      empty_action       : FsmAction                  =  '('s ')'s;
+      normal_action      : FsmAction                  =  identifier s (open_round_brace parameters close_round_brace)?;
+      action             : FsmAction                  =  empty_action / normal_action;
+      trans_act_list     : Actions                    =  '/'s (!goto action s delimiter)*;
       //transition_mark    : StateNode.Transition       =  s guard? trans_act_list? goto transition_target;
       default_transition : StateNode.Transition       =  s trans_act_list? goto transition_target;// s end_symb?;
       internal_trans     : StateNode                  =  identifier s guard? action_list;
@@ -203,16 +206,17 @@ namespace Nemerle.Statechart
       history            : StateNode                  =  (history_long / history_short) end_symb?;
 
       machine_body       : List[StateNode.Transition] =  open_brace transitions close_brace;
-      statemachine       : StateNode                  =  fsm_key identifier s ':'s qualified_id s machine_body;
-      inlined_fsm        : StateNode                  =  "new"s fsm_key identifier s ':'s identifier s stateBody;
-      stateDecl          : StateNode                  =  region / pseudo_state / entry / exit / do_activity / transition / state / inlined_fsm / statemachine;
+      //statemachine       : StateNode                  =  fsm_key identifier s ':'s qualified_id s machine_body;
+      //inlined_fsm        : StateNode                  =  "new"s fsm_key identifier s ':'s identifier s stateBody;
+      stateDecl          : StateNode                  =  flags / name / region / pseudo_state / entry / exit / do_activity / transition / state;// / inlined_fsm / statemachine;
       stateBody          : List[StateNode]            =  open_brace stateDecl* close_brace;
-      parent             : NameIdentifier             =  ':'s fully_qualified;
+      parent             : NameIdentifier             =  colon fully_qualified;
       state              : StateNode                  =  attributes? state_key identifier s parent? stateBody;
 
       region             : StateNode                  =  attr_begin "---" '-'* attr_end;
-      flags              : MachineFlags               =  flags_key colon (identifier s comma?)+ end_symb;
-      stateMachine       : StateMachine               =  spaces_def flags? stateDecl + s;
+      flags              : StateNode                  =  "flags"s colon (identifier s comma?)+ end_symb;
+      name               : StateNode                  =  "name"s identifier s end_symb;
+      stateMachine       : StateMachine               =  spaces_def stateDecl+ s;
 
   })]
   public partial class FsmParser

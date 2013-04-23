@@ -34,14 +34,7 @@ namespace Nemerle.Statechart
       //States.Iter(x => check_duplicates(x.InitialTransitions().Select(_.Value)));  // check duplicates
       when (FsmFlags.AutoInitial) States.Iter(check_auto_initial);
 
-      match (TopState)
-      {
-        | FsmState(transitions = []) as st => check_auto_initial(st)
-        | _                                => ()
-      }
-       
-
-      
+      when (TopState.transitions.IsEmpty()) check_auto_initial(TopState);
     }
 
     is_crossed_orthogonal(tr : StateTransition, st : FsmState) : bool
@@ -79,27 +72,29 @@ namespace Nemerle.Statechart
 
       def check_duplicate_tran(tr)
       {
-        def check_begin_and_ends(tr : list[_])
-        {
-          def equal(lst, lst2)
-          {
-            lst.Equals(lst2, _ == _);
-          }
+        //def check_begin_and_ends(tr : list[_])
+        //{
+        //  def equal(lst, lst2)
+        //  {
+        //    lst.Equals(lst2, _ == _);
+        //  }
 
-          def acts = tr.Select(x => x.ActionList);
-          def res = acts.ElementsEqual(equal);
-          when (res) AddError(FsmError.DuplicateTransition(tr));
-        }
+        //  def acts = tr.Select(x => x.ActionList);
+        //  def res = acts.ElementsEqual(equal);
+        //  when (res) AddError(FsmError.DuplicateTransition(tr));
+        //}
 
         def dups = tr.NToList().Duplicates(FsmState.Compare(StateTransition.GuardComparer)); // find duplicates with same guards and same triggers
-        if (!dups.IsEmpty())
+        when (!dups.IsEmpty())
         {
           AddError(FsmError.DuplicateTransition(dups))
-        } else
-        {
-          def begin_and_end_eq = tr.NToList().DuplicatesGroup((x, y) => x.To.CompareTo(y.To));
-          begin_and_end_eq.Iter(check_begin_and_ends)
         }
+        // else
+        //{
+        //  def begin_and_end_eq = tr.NToList().DuplicatesGroup((x, y) => x.To.CompareTo(y.To));
+        //  begin_and_end_eq.Iter(check_begin_and_ends)
+        //}
+        
       }
 
       def check_override(tr)
@@ -145,7 +140,7 @@ namespace Nemerle.Statechart
       check_init_ext_trans(check_duplicate_tran);
       check_init_ext_trans(check_override);
 
-      def (simple, other) = States.NToList().Partition(_.IsSimpleState);
+      def (simple, other) = States.NToList().Partition(_.IsSimple);
       simple.Iter(set_super_state_transition); // create super state transitions in simple states
       simple.Iter(x => check_trans(x, x => x.EventTransitions, resolve_conflict));
       other.Iter(_.DeleteEventTransitions());  // delete other transitions from composite states
