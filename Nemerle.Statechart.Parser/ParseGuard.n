@@ -10,20 +10,106 @@ using Nemerle.Peg;
 
 namespace Nemerle.Statechart
 {
-  
-  
-  
+
+
+
   public partial class FsmParser
   {
     is_in_state(tok : NToken, _ : NToken, name : NameIdentifier, _ : NToken) : GuardNode
     {
       GuardNode.InState(tok.StartPos, name.FullName)
     }
-    
+
     else_guard(tok : NToken) : GuardNode
     {
       GuardNode.Else(tok.StartPos)
     }
 
+    lit_string(s : NToken, id : NToken, _ : NToken) : StateLit
+    {
+      StateLit.String(s.StartPos, GetText(id))
+    }
+
+    lit_double(f : NToken, s : NToken) : StateLit
+    {
+      def fnum = GetText(f);
+      def sec  = GetText(s);
+      def num = $"$fnum.$sec";
+      StateLit.Double(f.StartPos, double.Parse(num))
+    }
+
+    lit_num(f : NToken) : StateLit
+    {
+      StateLit.Integer(f.StartPos, int.Parse(GetText(f)))
+    }
+
+    braces_guard(s : NToken, expr : StateExpr, _ : NToken) : StateExpr
+    {
+      StateExpr.Braces(s.StartPos, expr)
+    }
+
+    var_guard(id : NToken) : StateExpr
+    {
+      StateExpr.Var(id.StartPos, GetText(id))
+    }
+
+    meth_guard(id : NToken) : StateExpr
+    {
+      StateExpr.Method(id.StartPos, GetText(id))
+    }
+
+    lit_guard(lit : StateLit) : StateExpr
+    {
+      StateExpr.Literal(lit.pos, lit)
+    }
+
+    two_op_expr(op : NToken) : StateBinaryOp
+    {
+      def pos = op.StartPos;
+      match (GetText(op))
+      {
+        | "==" => StateBinaryOp.Equal(pos)
+        | "!=" => StateBinaryOp.NotEqual(pos)
+        | ">"  => StateBinaryOp.Above(pos)
+        | ">=" => StateBinaryOp.AboveEq(pos)
+        | "<"  => StateBinaryOp.Below(pos)
+        | "<=" => StateBinaryOp.BelowEq(pos)
+        | "||" => StateBinaryOp.Or(pos)
+        | "&&" => StateBinaryOp.And(pos)
+        | _    => StateBinaryOp.Error(pos)
+      }
+    }
+    
+    one_op_expr(op : NToken) : StateUnaryOp
+    {
+      def pos = op.StartPos;
+      match (GetText(op))
+      {
+        | "!" => StateUnaryOp.Not(pos)
+        | _   => StateUnaryOp.Error(pos)
+      }
+    }
+    
+    one_op_guard(op : StateUnaryOp, expr : StateExpr) : StateExpr
+    {
+      StateExpr.UnaryOp(op.pos, op, expr)
+    }
+    
+    expr_guard(expr : StateExpr) : GuardNode
+    {
+      GuardNode.Expr(expr.pos, expr)
+    }
+    
+    guard_expr(expr : StateExpr, lst : List[StateBinaryOp * StateExpr]) : StateExpr
+    {
+      //StateExpr.
+      
+      def folder((op, sexpr), a)
+      {
+        StateExpr.TwoOp(a.pos, a, op, sexpr)
+      }
+      
+      lst.FoldLeft(expr, folder)
+    }
   }
 }

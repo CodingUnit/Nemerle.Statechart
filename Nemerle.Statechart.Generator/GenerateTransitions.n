@@ -180,7 +180,7 @@ namespace Nemerle.Statechart
             } else
               <[ cur_state.$(evt.Name : usesite)(this) ]>
 
-            
+
         //| JunctionNode(j)       => get_junction_body(j, ctx)
         //| ChoiceNode(j)         => get_choice_body(j, ctx)
         | TransitionExecute(tr) => if (ctx.IsInEventHandler) <[ fsm.$(tr.Name : usesite)() ]> else <[ $(tr.Name : usesite)() ]>
@@ -189,45 +189,97 @@ namespace Nemerle.Statechart
       }
     }
 
-    GuardNeedBody(GuardNode : GuardNode) : bool
+    
+    //GuardNeedBody(GuardNode : GuardNode) : bool
+    //{
+    //  def expr = get_guard_cond_expr(GuardNode, GenCtx.Normal());
+    //  match (expr)
+    //  {
+    //    |  <[ $(_ : name) ]>
+    //    |  PExpr.Call(<[ $(_ : name) ]>, []) => false
+    //    | _  => true
+    //  }
+    //}
+
+    EvalGuardExpr(expr : StateExpr) : PExpr
     {
-      def expr = get_guard_cond_expr(GuardNode, GenCtx.Normal());
-      match (expr)
+      def unary_eval(o, a)
       {
-        |  <[ $(_ : name) ]>
-        |  PExpr.Call(<[ $(_ : name) ]>, []) => false
-        | _  => true
+        match (o.op)
+        {
+          | StateUnaryOp.Not => <[ ! $a]>
+          | _                => a
+        }
       }
+
+      def two_eval(e, a, b)
+      {
+        match (e.op)
+        {
+          | StateBinaryOp.Above => <[ $a > $b]>
+          | Equal               => <[ $a == $b]>
+          | NotEqual            => <[ $a != $b]>
+          | AboveEq             => <[ $a >= $b]>
+          | Below               => <[ $a < $b]>
+          | BelowEq             => <[ $a <= $b]>
+          | Or                  => <[ $a || $b]>
+          | And                 => <[ $a && $b]>
+          | _                   => <[]>
+        }
+      }
+
+      def method_eval(m)
+      {
+        def meth = m.m;
+        <[ $(meth : usesite)() ]>
+      }
+
+      def var_eval(v)
+      {
+        def var = v.v;
+        <[ $(var : usesite) ]>
+      }
+
+      def lit_eval(l)
+      {
+        match (l.lit)
+        {
+          | StateLit.Double(d) => <[ $d ]> 
+          | Integer(i)         => <[ $i ]> 
+          | String(s)          => <[ $s ]>
+        }
+      }
+
+      expr.Fold(<[ true ]>, unary_eval, two_eval, (_, a) => a, method_eval, var_eval, lit_eval);
+      
+      //def GuardNode = GenElement(cond, guard_for);
+      //def name = GuardNode.exec_name;
+      //if (GuardNode.IsDeclared)
+      //{
+      //  if (!decls.Contains(name)) <[ $(name : usesite)() ]> else
+      //    match (decls.Get(name))
+      //    {
+      //      | Field(ParsedType  =  <[ bool ]>)
+      //      | Property(returnType  =  <[ bool ]>)  => <[ $(name : usesite) ]>
+      //      | Field(ParsedType  =  <[ void -> bool ]>)
+      //      | Property(returnType  =  <[ void -> bool ]>)  => <[ if ($(name : usesite) != null) $(name : usesite)() else false]>
+      //      | Function
+      //      | _  => <[ $(name : usesite)() ]>
+      //    }
+      //} else
+      //{
+      //  def name = GenElement.CreateExecName(g.Name);
+      //        <[$(name : usesite)()]>
+      //}
     }
 
-    get_guard_cond_expr(g : GuardNode, ctx : GenCtx) : PExpr
+    GetGuardCondExpr(g : GuardNode, ctx : GenCtx) : PExpr
     {
       match (g)
       {
-        | Guard(cond) =>
-
-            def GuardNode = GenElement(cond, guard_for);
-            def name = GuardNode.exec_name;
-            if (GuardNode.IsDeclared)
-            {
-              if (!decls.Contains(name)) <[ $(name : usesite)() ]> else
-                match (decls.Get(name))
-                {
-                  | Field(ParsedType  =  <[ bool ]>)
-                  | Property(returnType  =  <[ bool ]>)  => <[ $(name : usesite) ]>
-                  | Field(ParsedType  =  <[ void -> bool ]>)
-                  | Property(returnType  =  <[ void -> bool ]>)  => <[ if ($(name : usesite) != null) $(name : usesite)() else false]>
-                  | Function
-                  | _  => <[ $(name : usesite)() ]>
-                }
-            } else
-            {
-              def name = GenElement.CreateExecName(g.Name);
-              <[$(name : usesite)()]>
-            }
-
+        | GuardNode.Expr(cond) => EvalGuardExpr(cond)
         | InState(st) => def st = GetExecStateName(st, ctx);
-                        if (ctx.IsInEventHandler) <[ fsm.IsInState($st) ]> else <[ IsInState($st) ]>
+                         if (ctx.IsInEventHandler) <[ fsm.IsInState($st) ]> else <[ IsInState($st) ]>
         | _ => <[ () ]>
       }
     }
@@ -282,7 +334,7 @@ namespace Nemerle.Statechart
 
     GetGuards(g : IEnumerable[GuardNode], ctx : GenCtx) : PExpr
     {
-      def body = g.Map(get_guard_cond_expr(_, ctx));
+      def body = g.Map(GetGuardCondExpr(_, ctx));//(_, ctx));
       MergeExprAnd(body)
     }
 
@@ -295,7 +347,7 @@ namespace Nemerle.Statechart
             def check = GetCheck(check, ctx);
             def check = match (g)
                         {
-                          | Some(g) => [get_guard_cond_expr(g, ctx), check]
+                          | Some(g) => [GetGuardCondExpr(g, ctx), check]
                           | _ => [check]
                         }
             match (check)
@@ -351,7 +403,7 @@ namespace Nemerle.Statechart
       def body = GetActions(acts);
       def target = GetDestination(dest, ctx);
       def body = <[
-                    $body;
+                  $body;
                     $target
                   ]>;
 
@@ -412,7 +464,7 @@ namespace Nemerle.Statechart
     {
       def defs = 
 
-                    
+
                       //def from_top = <[decl:
                       //                 public override PathFromTop(fsm : $(ChartName : usesite)) : State {$(DefineTransBody([st.PathFromOut], GenCtx.InEventHandler()))}
                       //               ]>;
@@ -442,20 +494,20 @@ namespace Nemerle.Statechart
                       //def from_top = <[decl:
                       //                 public override PathFromTop(fsm : $(ChartName : usesite)) : State {$(DefineTransBody([st.PathFromOut], GenCtx.InEventHandler()))}
                       //               ]>;
-                        if (st.IsTopState) 
-                         {
-                           analyser.Events.Map(x => <[decl: public virtual $(x : usesite)(_ : $(ChartName : usesite)) : State {null}]>);
-                         } else
-                        if (st.Lived)
-                        {
-                          def group = st.WorkTransitions.GroupBy(x => x.FriendlyTriggerName).Select(x => (x.Key, x.NToList()));
-                          group.MapToList((x, y) => <[decl: 
+                  if (st.IsTopState) 
+                  {
+                    analyser.Events.Map(x => <[decl: public virtual $(x : usesite)(_ : $(ChartName : usesite)) : State {null}]>);
+                  } else
+                    if (st.Lived)
+                    {
+                      def group = st.WorkTransitions.GroupBy(x => x.FriendlyTriggerName).Select(x => (x.Key, x.NToList()));
+                      group.MapToList((x, y) => <[decl: 
                             public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(DefineTransBody(y, GenCtx.InEventHandler()))}]>)
-                        } else 
-                        {
-                          []
+                    } else 
+                    {
+                      []
                           //throw NotImplementedException();
-                        }
+                    }
       Define(ty, defs)
     }
 

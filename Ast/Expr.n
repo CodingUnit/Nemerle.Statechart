@@ -9,52 +9,65 @@ using System.Linq;
 
 namespace Nemerle.Statechart
 {
+  [Record]
   public variant StateBinaryOp
   {
-    | Equal    { a : StateExpr; b : StateExpr;} // ==
-    | NotEqual { a : StateExpr; b : StateExpr;} // !=
-    | Above    { a : StateExpr; b : StateExpr;} // >
-    | AboveEq  { a : StateExpr; b : StateExpr;} // >=
-    | Below    { a : StateExpr; b : StateExpr;} // <
-    | BelowEq  { a : StateExpr; b : StateExpr;} // <=
-    | Or       { a : StateExpr; b : StateExpr;} // &&
-    | And      { a : StateExpr; b : StateExpr;} // ||
+    | Equal    // ==
+    | NotEqual // !=
+    | Above    // >
+    | AboveEq  // >=
+    | Below    // <
+    | BelowEq  // <=
+    | Or       // &&
+    | And      // ||
+    | Error
+
+    public pos : int;
 
     public override ToString() : string
     {
       match (this)
       {
-        | Equal(a, b)    => $"$a == $b"  
-        | NotEqual(a, b) => $"$a != $b" 
-        | Above(a, b)    => $"$a > $b" 
-        | AboveEq(a, b)  => $"$a >= $b"
-        | Below(a, b)    => $"$a < $b" 
-        | BelowEq(a, b)  => $"$a <= $b"
-        | Or(a, b)       => $"$a || $b"
-        | And(a, b)      => $"$a && $b"
+        | Equal    => "=="  
+        | NotEqual => "!=" 
+        | Above    => ">" 
+        | AboveEq  => ">="
+        | Below    => "<" 
+        | BelowEq  => "<="
+        | Or       => "||"
+        | And      => "&&"
+        | Error    => "Error"
       }
     }
   }
 
+  [Record]
   public variant StateUnaryOp
   {
-    | Not      { a : StateExpr; } // !
+    | Not // !
+    | Error
+
+    public pos : int;
 
     public override ToString() : string
     {
       match (this)
       {
-        | Not(a)         => $"!$a"
+        | Not         => "!"
+        | Error       => "Error"
       }
     }
   }
 
+  [Record]
   public variant StateLit
   { 
     | Integer { a : int    } // 1
     | Double  { a : double } // 1.0
     | String  { a : string } // "1"
-    
+
+    public pos : int;
+
     public override ToString() : string
     {
       match (this)
@@ -69,6 +82,7 @@ namespace Nemerle.Statechart
   /// Description of Guards.
   /// </summary>
   [Record]
+  [Traversable]
   public variant StateExpr
   {
     | Literal { lit : StateLit; }
@@ -80,15 +94,58 @@ namespace Nemerle.Statechart
 
     public pos : int;
 
+    //public Current : StateExpr
+    //{
+    //  get
+    //  {
+    //    this
+    //  }
+    //}
+
+    //public ChildNodes : IEnumerable[IGeneralTree[StateExpr]]
+    //{
+    //  get
+    //  {
+    //    match (this)
+    //    {
+    //      | Literal     
+    //      | Var         
+    //      | Method         => ()
+    //      | Braces(a)      => yield a
+    //      | TwoOp(a, _, b) => yield a; yield b;
+    //      | UnaryOp(_, a)  => yield a
+    //    }
+    //  }
+    //}
+
+    public GetChild() : IEnumerable[StateExpr]
+    {
+      match (this)
+      {
+        | Literal     
+        | Var         
+        | Method         => ()
+        | Braces(a)      => yield a;
+        | TwoOp(a, _, b) => yield a; yield b;
+        | UnaryOp(_, a)  => yield a
+      }
+    }
+
+    public Rebuild(_ : IEnumerable[StateExpr]) : StateExpr
+    {
+      this
+    }
+
     public override ToString() : string
     {
       match (this)
       {
+        | Literal(l)     => $"$l"
         | Var(v)         => $"$v"
         | Method(m)      => $"$m"
         | Braces(a)      => $"($a)"
         | TwoOp(a, o, b) => $"$a $o $b"
-        | UnaryOp(o, a)  => $"$o $a"
+        | UnaryOp(o, a)  => $"$o$a"
       }
     }
   }
