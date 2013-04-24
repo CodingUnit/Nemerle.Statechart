@@ -137,6 +137,8 @@ namespace Nemerle.Statechart
       close_brace : void                              =  "}"s;
       slash       : void                              =  '/'s;
       dollar                                          = '$'s;
+      numeric                                         = [Nl,  Nd];
+      
       goto        : void                              =   "=>"s;
       entry_key                                       =  ("entry" / "$>")s;
       exit_key                                        =  ("exit" / "$<")s;
@@ -154,10 +156,39 @@ namespace Nemerle.Statechart
       terminate_key                                   = ("terminate" / "X" / "x") s;
       fsm_key     : void                              =  "statemachine"s;
       // terminal rules
-      is_in_state        : GuardNode                  =  "in_state"s '('s identifier s ')'s;
-      guard_type         : GuardNode                  =  is_in_state / simple_guard;
+      
+      // guards
+      is_in_state        : GuardNode                  =  "in_state"s '('s fully_qualified ')'s;
+      else_guard         : GuardNode                  =  "else"s;
+      guard_type         : GuardNode                  =  is_in_state / else_guard / expr_guard;
+      
+      lit_string         : StateLit                   =  <#"#>s identifier s<#"#>s;
+      lit_double         : StateLit                   =  numeric point numeric?;
+      lit_num            : StateLit                   =  numeric;
+      
+      braces_guard       : StateExpr                  =  '('s guard_expr ')'s;
+      var_guard          : StateExpr                  =  identifier s;
+      meth_guard         : StateExpr                  =  identifier s open_round_brace close_round_brace;
+      lit_guard          : StateExpr                  =  lit_string / lit_double / lit_num;
+      equal_op           : StateBinaryOp              =  "=="s;
+      not_equal_op       : StateBinaryOp              =  "!="s;
+      above_op           : StateBinaryOp              =  ">"s;
+      above_equal_op     : StateBinaryOp              =  ">="s;
+      below_op           : StateBinaryOp              =  "<"s;
+      below_equal_op     : StateBinaryOp              =  "<="s;
+      or_op              : StateBinaryOp              =  "||"s;
+      and_op             : StateBinaryOp              =  "&&"s;
+      not_op             : StateUnaryOp               =  "!"s; 
+      
+      one_op_expr        : StateUnaryOp               =  not_op;
+      one_op_guard       : StateExpr                  =  one_op_expr guard_expr;
+      two_op_expr        : StateBinaryOp              =  equal_op / not_equal_op / above_op / above_equal_op / below_op / below_equal_op / or_op / and_op;
+      simple_guard_expr  : StateExpr                  =  one_op_guard / braces_guard / lit_guard / meth_guard / var_guard;
+      guard_expr         : StateExpr                  =  simple_guard_expr (two_op_expr simple_guard_expr)*;
+      
       guard              : GuardNode                  =  attr_begin guard_type attr_end;
-      simple_guard       : GuardNode                  =  identifier s;
+      expr_guard         : GuardNode                  =  guard_expr;
+      
       fully_qualified    : NameIdentifier             =  target_id (point target_id)* s;
       simple_attrs       : List[NToken]               =  (attr_begin (identifier s comma?)+ attr_end s)+;
 
