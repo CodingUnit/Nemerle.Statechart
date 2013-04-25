@@ -65,8 +65,9 @@ namespace Nemerle.Statechart
     TraverseOrthogonalRegion(reg : FsmState) : TransitionDestination
     {
       def initial = reg.sub_states.Map(x => x.initial_tran);
-      when (!initial.All(x => !x.IsEmpty())) throw FsmErrorException(FsmError.RegionMustContainInitial(reg, transition));
-      def init = initial.Flatten();
+      when (!initial.All(x => x.HasValue)) throw FsmErrorException(FsmError.RegionMustContainInitial(reg, transition));
+      def init = reg.sub_states.Map(x => x.initial_tran.Value);
+      //def init = initial.Flatten();
       init.Iter(_.TraversePath());
       //def sub = reg.SubRegions();//.Map(x => x.UpdateTransitions(init) :> ConcurrentSubRegion);
       //def reg = reg.ChangeSubRegions(sub);
@@ -80,7 +81,7 @@ namespace Nemerle.Statechart
       {
         | Region(FsmState(type = StateType.Region) as st) =>
           def sr = st.sub_states;
-          def init = sr.SelectMany(x => x.initial_tran);
+          def init = sr.Select(x => x.initial_tran.Value);
           def st = init.Map(x => x.Destination);
           def st = st.Map(TraverseCompletionTransition(_, to));
           match (st.Find(_ is CheckAfter))
@@ -118,8 +119,8 @@ namespace Nemerle.Statechart
           def st = to.ToState;
           def omitted = region.RegionsExcept(st); // other omitted regions
           def initial = omitted.Map(x => x.initial_tran);
-          when (!initial.All(_ is _ :: _)) throw FsmErrorException(FsmError.SubRegionsMustContainInitial(omitted.NToList(), transition));
-          def init = initial.Flatten();
+          when (!initial.All(x => x.HasValue)) throw FsmErrorException(FsmError.SubRegionsMustContainInitial(omitted.NToList(), transition));
+          def init = initial.Select(x => x.Value);
           traverser?.Add(init);
           def target = TraverseTarget(to, tran);
           def res = SubRegion(reg, target, tran.From);

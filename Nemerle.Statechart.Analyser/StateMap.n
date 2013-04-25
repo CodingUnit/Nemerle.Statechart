@@ -97,14 +97,27 @@ namespace Nemerle.Statechart
         {
           | "top" => st.MoveToNewSuper(state_tree)
           | n     => match (Get(n))
-                     {
-                       | null => Analyser.AddError(FsmError.ParentStateNotFound(st, FsmState(p, Analyser, StateType.State())));
-                       | s    => st.MoveToNewSuper(s)
-                     }
+              {
+                | null => Analyser.AddError(FsmError.ParentStateNotFound(st, FsmState(p, Analyser, StateType.State())));
+                | s    => st.MoveToNewSuper(s)
+              }
         }
       }
     }
 
+    CreateInitialTran() : void
+    {
+      foreach (st in States)
+      {
+        match (st.transitions.FilterType())
+        {
+          | StateTransition.Initial :: []   => ()
+          | StateTransition.Initial :: tail => st.DeleteTransitions(tail);
+                                               Analyser.AddError(FsmError.ThereMustBeOnlyOneInitial(st, tail));
+          | _                               => ()
+        }
+      }
+    }
     /// <summary>
     /// create state tree map and specific structures, update references etc
     /// </summary>
@@ -114,10 +127,13 @@ namespace Nemerle.Statechart
       def top = TreeUtils.FoldTree(state, null, _.sub_states, FsmState(_, _, Analyser));
       top.name = FsmState.TopStateName; // change name
       state_tree = top;
+
       // need rebuild all
       Rebuild(RebuildObject.Transitions | RebuildObject.Pseudo | RebuildObject.State);
+      CreateInitialTran(); // create initial transitions
       CreateSuperStates(); // check create super states setted with : parent syntax
       CreatePreDecls(); // create and resolve pre declarations
+
       UpdateReferences(); // resolve references
     }
 
