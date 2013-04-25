@@ -26,7 +26,7 @@ namespace Nemerle.Statechart
       {
           | FsmState(type = StateType.Final)
           | FsmState(type = StateType.Region) => ()
-          | FsmState(initial_tran = [], sub_states = head :: _) when (!head.IsFinal)      
+          | FsmState(initial_tran = None, sub_states = head :: _) when (!head.IsFinal)      
               => st.DefineInitial(head);
           | _ => ()
       }
@@ -49,85 +49,42 @@ namespace Nemerle.Statechart
         | _  => false
     }
 
-    CreateAndCheckSuperStateTransitions() : void
+    CreateAndCheckConflictTransitions() : void
     {
-      def resolve_conflict(trans)
+      def resolve_conflict(st, trans)
       {
         def conflict = trans.OrderByDescending(x => x.Source.hierarchy_pos).NToList();
-        match (conflict)
-        {
-          // if first transition is guarded then dynamic choice with left in hierarchy
-          | StateTransition(Guard = Some) as head :: tail  => 
-              def (path, _) = tail.SplitFind(x => x.Guard.IsNone); // get all include last without GuardNode
-              //def st = st.Update(x => x.DeleteTransitions(end)); // delete from usual transitions in state
-              head.Source.DefineTransitions(path);
-              //st.UpdateTransitions(tr :: path)
-
-          // if without guard it overrides all in 
-          | head :: tail => head.Source.DeleteTransitions(tail)
-          | _            => ()
-        }
-
+        def (_, overriden) = conflict.SplitFind(x => x.guard.IsNone);
+        st.DeleteTransitions(overriden); // conflicted deleted from set of enabled without signal, normal situation
       }
 
       def check_duplicate_tran(tr)
       {
-        //def check_begin_and_ends(tr : list[_])
-        //{
-        //  def equal(lst, lst2)
-        //  {
-        //    lst.Equals(lst2, _ == _);
-        //  }
-
-        //  def acts = tr.Select(x => x.ActionList);
-        //  def res = acts.ElementsEqual(equal);
-        //  when (res) AddError(FsmError.DuplicateTransition(tr));
-        //}
-
         def dups = tr.NToList().Duplicates(FsmState.Compare(StateTransition.GuardComparer)); // find duplicates with same guards and same triggers
         when (!dups.IsEmpty())
         {
           AddError(FsmError.DuplicateTransition(dups))
         }
-        // else
-        //{
-        //  def begin_and_end_eq = tr.NToList().DuplicatesGroup((x, y) => x.To.CompareTo(y.To));
-        //  begin_and_end_eq.Iter(check_begin_and_ends)
-        //}
-        
       }
 
-      def check_override(tr)
+      def check_override(st, tr)
       {
         // без гуарда переопределяет на том же уровне с гуардами и без гуардов, если такое возникает то необходимо сигнализировать
-        match (tr.Find(x => x.Guard.IsNone))
+        // create group of conflict on each level
+        def group = tr.GroupBy(x => x.Source.hierarchy_pos);
+        foreach (gr in group) // foreach group
+        match (gr.Find(x => x.Guard.IsNone)) // without guard already enabled and have more priority
         {
           | Some(t) => 
-                  def tr = tr.Except(t);
-                  def warn = tr.Map(x => FsmWarning.TransitionOverriden(x, t));
+                  def tr = gr.Except(t); // other transitions must be deleted
+                  st.DeleteTransitions(tr);
+                  def warn = tr.Map(x => FsmWarning.TransitionOverriden(x, t)); // signal this, not needed declaration, design error
                   AddWarnings(warn)
 
           | _ => ()
         }
-      }
-
-      def check_trans(st, get_tran, func)
-      {
-
-        def parent_trans = get_tran(st); // get the super states transitions and concatinate with current
-        //def parent_trans = parent_trans.Select(x => (x.Value.FriendlyTriggerName, x)); // get with trigger names
-        def by_trigger   = parent_trans.GroupBy(x => x.FriendlyTriggerName);
-        def conflict     = by_trigger.Where(x => x.IsMoreThanOne());
-
-        //def conflict     = conflict.OrderBy(x => x.);
-        conflict.Iter(func);
-
-      }
-
-      def check_init_ext_trans(func)
-      {
-        States.Iter(x => check_trans(x, x => x.EventTransitions, func));
-        States.Iter(x => check_trans(x, x => x.initial_tran, func));
+        
+        
       }
 
       def set_super_state_transition(st)
@@ -135,17 +92,24 @@ namespace Nemerle.Statechart
         def super_tran = st.SuperStates.SelectMany(_.EventTransitions);
         st.DefineTransitions(super_tran);
       }
-      
-      
-
+            
       def (simple, other) = States.NToList().Partition(_.IsSimple);
       
       simple.Iter(set_super_state_transition); // create super state transitions in simple states
-      check_init_ext_trans(check_duplicate_tran);
-      check_init_ext_trans(check_override);
-      check_init_ext_trans(resolve_conflict);
-      //simple.Iter(x => check_trans(x, x => x.EventTransitions, resolve_conflict));
       other.Iter(_.DeleteEventTransitions());  // delete other transitions from composite states
+      foreach (st in simple)
+      {
+        foreach (group in st.ConflictTransitions)
+        {
+          check_duplicate_tran(group);
+          check_override(st, group)
+        }
+        foreach (group in st.ConflictTransitions)
+        {
+          resolve_conflict(st, group)
+        }
+        
+      }
     }
     
     create_join_transitions() : void
@@ -260,7 +224,7 @@ namespace Nemerle.Statechart
       //States.Iter(check_tran);
       create_join_transitions(); // creating join transitions
       create_fork_transitions(); // creating fork transitions
-      CreateAndCheckSuperStateTransitions(); // create parent transitions
+      CreateAndCheckConflictTransitions(); // create parent transitions
       //CheckDuplicates(); // check duplicates
       //CheckCrossTransitions(); // look for cross transitions
     }
@@ -316,7 +280,7 @@ namespace Nemerle.Statechart
       def traverse()
       {
         traverser = TransitionTraverser(this);
-        traverser.Add(TopState.initial_tran);
+        traverser.Add(TopState.initial_tran.Value);
         traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
         traverser = null;
       }
