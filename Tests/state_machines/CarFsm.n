@@ -17,13 +17,15 @@ namespace Nemerle.Statechart.Tests
   <#
   flags : testing;
   
+  flags : debug;
+  
   name Car;
   
   0 / initialize() => EngineOff;
   
   state EngineOff
   {
-    TURN_KEY [isBatteryOk] / start() => MotorOn;
+    TURN_KEY [isBatteryOk()] / start() => MotorOn;
   }
   
   state MotorOn
@@ -34,24 +36,54 @@ namespace Nemerle.Statechart.Tests
     entry / RadioOn();
     exit  / RadioOff();
     do    / coolEngine();
+    
+    state Stand
+    {
+      GAS_PEDAL / accelerate() => Drive;
+    }
+    
+    state Drive
+    {
+      BREAK_PEDAL [speed == 1] / Break() => Stand; // v == 1
+      BREAK_PEDAL [speed > 1]  / Break() => @;     // v > 1
+      GAS_PEDAL / accelerate();
+    }
+    
   }
   
-  state Stand : MotorOn
-  {
-    GAS_PEDAL / accelerate() => Drive;
-  }
-    
-  state Drive : MotorOn
-  {
-    BREAK_PEDAL [SpeedAtLow] / Break()    => Stand; // v == 1
-    BREAK_PEDAL [SpeedAboveLow] / Break() => @; // v > 1
-    GAS_PEDAL / accelerate();
-  }
+  
   
   #>
   )]
   public class CarFsm
   {
+    battery_level : int;
+    speed : double;
+    
+    initialize() : void
+    {
+    }
+    
+    isBatteryOk() : bool
+    {
+      battery_level != 0
+    }
+    
+    SpeedAtLow : bool
+    {
+      get
+      {
+        speed == 1
+      }
+    }
+    
+    SpeedAboveLow : bool
+    {
+      get
+      {
+        speed > 1
+      }
+    }
   }
   
 }

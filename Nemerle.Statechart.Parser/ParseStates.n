@@ -23,16 +23,24 @@ namespace Nemerle.Statechart
     
     stateMachine(sp : NToken, nodes : List[StateNode]) : StateNode.StateMachine
     {
+      def merge_flags(x : StateNode.Flags, a : MachineFlags)
+      {
+        match (x)
+        {
+          | StateNode.Flags(MachineFlags(f, e)) => def flags = (a.flags | f);
+                                                   def err = a.errors.Concat(e).NToList();
+                                                   MachineFlags(flags, err)
+        }
+        
+      }
+      
       def (flags, nodes) = nodes.PartitionType();
       def (name, nodes) = nodes.PartitionType();
       
       def state = CreateState(sp.StartPos, null, [], nodes, StateType.State(), None());
       
-      def flags = match (flags.NToList())
-                  {
-                    | StateNode.Flags as head :: _ => head.flags
-                    | _               => MachineFlags(MachineFlag.None, [])
-                  }
+      
+      def flags = flags.FoldLeft(MachineFlags(MachineFlag.None, []), merge_flags);
       def name = match (name.NToList())
                  {
                    | StateNode.Name as n :: _ => n.name
