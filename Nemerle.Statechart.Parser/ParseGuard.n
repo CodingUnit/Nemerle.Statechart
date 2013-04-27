@@ -15,9 +15,10 @@ namespace Nemerle.Statechart
 
   public partial class FsmParser
   {
-    is_in_state(tok : NToken, _ : NToken, name : NameIdentifier, _ : NToken) : GuardNode
+    is_in_state(tok : NToken, name : NameIdentifier) : StateExpr
     {
-      GuardNode.InState(tok.StartPos, name.FullName)
+      def pos = tok.StartPos;
+      StateExpr.Method(pos, FsmAction(pos, "InState", [name.FullName]))
     }
 
     else_guard(tok : NToken) : GuardNode
@@ -59,9 +60,9 @@ namespace Nemerle.Statechart
       StateExpr.Var(id.StartPos, GetText(id))
     }
 
-    meth_guard(id : NToken) : StateExpr
+    meth_guard(id : FsmAction) : StateExpr
     {
-      StateExpr.Method(id.StartPos, GetText(id))
+      StateExpr.Method(id.pos, id)
     }
 
     lit_guard(lit : StateLit) : StateExpr
@@ -106,16 +107,38 @@ namespace Nemerle.Statechart
       GuardNode.Expr(expr.pos, expr)
     }
     
-    guard_expr(expr : StateExpr, lst : List[StateBinaryOp * StateExpr]) : StateExpr
+    process_precedence(expr : StateExpr, lst : List[StateBinaryOp * StateExpr]) : StateExpr
     {
-      //StateExpr.
+      def (ops, exprs) = lst.NToList().Split();
+      def exprs = expr :: exprs;
       
-      def folder((op, sexpr), a)
+      def loop(op, exp, cont)
       {
-        StateExpr.TwoOp(a.pos, a, op, sexpr)
+        match (op, exp)
+        {
+          | (op1 :: ((op2 :: _) as t), e1 :: e2 :: etail) when (op1.Precedence >= op2.Precedence) => 
+              def eval = StateExpr.TwoOp(e1.pos, e1, op1, e2);
+              loop(t, eval :: etail, cont)
+              
+          | (op1 :: ((op2 :: _) as t), e1 :: etail) when (op1.Precedence < op2.Precedence) => 
+              loop(t,  etail, x => StateExpr.TwoOp(e1.pos, e1, op1, x))
+              
+          | (op :: [], e1 :: e2 :: []) => 
+              def eval = StateExpr.TwoOp(e1.pos, e1, op, e2);
+              loop([], [eval], cont)
+              
+          | ([], eval :: []) => cont(eval)
+          | (_, _)           => cont(StateExpr.Literal(-1, StateLit.Bool(-1, true)))
+        }
       }
       
-      lst.FoldLeft(expr, folder)
+      loop(ops, exprs, x => x)
+    }
+    
+    
+    guard_expr(expr : StateExpr, lst : List[StateBinaryOp * StateExpr]) : StateExpr
+    {
+     process_precedence(expr, lst)
     }
   }
 }

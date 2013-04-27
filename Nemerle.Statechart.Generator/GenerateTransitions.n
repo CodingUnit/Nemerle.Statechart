@@ -201,7 +201,7 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    EvalGuardExpr(expr : StateExpr) : PExpr
+    EvalGuardExpr(expr : StateExpr, ctx : GenCtx) : PExpr
     {
       def unary_eval(o, a)
       {
@@ -231,7 +231,13 @@ namespace Nemerle.Statechart
       def method_eval(m)
       {
         def meth = m.m;
-        <[ $(meth : usesite)() ]>
+        match (meth)
+        {
+          | FsmAction(_, "InState", [st]) => def st = GetExecStateName(st, ctx);
+                                             if (ctx.IsInEventHandler) <[ fsm.IsInState($st) ]> else <[ IsInState($st) ]>  
+          | FsmAction(_, name, pars)      => def pars = pars.Map(x => <[ $x ]>);
+                                             <[ $(name : usesite)(..$pars) ]>
+        }
       }
 
       def var_eval(v)
@@ -251,7 +257,7 @@ namespace Nemerle.Statechart
         }
       }
 
-      expr.Fold(<[ true ]>, unary_eval, two_eval, (_, a) => a, method_eval, var_eval, lit_eval);
+      expr.Fold(<[ true ]>, _ => <[ true ]>, unary_eval, two_eval, (_, a) => a, method_eval, var_eval, lit_eval);
       
       //def GuardNode = GenElement(cond, guard_for);
       //def name = GuardNode.exec_name;
@@ -278,9 +284,8 @@ namespace Nemerle.Statechart
     {
       match (g)
       {
-        | GuardNode.Expr(cond) => EvalGuardExpr(cond)
-        | InState(st) => def st = GetExecStateName(st, ctx);
-                         if (ctx.IsInEventHandler) <[ fsm.IsInState($st) ]> else <[ IsInState($st) ]>
+        | GuardNode.Expr(cond) => EvalGuardExpr(cond, ctx)
+        //| InState(st) => 
         | _ => <[ () ]>
       }
     }

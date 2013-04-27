@@ -126,13 +126,13 @@ namespace Nemerle.Statechart
       spaces_def                                      =  (' ' / '\t' / '\u000B' / '\u000C' / newLine / comment)*;
       spaces : void                                   =  spaces_def;
       letter                                          =  [Lu,  Ll,  Lt,  Lm,  Lo,  Nl,  Nd] / '_' / '-' / '@' / '*' / '$';
-      target_letter                                   =  letter / '(' / ')' / '[' / ']';
+      //target_letter                                   =  letter / '(' / ')' / '[' / ']';
       end_symb  : void                                =  ';'s;
       delimiter : void                                =  ',' / spaces_def;
       s : void                                        =  spaces;
       identifier                                      =  letter+;
       qualified_id                                    =  (letter / '.')+;
-      target_id                                       =  target_letter+;
+      target_id                                       =  identifier;//target_letter+;
       open_brace  : void                              =  "{"s;
       close_brace : void                              =  "}"s;
       slash       : void                              =  '/'s;
@@ -157,9 +157,9 @@ namespace Nemerle.Statechart
       fsm_key     : void                              =  "statemachine"s;
       // terminal rules
       // guards
-      is_in_state        : GuardNode                  =  "in_state"s '('s fully_qualified ')'s;
+      
       else_guard         : GuardNode                  =  "else"s;
-      guard_type         : GuardNode                  =  is_in_state / else_guard / expr_guard;
+      guard_type         : GuardNode                  =  else_guard / expr_guard;
       
       
       lit_string         : StateLit                   =  <#"#>s identifier s<#"#>s;
@@ -168,15 +168,15 @@ namespace Nemerle.Statechart
       lit_bool           : StateLit                   =  "true"s / "false"s;
       braces_guard       : StateExpr                  =  '('s guard_expr ')'s;
       var_guard          : StateExpr                  =  identifier s;
-      meth_guard         : StateExpr                  =  identifier s open_round_brace close_round_brace;
+      is_in_state        : StateExpr                  =  "in_state"s open_round_brace fully_qualified close_round_brace;
+      meth_guard         : StateExpr                  =  method_action;
       lit_guard          : StateExpr                  =  lit_bool / lit_string / lit_double / lit_num;
       
       two_op_expr        : StateBinaryOp              =  "==" / "!=" / ">" / ">=" / "<" / "<=" / "||" / "&&";
       
       one_op_expr        : StateUnaryOp               =  "!";
       one_op_guard       : StateExpr                  =  one_op_expr s guard_expr;
-      //two_op_expr        : StateBinaryOp              =  equal_op / not_equal_op / above_op / above_equal_op / below_op / below_equal_op / or_op / and_op;
-      simple_guard_expr  : StateExpr                  =  one_op_guard / braces_guard / lit_guard / meth_guard / var_guard;
+      simple_guard_expr  : StateExpr                  =  one_op_guard / braces_guard / lit_guard / is_in_state / meth_guard / var_guard;
       guard_expr         : StateExpr                  =  simple_guard_expr (two_op_expr s simple_guard_expr)*;
       
       guard              : GuardNode                  =  attr_begin guard_type attr_end;
@@ -190,6 +190,11 @@ namespace Nemerle.Statechart
       block_action_list  : Actions                    =  '/'s "{"s (!close_brace action delimiter)* "}"s end_symb?;
       
       action_list        : Actions                    =   delim_action_list / block_action_list;
+      parameters         : List[string]               =  (!close_round_brace identifier s comma)*;
+      empty_action       : FsmAction                  =  '('s ')'s;
+      method_action      : FsmAction                  =  identifier s (open_round_brace parameters close_round_brace);
+      tran_action      : FsmAction                    =  identifier s (open_round_brace parameters close_round_brace)?;
+      action             : FsmAction                  =  empty_action / tran_action;
       
       entry              : StateNode                  =  simple_attrs? entry_key action_list? end_symb?;
       exit               : StateNode                  =  simple_attrs? exit_key action_list? end_symb?;
@@ -208,15 +213,11 @@ namespace Nemerle.Statechart
       //fork_trans_target  : TargetType                 =  simple_target s simple_target s (!end_symb simple_target s delimiter)* end_symb;
       transition_target  : TargetType                 =  /*choice_target / junction_target /*/ simple_target;
       
-      parameters         : List[string]               =  (!close_round_brace identifier s comma)*;
-      empty_action       : FsmAction                  =  '('s ')'s;
-      normal_action      : FsmAction                  =  identifier s (open_round_brace parameters close_round_brace)?;
-      action             : FsmAction                  =  empty_action / normal_action;
       trans_act_list     : Actions                    =  '/'s (!goto action s delimiter)*;
       //transition_mark    : StateNode.Transition       =  s guard? trans_act_list? goto transition_target;
       default_transition : StateNode.Transition       =  s trans_act_list? goto transition_target;// s end_symb?;
       internal_trans     : StateNode                  =  identifier s guard? action_list;
-      initial_trans      : StateNode                  =  initial_key s trans_act_list? goto transition_target;
+      initial_trans      : StateNode                  =  initial_key s guard? trans_act_list? goto transition_target;
       events             : List[TransitionEvent]      =  identifier s (!('[' / '=' / '/') comma identifier s)* s;
       simple_transition  : StateNode.Transition       =  events s guard? trans_act_list? goto transition_target;
       transitions        : List[StateNode.Transition] =  simple_transition*;
