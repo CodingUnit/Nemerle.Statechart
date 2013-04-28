@@ -26,7 +26,7 @@ namespace Nemerle.Statechart
       {
         | FsmState(type = StateType.Final)
         | FsmState(type = StateType.Region) => ()
-        | FsmState(initial_tran = None, sub_states = head :: _) when (!head.IsFinal)      
+        | FsmState(initial_tran = [], sub_states = head :: _) when (!head.IsFinal)      
               => st.DefineInitial(head);
         | _ => ()
       }
@@ -60,9 +60,9 @@ namespace Nemerle.Statechart
           match (g.Find(x => x.guard.IsNone))
           {
             | Some(t) => def tr   = g.Except(t); // without guard already enabled and have more priority
-                        def warn = tr.Map(FsmWarning.TransitionOverriden(_, t)); // signal this, not needed declaration, design error
-                        AddWarnings(warn);
-                        TraverseUtils.SingleElement(t)
+                         def warn = tr.Map(FsmWarning.TransitionOverriden(_, t)); // signal this, not needed declaration, design error
+                         AddWarnings(warn);
+                         TraverseUtils.SingleElement(t)
 
             | _       => g
           }
@@ -70,8 +70,10 @@ namespace Nemerle.Statechart
 
 
       def resolve_on_levels = by_hierarchy.SelectMany(search_for_no_guard).NToList();
-      def (trans, _) = resolve_on_levels.SplitFind(x => x.guard.IsNone);
-      st.SetTransitions(trans);// conflicted deleted from set of enabled without signal, normal situation
+      //def del = trans.Except(resolve_on_levels);
+      def (left, _) = resolve_on_levels.SplitFind(x => x.guard.IsNone);
+      def del = trans.Except(left);
+      st.DeleteTransitions(del);// conflicted deleted from set of enabled without signal, normal situation
     }
 
     CreateAndCheckConflictTransitions() : void
@@ -117,20 +119,13 @@ namespace Nemerle.Statechart
 
       simple.Iter(set_super_state_transition); // create super state transitions in simple states
       other.Iter(_.DeleteEventTransitions());  // delete other transitions from composite states
-      foreach (st in simple)
+      foreach (st in States)
       {
         foreach (group in st.ConflictTransitions)
         {
           check_duplicate_tran(group);
-          //check_override(st, group)
           ResolveConflictTransitions(st, group)
         }
-
-        //foreach (group in st.ConflictTransitions)
-        //{
-
-        //}
-
       }
     }
 
@@ -302,7 +297,7 @@ namespace Nemerle.Statechart
       def traverse()
       {
         traverser = TransitionTraverser(this);
-        traverser.Add(TopState.initial_tran.Value);
+        traverser.Add(TopState.initial_tran);
         traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
         traverser = null;
       }

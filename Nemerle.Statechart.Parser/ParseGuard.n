@@ -39,7 +39,7 @@ namespace Nemerle.Statechart
       StateLit.Double(f.StartPos, double.Parse(num))
     }
 
-    
+
     lit_num(f : NToken) : StateLit
     {
       StateLit.Integer(f.StartPos, int.Parse(GetText(f)))
@@ -49,7 +49,7 @@ namespace Nemerle.Statechart
     {
       StateLit.Bool(f.StartPos, bool.Parse(GetText(f)))
     }
-    
+
     braces_guard(s : NToken, expr : StateExpr, _ : NToken) : StateExpr
     {
       StateExpr.Braces(s.StartPos, expr)
@@ -86,7 +86,7 @@ namespace Nemerle.Statechart
         | _    => StateBinaryOp.Error(pos)
       }
     }
-    
+
     one_op_expr(op : NToken) : StateUnaryOp
     {
       def pos = op.StartPos;
@@ -96,49 +96,38 @@ namespace Nemerle.Statechart
         | _   => StateUnaryOp.Error(pos)
       }
     }
-    
+
     one_op_guard(op : StateUnaryOp, expr : StateExpr) : StateExpr
     {
       StateExpr.UnaryOp(op.pos, op, expr)
     }
-    
+
     expr_guard(expr : StateExpr) : GuardNode
     {
       GuardNode.Expr(expr.pos, expr)
     }
-    
-    process_precedence(expr : StateExpr, lst : List[StateBinaryOp * StateExpr]) : StateExpr
+
+    process_precedence(expr : StateExpr, exprs : list[StateBinaryOp * StateExpr]) : StateExpr
     {
-      def (ops, exprs) = lst.NToList().Split();
-      def exprs = expr :: exprs;
-      
-      def loop(op, exp, cont)
+      def loop(exp, exprs, cont)
       {
-        match (op, exp)
+        match (exprs)
         {
-          | (op1 :: ((op2 :: _) as t), e1 :: e2 :: etail) when (op1.Precedence >= op2.Precedence) => 
-              def eval = StateExpr.TwoOp(e1.pos, e1, op1, e2);
-              loop(t, eval :: etail, cont)
-          
-          | (op :: [], e1 :: e2 :: []) => def eval = StateExpr.TwoOp(e1.pos, e1, op, e2);
-                                          loop([], [eval], cont)
-                                          
-          | (op1 :: t, e1 :: etail)    => loop(t,  etail, x => StateExpr.TwoOp(e1.pos, e1, op1, x))
-              
-          
-              
-          | ([], eval :: []) => cont(eval)
-          | (_, _)           => StateExpr.Error(expr.pos)
+          | []                          => cont(exp)
+          | (op1, e2) :: (((op2, _) :: _) as tail) when (op1.Precedence < op2.Precedence) 
+                                        => loop(e2, tail, x => StateExpr.TwoOp(exp.pos, exp, op1, x))
+          | (op, e2) :: tail            => loop(StateExpr.TwoOp(exp.pos, exp, op, e2), tail, cont)
         }
       }
-      
-      loop(ops, exprs, x => x)
+
+      loop(expr, exprs, x => x)
+
     }
-    
-    
+
+
     guard_expr(expr : StateExpr, lst : List[StateBinaryOp * StateExpr]) : StateExpr
     {
-     process_precedence(expr, lst)
+      process_precedence(expr, lst.NToList())
     }
   }
 }
