@@ -5,191 +5,15 @@ using System.Collections.Generic;
 using System.Threading;
 using Nemerle.Collections;
 using Nemerle.Utility;
-using System.Diagnostics;
+
 using Nemerle.Statechart;
 
 
 namespace Nemerle.Statechart.Tests {
 
-  using FileFsm;
-  using FileFsm.Event;
-  using FileFsm.State;
 
-  using FsmTester;
-  
   partial class Test
   {       
-    rand : Random = Random(123456789);
-    test_events_count = 50000;
-    fsm : FileFsm = FileFsm();
-    
-    mutable events : list[int];
-    
-    CreateEvents(count : int) : void
-    {
-      def loop(_)
-      {
-        rand.Next(3)
-      }
-       
-      events = ListUtils.Init(count, loop).NToList()
-    }
-    
-    public ExtLibDiffTest() : TimeSpan * TimeSpan
-    {
-      def create_fsm_events(evt)
-      {               
-        | "New"    => Event.NewFile
-        | "Save"   => Event.FileSaved
-        | _        => Event.Change
-      }
-
-      def create_old_fsm_events(evt)
-      {
-        match (evt)
-        {
-          | "New"  => EventID.NewFile
-          | "Save" => EventID.SaveFile
-          |  _     => EventID.Changed
-        }
-      }
-      
-      WriteLine($"Creating $test_events_count events...");
-      CreateEvents(test_events_count);
-      def fsm = FileFsm();
-      def old_fsm = DynFileFsm();
-      def ev = array["New", "Open", "Save", "Change"]; 
-      def events = events.Map(x => ev[x]);
-      def fsm_evt = events.Map(create_fsm_events);
-      def old_fsm_evt = events.Map(create_old_fsm_events);
-      fsm.Initiate();
-      old_fsm.Init();
-      WriteLine("Sending to old lib fsm");
-      def watch = Stopwatch();
-      watch.Start();
-      old_fsm_evt.Iter(old_fsm.SendAndExec);
-      watch.Stop();
-      def span2 = watch.Elapsed;
-      WriteLine("Sending to new lib fsm");
-      watch.Reset();
-      watch.Start();
-      fsm_evt.Iter(fsm.SendEvent);
-      fsm.Terminate();
-      watch.Stop();
-      def span = watch.Elapsed;
-      (span, span2)
-    }
-
-    DoThrow() : void
-    {
-      throw InvalidOperationException("test failed")
-    }
-    
-    public IsInStateTest() : void
-    {
-      
-      //fsm.DisableDialogs = true;
-      
-      
-      def is_in_state(st)
-      {
-        when (!fsm.IsInState(st)) DoThrow()
-      }
-
-      def not_in_state(st)
-      {
-        when (fsm.IsInState(st)) DoThrow()
-      }
-      
-      fsm.Initiate();
-      is_in_state(Waiting());
-      is_in_state(FileWorking());
-      fsm.NewFile();
-      is_in_state(New());
-      is_in_state(NeedSaving());
-      fsm.Change();
-      is_in_state(New());
-      fsm.FileSaved();
-      is_in_state(Saved());
-      fsm.FileSaved();
-      is_in_state(Saved());
-      is_in_state(NotNeedSaving());
-      fsm.Change();
-      is_in_state(Changed());
-      not_in_state(Waiting());
-      fsm.FileSaved();
-      is_in_state(Saved());
-      fsm.Change();
-      is_in_state(Changed());
-      fsm.Exited();
-      when (!fsm.IsTerminated) DoThrow()
-    }
-     
-
-    public PathCoverTest() : void
-    {
-      def fsm = PathCoverFsm();
-      fsm.ActionExecuted += WriteLine;
-      def tester = FsmTester(fsm);
-      tester.Print += x => WriteLine($"\n$x");
-      tester.Send += x => WriteLine($"Processing a '$x' ");
-      tester.OkTest += _ => WriteLine("Ok");
-      tester.Failed += _ => {WriteLine("Failed"); DoThrow()}
-      //fsm.AEntry+= () => WriteLine("A entry");
-      //fsm.AExit+= () => WriteLine("A exit");
-      //fsm.BEntry+= () => WriteLine("B entry");
-      //fsm.BExit+= () => WriteLine("B exit");
-      //fsm.CEntry+= () => WriteLine("C entry");
-      //fsm.CExit+= () => WriteLine("C exit");
-      //fsm.DEntry+= () => WriteLine("D entry");
-      //fsm.DExit+= () => WriteLine("D exit");
-      //fsm.EEntry+= () => WriteLine("E entry");
-      //fsm.EExit+= () => WriteLine("E exit");
-      WriteLine("Beginning Statechart test...");	
-      
-      tester.Initiate("Starting state machine", ["A", "B", "C"]);
-      
-      tester.Test("Testing Internal transition", "a", null);
-	
-      tester.Test("Testing simple-to-simple transition", "b", ["C"], ["E"]);
-      
-      tester.Test("Testing simple-to-composite transition", "j", ["E", "B", "A"], ["A", "B", "C"]);
-
-      tester.Test("Testing simple-to-simple, via composite", "d", ["C", "B"], ["D"]);
-      
-      tester.Test("Testing for no match", "a", null);
-
-      tester.Test("Testing simple to (non-ancestor) composite", "e", ["D"], ["B", "C"]);
-      
-      tester.Test("Testing simple-to-simple transition again", "b", ["C"], ["E"]);
-  
-      tester.Test("Testing simple-to-simple, across ancestor", "i", ["E", "B"], ["D"]);
-
-      tester.Test("Testing simple-to-composite with history", "g", ["D", "A"], ["A", "D"]);
-
-      tester.Test("Get back to state C", "e", ["D"], ["B", "C"]);
-
-      tester.Test("Testing composite-to-composite transition", "f", ["C", "B"], ["B", "C"]);
-
-      tester.Test("Testing simple to sibling simple via composite transition", "c", ["C", "B"], ["B", "E"]);
-          
-      tester.Test("Testing composite-to-composite transition", "k", ["E", "B", "A"], ["A", "B", "C"]);
-	
-      tester.Test("Testing transition to self, but leaving the state", "m", ["C"], ["C"]);
-
-      tester.Test("Get to state D", "d", ["C", "B"], ["D"]);
-
-      tester.Test("Test going to non-ancestor composite with history (and returning to the same state)", "n", ["D"], ["B", "C"]);
-
-      tester.Test("Get us to state E, then D", "b", ["C"], ["E"]);
-
-      tester.Test("Go to state D", "i", ["E", "B"], ["D"]);
-
-      tester.Test("Now, test returning with history to a non-default state", "n", ["D"], ["B", "E"]);
-
-      WriteLine("Leaving test.");
-      fsm.Terminate();  
-    }
     
     public Run() : void
     { 
@@ -200,7 +24,7 @@ namespace Nemerle.Statechart.Tests {
       WriteLine("event send time average: old: {0} ticks, new: {1} ticks", (span2.Ticks : double) / test_events_count, (span.Ticks : double) / test_events_count);
       try
       {
-        IsInStateTest();
+        FileFsmTest();
         WriteLine("File fsm test passed!!!");
         PathCoverTest();
         WriteLine("Path cover fsm test passed!!!");

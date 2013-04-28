@@ -1,0 +1,84 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Console;
+using System.Diagnostics;
+using Nemerle.Statechart;
+
+namespace Nemerle.Statechart.Tests
+{
+
+  using FileFsm;
+  using FileFsm.Event;
+  using FileFsm.State;
+
+
+  /// <summary>
+  /// Description of ExtLibTest.
+  /// </summary>
+  partial class Test
+  {
+    rand : Random = Random(123456789);
+    test_events_count = 50000;
+
+    CreateEvents(count : int) : list[int]
+    {
+      def loop(_)
+      {
+        rand.Next(3)
+      }
+
+      ListUtils.Init(count, loop).NToList()
+    }
+
+    public ExtLibDiffTest() : TimeSpan * TimeSpan
+    {
+      def create_fsm_events(evt)
+      {               
+        | "New"    => Event.NewFile
+        | "Save"   => Event.FileSaved
+        | _        => Event.Change
+      }
+
+      def create_old_fsm_events(evt)
+      {
+        match (evt)
+        {
+          | "New"  => EventID.NewFile
+          | "Save" => EventID.SaveFile
+          |  _     => EventID.Changed
+        }
+      }
+
+      WriteLine($"Creating $test_events_count events...");
+      def events = CreateEvents(test_events_count);
+      def fsm = FileFsm();
+      def old_fsm = DynFileFsm();
+      def ev = array["New", "Open", "Save", "Change"]; 
+      def events = events.Map(x => ev[x]);
+      def fsm_evt = events.Map(create_fsm_events);
+      def old_fsm_evt = events.Map(create_old_fsm_events);
+      fsm.Initiate();
+      old_fsm.Init();
+      WriteLine("Sending to old lib fsm");
+      def watch = Stopwatch();
+      watch.Start();
+      old_fsm_evt.Iter(old_fsm.SendAndExec);
+      watch.Stop();
+      def span2 = watch.Elapsed;
+      WriteLine("Sending to new lib fsm");
+      watch.Reset();
+      watch.Start();
+      fsm_evt.Iter(fsm.SendEvent);
+      fsm.Terminate();
+      watch.Stop();
+      def span = watch.Elapsed;
+      (span, span2)
+    }
+  }
+}
