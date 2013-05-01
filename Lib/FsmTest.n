@@ -16,32 +16,46 @@ namespace Nemerle.Statechart
     IsInState(st : string)  : bool;
     event ActionExecuted    : Action[string];
   }
-  
+
   public class FsmTester
   {
     fsm : IStateMachine;
     queue : List[string] = List();
-    
+
     public event OkTest : Action;
     public event Failed : Action;
     public event Print  : Action[string];
     public event Send   : Action[string];
-    
+
+    public static GetTester(this fsm : IStateMachine) : FsmTester
+    {
+      FsmTester(fsm)
+    }
+
+    public ConsoleTestInit() : void
+    {
+      Print += x => Console.WriteLine($"\n$x");
+      Send += x => Console.WriteLine($"Processing a '$x' ");
+      OkTest += _ => Console.WriteLine("Ok");
+      Failed += _ => Console.WriteLine("Failed");
+      fsm.ActionExecuted += Console.WriteLine;
+    }
+
     OnOkTest() : void
     {
       OkTest?.Invoke()
     }
-    
+
     OnPrint(str : string) : void
     {
-      Print?.Invoke(str)
+      when (str != null) Print?.Invoke(str)
     }
-    
+
     OnFailed() : void
     {
       Failed?.Invoke();
     }
-    
+
     public this(fsm : IStateMachine)
     {
       this.fsm = fsm;
@@ -52,104 +66,163 @@ namespace Nemerle.Statechart
     {
       en.Select(x => $"$(x)Entry")
     }
-    
+
     static ExitImpl(ex : IEnumerable[string]) : IEnumerable[string]
     {
       ex.Select(x => $"$(x)Exit")
     }
-    
+
     static ActionsImpl(act : IEnumerable[string]) : IEnumerable[string]
     {
       act.Select(x => $"$(x)Action")
     }
-    
+
     public static Entry(params en : array[string]) : array[string]
     {
       EntryImpl(en).ToArray()
     }
-    
+
     public static Exit(params ex : array[string]) : array[string]
     {
       ExitImpl(ex).ToArray()
     }
-    
+
     public static Actions(params act : array[string]) : array[string]
     {
       ActionsImpl(act).ToArray()
     }
-    
+
     prepare() : void
     {
       queue.Clear()
     }
-    
+
     Test(func : void -> void, res : string, params acts : array[string]) : bool
     {
       prepare();
       func();
-      
-      if (res == null || fsm.IsInState(res))
-      {
-        acts.ZipLazy(queue).All(_ == _)
-      } else false
+      def acts = if (res != null) acts.Append(Entry(res)) else Actions(acts);
+      def acts = if (acts.Length == queue.Count()) acts.ZipLazy(queue).All(_ == _) else false;
+      def state = res == null || fsm.IsInState(res);
+      state && acts
     }
-    
+
+    TestState(func : void -> void, res : string) : bool
+    {
+      prepare();
+      func();
+      res == null || fsm.IsInState(res)
+    }
+
     SendEvent(evt : string) : void
     {
       Send?.Invoke(evt);
       fsm.SendEvent(evt);
     }
-    
+
     public TestCond(evt : string, res : string, params acts : array[string]) : bool
     {
       Test(_ => SendEvent(evt), res, acts)
     }
-    
+
+    public TestStateCond(evt : string, res : string) : bool
+    {
+      Test(_ => SendEvent(evt), res)
+    }
+
     public TestCond(evt : string, res : string, ex : list[string], act : list[string], en : list[string]) : bool
     {
       def acts = ExitImpl(ex).Concat(ActionsImpl(act)).Concat(EntryImpl(en)).ToArray();
       Test(_ => SendEvent(evt), res, acts)
     }
-    
-    public Initiate(name : string, res : string, params acts : array[string]) : void
+
+    public InitiateName(name : string, res : string, params acts : array[string]) : void
     {
       OnPrint(name);
-      if (Initiate(res, acts)) OnOkTest() else OnFailed();
+      if (InitiateCond(res, acts)) OnOkTest() else OnFailed();
     }
-    
-    public Test(name : string, evt : string, res : string, params acts : array[string]) : void
+
+    public Test(evt : string, res : string) : void
+    {
+      if (TestCond(evt, res)) OnOkTest() else OnFailed();
+    }
+
+    public TestName(name : string, evt : string, res : string, params acts : array[string]) : void
     {
       OnPrint(name);
       if (TestCond(evt, res, acts)) OnOkTest() else OnFailed();
     }
-    
-    public Test(name : string, evt : string, res : string, ex : list[string], act : list[string], en : list[string]) : void
+
+    public Test(evt : string, res : string, params acts : array[string]) : void
+    {
+      TestName(null, evt, res, acts)
+    }
+
+    public TestName(name : string, evt : string, res : string) : void
+    {
+      OnPrint(name);
+      if (TestCond(evt, res)) OnOkTest() else OnFailed();
+    }
+
+    public TestName(name : string, evt : string, res : string, ex : list[string], act : list[string], en : list[string]) : void
     {
       OnPrint(name);
       if (TestCond(evt, res, ex, act, en)) OnOkTest() else OnFailed();
+    }
+
+    public Test(evt : string, res : string, ex : list[string], act : list[string], en : list[string]) : void
+    {
+      TestName(null, evt, res, ex, act, en)
+    }
+
+    public Test(evt : string, ex : list[string], act : list[string], en : list[string]) : void
+    {
+      TestName(null, evt, ex, act, en)
     }
 
     public Test(name : string, evt : string, ex : list[string], en : list[string]) : void
     {
       Test(name, evt, ex, [], en)
     }
-    
-    public Test(name : string, evt : string, ex : list[string], act : list[string], en : list[string]) : void
+
+    public Test(evt : string, ex : list[string], en : list[string]) : void
+    {
+      TestName(null, evt, ex, [], en)
+    }
+
+    public TestName(name : string, evt : string, ex : list[string], act : list[string], en : list[string]) : void
     {
       def res = en.Last();
-      Test(name, evt, res, ex, act, en);
+      TestName(name, evt, res, ex, act, en.ChopLast().NToList());
     }
-    
-    public Initiate(res : string, params acts : array[string]) : bool
+
+    InitiateCond(res : string, acts : array[string]) : bool
     {
       Test(_ => fsm.Initiate(), res, acts)
     }
-    
-    public Initiate(name : string, en : list[string]) : void
+
+    //InitiateState(res : string) : bool
+    //{
+    //  TestState(_ => fsm.Initiate(), res)
+    //}
+
+    public InitiateName(name : string, en : list[string]) : void
     {
       def res = en.Last();
-      Initiate(name, res, EntryImpl(en).ToArray())
+      InitiateName(name, res, EntryImpl(en.ChopLast()).ToArray())
     }
+
+    public Initiate(en : list[string]) : void
+    {
+      def res = en.Last();
+      InitiateName(null, res, EntryImpl(en.ChopLast()).ToArray())
+    }
+
+    public Initiate(res : string, params acts : array[string]) : void
+    {
+      InitiateName(null, res, acts.ToArray())
+    }
+
   }
-  
+
 }

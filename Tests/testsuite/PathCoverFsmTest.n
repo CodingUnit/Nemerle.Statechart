@@ -1,0 +1,242 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Console;
+using Nemerle.Statechart;
+
+  /// <summary>
+  /// Description of PathCover.
+  /// </summary>
+  [statechart(<#
+
+  flags : auto_initial
+          transition_completed_events
+          auto_entry_exit
+          testing;
+
+  state A
+  {
+      (H*)
+      g => H;
+  }
+
+  state B : A
+  {
+      (H*)
+
+      d => D;
+      f => @;
+      k => A;
+      c => E;
+  }
+
+  state C : B
+  {
+      a / ();
+      b => E;
+      m => @;
+  }
+
+  state E : B
+  {
+      i => D;
+      j => A;
+  }
+
+  state D : A
+  {
+      e => B;
+      n => B.H;
+  }
+
+  #>
+  )]
+  public class PathCoverFsm
+  {
+
+  }
+
+  /// <summary>
+  /// Description of PathCoverFsmTest.
+  /// </summary>
+  module Test
+  {
+
+    public Main() : void
+    {
+      def fsm = PathCoverFsm();
+      def tester = fsm.GetTester();
+      tester.ConsoleTestInit();
+
+      // "Starting state machine"
+      tester.Initiate(["A", "B", "C"]);
+
+      // "Testing Internal transition"
+      tester.Test("a", null);
+
+      // "Testing simple-to-simple transition"
+      tester.Test("b", ["C"], ["E"]);
+
+      // "Testing simple-to-composite transition"
+      tester.Test("j", ["E", "B", "A"], ["A", "B", "C"]);
+
+      // "Testing simple-to-simple, via composite"
+      tester.Test("d", ["C", "B"], ["D"]);
+
+      // "Testing for no match"
+      tester.Test("a", null);
+
+      // "Testing simple to (non-ancestor) composite"
+      tester.Test("e", ["D"], ["B", "C"]);
+
+      // "Testing simple-to-simple transition again"
+      tester.Test("b", ["C"], ["E"]);
+
+      // "Testing simple-to-simple, across ancestor"
+      tester.Test("i", ["E", "B"], ["D"]);
+
+      // "Testing simple-to-composite with history"
+      tester.Test("g", ["D", "A"], ["A", "D"]);
+
+      // "Get back to state C"
+      tester.Test("e", ["D"], ["B", "C"]);
+
+      // "Testing composite-to-composite transition"
+      tester.Test("f", ["C", "B"], ["B", "C"]);
+
+      // "Testing simple to sibling simple via composite transition"
+      tester.Test("c", ["C", "B"], ["B", "E"]);
+
+      // "Testing composite-to-composite transition"
+      tester.Test("k", ["E", "B", "A"], ["A", "B", "C"]);
+
+      // "Testing transition to self, but leaving the state"
+      tester.Test("m", ["C"], ["C"]);
+
+      // "Get to state D"
+      tester.Test("d", ["C", "B"], ["D"]);
+
+      // "Test going to non-ancestor composite with history (and returning to the same state)"
+      tester.Test("n", ["D"], ["B", "C"]);
+
+      // "Get us to state E, then D"
+      tester.Test("b", ["C"], ["E"]);
+
+      // "Go to state D"
+      tester.Test("i", ["E", "B"], ["D"]);
+
+      // "Now, test returning with history to a non-default state"
+      tester.Test("n", ["D"], ["B", "E"]);
+
+      fsm.Terminate();
+    }
+
+  }
+
+/*
+BEGIN-OUTPUT
+AEntry
+BEntry
+CEntry
+Ok
+Processing a 'a' 
+Ok
+Processing a 'b' 
+CExit
+EEntry
+Ok
+Processing a 'j' 
+EExit
+BExit
+AExit
+AEntry
+BEntry
+CEntry
+Ok
+Processing a 'd' 
+CExit
+BExit
+DEntry
+Ok
+Processing a 'a' 
+Ok
+Processing a 'e' 
+DExit
+BEntry
+CEntry
+Ok
+Processing a 'b' 
+CExit
+EEntry
+Ok
+Processing a 'i' 
+EExit
+BExit
+DEntry
+Ok
+Processing a 'g' 
+DExit
+AExit
+AEntry
+DEntry
+Ok
+Processing a 'e' 
+DExit
+BEntry
+CEntry
+Ok
+Processing a 'f' 
+CExit
+BExit
+BEntry
+CEntry
+Ok
+Processing a 'c' 
+CExit
+BExit
+BEntry
+EEntry
+Ok
+Processing a 'k' 
+EExit
+BExit
+AExit
+AEntry
+BEntry
+CEntry
+Ok
+Processing a 'm' 
+CExit
+CEntry
+Ok
+Processing a 'd' 
+CExit
+BExit
+DEntry
+Ok
+Processing a 'n' 
+DExit
+BEntry
+CEntry
+Ok
+Processing a 'b' 
+CExit
+EEntry
+Ok
+Processing a 'i' 
+EExit
+BExit
+DEntry
+Ok
+Processing a 'n' 
+DExit
+BEntry
+EEntry
+Ok
+END-OUTPUT
+*/
