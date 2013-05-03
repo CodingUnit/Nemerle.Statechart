@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Collections;
+using System.ComponentModel;
 
 using NC = Nemerle.Collections;
 using NGenerics.DataStructures.Trees;
@@ -24,6 +25,7 @@ namespace Nemerle.Statechart
   }
 
   //[Record]
+  [NotifyPropertyChange]
   public partial class StateMap
   {
     public Analyser : FsmAnalyser;
@@ -31,60 +33,52 @@ namespace Nemerle.Statechart
     [Accessor]
     mutable state_tree : FsmState;
 
-    mutable cached_pseudo_states : array[PseudoStateNode];
-    mutable cached_transitions   : array[StateTransition];
-    mutable cached_states        : array[FsmState];
+    //mutable cached_pseudo_states : array[PseudoStateNode];
+    //mutable cached_transitions   : array[StateTransition];
+    //mutable cached_states        : array[FsmState];
 
-    public States : array[FsmState]
-    {
-      get
-      {
-        when (need_rebuild & RebuildObject.State != 0) 
-        {
-          cached_states = state_tree.GetBreadthFirstEnumerable().ToArray();
-          need_rebuild &= ~RebuildObject.State;
-          foreach (st in cached_states) st.CalcSuperStates();
-        }
-        cached_states
-      }
-    }
+    [MemoizedCalc]
+    public States : array[FsmState] {get;}
 
-    public Transitions   : array[StateTransition]
-    {
-      get
-      {
-        when (need_rebuild & RebuildObject.Transitions != 0) 
-        {
-          cached_transitions = States.SelectMany(_.transitions).ToArray();
-          need_rebuild &= ~RebuildObject.Transitions;
-        }
-        cached_transitions
-      }
-    }
+    [MemoizedCalc]
+    public Transitions   : array[StateTransition] {get;}
+    //{
+    //  get
+    //  {
+    //    when (need_rebuild & RebuildObject.Transitions != 0) 
+    //    {
+    //      cached_transitions = States.SelectMany(_.transitions).ToArray();
+    //      need_rebuild &= ~RebuildObject.Transitions;
+    //    }
+    //    cached_transitions
+    //  }
+    //}
 
-    public PseudoStates : array[PseudoStateNode]
-    {
-      get
-      {
-        when (need_rebuild & RebuildObject.Pseudo != 0) 
-        {
-          cached_pseudo_states = States.SelectMany(_.pseudo_states).ToArray();
-          need_rebuild &= ~RebuildObject.Pseudo;
-        }
-        cached_pseudo_states
-      }
-    }
+    [MemoizedCalc]
+    public PseudoStates : array[PseudoStateNode] {get;}
+    //{
+    //  get
+    //  {
+    //    when (need_rebuild & RebuildObject.Pseudo != 0) 
+    //    {
+    //      cached_pseudo_states = States.SelectMany(_.pseudo_states).ToArray();
+    //      need_rebuild &= ~RebuildObject.Pseudo;
+    //    }
+    //    cached_pseudo_states
+    //  }
+    //}
 
-    mutable need_rebuild : RebuildObject;
+    //mutable need_rebuild : RebuildObject;
     // if changed tree added new states or pseudo create new cached tree iterator and structures
-    public Rebuild(obj : RebuildObject) : void
-    {
-      need_rebuild |= obj
-    }
+    //public Rebuild(obj : RebuildObject) : void
+    //{
+    //  need_rebuild |= obj
+    //}
 
     public this(an : FsmAnalyser) 
     { 
       Analyser = an; 
+      
     }    
 
     /// <summary>
@@ -98,14 +92,29 @@ namespace Nemerle.Statechart
         {
           | "top" => st.MoveToNewSuper(state_tree)
           | n     => match (Get(n))
-              {
-                | null => Analyser.AddError(FsmError.ParentStateNotFound(st, FsmState(p, Analyser, StateType.State())));
-                | s    => st.MoveToNewSuper(s)
-              }
+                      {
+                        | null => Analyser.AddError(FsmError.ParentStateNotFound(st, FsmState(p, Analyser, StateType.State())));
+                        | s    => st.MoveToNewSuper(s)
+                      }
         }
       }
     }
 
+    CreateBindings() : void
+    {
+      States_memoized_calc.Bind(this, "state_tree", _ => state_tree.GetBreadthFirstEnumerable().ToArray());
+      Transitions_memoized_calc.Bind(this, "state_tree", _ => States.SelectMany(_.transitions).ToArray());
+      PseudoStates_memoized_calc.Bind(this, "state_tree", _ => States.SelectMany(_.pseudo_states).ToArray());
+      foreach (st in States)
+      {
+        st.Init();
+        st.ChangeBind("sub_states", _ => OnPropertyChanged("state_tree"));
+        States_memoized_calc.Bind(st, "sub_states"); 
+        Transitions_memoized_calc.Bind(st, "transitions");
+        PseudoStates_memoized_calc.Bind(st, "pseudo_states");
+      }
+    }
+    
     //CreateInitialTran() : void
     //{
     //  foreach (st in States)
@@ -124,13 +133,12 @@ namespace Nemerle.Statechart
     /// </summary>
     public Create(state : StateNode.State) : void
     {
+      
       // fold general rose tree and convert it to FsmState general rose tree
       def top = TreeUtils.FoldTree(state, null, _.sub_states, FsmState(_, _, Analyser));
       top.name = FsmState.TopStateName; // change name
       state_tree = top;
-
-      // need rebuild all
-      Rebuild(RebuildObject.Transitions | RebuildObject.Pseudo | RebuildObject.State);
+      CreateBindings();
       //CreateInitialTran(); // create initial transitions
       CreateSuperStates(); // check create super states setted with : parent syntax
       CreatePreDecls(); // create and resolve pre declarations

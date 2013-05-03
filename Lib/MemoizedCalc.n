@@ -1,0 +1,74 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.ComponentModel;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+
+namespace Nemerle.Statechart
+{
+
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Property)]
+  macro MemoizedCalc(typeBuilder : TypeBuilder, prop : ClassMember.Property, params pars : list[PExpr])
+  {
+      //assert2(false);
+    MemoizedCalcImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, prop, pars)
+  }
+
+  //[MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Property)]
+  //macro NotifyPropertyChange(typeBuilder : TypeBuilder, prop : ClassMember.Property, params pars : list[PExpr])
+  //{
+  //  assert2(false);
+  //  NotifyPropertyChangeImpl.DoTransform1(Macros.ImplicitCTX(), typeBuilder, prop, pars)
+  //  //NeedChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, prop, pars)
+  //}
+  /// <summary>
+  /// Description of NotifyPropertyChange.
+  /// </summary>
+  module MemoizedCalcImpl
+  {
+    public DoTransform(_ : Typer, typeBuilder : TypeBuilder, prop : ClassMember.Property, _aliases : list[PExpr]) : void
+    {
+      def setter = prop.setter;
+      //def is_auto = is_auto(getter, setter); 
+      match (prop.getter)
+      {
+        | Some(getter) => 
+
+            //when (is_auto)
+            //{
+              //def name = Macros.NewSymbol(prop.Name);
+              //getter.Body = <[ $(name : name) ]>;
+
+              //def type = prop.returnType;
+              //def field = <[ decl: mutable $(name : name) : $type ]>;
+              //typeBuilder.Define(field);
+            //}
+            def type = prop.returnType;
+            def name = prop.Name;
+            //def set_ref = match (getter.Body)
+            //{
+            //    | <[ $(n : name) ]> as p => p
+            //    | _                      => <[ $(name : usesite) ]>
+            //}
+            def name = $"$(name)_memoized_calc";
+            def member = <[ decl: public $(name : usesite) : MemoizeCalc[$type] = MemoizeCalc() ]>;
+            typeBuilder.Define(member);
+
+            getter.Body = <[ $(name : usesite).Value ]>;
+            match (setter)
+              {
+                  | Some(setter) => setter.Body = <[ $(name : usesite).Value = $("value" : usesite) ]>
+                  | _            => ()
+              }
+        | _ => ()      
+      }
+    }
+  }
+
+}

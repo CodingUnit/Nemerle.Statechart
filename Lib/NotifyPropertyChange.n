@@ -1,0 +1,168 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.ComponentModel;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+
+namespace Nemerle.Statechart
+{
+
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Property)]
+  macro NotifyPropertyChange(typeBuilder : TypeBuilder, prop : ClassMember.Property, params pars : list[PExpr])
+  {
+    //assert2(false);
+    NotifyPropertyChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, prop, pars)
+  }
+
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Class)]
+  macro NotifyPropertyChange(typeBuilder : TypeBuilder, params pars : list[PExpr])
+  {
+    //assert2(false);
+    NotifyPropertyChangeImpl.DoTransform2(Macros.ImplicitCTX(), typeBuilder, pars)
+  }
+
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
+  macro NotifyPropertyChange(typeBuilder : TypeBuilder, params pars : list[PExpr])
+  {
+    //assert2(false);
+    NotifyPropertyChangeImpl.DoTransform2b(Macros.ImplicitCTX(), typeBuilder, pars)
+    //NeedChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, prop, pars)
+  }
+  
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Property)]
+  macro NotifyPropertyChange(typeBuilder : TypeBuilder, prop : ClassMember.Property, params pars : list[PExpr])
+  {
+    //assert2(false);
+    NotifyPropertyChangeImpl.DoTransform1(Macros.ImplicitCTX(), typeBuilder, prop, pars)
+    //NeedChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, prop, pars)
+  }
+
+  public module NotifyPropertyChangeUtil
+  {
+
+    public ChangeBind(this from_obj :  INotifyPropertyChanged, from_prop : string, func : void -> void) : void
+    {
+      def change(_, p)
+      {
+        when (p.PropertyName == from_prop) func();
+      }
+
+      from_obj.PropertyChanged += change
+    }
+  }
+
+  /// <summary>
+  /// Description of NotifyPropertyChange.
+  /// </summary>
+  module NotifyPropertyChangeImpl
+  {
+    public DoTransform1(_typer : Typer, typeBuilder : TypeBuilder, _prop : ClassMember.Property, _aliases : list[PExpr]) : void
+    {
+      when (!typeBuilder.GetModifiers().GetMacroAttributes().Exists(_ is <[ NotifyPropertyChange ]>))
+      {
+        typeBuilder.AddMacroAttribute(<[ NotifyPropertyChange ]>);
+      }
+    }
+
+
+    public DoTransform2(_typer : Typer, typeBuilder : TypeBuilder, _aliases : list[PExpr]) : void
+    {
+      def mems = typeBuilder.GetEvents();
+      when (!mems.Exists(x => x.Name == "PropertyChanged"))
+      {
+        typeBuilder.Define(<[decl: public event PropertyChanged : PropertyChangedEventHandler ]>);
+        typeBuilder.Define(<[decl: OnPropertyChanged(name : string) : void
+                                  {
+                                    PropertyChanged?.Invoke(this, PropertyChangedEventArgs(name))
+                                  } ]>);
+        
+      }
+
+    }
+
+    public DoTransform2b(typer : Typer, typeBuilder : TypeBuilder, _aliases : list[PExpr]) : void
+    {
+        def type = <[ INotifyPropertyChanged]>;
+        def type = typer.BindFixedType(type);
+        def super = typeBuilder.HasSuperType(type.TypeInfo);
+        when (!super)
+        {
+          typeBuilder.AddImplementedInterface(<[ INotifyPropertyChanged ]>);
+        }
+
+    }
+
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, prop : ClassMember.Property, _aliases : list[PExpr]) : void
+    {
+
+      def type = prop.returnType;
+      def type = typer.BindType(type).Fix();
+      def is_value = type.IsValueType;
+
+      def get_getter(getter)
+      {
+        match (getter.Body)
+        {
+          | <[ $(_ : name) ]> as b => b
+          | _                      => <[ $(getter.Name : usesite)() ]>
+        }
+      }
+
+      def is_auto(getter, setter)
+      {
+        def is_abstract(func)
+        {
+          match (func)
+          {
+            |Some(ClassMember.Function(body = FunBody.Abstract))
+            |None => true
+            |_ => false
+          }
+        }
+
+        is_abstract(getter) && is_abstract(setter)
+      }
+
+      def setter = prop.setter;
+      def getter = prop.getter;
+      def is_auto = is_auto(getter, setter); 
+      match (prop.setter)
+      {
+        | Some(setter) => 
+
+      def getter = prop.getter.Value;
+      when (is_auto)
+      {
+        def name = Macros.NewSymbol(prop.Name);
+        getter.Body = <[ $(name : name) ]>;
+        setter.Body = <[ $(name : name) = $("value" : usesite) ]>;
+        def type = prop.returnType;
+        def field = <[ decl: mutable $(name : name) : $type ]>;
+        typeBuilder.Define(field);
+      }
+
+
+      def get_val = get_getter(getter);
+      def body = setter.Body;
+      def name = prop.Name;
+      def changed = if (is_value) <[ $("value" : usesite) != $get_val ]> else <[ ($("value" : usesite) : object) != $get_val ]>;
+      def body =                <[
+                                  when ($changed)
+                                  {
+                                    $body;
+                                    OnPropertyChanged($name)
+                                  }
+                              ]>;
+      setter.Body = body;
+
+        | _ => ()
+      }
+    }
+  }
+}

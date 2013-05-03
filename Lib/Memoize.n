@@ -1,0 +1,67 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.ComponentModel;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of Memoize.
+  /// </summary>
+  public class MemoizeCalc[T]
+  {
+    mutable cached_value : T;
+    public Changed : bool {get;set;default true}
+
+    public CalcFunc    : void -> T {get;set;}
+    public CalcFuncExt : void -> void {get;set;}
+
+    public Bind(obj : INotifyPropertyChanged, prop : string, func : void -> T) : void
+    {
+      obj.ChangeBind(prop, _ => Change());
+      CalcFunc = func;
+    }
+    
+    public Bind(obj : INotifyPropertyChanged, prop : string) : void
+    {
+      obj.ChangeBind(prop, _ => Change())
+    }
+
+    public Change() : void
+    {
+      Changed = true
+    }
+
+    public Value : T
+    {
+      get
+      {
+        when (Changed) 
+        {
+          if (CalcFunc != null) 
+          {
+            cached_value = CalcFunc();
+            Changed = false;
+          } else
+            when (CalcFuncExt != null)
+            {
+              CalcFuncExt(); 
+              Changed = false;
+            }
+        }
+        cached_value
+      }
+      set
+      {
+        cached_value = value;
+        Changed = false;
+      }
+
+    }
+  }
+}
