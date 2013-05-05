@@ -51,21 +51,30 @@ namespace Nemerle.Statechart
             //}
             def type = prop.returnType;
             def name = prop.Name;
-            //def set_ref = match (getter.Body)
-            //{
-            //    | <[ $(n : name) ]> as p => p
-            //    | _                      => <[ $(name : usesite) ]>
-            //}
             def name = $"$(name)_memoized_calc";
-            def member = <[ decl: public $(name : usesite) : MemoizeCalc[$type] = MemoizeCalc() ]>;
+            match (getter.body)
+            {
+              | FunBody.Parsed(p) => 
+                 //def calc = Macros.NewSymbol($"$(name)calc");
+                 def init = <[ $(name : usesite).CalcFunc = _ => $p ]>;
+                 def mems = typeBuilder.AstParts.SelectMany(_.GetMembers());
+                 def meth = mems.FilterType();
+                 def cons = meth.Filter(x : ClassMember.Function => x.Name == ".ctor");
+                 cons.Iter(x => x.Body = <[ $(x.Body); $init; ]>);
+                 //def member = <[ decl: public $(name : usesite) : MemoizeCalc[$type] = MemoizeCalc($(calc : name)); ]>;
+                 //typeBuilder.Define(<[decl: $(calc : name)() : $type { $p }]>);
+                 
+              | _                 => ()
+            }
+            def member = <[ decl: public $(name : usesite) : MemoizeCalc[$type] = MemoizeCalc(); ]>;
             typeBuilder.Define(member);
 
             getter.Body = <[ $(name : usesite).Value ]>;
             match (setter)
-              {
-                  | Some(setter) => setter.Body = <[ $(name : usesite).Value = $("value" : usesite) ]>
-                  | _            => ()
-              }
+            {
+              | Some(setter) => setter.Body = <[ $(name : usesite).Value = $("value" : usesite) ]>
+              | _            => ()
+            }
         | _ => ()      
       }
     }
