@@ -90,11 +90,6 @@ namespace Nemerle.Statechart
       Transition(pos, evt, guard, act, to, TransitionType.Transition)
     }
 
-    simp_transition(tran : StateNode.Transition) : StateNode
-    {
-      tran
-    }
-
     simple_attrs(attr : List[List[NToken]]) : List[NToken]
     {
       attr.Flatten().ToList()
@@ -315,10 +310,16 @@ namespace Nemerle.Statechart
     //  CreateState(pos, name, [], body, StateType.InlinedSubMachine(GetText(type)), None());
     //}
 
-    //statemachine(name : NToken, _ : NToken, type : NToken, tran : List[StateNode.Transition]) : StateNode
-    //{
-    //  State(GetText(name), name.StartPos, StateType.SubMachine(GetText(type)), tran.NToList())
-    //}
+    statemachine(tok : NToken, name : NToken, parent : option[NameIdentifier], decls : List[StateNode]) : StateNode
+    {
+      def decls = decls.NToList();
+      def (trans, decls) = decls.PartitionType();
+      def (pseudo, other) = decls.PartitionType();
+      def name = GetText(name);
+      def type = if (parent is Some(p)) p.FullName else name;
+      def errors = other.Map(x => StateNode.Error(x.pos, x));
+      State(tok.StartPos, name, parent.Map(x => x.FullName), [], [], [], trans, [], [], pseudo, StateType.SubMachine(type), errors)
+    }
 
 
     region(beg : NToken, _ : NToken) : StateNode
