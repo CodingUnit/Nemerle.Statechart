@@ -58,7 +58,7 @@ namespace Nemerle.Statechart
 
   public module FormUtils
   {
-    
+
     public Sync(this form : Form, act : Action) : void
     {
       if (form.InvokeRequired) _ = form.Invoke(act) else act()
@@ -68,12 +68,19 @@ namespace Nemerle.Statechart
     {
       if (form.InvokeRequired) form.Invoke(act) :> T else act()
     }
-    
+
   }
-  
+
   module Utils
   {
 
+    public GetCtors(ty : TypeBuilder) : list[ClassMember.Function]
+    {
+      def mems = ty.AstParts.SelectMany(_.GetMembers());
+      def meth = mems.FilterType();
+      meth.Filter(x => x.Name == ".ctor")
+    }
+    
     public FormSyncCreate(_ : TypeBuilder, meth : ClassMember.Function, expr : array[PExpr]) : void
     {
       match (expr.NToList())
@@ -154,7 +161,7 @@ namespace Nemerle.Statechart
     }
 
   }
-  
+
   partial module NeedChangeImpl
   {
 
@@ -162,28 +169,28 @@ namespace Nemerle.Statechart
     {
       char.ToLower(s[0]).ToString() + s.Substring(1);
     }
-    
+
     public CreateConstrBody(type : string, pars : list[string * string * string], parms : list[string * string], extra : list[string * PExpr]) : PExpr
     {
-      
+
       def inst_par((f, ep, p), pars, extra)
       {
         def ep = StrToLower(ep);
-        
+
         def extra = if (extra != null) match (extra.Find((x, _) => x == ep))
-        {
-          | Some((_, e)) => <[$(ep : usesite) = $e ]>
-          | _            => null
-        } else null;
+                      {
+                        | Some((_, e)) => <[$(ep : usesite) = $e ]>
+                        | _            => null
+                      } else null;
         if (extra != null) extra else
-        match (pars.Find((x, _) => f == x))
-        {
-          | Some((_, n)) => <[ $(ep : usesite) = $(n : usesite) ]>
-          | _            => <[ $(ep : usesite) = $(p : usesite) ]>
-        }
+          match (pars.Find((x, _) => f == x))
+          {
+            | Some((_, n)) => <[ $(ep : usesite) = $(n : usesite) ]>
+            | _            => <[ $(ep : usesite) = $(p : usesite) ]>
+          }
       }
 
-      
+
       def expr = pars.Map(inst_par(_, parms, extra));
       //def expr = if (extra != null) expr + extra else expr;
       <[ $(type : usesite)(..$expr) ]>
@@ -200,7 +207,7 @@ namespace Nemerle.Statechart
       def fields = typebuilder.GetFields();
       def have_version = fields.Exists(x => x.Name == "version");
       def iter_exist = fields.Exists(x => x.Name == "cached_iter");
-      
+
       def def_constr(cur_type, fields)
       {
         //def opt = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -245,7 +252,7 @@ namespace Nemerle.Statechart
                                       {
                                         | Some(t) => t
                                         | _       => Message.Error($"Cannot find the '$type' type");
-                                                     null
+                                                    null
                                       }
                                   }
                                 }
@@ -267,7 +274,7 @@ namespace Nemerle.Statechart
             ]>
       }     
     }
-    
+
     public CreateNewInst(typeBuilder : TypeBuilder, type : PExpr, parms : PExpr) : PExpr
     {
       def split(p)
@@ -285,10 +292,10 @@ namespace Nemerle.Statechart
           | x              => [x]
         }
       }
-      
-        def parms = unseq(parms);
-        def parms = parms.Map(split);
-        CreateNewInst(typeBuilder, type, parms)
+
+      def parms = unseq(parms);
+      def parms = parms.Map(split);
+      CreateNewInst(typeBuilder, type, parms)
     }
   }
 

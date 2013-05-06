@@ -13,16 +13,18 @@ namespace Nemerle.Statechart
   /// <summary>
   /// Description of Memoize.
   /// </summary>
-  public class MemoizeCalc[T]
+  public class MemoizeCalc[T] : INotifyPropertyChanged
   {
     mutable cached_value : T;
+    public Name : string;
+    
     public Changed : bool {get;set;default true}
 
     public CalcFunc    : void -> T {get;set;}
     public CalcFuncExt : void -> void {get;set;}
 
-    public this() {}
-    public this(func : void -> T) { CalcFunc = func }
+    public this(name : string) { Name = name }
+    //public this(func : void -> T) { CalcFunc = func }
     
     public Bind(obj : INotifyPropertyChanged, prop : string, func : void -> T) : void
     {
@@ -35,11 +37,22 @@ namespace Nemerle.Statechart
       obj.ChangeBind(prop, Change)
     }
 
+    public Bind(obj : INotifyPropertyChanged) : void
+    {
+      obj.ChangeBind(Change)
+    }
+    
     public Change() : void
     {
       Changed = true
     }
 
+    Cached() : void
+    {
+      Changed = false;
+      OnPropertyChanged()
+    }
+    
     public Value : T
     {
       get
@@ -49,12 +62,12 @@ namespace Nemerle.Statechart
           if (CalcFunc != null) 
           {
             cached_value = CalcFunc();
-            Changed = false;
+            Cached();
           } else
             when (CalcFuncExt != null)
             {
               CalcFuncExt(); 
-              Changed = false;
+              Cached();
             }
         }
         cached_value
@@ -62,9 +75,17 @@ namespace Nemerle.Statechart
       set
       {
         cached_value = value;
-        Changed = false;
+        Cached();
       }
 
     }
+    
+    OnPropertyChanged() : void
+    {
+      PropertyChanged?.Invoke(this, PropertyChangedEventArgs(Name))
+    }
+    
+    public event PropertyChanged : PropertyChangedEventHandler;
+    
   }
 }

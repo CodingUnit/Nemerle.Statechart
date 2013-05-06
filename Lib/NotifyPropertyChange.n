@@ -55,6 +55,11 @@ namespace Nemerle.Statechart
 
       from_obj.PropertyChanged += change
     }
+    
+    public ChangeBind(this from_obj :  INotifyPropertyChanged, func : void -> void) : void
+    {
+      from_obj.PropertyChanged += _ => func()
+    }
   }
 
   /// <summary>
@@ -100,7 +105,7 @@ namespace Nemerle.Statechart
 
     public DoTransform(typer : Typer, typeBuilder : TypeBuilder, prop : ClassMember.Property, _aliases : list[PExpr]) : void
     {
-
+      //assert2(false);
       def type = prop.returnType;
       def type = typer.BindType(type).Fix();
       def is_value = type.IsValueType;
@@ -132,6 +137,14 @@ namespace Nemerle.Statechart
       def setter = prop.setter;
       def getter = prop.getter;
       def is_auto = is_auto(getter, setter); 
+      def prop_name = prop.Name;
+      when (prop.modifiers.GetMacroAttributes().Exists(x => x is <[ MemoizedCalc ]>))
+      {
+        def name = $"$(prop_name)_memoized_calc";
+        def expr = <[ $(name : usesite).PropertyChanged += _ => OnPropertyChanged($prop_name) ]>;
+        def cons = Utils.GetCtors(typeBuilder);
+        cons.Iter(x => x.Body = <[ $(x.Body); $expr; ]>);
+      }
       match (prop.setter)
       {
         | Some(setter) => 
