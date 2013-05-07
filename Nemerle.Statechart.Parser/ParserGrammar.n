@@ -151,6 +151,7 @@ namespace Nemerle.Statechart
       colon       : void                              =  ':'s;
       point       : void                              =  '.'s;
       comma       : void                              =  ','s;
+      equal      : void                               =  '='s;
       open_round_brace : void                         =  '('s;
       close_round_brace : void                         =  ')'s;
       terminate_key                                   = ("terminate" / "X" / "x") s;
@@ -160,7 +161,7 @@ namespace Nemerle.Statechart
       
       else_guard         : GuardNode                  =  "else"s;
       guard_type         : GuardNode                  =  else_guard / expr_guard;
-      
+      syntax_delim       : void                       = colon / equal;
       
       lit_string         : StateLit                   =  <#"#>s identifier s<#"#>s;
       lit_double         : StateLit                   =  numeric s point numeric? s;
@@ -186,14 +187,14 @@ namespace Nemerle.Statechart
       simple_attrs       : List[NToken]               =  (attr_begin (identifier s comma?)+ attr_end s)+;
 
       attributes         : List[StateAttribute]       =  simple_attrs;
-      delim_action_list  : Actions                    =  '/'s (!end_symb action delimiter)* s end_symb;
-      block_action_list  : Actions                    =  '/'s "{"s (!close_brace action delimiter)* "}"s end_symb?;
+      delim_action_list  : Actions                    =  '/'s (!end_symb action delimiter?)+ s end_symb;
+      block_action_list  : Actions                    =  '/'s "{"s (!close_brace action delimiter?)+ "}"s;
       
-      action_list        : Actions                    =   delim_action_list / block_action_list;
-      parameters         : List[string]               =  (!close_round_brace identifier s comma)*;
+      action_list        : Actions                    =  delim_action_list / block_action_list;
+      parameters         : List[string]               =  (!close_round_brace identifier s comma?)*;
       empty_action       : FsmAction                  =  '('s ')'s;
       method_action      : FsmAction                  =  identifier s (open_round_brace parameters close_round_brace);
-      tran_action      : FsmAction                    =  identifier s (open_round_brace parameters close_round_brace)?;
+      tran_action        : FsmAction                  =  identifier s (open_round_brace parameters close_round_brace)?;
       action             : FsmAction                  =  empty_action / tran_action;
       
       entry              : StateNode                  =  simple_attrs? entry_key action_list? end_symb?;
@@ -220,7 +221,7 @@ namespace Nemerle.Statechart
       initial_trans      : StateNode                  =  initial_key s guard? trans_act_list? goto transition_target;
       events             : List[TransitionEvent]      =  identifier s (!('[' / '=' / '/') comma identifier s)* s;
       transitions        : List[StateNode]            =  simple_transition*;
-      simple_transition  : StateNode                  =  events s guard? trans_act_list? goto transition_target;
+      simple_transition  : StateNode                  =  events guard? trans_act_list? goto transition_target;
       transition         : StateNode                  =  initial_trans / simple_transition / internal_trans;
        
       history_deep       : StateNode                  =  "(H*)"s default_transition?;
@@ -239,8 +240,8 @@ namespace Nemerle.Statechart
       state              : StateNode                  =  attributes? state_key identifier s parent? stateBody;
 
       region             : StateNode                  =  attr_begin "---" '-'* attr_end;
-      flags              : StateNode                  =  "flags"s colon (identifier s comma?)+ end_symb;
-      name               : StateNode                  =  "name"s identifier s end_symb;
+      flags              : StateNode                  =  "flags"s syntax_delim (identifier s comma?)+ end_symb;
+      name               : StateNode                  =  "name"s syntax_delim? identifier s end_symb;
       stateMachine       : StateMachine               =  spaces_def stateDecl+ s;
 
   })]
