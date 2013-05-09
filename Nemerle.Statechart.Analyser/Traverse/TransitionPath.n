@@ -6,7 +6,6 @@ using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
-using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
@@ -257,54 +256,6 @@ namespace Nemerle.Statechart
     //  TransitionDestination.SubMachine(fsm, state)
     //}
 
-    TraverseDefaultTransition(tran : StateTransition) : TransitionDestination
-    {
-
-      | Default(history = hist, From = from) as tr =>
-          DefPath(tran.Source, from, tran); // unwind path from Source up to transition begining (From)
-          def st = tr.ToState;
-          when (st == null) throw FsmErrorException(FsmError.DefaultTransitionMustGoToState(tran, hist));
-          tran.Used = true;
-          TraverseTargetReg(tr.To, tran)
-          //match (hist, st.history.Value.Find(x => x.type == HistoryType.Deep))
-          //{
-          //  | (PseudoStateNode.History(type = HistoryType.Deep), Some(PseudoStateNode.History(default = t, type = HistoryType.Deep) as h)) =>
-          //      when (t is Some(tr)) traverser?.Add(tr);
-          //      History(h)
-
-          //  | _ => TraverseTargetReg(tr.To, tr)
-          //}
-      | _ => null
-    }
-
-    TraverseOrdinaryTransition(tran : StateTransition) : TransitionDestination
-    {
-      DefPath(tran.Source, tran.From, tran); // unwind path from Source up to transition begining (From)
-      tran.Used = true;
-      TraverseTargetReg(tran.To, tran)
-    }
-
-    TraverseHistoryPath(tran : StateTransition) : TransitionDestination
-    {
-
-      | StateTransition.History(From = from, history = hist, ToState = st) =>
-
-          def src = tran.Source;
-          //def tran = if (tr.From == null) tr.ChangeFrom(tr.From) else tran;
-          DefPath(src, from, tran); // unwind path from Source up to transition begining (From)
-          tran.Used = true;
-          if (st.type is StateType.Region) HistoryRestore(hist) 
-          else TraverseStateTarget(st);
-      | _ => null
-    }
-
-    TraverseInitialTransition(tran : StateTransition) : TransitionDestination
-    {
-      DefPath(tran.Source, tran.From, tran); // unwind path from Source up to transition begining (From)
-      tran.Used = true;
-      TraverseTarget(tran.To, tran)
-    }
-
     TraverseStateTarget(st : FsmState) : TransitionDestination
     {
       match (st.type)
@@ -371,6 +322,7 @@ namespace Nemerle.Statechart
       | Transition(WithinRegion = true)         => TraverseWithinRegionTransition(tran)
           // if go to join pseudo state
       | Transition(To = TransitionTarget.PseudoState(node = Join as j)) => TraverseJoinTransition(j, tran)
+     // | Transition(IsCompletion = true)         => tran.
           // if from state in orthogonal region, and transition begins in orthogonal regions boundary or upper
       | _ 
                                                   => 

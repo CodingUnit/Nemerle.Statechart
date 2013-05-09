@@ -12,10 +12,197 @@ using System.Diagnostics;
 using Nemerle.Statechart;
 using System.Threading.Tasks;
 using System.Threading;
-using NGenerics.DataStructures.Trees;
 
 namespace Nemerle.Statechart
 {
+
+  class GenActivity
+  {
+    activity : StateAction.Do;
+    map : Map[string, string];
+    util : GenUtil;
+
+    //[FlagAccessor (Concurrently,  NoWaitCancel, NotLong)]
+    flags : ActivityFlag;
+
+    public InitExpr : list[PExpr] {get;set;default []}
+    
+    actions : list[FsmAction]
+    {
+      get
+      {
+        activity.actions
+      }
+    }
+
+    [MemoizedCalc]
+    action_list : list[GenElement]
+    {
+      get
+      {
+        def acts = actions.Map(x => x.name);
+        acts.Map(x => GenElement(x, map))
+      }
+    }
+
+    public Name : string
+    {
+      get
+      {
+        activity.Name
+      }
+    }
+
+    public this(act : StateAction.Do, map : Map[string, string], util : GenUtil)
+    {
+      activity = act;
+      flags = activity.flags;
+      this.map = map;
+      this.util = util;
+    }
+
+    public act_exec_name : string
+    {
+      get
+      {
+        $"$(Name)Actions"
+      }
+    }
+
+    public activity_start_name : string
+    {
+      get
+      {
+        $"$(Name)Run"
+      }
+    }
+    
+    public activity_stop_name : string
+    {
+      get
+      {
+        $"$(Name)Stop"
+      }
+    }
+    
+    public run_action_name : string
+    {
+      get
+      {
+        $"$(act_exec_name)Action"
+      }
+    }
+    
+    public task_name : string
+    {
+      get
+      {
+        $"$(Name)Task"
+      }
+    }
+
+    public CancelSourceName : string
+    {
+      get
+      {
+        $"$(Name)CancelSource"
+      }
+    }
+
+    GenBaseStruct() : void
+    {
+      //def act = act.Map(x => x.name);
+            //def name = do_act.Name;
+            //def actions = $"$(name)Actions";
+            //def cancel_source = CancelSourceName;
+            //def act_list = act.Map(x => GenElement(x, action_for));//act |> $"On$_";
+            // events for not declared actions
+      def not_def_act = action_list.Exclude(_.IsDeclared);
+      not_def_act.Iter(x => util.DefineEvent(x.name, <[ Action[CancellationToken] ]>, [<[parameter: tok : CancellationToken ]>], <[ tok ]>));
+
+      util.Define(<[decl: task_factory : TaskFactory = TaskFactory(); ]>);
+            // cancellation source
+      util.Define(<[decl: mutable $(CancelSourceName : usesite) : CancellationTokenSource; ]>);
+      util.Define(<[decl: mutable $(task_name : usesite) : Task;]>); // declare task
+      
+      InitExpr ::= <[ $(run_action_name : usesite) = Action($(act_exec_name : usesite)) ]>;
+      util.Define(<[decl: $(run_action_name : usesite) : Action; ]>); // action for task
+    }
+
+    DefineActions() : void
+    {
+      def act_body = match (action_list)
+                      {
+                        | head :: [] => <[ $(head.exec_name : usesite)($(CancelSourceName : usesite).Token); ]>
+                        | _          => def run_acts = action_list.Map(x => <[ $(x.exec_name : usesite)(tok); ]>);
+                                        <[ 
+                                            def tok = $(CancelSourceName : usesite).Token;
+                                            {..$run_acts}
+                                        ]>
+
+                      }
+      util.DefineMethod(act_exec_name, act_body);
+    }
+    
+    GenRunBody() : void
+    {
+      //init_exprs.Add(<[ $(run_act : usesite) = ;]>); // create action
+      util.Define(<[decl: $(activity_start_name : usesite)() : void
+                          {
+                            $(CancelSourceName : usesite) = System.Threading.CancellationTokenSource();
+                            $(task_name : usesite) = Task.Factory.StartNew($(run_action_name : usesite), $(CancelSourceName : usesite).Token);
+                          } ]>);
+    }
+
+    //GetRunBodyConc() : PExpr
+    //{
+    //  def acts    = act_list.Map(x => if (x.IsDeclared) (x, x.name) else (x, $"$name$(x)Action"));
+    //                                      def act_run = acts.Exclude((x, _) => x.IsDeclared);
+    //                                      gen_members = gen_members.HeadAppend(act_run.Map((n, x) => <[decl: $(x : usesite) : Action = () => $(n.exec_name : usesite)($(cancel_source : usesite).Token);]>));
+    //                                      def tasks = act.Map(x => $"$task$x");
+    //                                      def task_arr = <[decl: mutable $(task : usesite) : array[Task] = array($(tasks.Length));]>;
+    //                                      gen_members ::= task_arr;
+    //                                      def stop = if (no_wait) <[ () ]> else <[ Task.WaitAll($(task : usesite)); ]>;
+    //                                      def tasks = acts.MapIndex(((_, y), i) => 
+    //                                                                    if (not_long) <[$(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok, TaskCreationOptions.None, TaskScheduler.Current);]> else
+    //                                          <[ $(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok); ]>
+    //                                          );
+    //                                      (<[ $tok;{..$tasks}]>, <[ $stop ]>)
+    //}
+
+
+    GenStopBody() : void
+    {
+      util.Define(<[decl: $(activity_stop_name : usesite)() : void
+              {
+                when ($(CancelSourceName : usesite) != null)
+                {
+                  try
+                  {
+                    $(CancelSourceName : usesite).Cancel();
+                    $(task_name : usesite).Wait();
+                  }
+                  catch
+                  {
+                    |_ is AggregateException => ()
+                  }
+                }
+              } ]>);
+    }
+
+    public Generate() : void
+    {
+      GenBaseStruct();
+      DefineActions();
+      GenRunBody();
+      GenStopBody();
+    }
+    
+    //GetStopBodyConc() : PExpr
+    //{
+    //}
+  }
+
   /// <summary>
   /// Description of GenActivity.
   /// </summary>
@@ -24,99 +211,17 @@ namespace Nemerle.Statechart
 
     DefineDoActivity() : void
     {
-      def create_activity(act)
-      {
-        | StateAction.Do(actions = act, Concurrently = conc, NoWaitCancel = no_wait, NotLong = not_long) as do_act => 
-            def act = act.Map(x => x.name);
-            def name = do_act.Name;
-            def actions = $"$(name)Actions";
-            def task = $"$(name)Task";
-            def cancel_source = $"$(name)CancelSource";
-            def act_list = act.Map(x => GenElement(x, action_for));//act |> $"On$_";
-            def not_def_act = act_list.Exclude(_.IsDeclared);
-            not_def_act.Iter(x => DefineEvent(x.name, <[ Action[CancellationToken] ]>, [<[parameter: tok : CancellationToken ]>], <[ tok ]>));
-            gen_members ::= <[decl: mutable $(cancel_source : usesite) : CancellationTokenSource; ]>;
-            def tok = <[def tok = $(cancel_source : usesite).Token; ]>;
-            def (run_body, stop_body) = if (conc)
-                                        {
-                                          //def act_run = not_def_act.Map(x => (x, $"$name$(x)Action"));
-                                          def acts    = act_list.Map(x => if (x.IsDeclared) (x, x.name) else (x, $"$name$(x)Action"));
-                                          def act_run = acts.Exclude((x, _) => x.IsDeclared);
-                                          gen_members = gen_members.HeadAppend(act_run.Map((n, x) => <[decl: $(x : usesite) : Action = () => $(n.exec_name : usesite)($(cancel_source : usesite).Token);]>));
-                                          def tasks = act.Map(x => $"$task$x");
-                                          def task_arr = <[decl: mutable $(task : usesite) : array[Task] = array($(tasks.Length));]>;
-                                          gen_members ::= task_arr;
-                                          def stop = if (no_wait) <[ () ]> else <[ Task.WaitAll($(task : usesite)); ]>;
-                                          def tasks = acts.MapIndex(((_, y), i) => 
-                                                                        if (not_long) <[$(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok, TaskCreationOptions.None, TaskScheduler.Current);]> else
-                                              <[ $(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok); ]>
-                                              );
-                                          (<[ $tok;{..$tasks}]>, <[ $stop ]>)
-                                        } else
-                                        {
-                                          def run_act = $"$(actions)Action";
-                                          gen_members ::= <[decl: mutable $(task : usesite) : Task;]>;
-                                          gen_members ::= <[decl: $(run_act : usesite) : Action; ]>;
-                                          init_exprs ::= <[ $(run_act : usesite) = Action($(actions : usesite));]>;
-                                          def act_body = match (act_list)
-                                                          {
-                                                            | head :: [] => <[ $(head.exec_name : usesite)($(cancel_source : usesite).Token); ]>
-                                                            | _ => 
-                                                                def run_acts = act_list.Map(x => <[ $(x.exec_name : usesite)(tok); ]>);
-                                                                <[ 
-                                                                    def tok = $(cancel_source : usesite).Token;
-                                                                    {..$run_acts}
-                                                                ]>
-                                                          }
-                                          DefineMethod(actions, act_body);
-                                          def run = if (not_long) <[ $(task : usesite) = Task.Factory.StartNew($(run_act : usesite), $(cancel_source : usesite).Token, TaskCreationOptions.None, TaskScheduler.Current); ]> else
-                                                        <[ $(task : usesite) = Task.Factory.StartNew($(run_act : usesite), $(cancel_source : usesite).Token);]>;
-                                          def stop = if (no_wait) <[ () ]> else <[ $(task : usesite).Wait(); ]>;
-                                          (run, stop)
-                                        }
-            def stop_name = $"$(name)Stop";
-            def run_name = $"$(name)Run";
-            def run = <[decl: $(run_name : usesite)() : void
-                              {
-                              $(cancel_source : usesite) = System.Threading.CancellationTokenSource();
-                              $run_body
-                              } ]>;
-            def stop = if (no_wait) 
-                                <[decl: $(stop_name : usesite)() : void
-                                {
-                                  when ($(cancel_source : usesite) != null)
-                                  {
-                                    $(cancel_source : usesite).Cancel();
-                                    $stop_body
-                                  }
-                                }
-                                ]> else
-                                <[decl: $(stop_name : usesite)() : void
-                              {
-                                when ($(cancel_source : usesite) != null)
-                                {
-                                  try
-                                  {
-                                    $(cancel_source : usesite).Cancel();
-                                    $stop_body
-                                  }
-                                  catch
-                                  {
-                                    |_ is AggregateException => ()
-                                  }
-                                }
-                              } ]>;
-            [run, stop]
-      }
-
       def act = analyser.DoActivities;
-      def defs = act.SelectMany(create_activity);
       when (!act.IsEmpty())
       {
-        Define(<[decl: task_factory : TaskFactory = TaskFactory(TaskCreationOptions.LongRunning, TaskContinuationOptions.None); ]>);
+        foreach (act in act)
+        {
+          def act = GenActivity(act, action_for, util);
+          act.Generate();
+          init_exprs += act.InitExpr;
+        }
+        
       }
-
-      Define(defs);
     }
 
 

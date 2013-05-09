@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Compiler;
 using Nemerle.Compiler.Parsetree;
+using System.Text;
 
 namespace Nemerle.Statechart
 {
@@ -15,58 +16,41 @@ namespace Nemerle.Statechart
 /// </summary>
   public partial class StaticGenerator
   {
+
+    Define(lst : IEnumerable[ClassMember]) : void
+    {
+      util.Define(lst);
+    }
+    
     Define(f : ClassMember) : void
     {
-      Define(ty, f);
+      util.Define(f);
     }
 
     Define(ty : TypeBuilder, f : ClassMember) : void
     {
-      if (WithSources) _  =  ty.DefineWithSource(f); else ty.Define(f);
+      util.Define(ty, f);
     }
 
     Define(ty : TypeBuilder, lst : IEnumerable[ClassMember]) : void
     {
-      foreach (l in lst) Define(ty, l);
+      util.Define(ty, lst)
     }
-
-    Define(lst : IEnumerable[ClassMember]) : void
-    {
-      Define(ty, lst);
-    }
-
+    
     DefineNested(ty : TypeBuilder, f : ClassMember.TypeDeclaration) : TypeBuilder
     {
-      when (WithSources)
-      {
-        def man = ty.TyManager;
-        man.GenerateFakeSourceCode(ty, f);
-      }
-      ty.DefineNestedType(f);
+      util.DefineNested(ty, f);
     }
 
     DefineNested(f : ClassMember.TypeDeclaration) : TypeBuilder
     {
-      DefineNested(ty, f);
+      util.DefineNested(f)
     }
-
-    DefineEvent(name : string) : void
-    {
-      def evt = <[decl: public event $(name : usesite) : EventHandler;]>;
-      def method = <[decl: $($"On$name" : usesite)() : void {$(get_event_call(name))}]>;
-      Define([method, evt]);
-    }
-
-    DefineEvent(name : string, type : PExpr, pars : list[PParameter], body : PExpr) : void
-    {
-      def evt = <[decl: public event $(name : usesite) : $type;]>;
-      def method = <[decl: $($"On$name" : usesite)(..$pars) : void 
-                    {
-                    def temp = $(name : usesite);
-                    when (temp != null) temp($body);
-                    }]>;
-      Define([method, evt]);
-    }
+    
+    result_str : StringBuilder = StringBuilder();
+    printer : SeqDeclPrinter = SeqDeclPrinter();
+    
+    util : GenUtil;
 
     static merge_and : PExpr * PExpr -> PExpr = (x, y) => <[ $x && $y ]>;
 
@@ -74,7 +58,7 @@ namespace Nemerle.Statechart
     {
       def get_body(n)
       {
-        def act_call = get_action_call(n.exec_name);
+        def act_call = util.get_action_call(n.exec_name);
         def inline = match (n)
                       {
                         | GenAction(Node = PathNode.Entry(inline = lst), InlinedActions = i) 
@@ -111,10 +95,10 @@ namespace Nemerle.Statechart
       Define(events + methods);
     }
 
-    DefineMethod(name : string, body : PExpr) : void
-    {
-      Define(<[decl: $(name : usesite)() : void {$body}]>)
-    }
+    //DefineMethod(name : string, body : PExpr) : void
+    //{
+    //  util.DefineMethod(name, body)
+    //}
 
     DefineMethods(lst : list[string * PExpr]) : void
     {
@@ -131,29 +115,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    get_action_call(act : string) : PExpr
-    {
-    <[
-        def temp =  $(act : usesite);
-        when (temp != null) temp();
-    ]>;
-    }
 
-    //get_guard_call(act : string) : PExpr
-    //{
-    //<[
-    //  def temp =  $(act : usesite);
-    //    if (temp != null) temp(); else false
-    //]>;
-    //}
-
-    get_event_call(act : string) : PExpr
-    {
-    <[
-      def temp =  $(act : usesite);
-        when (temp != null) temp(this, null);
-    ]>;
-    }
 
     static MergeExprAnd(expr : IEnumerable[PExpr]) : PExpr
     {
