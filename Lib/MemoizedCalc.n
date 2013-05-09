@@ -33,7 +33,7 @@ namespace Nemerle.Statechart
   module MemoizedCalcImpl
   {
     
-    public DoTransform(_ : Typer, typeBuilder : TypeBuilder, prop : ClassMember.Property, _aliases : list[PExpr]) : void
+    public DoTransform(_ : Typer, typeBuilder : TypeBuilder, prop : ClassMember.Property, aliases : list[PExpr]) : void
     {
       def setter = prop.setter;
       //def is_auto = is_auto(getter, setter); 
@@ -50,6 +50,7 @@ namespace Nemerle.Statechart
               //def field = <[ decl: mutable $(name : name) : $type ]>;
               //typeBuilder.Define(field);
             //}
+        
             def type = prop.returnType;
             def name = prop.Name;
             def name = $"$(name)_memoized_calc";
@@ -57,9 +58,11 @@ namespace Nemerle.Statechart
             {
               | FunBody.Parsed(p) => 
                  //def calc = Macros.NewSymbol($"$(name)calc");
+                 def bind_init = aliases.Map(x => <[ $(name : usesite).Bind(this, $(x.ToString())) ]>);
                  def init = <[ $(name : usesite).CalcFunc = _ => $p ]>;
+                 
                  def cons = Utils.GetCtors(typeBuilder);
-                 cons.Iter(x => x.Body = <[ $(x.Body); $init; ]>);
+                 cons.Iter(x => x.Body = <[ $(x.Body); $init; ..$bind_init ]>);
                  //def member = <[ decl: public $(name : usesite) : MemoizeCalc[$type] = MemoizeCalc($(calc : name)); ]>;
                  //typeBuilder.Define(<[decl: $(calc : name)() : $type { $p }]>);
                  
