@@ -44,51 +44,92 @@ namespace Nemerle.Statechart
             {
 
               | []   => traverser?.Log($"\nEntering in final state $st of Region ($r:$sr) and live in it");
-                      State(st)
+                        State(st)
               | tran =>
-                //st.Completion = tran;
-                traverser?.Log($"\nEntering in final state $st of Region ($r:$sr) transitions ..$tran may happen");
-                traverser?.Add(tran);
-                TransitionDestination.Final(st, sr, r, tran)
+                  //st.Completion = tran;
+                  traverser?.Log($"\nEntering in final state $st of Region ($r:$sr) transitions ..$tran may happen");
+                  traverser?.Add(tran);
+                  TransitionDestination.Final(st, sr, r, tran)
             }
 
         | _ => 
-        def history = st.ParticipateInHistory;
-        def hist_clear = PathNode.ClearHistory(history.NToList()); // create clear history node
-        AddNode(hist_clear); // get nodes and add to path
-        traverser?.Log($"\nEntering in final state $st");
-        match (st.CompletionTransitions.NToList(), st.ExternalTransitions)
-        {
-          // if we not have completion transition and transitions from this or upper states, final state must recognised as terminate node
-          | ([], [])  => Terminate(PseudoStateNode.Terminate(st))
-  //when (st.CompletionTransitions.IsEmpty() && st.Transitions.IsEmpty())
-          | (_, _) => TraverseCompletion(st)
+          def history = st.ParticipateInHistory;
+          def hist_clear = PathNode.ClearHistory(history.NToList()); // create clear history node
+          AddNode(hist_clear); // get nodes and add to path
+          traverser?.Log($"\nEntering in final state $st");
+          match (st.CompletionTransitions.NToList(), st.ExternalTransitions)
+          {
+            // if we not have completion transition and transitions from this or upper states, final state must recognised as terminate node
+            | ([], [])  => Terminate(PseudoStateNode.Terminate(st))
+    //when (st.CompletionTransitions.IsEmpty() && st.Transitions.IsEmpty())
+            | ([], _) => traverser?.Log($"\nEntering state $(st) and live in it");
+                          st.Lived = true;
+                          traverser?.Add(st);
+                          State(st) // end state
+            | (tran, _) =>
+                def dest = match (tran)
+                        {
+                          | [StateTransition.Transition(Guard = None) as tran]  => 
+                        // if not defined transition path create it
+                                traverser?.Log($"..and pass it by completion transition $tran");
+                                traverser?.Add(tran);
+                                TransitionExecute(tran)// if not defined transition path create it
 
-
+                          | tran       => 
+                              traverser?.Add(tran);
+                              traverser?.Log($"..and pass it by completion transitions ..$tran");
+                              Choice(st.Super, tran, Some(st)) // 
+                        }
+            match (st.Super.do_activity)
+            {
+              | []  => traverser?.Log($"\nNo internal activity run completion event");
+                       st.Lived = true;
+                       dest
+              | act => def act = act.Map(x => x.ChangeNeedCompletion(true));
+                       st.do_activity = act;
+                       st.Lived = true;
+                       traverser?.Add(st);
+                       traverser?.Log($"\nafter internal activity ..$act complete, run completion event, now stay in $st state");
+                       State(st) // end state
             }
+          }
       }
     }    
 
     TraverseCompletion(st : FsmState) : TransitionDestination
     {
-      match (st.CompletionTransitions.NToList())
+      match (st.CompletionTransitions.Filter(x => x.From.IsSimple).NToList())
       {
         | [] => traverser?.Log($"\nEntering state $(st) and live in it");
-              st.Lived = true;
-              traverser?.Add(st);
-              State(st) // end state
+                st.Lived = true;
+                traverser?.Add(st);
+                State(st) // end state
+        | tran =>
+            def dest = match (tran)
+                        {
+                          | [StateTransition.Transition(Guard = None) as tran]  => 
+                        // if not defined transition path create it
+                                traverser?.Log($"..and pass it by completion transition $tran");
+                                traverser?.Add(tran);
+                                TransitionExecute(tran)// if not defined transition path create it
 
-        | [StateTransition.Transition(Guard = None) as tran]  => 
-
-        // if not defined transition path create it
-                traverser?.Log($"..and pass it by completion transition $tran");
-                traverser?.Add(tran);
-                TransitionExecute(tran)// if not defined transition path create it
-
-        | tran       => 
-                traverser?.Add(tran);
-                traverser?.Log($"..and pass it by completion transitions ..$tran");
-                Choice(st.Super, tran, Some(st))
+                          | tran       => 
+                              traverser?.Add(tran);
+                              traverser?.Log($"..and pass it by completion transitions ..$tran");
+                              Choice(st, tran, Some(st))
+                        }
+            match (st.do_activity)
+            {
+              | []  => traverser?.Log($"\nNo internal activity run completion event");
+                       st.Lived = true;
+                       dest
+              | act => def act = act.Map(x => x.ChangeNeedCompletion(true));
+                       st.do_activity = act;
+                       st.Lived = true;
+                       traverser?.Add(st);
+                       traverser?.Log($"\nafter internal activity ..$act complete, run completion event, now stay in $st state");
+                       State(st) // end state
+            }
       }
 
     }

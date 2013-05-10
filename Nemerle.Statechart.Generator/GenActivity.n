@@ -21,7 +21,7 @@ namespace Nemerle.Statechart
     activity : StateAction.Do;
     map : Map[string, string];
     util : GenUtil;
-
+    
     //[FlagAccessor (Concurrently,  NoWaitCancel, NotLong)]
     flags : ActivityFlag;
 
@@ -148,10 +148,18 @@ namespace Nemerle.Statechart
     GenRunBody() : void
     {
       //init_exprs.Add(<[ $(run_act : usesite) = ;]>); // create action
+      
+      def task = if (activity.need_completion) 
+      {
+        <[ Task.Factory.StartNew($(run_action_name : usesite), $(CancelSourceName : usesite).Token).ContinueWith(CompletionAfterActivityAction) ]>
+      } else
+      {
+        <[ Task.Factory.StartNew($(run_action_name : usesite), $(CancelSourceName : usesite).Token) ]>;
+      }
       util.Define(<[decl: $(activity_start_name : usesite)() : void
                           {
                             $(CancelSourceName : usesite) = System.Threading.CancellationTokenSource();
-                            $(task_name : usesite) = Task.Factory.StartNew($(run_action_name : usesite), $(CancelSourceName : usesite).Token);
+                            $(task_name : usesite) = $task;
                           } ]>);
     }
 
@@ -215,6 +223,16 @@ namespace Nemerle.Statechart
       def act = analyser.DoActivities;
       when (!act.IsEmpty())
       {
+        def have_completion = act.Exists(_.need_completion);
+        when (have_completion)
+          {
+            init_exprs ::= <[ CompletionAfterActivityAction = Action(CompletionAfterActivity); ]>;
+            Define(<[decl: CompletionAfterActivityAction : Action[Task]; ]>);
+            Define(<[ decl: CompletionAfterActivity(_ : Task) : void
+                        {
+                          Completion()
+                        } ]>);
+          }
         foreach (act in act)
         {
           def act = GenActivity(act, action_for, util);
