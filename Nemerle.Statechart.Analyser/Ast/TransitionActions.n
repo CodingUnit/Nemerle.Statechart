@@ -35,7 +35,7 @@ namespace Nemerle.Statechart
       when (tran != null)
       {
         guard = tran.guard;
-        action = tran.action;
+        action = tran.action.MapDefault(x => x.actions, []);
       }
       To = if (tran.to != null) TransitionTarget.Create(st, tran.to) else TransitionTarget.Nowhere();
     }
@@ -90,7 +90,7 @@ namespace Nemerle.Statechart
     // state in from arrow start in diagram
     public From : FsmState {get;set;}
     public guard : option[GuardNode] = None(); 
-    public action : option[Actions];
+    public action : list[FsmAction] = [];
     public To : TransitionTarget {get;set;}
     public ActualTo : FsmState {get;set;}
     public Path : TransitionPath {get;set;}
@@ -273,24 +273,24 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | Internal(ActionNode = node) => TraverseUtils.SingleElement(node)
-          | _                           => Path.Path.Path
+          | Internal => action.Select(PathNode.Action)//TraverseUtils.SingleElement(node)
+          | _        => Path.Path.Path
         }
       }
     }
 
-    public PathNodeRecursive : IEnumerable[PathNode]
-    {
-      get
-      {
-        match (Destination)
-        {
-          | null               => PathNode
-          //| JunctionNode(node) => PathNode.Concat(node.Paths)
-          | _                  => PathNode
-        }
-      }
-    }
+    //public PathNodeRecursive : IEnumerable[PathNode]
+    //{
+    //  get
+    //  {
+    //    match (Destination)
+    //    {
+    //      | null               => PathNode
+    //      //| JunctionNode(node) => PathNode.Concat(node.Paths)
+    //      | _                  => PathNode
+    //    }
+    //  }
+    //}
 
     public Trigger : StateEvent
     {
@@ -305,32 +305,32 @@ namespace Nemerle.Statechart
       }
     }
 
-    public MaybeInlined : bool
-    {
-      get
-      {
-        def path_inlined(p)
-        {
-          def false_paths(p)
-          {
-            | PathNode.Entry
-            | Exit  => true
-            | _     => false
-          }
+    //public MaybeInlined : bool
+    //{
+    //  get
+    //  {
+    //    def path_inlined(p)
+    //    {
+    //      def false_paths(p)
+    //      {
+    //        | PathNode.Entry
+    //        | Exit  => true
+    //        | _     => false
+    //      }
 
-          !p.Exists(false_paths) && p.PathActions().IsEmpty()
-        }
+    //      !p.Exists(false_paths) && p.PathActions().IsEmpty()
+    //    }
 
-        def path_ok = path_inlined(Path.Path.Path) && Guards.IsEmpty();
-        def targ_ok = match (Destination)
-                       {
-                         | ForceStateChange                                  => false
-                        //| JunctionNode(DecisionNode(Paths = p, Guards = g)) => path_inlined(p) && g is [] 
-                         | _                                                 => true
-                       }
-        path_ok && targ_ok
-      }
-    }
+    //    def path_ok = path_inlined(Path.Path.Path) && Guards.IsEmpty();
+    //    def targ_ok = match (Destination)
+    //                   {
+    //                     | ForceStateChange                                  => false
+    //                    //| JunctionNode(DecisionNode(Paths = p, Guards = g)) => path_inlined(p) && g is [] 
+    //                     | _                                                 => true
+    //                   }
+    //    path_ok && targ_ok
+    //  }
+    //}
 
     public Guards : IEnumerable[GuardNode]
     {
@@ -361,23 +361,14 @@ namespace Nemerle.Statechart
     //  To = To.Traverse(func)
     //}
 
-
-    public ActionList : list[FsmAction]
-    {
-      get
-      {
-        action.MapDefault(_.actions, [])
-      }
-    }
-
     public Actions : IEnumerable[FsmAction]
     {
       get
       {
         match (this)
         {
-          | Internal(ActionNode = a) => a.Actions
-          | _                        => Path.Actions
+          | Internal => action
+          | _        => Path.Actions
         }
       }
     }

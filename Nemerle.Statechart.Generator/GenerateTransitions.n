@@ -35,10 +35,10 @@ namespace Nemerle.Statechart
     //  GetActions(act, action_for, inline_suppress)
     //}
 
-    GetActions(act : IEnumerable[PathNode], inline_suppress : bool = true) : PExpr
-    {
-      GetActions(act, action_for, inline_suppress)
-    }
+    //GetActions(act : IEnumerable[PathNode], inline_suppress : bool = true) : PExpr
+    //{
+    //  GetActions(act, action_for, inline_suppress)
+    //}
 
     public GetDestination(tran : TransitionDestination, ctx : GenCtx = null) : PExpr
     {
@@ -143,24 +143,24 @@ namespace Nemerle.Statechart
             def fname = $"join$n";
             if (ctx.IsInEventHandler) <[ fsm.$(fname : usesite)++;null ]> else <[ $(fname : usesite)++;null ]>
 
-        | Final(st, sr, reg, tran) => 
-            def regname = GetExecStateName(reg, ctx);
-            def target = GetExecStateName(st, ctx);
-            def trans = DefineTransBody(tran, ctx);
-            if (reg.HaveFinal)
-            {
-              def hist = reg.ParticipateInHistory;
-              def hist = GetHistoryClear(hist);
-            <[
-              $regname.$(get_sub_region_name(sr) : usesite) = $target;
-              if ($regname.IsFinal) 
-              {
-                $hist;
-                $trans
-              } else null
-            ]>
-            }
-            else <[ $target ]>
+        //| Final(st, sr, reg, tran) => 
+        //    def regname = GetExecStateName(reg, ctx);
+        //    def target = GetExecStateName(st, ctx);
+        //    def trans = DefineTransBody(tran, ctx);
+        //    if (reg.HaveFinal)
+        //    {
+        //      def hist = reg.ParticipateInHistory;
+        //      def hist = GetHistoryClear(hist);
+        //    <[
+        //      $regname.$(get_sub_region_name(sr) : usesite) = $target;
+        //      if ($regname.IsFinal) 
+        //      {
+        //        $hist;
+        //        $trans
+        //      } else null
+        //    ]>
+        //    }
+        //    else <[ $target ]>
 
         | ForceStateChange(nest) => GetForceStateChange(nest, ctx);
 
@@ -235,7 +235,8 @@ namespace Nemerle.Statechart
         {
           | FsmAction(_, "InState", [st]) => def st = GetExecStateName(st, ctx);
                                              if (ctx.IsInEventHandler) <[ fsm.IsInState($st) ]> else <[ IsInState($st) ]>  
-          | FsmAction(_, name, pars)      => def pars = pars.Map(x => <[ $x ]>);
+          | FsmAction(_, name, pars)      => //def pars = pars.Map(x => <[ $x ]>);
+                                             def pars = $[<[ $x ]>, x in pars];
                                              <[ $(name : usesite)(..$pars) ]>
         }
       }
@@ -405,11 +406,12 @@ namespace Nemerle.Statechart
 
     GetBody(acts : IEnumerable[PathNode], dest : TransitionDestination, post : TransitionPostConditions = null, ctx : GenCtx) : PExpr
     {
-      def acts = acts.NToList();
-      def body = GetActions(acts);
+      //def acts = acts.NToList();
+      def paths = acts.Map(x => GenPath(action_for, x, util));//GetActions(acts);
       def target = GetDestination(dest, ctx);
+      def body = paths.Map(x => x.ExecExpr);
       def body = <[
-                  $body;
+                    ..$body;
                     $target
                   ]>;
 
@@ -430,10 +432,10 @@ namespace Nemerle.Statechart
       def get_body(tr)
       {
         def name = tr.Name;
-        if (tr.MaybeInlined && IsEmpty(tr.PathNode))
-        {
-             <[ $(GetTransitionBody(tr, ctx)) ]>
-        } else 
+        //if (tr.MaybeInlined && IsEmpty(tr.PathNode))
+        //{
+        //     <[ $(GetTransitionBody(tr, ctx)) ]>
+        //} else 
           if (ctx.IsInEventHandler) <[ fsm.$(name : usesite)(); ]> else <[ $(name : usesite)();]>
       }
 
@@ -543,7 +545,7 @@ namespace Nemerle.Statechart
       def trans = analyser.all_transitions.NToList();
       def trans = trans.RemoveDuplicatesSort((x, y) => StateTransition.Comparer(x, y));
       def (init : list[StateTransition.Initial], trans) = trans.PartitionType();
-      def trans = trans.Filter(x => !(x.MaybeInlined && IsEmpty(x.PathNode)));
+      //def trans = trans.Filter(x => !(x.MaybeInlined && IsEmpty(x.PathNode)));
       def trans = init &+ trans;
       def body = GetTransitionFunction(trans);
       // history paths

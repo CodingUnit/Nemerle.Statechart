@@ -32,7 +32,7 @@ namespace Nemerle.Statechart
   /// </summary>
   module MemoizedCalcImpl
   {
-    
+
     public DoTransform(_ : Typer, typeBuilder : TypeBuilder, prop : ClassMember.Property, aliases : list[PExpr]) : void
     {
       def setter = prop.setter;
@@ -50,26 +50,31 @@ namespace Nemerle.Statechart
               //def field = <[ decl: mutable $(name : name) : $type ]>;
               //typeBuilder.Define(field);
             //}
-        
+
             def type = prop.returnType;
             def name = prop.Name;
             def name = $"$(name)_memoized_calc";
             match (getter.body)
             {
               | FunBody.Parsed(p) => 
-                 //def calc = Macros.NewSymbol($"$(name)calc");
-                 def bind_init = aliases.Map(x => <[ $(name : usesite).Bind(this, $(x.ToString())) ]>);
-                 def init = <[ $(name : usesite).CalcFunc = _ => $p ]>;
-                 
-                 def cons = Utils.GetCtors(typeBuilder);
-                 cons.Iter(x => x.Body = <[ $(x.Body); $init; ..$bind_init ]>);
-                 //def member = <[ decl: public $(name : usesite) : MemoizeCalc[$type] = MemoizeCalc($(calc : name)); ]>;
-                 //typeBuilder.Define(<[decl: $(calc : name)() : $type { $p }]>);
-                 
-              | _                 => ()
+                //def calc = Macros.NewSymbol($"$(name)calc");
+                def calc = $"$(name)func";
+                //_ => $p
+                typeBuilder.Define(<[decl: $(calc : usesite)() : $type { $p } ]>);
+                def bind_init = aliases.Map(x => <[ $(name : usesite).Bind(this, $(x.ToString())) ]>);
+                def init = <[ $(name : usesite) = MemoizeCalc($(calc : usesite)) ]>;
+                typeBuilder.Define(<[ decl: public $(name : usesite) : MemoizeCalc[$type]; ]>);
+                  def cons = Utils.GetCtors(typeBuilder);
+                  cons.Iter(x => x.Body = <[ $(x.Body); $init; ..$bind_init ]>);
+                //}
+
+                //$init;
+                //typeBuilder.DoBeforeFinalization(add_to_ctors);
+
+              | _                 => def member = <[ decl: public $(name : usesite) : MemoizeCalc[$type] = MemoizeCalc(); ]>;
+                                    typeBuilder.Define(member);
+
             }
-            def member = <[ decl: public $(name : usesite) : MemoizeCalc[$type] = MemoizeCalc($(prop.Name : string)); ]>;
-            typeBuilder.Define(member);
 
             getter.Body = <[ $(name : usesite).Value ]>;
             match (setter)
@@ -77,6 +82,8 @@ namespace Nemerle.Statechart
               | Some(setter) => setter.Body = <[ $(name : usesite).Value = $("value" : usesite) ]>
               | _            => ()
             }
+
+
         | _ => ()      
       }
     }

@@ -54,45 +54,19 @@ namespace Nemerle.Statechart
 
     static merge_and : PExpr * PExpr -> PExpr = (x, y) => <[ $x && $y ]>;
 
-    DefineActionEvent(name : IEnumerable[GenAction]) : void
+    DefineActionEvent(act : GenAction) : void
     {
-      def get_body(n)
+      def body_func(b)
       {
-        def act_call = util.get_action_call(n.exec_name);
-        def inline = match (n)
-                      {
-                        | GenAction(Node = PathNode.Entry(inline = lst), InlinedActions = i) 
-                        | GenAction(Node = PathNode.Exit(inline = lst), InlinedActions = i) => 
-                            def i = i.Select(x => (x.ExecExpr, false));
-                            def lst = lst.Select((x, y) => (GetActions(x, action_for, false), y));
-                            i.Concat(lst).NToList()
-
-                        | _ => [(<[ () ]>, false)]
-                      }
-
-        def (after, before) = inline.Partition((_, x) => x);
-        def after  = after.Split()[0];
-        def before = before.Split()[0];
-        
-        def after = if (analyser.FsmFlags.TestingFeatures) 
-                    {
-                      <[ OnActionExecuted($(n.exec_name)) ]> :: after
-                    } else after;
-        <[
-            {..$before}
-            $act_call;
-            {..$after}
+        <[ 
+            $b;
+            OnActionExecuted($(act.DeclName));
         ]>
       }
-
+        act.BodyFunc = body_func;
+        
+        act.Define()
       
-      def events = name.Map(x => <[decl: public event $(x.exec_name : usesite) : Action;]>);
-      def methods = name.Map(x => <[decl: $(x.end_name : usesite)() : void 
-                            {
-                                $(get_body(x))
-                            }]>);
-                            
-      Define(events + methods);
     }
 
     //DefineMethod(name : string, body : PExpr) : void
@@ -100,11 +74,11 @@ namespace Nemerle.Statechart
     //  util.DefineMethod(name, body)
     //}
 
-    DefineMethods(lst : list[string * PExpr]) : void
-    {
-      def defs = lst.Map((x, y) => <[decl: $(x : usesite)() : void {$y}]>);
-      Define(defs)
-    }
+    //DefineMethods(lst : list[string * PExpr]) : void
+    //{
+    //  def defs = lst.Map((x, y) => <[decl: $(x : usesite)() : void {$y}]>);
+    //  Define(defs)
+    //}
 
     get_history_run_name(h : PseudoStateNode.History, x : string) : string
     {
