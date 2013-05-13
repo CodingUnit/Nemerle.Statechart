@@ -15,29 +15,138 @@ namespace Nemerle.Statechart
   using TransitionTarget;
   using FsmState;
 
-  [Record]
   public class PathSequence
   {
-    [NeedChange]
-    public path : list[PathNode] = [];
+    //mutable path : List[PathNode] = List();
 
-    public this() {}
-
-    public Add(node : PathNode) : PathSequence
+    [Memoized]
+    public exit_states : list[FsmState]
     {
-      ChangePath(node :: path)
+      get
+      {
+        exit_tran_path.Map(_.st)
+      }
+    }
+    
+    exit_path   : List[TranPath.Exit]   = List();
+    act_path    : List[TranPath.Action] = List();
+    entry_path  : List[TranPath.Entry]  = List();
+    
+    [Memoized]
+    public exit_tran_path  : list[TranPath.Exit]
+    {
+      get
+      {
+        exit_path.NToList()
+      }
+    }
+    
+    [Memoized]
+    public actions_path    : list[TranPath.Action]
+    {
+      get
+      {
+        act_path.NToList()
+      }
+    }
+    
+    [Memoized]
+    public entry_tran_path : list[TranPath.Entry]
+    {
+      get
+      {
+        entry_path.NToList()
+      }
+    }
+    
+    [Memoized]
+    public action_nodes : list[PathNode]
+    {
+      get
+      {
+        actions_path.SelectMany(_.nodes).NToList()
+      }
+    }
+    
+    public entry_states : list[FsmState]
+    {
+      get
+      {
+        entry_tran_path.Map(_.st)
+      }
+    }
+    
+    //public this() {}
+
+    public AddEntry(node : PathNode) : void
+    {
+      | PathNode(state = st) =>
+      
+        match (entry_path.Find(x => x.st == st))
+        {
+          | null => entry_path.Add(TranPath.Entry([node], st))
+          | ep   => ep.nodes = ep.nodes.Append(node).NToList();
+        }
     }
 
-    public Add(nodes : IEnumerable[PathNode]) : PathSequence
+    public AddEntry(st : FsmState, node : IEnumerable[PathNode]) : void
     {
-      ChangePath(path.HeadAppend(nodes))
+        entry_path.Add(TranPath.Entry(node.NToList(), st))
     }
 
+    public AddEntry(path : IEnumerable[TranPath.Entry]) : void
+    {
+        entry_path.AddRange(path)
+    }
+    
+    public AddExit(st : FsmState, node : IEnumerable[PathNode]) : void
+    {
+        exit_path.Add(TranPath.Exit(node.NToList(), st))
+    }
+    
+    public AddExit(path : IEnumerable[TranPath.Exit]) : void
+    {
+        exit_path.AddRange(path)
+    }
+    
+    public AddAction(node : IEnumerable[PathNode]) : void
+    {
+        act_path.Add(TranPath.Action(node.NToList()))
+    }
+    
+    public AddAction(node : IEnumerable[TranPath.Action]) : void
+    {
+        act_path.AddRange(node)
+    }
+    //public Add(nodes : IEnumerable[PathNode]) : void
+    //{
+    //  path.AddRange(nodes)
+    //}
+
+    [Memoized]
+    public exit_nodes : list[PathNode]
+    {
+      get
+      {
+        exit_tran_path.SelectMany(_.nodes).NToList()
+      }
+    }
+    
+    [Memoized]
+    public entry_nodes : list[PathNode]
+    {
+      get
+      {
+        entry_tran_path.SelectMany(_.nodes).NToList()
+      }
+    }
+    
+    [Memoized]
     public Path : IEnumerable[PathNode]
     {
       get
       {
-        path.Rev()
+        exit_nodes + action_nodes + entry_nodes
       }
     }
   }
@@ -48,7 +157,7 @@ namespace Nemerle.Statechart
   public partial class TransitionPath
   {
     [Accessor]
-    mutable path : PathSequence = PathSequence();
+    path : PathSequence = PathSequence();
     public recursive : bool;
     public traverser : TransitionTraverser;
 
@@ -56,15 +165,15 @@ namespace Nemerle.Statechart
     mutable transition : StateTransition;
     public analyser : FsmAnalyser;
 
-    AddNode(node : PathNode) : void
+    AddEntry(node : PathNode) : void
     {
-      path = path.Add(node)
+      path.AddEntry(node)
     }
 
-    AddNode(node : IEnumerable[PathNode]) : void
-    {
-      path = path.Add(node)
-    }
+    //AddNode(node : IEnumerable[PathNode]) : void
+    //{
+    //  path.Add(node)
+    //}
 
 #if 0        
     TraverseChoice(j : PseudoStateNode, tran : StateTransition) : TransitionDestination
@@ -190,7 +299,7 @@ namespace Nemerle.Statechart
           // if not exit from region
       | Transition(WithinRegion = true)         => TraverseWithinRegionTransition(tran)
           // if go to join pseudo state
-      | Transition(To = TransitionTarget.PseudoState(node = Join as j)) => TraverseJoinTransition(j, tran)
+      //| Transition(To = TransitionTarget.PseudoState(node = Join as j)) => TraverseJoinTransition(j, tran)
     // | Transition(IsCompletion = true)         => tran.
           // if from state in orthogonal region, and transition begins in orthogonal regions boundary or upper
       | _ 

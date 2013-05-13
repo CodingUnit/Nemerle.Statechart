@@ -54,6 +54,66 @@ namespace Nemerle.Statechart
 
     static merge_and : PExpr * PExpr -> PExpr = (x, y) => <[ $x && $y ]>;
 
+    public static GetExecStateName(st : string, ctx : GenCtx) : PExpr
+    {
+      def name = $"State$st";
+      if (ctx.IsInEventHandler) <[ $(st : usesite)() ]> else <[ $(name : usesite) ]>
+    }
+    
+    public static GetExecStateName(st : FsmState, ctx : GenCtx) : PExpr
+    {
+      def name = $"State$st";
+      if (ctx.IsInEventHandler)
+        if (st.type is StateType.Region) <[ fsm.$(name : usesite) ]> else <[ $(st.Name : usesite)() ]>
+       else <[ $(name : usesite) ]>
+    }
+    
+    public static GetSubRegionsExit(reg : IEnumerable[FsmState]) : string
+    {
+      def pat = FsmState.get_pattern(reg);
+      $"Exit$pat"
+    }
+    
+    public static get_sub_region_name(r : FsmState) : string
+    {
+      $"cur_state$(r.Index)"
+    }
+
+    GetForceStateChange(nest : TransitionDestination, ctx : GenCtx) : PExpr
+    {
+      def st = nest.ConcreteTo;
+      def body = GetDestination(nest, ctx);
+      match (nest)
+      {
+        | ForceStateChange(n) => GetForceStateChange(n, ctx)
+        | State(state = st) when st.PartOfRegion.HasValue => 
+            
+                def r = st.PartOfRegion.Value;
+                def sr = st.PartOfSubRegion.Value;
+            def reg = GetExecStateName(r, ctx);
+            def sreg = get_sub_region_name(sr);
+            <[ def st = $body;$reg.$(sreg : usesite) = st; st ]>
+            
+            
+        | Fork
+        | SubRegion
+        | Region
+        | State => if (st != null) 
+                   if (ctx.IsInEventHandler) <[ fsm.Switch($body) ]> else
+                    <[ Switch($body) ]> else 
+                    if (ctx.IsInEventHandler) <[ fsm.TrySwitch($body) ]> else <[ TrySwitch($body) ]>
+        | Terminate => <[ _ = $body; null]>
+        | Join
+        | Final(region = st) when (st.HaveFinal) 
+        | TransitionExecute
+        //| JunctionNode
+        | NoStateChange => body
+        | _ => if (st != null)  if (ctx.IsInEventHandler) <[ fsm.Switch($body) ]> else
+                    <[ Switch($body) ]> else 
+                    if (ctx.IsInEventHandler) <[ def st = $body;fsm.TrySwitch(st) ]> else <[ def st = $body;TrySwitch(st) ]>
+      }
+    }
+    
     DefineActionEvent(act : GenAction) : void
     {
       def body_func(b)

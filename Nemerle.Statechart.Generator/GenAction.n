@@ -243,10 +243,12 @@ namespace Nemerle.Statechart
 
   }
   
+  
+  
   class GenPath
   {
     map  : Map[string, string];
-    node : PathNode;
+    public node : PathNode;
     util : GenUtil;
     
     public this(map : Map[string, string], node : PathNode, util : GenUtil) 
@@ -262,7 +264,7 @@ namespace Nemerle.Statechart
     }
     
     [Memoized]
-    action_name : FsmAction
+    public action_name : FsmAction
     {
       get
       {
@@ -284,12 +286,21 @@ namespace Nemerle.Statechart
     }
     
     [Memoized]
-    gen_action : GenAction
+    public gen_action : GenAction
     {
       get
       {
         GenAction(action_name, map, util)
       }
+    }
+    
+    public static GetTranActions(this lst : IEnumerable[GenPath]) : IEnumerable[GenPath]
+    {
+      def (exit, other) = lst.NToList().Partition(x => x.node is PathNode.Exit);
+      def (entry, other) = other.Partition(x => x.node is PathNode.Entry);
+      def (act, other) = other.Partition(x => x.node is PathNode.Action);
+      when (!other.IsEmpty()) throw InvalidOperationException("unknown PathKind");
+      exit.Concat(act).Concat(entry)
     }
     //public GetActions(node : IEnumerable[PathNode]) : PExpr
     //{
@@ -310,107 +321,15 @@ namespace Nemerle.Statechart
       {
         match (node)
         {
-          | Action                                 
+          | Action
           | Entry                         
           | Exit       => gen_action.ExecExpr
           | _          => gen_action.DeclExecExpr
         //| Sequence(lst)                               => lst.SelectMany(CreateActions(_, map))
         //| n                                             => TraverseUtils.SingleElement(FsmAction(-1, n.ToString(), []))
         }
-        //match (node)
-        //{
-        //| ClearHistory      => gen_act.ExecExpr
-        //| SaveHistory(hist) => gen_act.ExecExpr
-        //| RunDoActivity as n
-        //| StopDoActivity as n => if (supress_inline) <[ () ]> else <[ $($"$n" : usesite)() ]>;
-        //| RegionExit([], reg) => def reg_state = GetExecStateName(reg, GenCtx.Normal());
-        //                         <[ $reg_state.Exit(this) ]>
-        //| RegionExit(st, reg) => def reg_state = GetExecStateName(reg, GenCtx.Normal());
-        //                         def reg_exit = GetSubRegionsExit(st);
-        //                         <[ $reg_state.$(reg_exit : usesite)(this) ]>
-        //| _  => def act =  GenAction.CreateActions(n, map);
-        //        def act = act.Map(x => x.end_name);
-        //        def acts = act.Map(x => <[$(x : usesite)();]>);
-        //        <[ {..$acts} ]>
-        //      }
       }
     }
   }
   
-  public partial class StaticGenerator
-  {
-    public static GetExecStateName(st : string, ctx : GenCtx) : PExpr
-    {
-      def name = $"State$st";
-      if (ctx.IsInEventHandler) <[ $(st : usesite)() ]> else <[ $(name : usesite) ]>
-    }
-    
-    public static GetExecStateName(st : FsmState, ctx : GenCtx) : PExpr
-    {
-      def name = $"State$st";
-      if (ctx.IsInEventHandler)
-        if (st.type is StateType.Region) <[ fsm.$(name : usesite) ]> else <[ $(st.Name : usesite)() ]>
-       else <[ $(name : usesite) ]>
-    }
-    
-    public static GetSubRegionsExit(reg : IEnumerable[FsmState]) : string
-    {
-      def pat = FsmState.get_pattern(reg);
-      $"Exit$pat"
-    }
-    
-    //public static IsEmpty(node : IEnumerable[PathNode]) : bool
-    //{
-    //  def implicit = node.All(x => x is Exit || x is Entry);//node is Exit || node is Entry;
-    //  node.PathActions().IsEmpty() && !implicit
-    //}
-        
-    
-    public static get_sub_region_name(r : FsmState) : string
-    {
-      $"cur_state$(r.Index)"
-    }
-
-    //public GetActions(node : PathNode) : PExpr
-    //{
-    //  //def node = node.Unsequenced;
-    //  GetActions(TraverseUtils.SingleElement(node))
-    //}
-      
-    GetForceStateChange(nest : TransitionDestination, ctx : GenCtx) : PExpr
-    {
-      def st = nest.ConcreteTo;
-      def body = GetDestination(nest, ctx);
-      match (nest)
-      {
-        | ForceStateChange(n) => GetForceStateChange(n, ctx)
-        | State(state = st) when st.PartOfRegion.HasValue => 
-            
-                def r = st.PartOfRegion.Value;
-                def sr = st.PartOfSubRegion.Value;
-            def reg = GetExecStateName(r, ctx);
-            def sreg = get_sub_region_name(sr);
-            <[ def st = $body;$reg.$(sreg : usesite) = st; st ]>
-            
-            
-        | Fork
-        | SubRegion
-        | Region
-        | State => if (st != null) 
-                   if (ctx.IsInEventHandler) <[ fsm.Switch($body) ]> else
-                    <[ Switch($body) ]> else 
-                    if (ctx.IsInEventHandler) <[ fsm.TrySwitch($body) ]> else <[ TrySwitch($body) ]>
-        | Terminate => <[ _ = $body; null]>
-        | Join
-        | Final(region = st) when (st.HaveFinal) 
-        | TransitionExecute
-        //| JunctionNode
-        | NoStateChange => body
-        | _ => if (st != null)  if (ctx.IsInEventHandler) <[ fsm.Switch($body) ]> else
-                    <[ Switch($body) ]> else 
-                    if (ctx.IsInEventHandler) <[ def st = $body;fsm.TrySwitch(st) ]> else <[ def st = $body;TrySwitch(st) ]>
-      }
-    }
-      
-  }
 }
