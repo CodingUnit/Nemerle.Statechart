@@ -1,0 +1,237 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+
+namespace Nemerle.Statechart
+{
+ class GenPath
+  {
+    map  : Map[string, string];
+    public node : PathNode;
+    util : GenUtil;
+    
+    public this(map : Map[string, string], node : PathNode, util : GenUtil) 
+    {
+      this.map = map;
+      this.node = node;
+      this.util = util
+    }
+    
+    action(name : string) : FsmAction
+    {
+      FsmAction(-1, name, [])
+    }
+    
+    [Memoized]
+    public action_name : FsmAction
+    {
+      get
+      {
+        match (node)
+        {
+          | ClearHistory(hist)                          => def name = hist.HistoryName();
+                                                           action($"$(name)Clear")
+          | SaveHistory(hist)                           => def name = hist.HistoryName();
+                                                           action($"$(name)Save")
+          | Action(act)                                 => act
+          | Entry(action = act)                         => act//action($"Entry$st")
+          | Exit(action = act)                          => act//action($"Exit$st")
+          | RunDoActivity(state = st)                   => action($"DoActivity$(st)Run")
+          | StopDoActivity(state = st)                  => action($"DoActivity$(st)Stop")
+        //| Sequence(lst)                               => lst.SelectMany(CreateActions(_, map))
+        //| n                                             => TraverseUtils.SingleElement(FsmAction(-1, n.ToString(), []))
+        }
+      }
+    }
+    
+    [Memoized]
+    public node_name : FsmAction
+    {
+      get
+      {
+        match (node)
+        {
+          | Entry(state = st)                         => action($"Entry$st")
+          | Exit(state = st)                          => action($"Exit$st")
+          | _                                         => action_name
+        //| Sequence(lst)                               => lst.SelectMany(CreateActions(_, map))
+        //| n                                             => TraverseUtils.SingleElement(FsmAction(-1, n.ToString(), []))
+        }
+      }
+    }
+    
+    [Memoized]
+    public gen_action : GenAction
+    {
+      get
+      {
+        GenAction(action_name, map, util)
+      }
+    }
+    
+    [Memoized]
+    public node_action : GenAction
+    {
+      get
+      {
+        GenAction(node_name, map, util)
+      }
+    }
+    //public GetActions(node : IEnumerable[PathNode]) : PExpr
+    //{
+    //  def node = node.Exclude(_ is PathNode.Empty);
+      
+    //  def get_act(n)
+    //  {
+        
+    //  }
+      
+    //  def body = node.Map(get_act);
+    //  <[ {..$body} ]>
+    //}
+    
+    public ExecExpr : PExpr
+    {
+      get
+      {
+        match (node)
+        {
+          | Action
+          | Entry                         
+          | Exit       => gen_action.ExecExpr
+          | _          => gen_action.DeclExecExpr
+        //| Sequence(lst)                               => lst.SelectMany(CreateActions(_, map))
+        //| n                                             => TraverseUtils.SingleElement(FsmAction(-1, n.ToString(), []))
+        }
+      }
+    }
+    
+    public TranExecExpr : PExpr
+    {
+      get
+      {
+        match (node)
+        {
+          | Action
+          | Entry                         
+          | Exit       => node_action.ExecExpr
+          | _          => gen_action.DeclExecExpr
+        //| Sequence(lst)                               => lst.SelectMany(CreateActions(_, map))
+        //| n                                             => TraverseUtils.SingleElement(FsmAction(-1, n.ToString(), []))
+        }
+        
+      }
+    }
+  }
+  
+  
+  [Record]
+  class GenTranPath
+  {
+    public seq : PathSequence;
+    map  : Map[string, string];
+    util : GenUtil;
+    
+    exit_node(st : FsmState) : GenPath
+    {
+      GenPath(map, PathNode.Exit(st, FsmAction.Empty), util)
+    }
+    
+    entry_node(st : FsmState) : GenPath
+    {
+      GenPath(map, PathNode.Entry(st, FsmAction.Empty), util)
+    }
+    
+    [Memoized]
+    tran_path : list[GenPath]
+    {
+      get
+      {
+        exit_nodes + action_path + entry_nodes
+      }
+    }
+    
+    [Memoized]
+    exit_nodes : list[GenPath]
+    {
+      get
+      {
+        exit_path.Map((x, _) => GenPath(map, PathNode.Exit(x, FsmAction.Empty), util))
+      }
+    }
+    
+    [Memoized]
+    entry_nodes : list[GenPath]
+    {
+      get
+      {
+        entry_path.Map((x, _) => GenPath(map, PathNode.Entry(x, FsmAction.Empty), util))
+      }
+    }
+    
+    [Memoized]
+    exit_path   : list[FsmState * list[GenPath]]
+    {
+      get
+      {
+        seq.exit_tran_path.Map(get_path)
+      }
+    }
+    
+    [Memoized]
+    entry_path   : list[FsmState * list[GenPath]]
+    {
+      get
+      {
+        seq.entry_tran_path.Map(get_path)
+      }
+    }
+    
+    [Memoized]
+    action_path   : list[GenPath]
+    {
+      get
+      {
+        seq.actions_path.SelectMany(_.nodes).Map(GenPath(map, _, util))
+      }
+    }
+    
+    get_path(path : TranPath) : FsmState * list[GenPath]
+    {
+      | Exit(st = st, nodes = n) 
+      | Entry(st = st, nodes = n) => def nodes = n.Map(x => GenPath(map, x, util));
+                                     (st, nodes)
+      | Action(nodes = n)         => def nodes = n.Map(x => GenPath(map, x, util));
+                                     (null, nodes)
+    }
+    
+    public TranBody : PExpr
+    {
+      get
+      {
+        def body = tran_path.Map(x => x.TranExecExpr);
+        <[ {..$body } ]>
+      }
+    }
+    
+    DefineHandler(act : GenAction, body : list[GenPath]) : void
+    {
+      def body = body.Map(x => x.ExecExpr);
+      act.BodyFunc = x => <[ $x; ..$body;]>;
+      act.Define()
+    }
+    
+    public DefineHandlers() : void
+    {
+      exit_path.Iter((x, y) => DefineHandler(exit_node(x).node_action, y));
+      entry_path.Iter((x, y) => DefineHandler(entry_node(x).node_action, y));
+    }
+  }
+}

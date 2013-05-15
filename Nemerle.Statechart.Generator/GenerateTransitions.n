@@ -399,21 +399,21 @@ namespace Nemerle.Statechart
 
     GetBody(tran : StateTransition, ctx : GenCtx) : PExpr
     {
-      | (StateTransition(PathNode = acts, Destination = dest, PostConditions = post), _) =>
+      | (StateTransition(Destination = dest, PostConditions = post), _) =>
 
-          GetBody(acts, dest, post, ctx);
+          GetBody(tran.Path.Path, dest, post, ctx);
     }
 
-    GetBody(acts : IEnumerable[PathNode], dest : TransitionDestination, post : TransitionPostConditions = null, ctx : GenCtx) : PExpr
+    GetBody(acts : PathSequence, dest : TransitionDestination, post : TransitionPostConditions = null, ctx : GenCtx) : PExpr
     {
       //def acts = acts.NToList();
       def target = GetDestination(dest, ctx);
       
-      def paths = acts.Map(x => GenPath(action_for, x, util));//GetActions(acts);
-      def acts = paths.GetTranActions();
-      def body = acts.Map(x => x.ExecExpr);
+      def path = GenTranPath(acts, action_for, util);//.Map(x => GenPath(action_for, x, util));//GetActions(acts);
+      //def acts = paths.GetTranActions();
+      def body = path.TranBody;//Map(x => x.ExecExpr);
       def body = <[
-                    ..$body;
+                    $body;
                     $target
                   ]>;
 
@@ -494,37 +494,6 @@ namespace Nemerle.Statechart
     DefineTransitions(ty : TypeBuilder, st : FsmState) : void
     {
       def defs = 
-
-
-                      //def from_top = <[decl:
-                      //                 public override PathFromTop(fsm : $(ChartName : usesite)) : State {$(DefineTransBody([st.PathFromOut], GenCtx.InEventHandler()))}
-                      //               ]>;
-                      //def def_tran_body(tr)
-                      //{
-                      //  | StateTransition(Trigger = StateEvent(Name = n)) :: _ =>
-
-                      //      def body = DefineTransBody(tr, GenCtx.InEventHandler());
-                      //      if (st.proc_events.Exists(_ == n))
-                      //      {
-                      //    <[ 
-                      //        machine.$(n : usesite);
-                      //        when (machine.IsEventDeclined) $body
-                      //    ]>
-                      //      } else body;
-
-                      //  | _ => DefineTransBody(tr, GenCtx.InEventHandler())
-                      //}
-
-                      //if (st.Lived)
-                      // {
-                      //   st.work_transition_group.MapToList((x, y)  => <[decl: 
-                      //     public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(def_tran_body(y.NToList()))}]>)
-                      // } else [];
-                      //from_top :: defs
-
-                      //def from_top = <[decl:
-                      //                 public override PathFromTop(fsm : $(ChartName : usesite)) : State {$(DefineTransBody([st.PathFromOut], GenCtx.InEventHandler()))}
-                      //               ]>;
                   if (st.IsTopState) 
                   {
                     analyser.Events.Map(x => <[decl: public virtual $(x : usesite)(_ : $(ChartName : usesite)) : State {null}]>);
@@ -544,12 +513,11 @@ namespace Nemerle.Statechart
 
     DefineTransitionActions() : void
     {
-      def trans = analyser.all_transitions.NToList();
-      def trans = trans.RemoveDuplicatesSort((x, y) => StateTransition.Comparer(x, y));
-      def (init : list[StateTransition.Initial], trans) = trans.PartitionType();
-      //def trans = trans.Filter(x => !(x.MaybeInlined && IsEmpty(x.PathNode)));
-      def trans = init &+ trans;
-      def body = GetTransitionFunction(trans);
+      //def trans = analyser.all_transitions.NToList();
+      //def trans = trans.RemoveDuplicatesSort((x, y) => StateTransition.Comparer(x, y));
+      //def (init : list[StateTransition.Initial], trans) = trans.PartitionType();
+      //def trans = init &+ trans;
+      def body = GetTransitionFunction(transitions);
       // history paths
       def body_name = analyser.HistoryPaths.FoldLeft([], (x, a) => x.Value.FoldLeft(a, (x, a) => (x.Name, x.transition) :: a));//.Map((x, y) => (x.Name(), y.Map(x => x.transition.Value)));
       //def body = body_name.Map((x, y) => );
