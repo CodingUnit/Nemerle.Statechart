@@ -38,14 +38,14 @@ namespace Nemerle.Statechart
 
     //public mutable transitions : Map[string, StateTransition];
 
-    public trans_paths : IEnumerable[TransitionPaths]
-    {
-      get
-      {
-        States.Select(_.paths).Where(_ != null)
-        //$[x.paths, x in States, x.paths != null]
-      }
-    }
+    //public trans_paths : IEnumerable[TransitionPaths]
+    //{
+    //  get
+    //  {
+    //    States.Select(_.paths).Where(_ != null)
+    //    //$[x.paths, x in States, x.paths != null]
+    //  }
+    //}
 
     public mutable HistoryPaths : Hashtable[FsmState, list[HistoryPath]]; // paths from outer history
 
@@ -66,16 +66,49 @@ namespace Nemerle.Statechart
     //}
 
     [Memoized]
-    public actions : list[PathNode]
+    public actions : list[FsmAction]
     {
       get
       {
-        def tran_act = all_transitions.SelectMany(x => x.Path.Path.Path);
-        //def state_act = LivedStates.SelectMany(_.actions);
+        def st_act = States.SelectMany(_.actions);
+        def tr_act = AllTransitions.SelectMany(_.action);
+        st_act.Concat(tr_act).RemoveDuplicatesSort(_.ToString())
+      }
+    }
+    
+    [Memoized]
+    public all_actions : list[PathNode]
+    {
+      get
+      {
+        def tran_act = tran_paths.SelectMany(_.Path);
         tran_act.RemoveDuplicatesSort(_.ToString())
       }
     }
 
+    [Memoized]
+    public tran_paths : list[PathSequence]
+    {
+      get
+      {
+        all_transitions.Map(x => x.Path.Path)
+      }
+    }
+    
+    [Memoized]
+    public tran_path_nodes : list[TranPath]
+    {
+      get
+      {
+        def ex = tran_paths.SelectMany(x => x.exit_tran_path);
+        def en = tran_paths.SelectMany(x => x.entry_tran_path);
+        def ex = ex.RemoveDuplicatesSort(x => x.state.ToString());
+        def en = en.RemoveDuplicatesSort(x => x.state.ToString());
+        ex.Concat(en).NToList()
+      }
+    }
+    
+    
     //public action_node_all : IEnumerable[PathNode]
     //{
     //  get
