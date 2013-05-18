@@ -36,6 +36,22 @@ namespace Nemerle.Statechart
       }
     }
 
+    public States : array[FsmState]
+    {
+      get
+      {
+        statemap.States
+      }
+    }
+
+    public StateTransitions : array[StateTransition]
+    {
+      get
+      {
+        statemap.Transitions
+      }
+    }
+    
     //public mutable transitions : Map[string, StateTransition];
 
     //public trans_paths : IEnumerable[TransitionPaths]
@@ -71,7 +87,7 @@ namespace Nemerle.Statechart
       get
       {
         def st_act = States.SelectMany(_.actions);
-        def tr_act = AllTransitions.SelectMany(_.action);
+        def tr_act = StateTransitions.SelectMany(_.action);
         st_act.Concat(tr_act).RemoveDuplicatesSort(_.ToString())
       }
     }
@@ -157,25 +173,23 @@ namespace Nemerle.Statechart
     {
       get
       {
-        AllTransitions.Where(_ is StateTransition.Initial)
+        States.FilterValues(x => x.initial_tran)
       }
     }
     
-    used_states_initial_tran : IEnumerable[StateTransition]
-    {
-      get
-      {
-        InitialTran.Where(x => Used[x])
-      }
-    }
+    //used_states_initial_tran : IEnumerable[StateTransition]
+    //{
+    //  get
+    //  {
+    //    InitialTran.Where(x => Used[x])
+    //  }
+    //}
 
     not_used_states_initial_tran : IEnumerable[StateTransition]
     {
       get
       {
-        //def not_used = InitialTran.Where(x => !Used[x]);
         InitialTran.Where(x => !Used[x]);
-        //not_used.Exclude(x => x.Value.clones.Exists(x => Used[x]));
       }
     }
 
@@ -474,7 +488,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def guards = AllTransitions.SelectMany(x => x.Guards);// transitions.Values().Concat(initial_transitions.Values());// |>< Guards;
+        def guards = StateTransitions.SelectMany(x => x.Guards);// transitions.Values().Concat(initial_transitions.Values());// |>< Guards;
         guards.RemoveDuplicatesSort(_.Name)
       }
     }
@@ -491,7 +505,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        AllTransitions.Where(x => Used[x])
+        StateTransitions.Where(x => Used[x])
       }
     }
 
@@ -509,16 +523,17 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def not_used = AllTransitions.Where(x => !Used[x]);
+        def not_used = StateTransitions.Where(x => !Used[x]);
         not_used.Where(x => x.From.Lived);
       }
     }
 
+    [Memoized]
     public all_transitions : IEnumerable[StateTransition]
     {
       get
       {
-        def trans = AllTransitions + history_default_transitions + special_transitions;
+        def trans = StateTransitions + history_default_transitions + special_transitions + InitialTran;
         trans.Where(_.Used)
       }
     }

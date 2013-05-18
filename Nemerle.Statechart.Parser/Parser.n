@@ -14,7 +14,7 @@ namespace Nemerle.Statechart
 
   using StateNode;  
   //using TransitionNode;
-  using PseudoStateAstNode;
+  using PseudoStateModelNode;
   using GuardNode;
   using ListUtils;
 
@@ -44,14 +44,14 @@ namespace Nemerle.Statechart
           | "H"  with hist = HistoryType.Shallow
           | "h"  with hist = HistoryType.Shallow
           | "h*" with hist = HistoryType.Deep
-          | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateAstNode.History(pos, hist, None()))
+          | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, hist, None()))
           | "final"
           | "$0"       => TargetType.Final(pos)
           | "self"
           | "@"        => TargetType.Self(pos)
           | "terminate"
           | "x"
-          | "X"        => TargetType.PseudoState(name.pos, PseudoStateAstNode.Terminate(0))
+          | "X"        => TargetType.PseudoState(name.pos, PseudoStateModelNode.Terminate(0))
           | x when (x.IndexOf('(') != -1 ) => 
               def n = string(n.Explode().Except(['(', ')']).ToArray());
               TargetType.Named(name.pos, n)
@@ -75,7 +75,7 @@ namespace Nemerle.Statechart
 
     default_transition(act : option[Actions], target : TargetType) : StateNode.Transition
     {
-      StateNode.Transition(target.pos, Enumerable.Empty(), None(), act, target, TransitionType.Default)
+      StateNode.Transition(target.pos, [], None(), act, target, TransitionType.Local)
     }
 
     events(id : NToken, evt : List[NToken]) : List[TransitionEvent]
@@ -87,9 +87,15 @@ namespace Nemerle.Statechart
     simple_transition(evt : List[TransitionEvent], guard : option[GuardNode], act : option[Actions], to : TargetType) : StateNode.Transition
     {
       def pos = evt.First().pos;
-      Transition(pos, evt, guard, act, to, TransitionType.Transition)
+      Transition(pos, evt.NToList(), guard, act, to, TransitionType.Transition)
     }
 
+    local_trans(evt : List[TransitionEvent], guard : option[GuardNode], act : option[Actions], to : TargetType) : StateNode.Transition
+    {
+      def pos = evt.First().pos;
+      Transition(pos, evt.NToList(), guard, act, to, TransitionType.Local)
+    }
+    
     simple_attrs(attr : List[List[NToken]]) : List[NToken]
     {
       attr.Flatten().ToList()
@@ -142,12 +148,12 @@ namespace Nemerle.Statechart
       Entry(key.StartPos, attr, acts)
     }
 
-    exit(attr : option[List[NToken]], key : NToken,  acts : option[Actions]) : Exit
+    exit(attr : option[List[NToken]], key : NToken,  acts : option[Actions]) : Entry
     {
       def acts = acts.WithDefault(Actions(key.StartPos, []));
       def attr = attr.WithDefault(Enumerable.Empty());
       def attr = get_action_attr(attr);
-      Exit(key.StartPos, attr, acts)
+      Entry(key.StartPos, attr, acts)
     }
 
     get_action_attr(attr : IEnumerable[NToken]) : ActionFlags
@@ -184,12 +190,14 @@ namespace Nemerle.Statechart
 
     internal_trans(evt : NToken, guard : option[GuardNode], acts : Actions) : StateNode.Transition
     {
-      Transition(evt.StartPos, create_event(evt) :: [], guard, Some(acts), null, TransitionType.Internal)
+      Transition(evt.StartPos, create_event(evt) :: [], guard, Some(acts), TargetType.NoTarget(evt.StartPos), TransitionType.Internal)
     }
 
-    initial_trans(name : NToken, guard : option[GuardNode], act : option[Actions], to : TargetType) : StateNode.Transition
+    initial(name : NToken, guard : option[GuardNode], act : option[Actions], to : TargetType) : StateNode.PseudoState
     {
-      Transition(name.StartPos, Enumerable.Empty(), guard, act, to, TransitionType.Initial)
+      def pos = name.StartPos;
+      //Enumerable.Empty(), guard, act, to, TransitionType.Initial
+      PseudoState(pos, PseudoStateModelNode.Initial(pos, StateNode.Transition(pos, [], guard, act, to, TransitionType.Local)))
     }
 
     flags(s : NToken, tok : List[NToken]) : StateNode
@@ -204,7 +212,7 @@ namespace Nemerle.Statechart
                       | "auto_initial"                 => MachineFlag.AutoInitial
                       | "local_default"                => MachineFlag.LocalDefault
                       | "transition_completed_events"  => MachineFlag.TransitionCompleted
-                      | "completion_strict"            => MachineFlag.CompletionStrict
+                      //| "completion_strict"            => MachineFlag.CompletionStrict
                       | "only_analyse"                 => MachineFlag.OnlyAnalyse
                       | "auto_entry_exit"              => MachineFlag.AutoEntryExitActions
                       | "testing"                      => MachineFlag.TestingFeatures
@@ -244,12 +252,12 @@ namespace Nemerle.Statechart
 
     terminate_node(tok : NToken) : PseudoState
     {
-      StateNode.PseudoState(tok.StartPos, PseudoStateAstNode.Terminate(tok.StartPos))
+      StateNode.PseudoState(tok.StartPos, PseudoStateModelNode.Terminate(tok.StartPos))
     }
 
     join(tok : NToken, name : NToken, target : TargetType) : PseudoState
     {
-      StateNode.PseudoState(tok.StartPos, PseudoStateAstNode.Join(tok.StartPos, GetText(name), target))
+      StateNode.PseudoState(tok.StartPos, PseudoStateModelNode.Join(tok.StartPos, GetText(name), target))
     }
 
     //junction_target(node : List[TargetType]) : TargetType

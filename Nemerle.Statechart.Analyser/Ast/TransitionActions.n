@@ -16,7 +16,7 @@ namespace Nemerle.Statechart
   /// <summary>
   /// Description of TransitionActions.
   /// </summary>
-  public partial variant StateTransition
+  public partial class StateTransition
   {
 
     public this(an : FsmAnalyser) 
@@ -24,33 +24,41 @@ namespace Nemerle.Statechart
       this.analyser = an
     }
 
-
-    public this(st : FsmState, tran : StateNode.Transition)
+    public this(st : PseudoStateNode, evt : option[TransitionEvent], tran : StateNode.Transition)
+    {
+      this(st.state, evt, tran);
+      FromPseudo = Some(st);
+    }
+    
+    public this(st : FsmState, evt : option[TransitionEvent], tran : StateNode.Transition)
     {
       def an = st.analyser;
       this.analyser = an;
       Source = st;
       From = st;
+      trigger = evt.Map(StateEvent);
+      type = tran.type;
       node = tran;
       when (tran != null)
       {
         guard = tran.guard;
-        action = tran.action.MapDefault(x => x.actions, []);
+        action = tran.action.MapDefault(_.actions, []);
       }
       To = if (tran.to != null) TransitionTarget.Create(st, tran.to) else TransitionTarget.Nowhere();
     }
 
-    public this(st : FsmState, to : FsmState)
+    public this(st : FsmState, to : FsmState, type : TransitionType)
     {
-      this(st, TransitionTarget.State(to))//TransitionTarget.State(st.analyser, to))
+      this(st, TransitionTarget.State(to), type)//TransitionTarget.State(st.analyser, to))
     }
 
-    public this(st : FsmState, to : TransitionTarget)
+    public this(st : FsmState, to : TransitionTarget, type : TransitionType)
     {
       this(st.analyser);
       //From = st;
       To = to;
       From = st;
+      this.type = type;
       Source = From;
     }
 
@@ -60,53 +68,69 @@ namespace Nemerle.Statechart
       To = tran.To;
       guard = tran.guard;
       action = tran.action;
-      omit_guard = tran.omit_guard;
+      //omit_guard = tran.omit_guard;
       From = tran.From;
       Source = tran.Source;
-      Local = tran.Local;
       Path = tran.Path;
       Destination = tran.Destination;
       ActualTo = tran.ActualTo;
       node = tran.node;
       Path = tran.Path;
+      type = tran.type;
       executeCheck = tran.executeCheck;
       NeedGuardedName = tran.NeedGuardedName;
+      trigger = tran.trigger;
+      FromPseudo = tran.FromPseudo;
+      internal_kind = tran.internal_kind;
     }
 
-    //[NeedChange]
-    //[Accessor]
-    //public num : int;
-
-    //public From : FsmState;
-
-    //public static Change(this changed : StateTransition) : void
-    //{
-    //  changed.Source.Update(x => x.UpdateTransition(changed))
-    //}
     public node : StateNode.Transition;
 
+    public type : TransitionType;
+    public trigger : option[StateEvent];
     // state in from start transition in real time app
     public Source : FsmState {get;set;}
     // state in from arrow start in diagram
     public From : FsmState {get;set;}
     public guard : option[GuardNode] = None(); 
     public action : list[FsmAction] = [];
+    
+    
     public To : TransitionTarget {get;set;}
+    public FromPseudo : option[PseudoStateNode] = None();// {get;set;default None()}
+
+    public internal_kind : TransitionKind {get;set;}
+    
     public ActualTo : FsmState {get;set;}
     public Path : TransitionPath {get;set;}
     public Destination : TransitionDestination {get;set;}
-    public omit_guard : bool {get;set;}
+    //public omit_guard : bool {get;set;}
     public analyser : FsmAnalyser;
     //[NeedChange]
     public executeCheck : CheckNode {get;set;default CheckNode.Empty()} 
     //[NeedChange]
     //public clones : list[StateTransition] = [];
 
+    
     //[NeedChange]
-    public Local : bool {get;set;}
+    public Local : bool
+    {
+      get
+      {
+        type == TransitionType.Local
+      }
+    }
 
 /// </summary>            
     public NeedGuardedName : bool {get;set;default false}
+
+    //TriggerName : string
+    //{
+    //  get
+    //  {
+    //    trigger.Name
+    //  }
+    //}
 
     public PostConditions : TransitionPostConditions
     {
@@ -116,28 +140,26 @@ namespace Nemerle.Statechart
       }
     }
 
-
-
-    public Guard : option[GuardNode]
-    {
-      get
-      {
-        if (omit_guard) None() else guard
-      }
-    }
+    //public Guard : option[GuardNode]
+    //{
+    //  get
+    //  {
+    //    guard//if (omit_guard) None() else guard
+    //  }
+    //}
 
     public FriendlyTriggerName : string
     {
       get
       {
-        match (this)
+        match (trigger)
         {
-          | Transition(TriggerName = null) => "Completion"
-          | Transition(TriggerName = trig)
-          | Internal(TriggerName = trig) => trig
-          | Initial => "Initial"
-          | Default => "Default"
-          | History => "History"
+          | None       => "Completion"
+          //| Transition(TriggerName = trig)
+          | Some(trig) => trig.Name
+          //| Initial => "Initial"
+          //| Default => "Default"
+          //| History => "History"
         }
       }
     }
@@ -158,22 +180,31 @@ namespace Nemerle.Statechart
       }
     }
 
+    public IsInitial : bool
+    {
+      get
+      {
+        FromPseudo is Some(PseudoStateNode.Initial)
+      }
+    }
+    
     name : string
     {
       get
       {
-        match (this)
+        match (type, FromPseudo)
         {
-          | Transition(Source = st)          => $"Transition$(st)To$(To)By$(FriendlyTriggerName)"
-          | Internal(TriggerName = t)        => $"InternalTransition$(From)By$(t)"
-          | Initial                          => $"InitialTransitionFrom$(From)To$To"
-          | History                          => $"HistoryFrom$(From)To$ToState"
-          | Default(history = h)             => 
+          | (Internal, None)                         => $"InternalTransition$(From)By$FriendlyTriggerName"
+          | (Transition, None)                       => $"Transition$(Source)To$(To)By$FriendlyTriggerName"
+          | (_, Some(PseudoStateNode.Initial))       => $"InitialTransitionFrom$(From)To$To"
+          | (_, Some(PseudoStateNode.History as h))  => 
               match (Destination)
               {
                 | History(state = st) => $"DefaultTransition$(h)To$st"
                 | _                   => $"DefaultTransition$(h)To$ActualTo"
               }
+          | (Local, _) when (internal_kind == TransitionKind.History) => $"HistoryFrom$(From)To$ToState"
+          | _                                                         => throw InvalidOperationException("invalid transition name")
         }
       }
     }
@@ -191,7 +222,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (Guard)
+        match (guard)
         {
           | Some(g) => $"$(name)With$(g.Name)"
           | _       => name
@@ -199,7 +230,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public static GuardComparer : StateTransition * StateTransition -> int = (g1, g2) => g2.Guard.Compare(g1.Guard, (x, y) => x.CompareTo(y));
+    public static GuardComparer : StateTransition * StateTransition -> int = (g1, g2) => g2.guard.Compare(g1.guard, (x, y) => x.CompareTo(y));
 
     public static Comparer : StateTransition * StateTransition -> int  =  (t1, t2)  => t1.Name.CompareTo(t2.Name);
 
@@ -271,7 +302,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (this)
+        match (type)
         {
           | Internal => action.Select(PathNode.Action(From, _))//TraverseUtils.SingleElement(node)
           | _        => Path.Path.Path
@@ -296,11 +327,10 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (this)
+        match (trigger)
         {
-          | Transition(trigger = t)
-          | Internal(trigger = t) => t
-          | _                     => null
+          | Some(t) => t
+          | _       => null
         }
       }
     }
@@ -365,7 +395,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (this)
+        match (type)
         {
           | Internal => action
           | _        => Path.Actions
@@ -458,14 +488,15 @@ namespace Nemerle.Statechart
 
     public Clone() : StateTransition
     {
-      match (this)
-      {
-        | Initial        => Initial(this)
-        | Default(h)     => Default(this, h)
-        | Transition(e)  => Transition(this, e)
-        | History as h   => History(h)
-        | Internal(t)    => Internal(this, t)
-      }
+      StateTransition(this)
+      //match (this)
+      //{
+      //  | Initial        => Initial(this)
+      //  | Default(h)     => Default(this, h)
+      //  | Transition(e)  => Transition(this, e)
+      //  | History as h   => History(h)
+      //  | Internal(t)    => Internal(this, t)
+      //}
     }
 
     public override ToString() : string

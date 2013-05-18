@@ -25,12 +25,20 @@ namespace Nemerle.Statechart
       {
         | FsmState(type = StateType.Final)
         | FsmState(type = StateType.Region) => ()
-        | FsmState(initial_tran = [], sub_states = head :: _) when (!head.IsFinal)      
-              => st.DefineInitial(head);
+        | FsmState(initial = None, sub_states = head :: _) when (!head.IsFinal) => st.DefineInitial(head);
         | _ => ()
       }
 
       //States.Iter(x => check_duplicates(x.InitialTransitions().Select(_.Value)));  // check duplicates
+      // check state attributes
+      foreach (st in States)
+      {
+        when (st.Attributes.Exists(x => x is StateAttribute.Initial))
+        {
+          st.Super.DefineInitial(st)
+        }
+      }
+      
       when (FsmFlags.AutoInitial) States.Iter(check_auto_initial);
 
       when (TopState.transitions.IsEmpty()) check_auto_initial(TopState);
@@ -110,14 +118,14 @@ namespace Nemerle.Statechart
 
       def set_super_state_transition(st)
       {
-        def super_tran = st.super_states.SelectMany(_.EventTransitions);
+        def super_tran = st.super_states.SelectMany(_.transitions);
         st.DefineTransitions(super_tran);
       }
 
       def (simple, other) = States.NToList().Partition(_.IsSimple);
 
       simple.Iter(set_super_state_transition); // create super state transitions in simple states
-      other.Iter(_.DeleteEventTransitions());  // delete other transitions from composite states
+      other.Iter(_.DeleteTransitions());  // delete other transitions from composite states
       foreach (st in States)
       {
         foreach (group in st.ConflictTransitions)
@@ -128,6 +136,7 @@ namespace Nemerle.Statechart
       }
     }
 
+#if 0    
     create_join_transitions() : void
     {
 
@@ -142,7 +151,7 @@ namespace Nemerle.Statechart
                 if (tr.All(x => x.Source.PartOfSubRegion.HasValue) &&
                     tr.ElementsEqual((x, y) => x.Source.PartOfRegion.Value == y.Source.PartOfRegion.Value : object))
                 {
-                  def tran = StateTransition.Transition(j.state, t, tr.First().Trigger);
+                  def tran = StateTransition(j.state, t, tr.First().Trigger);
                   def reg = tr.First().Source.PartOfRegion.Value;
                   def tr = tr.OrderBy(x => x.Source.PartOfSubRegion.Value.Index);
                   //j.joined_tran = tr;
@@ -174,7 +183,7 @@ namespace Nemerle.Statechart
         }
       }
 
-      def join_tran = AllTransitions.FoldLeft([], get_join);
+      def join_tran = StateTransitions.FoldLeft([], get_join);
       def jtrans = join_tran.GroupBy((x, _) => x);
       def jtrans = jtrans.Map(x => (x.Key, x.Values()));
       jtrans.Iter(check_join)
@@ -212,11 +221,11 @@ namespace Nemerle.Statechart
 
       }
 
-      def tran = AllTransitions.GetPseudo();
+      def tran = StateTransitions.GetPseudo();
       tran.Iter(check_fork)
       //statemap.Update();
     }
-
+#endif
     /// <summary>
     /// Creating Transitions
     /// </summary>
@@ -234,12 +243,12 @@ namespace Nemerle.Statechart
 
       //def check_tran(st)
       //{
-      //  st.AllTransitions().Iter(x => check_targets(x))
+      //  st.StateTransitions().Iter(x => check_targets(x))
       //}
 
       //States.Iter(check_tran);
-      create_join_transitions(); // creating join transitions
-      create_fork_transitions(); // creating fork transitions
+      //create_join_transitions(); // creating join transitions
+      //create_fork_transitions(); // creating fork transitions
       CreateAndCheckConflictTransitions(); // create parent transitions
       //CheckDuplicates(); // check duplicates
       //CheckCrossTransitions(); // look for cross transitions
@@ -268,8 +277,8 @@ namespace Nemerle.Statechart
       //}
 
 
-        //st.AllTransitions().Iter(proc_tran(st, _));
-      AllTransitions.Iter(check_cross_orthogonal)
+        //st.StateTransitions().Iter(proc_tran(st, _));
+      StateTransitions.Iter(check_cross_orthogonal)
 
 
       //UpdateStateMap(TopState.ReduceSingle(check_tran))
@@ -296,7 +305,7 @@ namespace Nemerle.Statechart
       def traverse()
       {
         traverser = TransitionTraverser(this);
-        traverser.Add(TopState.initial_tran);
+        traverser.Add(TopState.initial_tran.Value);
         traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
         traverser = null;
       }
@@ -319,7 +328,7 @@ namespace Nemerle.Statechart
       //  //def top = TopState.ReduceSingle(update_hist);
       //  //UpdateStateMap(top)
       //}
-      def obj = States.Select(_ : object).Concat(AllTransitions).Concat(PseudoStates);
+      def obj = States.Select(_ : object).Concat(all_transitions).Concat(PseudoStates);
       obj.Iter(Used.Add(_, false)); // init used properties
 
       traverse(); // traverse paths

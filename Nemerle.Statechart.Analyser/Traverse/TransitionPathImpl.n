@@ -156,21 +156,23 @@ namespace Nemerle.Statechart
 
     TraverseTransitionPath(tran : StateTransition) : IEnumerable[FsmState] * IEnumerable[FsmState]
     {
-      match (tran)
+      match (tran.type)
       {
         // initial и pseudo is local transitions by default
-        | Initial(AtLeastStaticTo = st, From = from)
-        | History(From = from, ToState = st)
+        //| Initial(AtLeastStaticTo = st, From = from)
+        //| History(From = from, ToState = st)
         // fork transition
-        | Transition(From = from, Local = true, AtLeastStaticTo = st)
-        | Default(ToState = st, From = from)            => def (ex, en) = FindPath(from, st, [], []);
-                                                          def en = en.ChopLast(); // remove entry in state
-                                                          def en = en.Append(st); // add entry to target state
-                                                          (ex, en)
+        | Local => def from = tran.From;
+                   def st = tran.AtLeastStaticTo;
+                   def (ex, en) = FindPath(from, st, [], []);
+                   def en = en.ChopLast(); // remove entry in state
+                   def en = en.Append(st); // add entry to target state
+                   (ex, en)
+                   
       // transition to pseudo state
-        | Transition(To = PseudoState(node = PseudoStateNode(state = st)), From = from)
-        | Transition(AtLeastStaticTo = st, From = from) => def (ex, en) = FindPath(from, st, [], []);
-                                                          (ex, en.Append(st))
+        | Transition => def st = tran.AtLeastStaticTo;
+                        def (ex, en) = FindPath(tran.From, st, [], []);
+                        (ex, en.Append(st))
         | Internal  // no path for internal transition
         | _        => (Enumerable.Empty(), Enumerable.Empty())
       }
@@ -201,12 +203,7 @@ namespace Nemerle.Statechart
 
     DefPath(src : FsmState, dest : FsmState, tr : StateTransition) : void//, ex_node : IEnumerable[PathNode] = null) : void
     {
-      def ex = match (tr)
-                {
-                  | StateTransition.Transition => FindPath(src, dest, [src], [dest])[0];
-                  | _                          => FindPath(src, dest, [], [])[0];
-                }
-
+      def ex = if (tr.Local) FindPath(src, dest, [], [])[0]; else FindPath(src, dest, [src], [dest])[0];
       NodesCreate(ex, tr);
       //def node = if (ex_node != null) ex_node + node else node;
       //AddEntry(node)

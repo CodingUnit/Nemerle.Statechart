@@ -147,8 +147,14 @@ namespace Nemerle.Statechart
 
     public DefineInitial(st : FsmState) : void
     {
-      def init = StateTransition.Initial(this, st);
-      transitions = transitions.Append(init).NToList();
+      def tran = StateTransition(this, st, TransitionType.Local);
+      def new_p = PseudoStateNode.Initial(this, tran);
+      def p = match (initial)
+      {
+        | Some(i) => pseudo_states.Remove(i);
+        | _       => pseudo_states
+      }
+      pseudo_states = new_p :: p;
       //node.Update(x => x.ChangeInitial(tran :: x.initial))
     }
 
@@ -263,7 +269,7 @@ namespace Nemerle.Statechart
     ///// </summary>
     //public this_transitions : IEnumerable[StateTransition]
     //{
-    //  node.AllTransitions().Where(x  => x.Parent == node : object)
+    //  node.StateTransitions().Where(x  => x.Parent == node : object)
     //}
 
     ////public IsSubStateOf(this node : FsmState, st : FsmState) : bool
@@ -335,7 +341,7 @@ namespace Nemerle.Statechart
 
     //public Joins : IEnumerable[PseudoStateNode]
     //{
-    //  node.AllLivedSubStatesNested().SelectMany(x => x.AllTransitions().GetPseudo(_ is PseudoStateNode.Join))
+    //  node.AllLivedSubStatesNested().SelectMany(x => x.StateTransitions().GetPseudo(_ is PseudoStateNode.Join))
     //}
 
     //public HaveJoinTransitions : bool
@@ -345,35 +351,35 @@ namespace Nemerle.Statechart
 
     //public Transitions : IEnumerable[StateTransition]
     //{
-    //  node.AllTransitions()
+    //  node.StateTransitions()
     //}
 
-    //public AllTransitions : IEnumerable[StateTransition]
+    //public StateTransitions : IEnumerable[StateTransition]
     //{
     //  node.Data.statemap.Transitions[node]
     //}
 
-    public initial_tran : list[StateTransition.Initial]
-    {
-      get
-      {
-        transitions.FilterType()
-      }
-    }
+    //public initial_tran : list[StateTransition.Initial]
+    //{
+    //  get
+    //  {
+    //    transitions.FilterType()
+    //  }
+    //}
 
-    public EventTransitions : IEnumerable[StateTransition]
-    {
-      get
-      {
-        transitions.Where(x => !(x is StateTransition.Initial))
-      }
-    }
+    //public EventTransitions : IEnumerable[StateTransition]
+    //{
+    //  get
+    //  {
+    //    transitions.Where(x => !(x is StateTransition.Initial))
+    //  }
+    //}
 
     public ExternalTransitions : IEnumerable[StateTransition]
     {
       get
       {
-        transitions.Where(x => x is StateTransition.Transition)
+        transitions.Where(x => x.type == TransitionType.Transition)
       }
     }
 
@@ -387,7 +393,7 @@ namespace Nemerle.Statechart
 
     //public InternalTransitions : IEnumerable[StateTransition]
     //{
-    //  node.AllTransitions().Where(x => x.Value is StateTransition.Internal)
+    //  node.StateTransitions().Where(x => x.Value is StateTransition.Internal)
     //}
 
     //public AddSubState(this st : FsmState, sub : FsmState) : void
@@ -414,7 +420,7 @@ namespace Nemerle.Statechart
       }
 
       def copy = tr.Map(create_copy);
-      transitions = transitions.Concat(copy).NToList();
+      transitions = transitions + copy;
     //  //def (tran : IEnumerable[StateTransition.Transition], other)   = tr.PartitionType();
     //  //def (intern : IEnumerable[StateTransition.Internal], other)   = other.PartitionType();
     //  //def (init : IEnumerable[StateTransition.Initial], _)          = other.PartitionType();
@@ -434,9 +440,9 @@ namespace Nemerle.Statechart
       transitions = transitions.Except(tr).NToList();
     }
 
-    public DeleteEventTransitions() : void
+    public DeleteTransitions() : void
     {
-      transitions = transitions.Except(EventTransitions).NToList();
+      transitions = [];
     }
 
     public Name : string
@@ -450,7 +456,7 @@ namespace Nemerle.Statechart
           | Region
           | SubRegion                           => NativeName
           | SubMachine                          => $"SubMachine$name" // $(CopyName)
-          | InlinedSubMachine                   => $"InlinedSubMachine$name" // $(CopyName)
+          //| InlinedSubMachine                   => $"InlinedSubMachine$name" // $(CopyName)
         }
       }
     }
@@ -708,7 +714,7 @@ namespace Nemerle.Statechart
       get
       {
 
-        EventTransitions.Where(_.Used)
+        transitions.Where(_.Used)
             //__.Exclude(_.CrossFor);
             //__.Exclude(_.NotWork);
             //__.Where(_.UsedInGenerate)

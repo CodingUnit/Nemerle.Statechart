@@ -38,15 +38,15 @@ namespace Nemerle.Statechart
                   $body
                 } else $e
               ]>
-            
+
           | _ when c is GuardNode.Empty => body
           | _                           => 
-             <[ 
-               when ($check) 
-               {
+            <[ 
+              when ($check) 
+              {
                 $body
-               }
-             ]>
+              }
+            ]>
         }
       }
 
@@ -136,8 +136,8 @@ namespace Nemerle.Statechart
                 ]>
     }
 
-   #endif
-   
+  #endif
+
     DefineHistoryPaths(builder : TypeBuilder, st : FsmState) : void
     {
       def create_body(hist : HistoryPath)
@@ -187,18 +187,18 @@ namespace Nemerle.Statechart
 
     DefineHistory() : void
     {
-      def get_run_hist_body(hist)
+      def get_run_hist_body(h, tran)
       {
-        | StateTransition.Default(From = from, history = hist) as t =>
+        | (hist, StateTransition(From = from) as t) =>
             def name = hist.Name;
             def hname = get_history_run_name(hist, from.Name);
                 <[ 
                 if ($(name : usesite) != null) // определяем выбор в случае если есть переход по умолчанию в случ.если нет истории
-                    $(name : usesite).$(hname : usesite)(this); else $(DefineTransBody([t], GenCtx.Normal()));
+                    $(name : usesite).$(hname : usesite)(this); else $(DefineTransBody(t, GenCtx.Normal()));
                 ]>
       }
 
-      def def_history(h)
+      def def_history(h : list[_])
       {
         def create_history(hist)
         {
@@ -206,12 +206,14 @@ namespace Nemerle.Statechart
           def clear = <[decl: $($"$(hist)Clear" : usesite)() : void 
             {
                 $(hist.Name : usesite) = null
-            }]>;    
-          def create_default(tr)
+            }]>;
+
+          def create_default(h, tr)
           {
-            [<[decl: $($"$(tr.history)Run" : usesite)() : State {$(get_run_hist_body(tr));} ]>]
+            [<[decl: $($"$(h)Run" : usesite)() : State {$(get_run_hist_body(h, tr));} ]>]
           }
-          def default = hist.default.Map(create_default).WithDefault([]);
+
+          def default = hist.default.Map(create_default(hist, _)).WithDefault([]);
           [hist_field, clear] + default
         }
 
@@ -228,10 +230,10 @@ namespace Nemerle.Statechart
                 def name = GetExecStateName(r, GenCtx.Normal());
                 def reg = <[ $name.$($"cur_state$(sr.Index)" : usesite); ]>;
                 <[ $(hist.Name : usesite) = if ($reg != null) $reg.GetCopy($idx) else null ]>
-             | _ => 
+            | _ => 
                 // in case where deal with concurrent states
-             if (hist.SubStatesParticipateIn.Exists(x => x.type is StateType.Region)) <[ $(hist.Name : usesite) = cur_state.GetCopy($idx);]> else
-                   // in normal case
+                if (hist.SubStatesParticipateIn.Exists(x => x.type is StateType.Region)) <[ $(hist.Name : usesite) = cur_state.GetCopy($idx);]> else
+                  // in normal case
                    <[ $(hist.Name : usesite) = cur_state; ]>
           }
         }
@@ -256,7 +258,7 @@ namespace Nemerle.Statechart
       {
         when (st.history.HasValue)
         {
-          def hist = st.UsedHistory;
+          def hist = st.UsedHistory.NToList();
           when (!hist.IsEmpty()) def_history(hist);
         }
       }
@@ -275,7 +277,7 @@ namespace Nemerle.Statechart
               def fname = $"join$n";
               <[ decl: mutable $(fname : usesite) : int; ]> :: a
           | _ => a
-      }
+        }
       }
 
       //def get_junction(j)

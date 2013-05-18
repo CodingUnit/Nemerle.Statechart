@@ -16,13 +16,14 @@ namespace Nemerle.Statechart
   [Record]
   public variant PseudoStateNode
   {
+    | Initial { tran : StateTransition; }
     | History 
       {
-        public this(st : FsmState, hist : PseudoStateAstNode.History)
+        public this(st : FsmState, hist : PseudoStateModelNode.History)
         {
           base(st);
           type = hist.type;
-          default = hist.default.Map(x => StateTransition.Default(st, x, this))
+          default = hist.default.Map(x => StateTransition(st, None(), x))
         }
 
         public SubStatesParticipateIn : IEnumerable[FsmState]
@@ -46,7 +47,7 @@ namespace Nemerle.Statechart
           }
         }        
 
-        public default : option[StateTransition.Default] {get;set;}
+        public default : option[StateTransition] {get;set;}
 
         public type : HistoryType;
       }
@@ -188,11 +189,12 @@ namespace Nemerle.Statechart
     | ExitPoint
     | Terminate { override ToString() : string {"Terminate"} }
 
-    public static Create(st : FsmState, pseudo : PseudoStateAstNode) : PseudoStateNode
+    public static Create(st : FsmState, pseudo : PseudoStateModelNode) : PseudoStateNode
     {
       match (pseudo)
       {
-        | History as hist     => History(st, hist)
+        | Initial(tr)                                => Initial(st, StateTransition.Create(st, tr).First())
+        | History as hist                            => History(st, hist)
         //| Junction as j                              => Junction.Create(st, j)
         //| Fork(target = lst)                         => Fork(0, lst.Map(TransitionTarget.Create(st, _)), [])
         //| Join(name = n, target = t)                 =>  Join(0, n, TransitionTarget.Create(st, t), null, null, null))
