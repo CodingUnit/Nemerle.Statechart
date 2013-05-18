@@ -205,16 +205,16 @@ namespace Nemerle.Statechart
     {
       def unary_eval(o, a)
       {
-        match (o.op)
+        match (o)
         {
           | StateUnaryOp.Not => <[ ! $a]>
           | _                => a
         }
       }
 
-      def two_eval(e, a, b)
+      def two_eval(a, op, b)
       {
-        match (e.op)
+        match (op)
         {
           | StateBinaryOp.Above => <[ $a > $b]>
           | Equal               => <[ $a == $b]>
@@ -224,7 +224,7 @@ namespace Nemerle.Statechart
           | BelowEq             => <[ $a <= $b]>
           | Or                  => <[ $a || $b]>
           | And                 => <[ $a && $b]>
-          | _                   => <[]>
+          | Error               => <[ true ]>
         }
       }
 
@@ -241,12 +241,6 @@ namespace Nemerle.Statechart
         }
       }
 
-      def var_eval(v)
-      {
-        def var = v.v;
-        <[ $(var : usesite) ]>
-      }
-
       def lit_eval(l)
       {
         match (l.lit)
@@ -258,7 +252,19 @@ namespace Nemerle.Statechart
         }
       }
 
-      expr.Fold(<[ true ]>, _ => <[ true ]>, unary_eval, two_eval, (_, a) => a, method_eval, var_eval, lit_eval);
+      def eval(expr)
+      {
+        | StateExpr.Braces(e) => eval(e)
+        | Error               => <[ true ]>
+        | Literal as lit      => lit_eval(lit)
+        | Method as m         => method_eval(m)
+        | TwoOp(e, op, b)     => two_eval(eval(e), op, eval(b))
+        | UnaryOp(e, a)       => unary_eval(e, eval(a))
+        | Var(v)              => <[ $(v : usesite) ]>
+      }
+      
+      eval(expr)
+      //expr.Fold(<[ true ]>, _ => <[ true ]>, unary_eval, two_eval, (_, a) => a, method_eval, var_eval, lit_eval);
       
       //def GuardNode = GenElement(cond, guard_for);
       //def name = GuardNode.exec_name;
@@ -349,7 +355,7 @@ namespace Nemerle.Statechart
     {
       match (tran)
       {
-        | StateTransition(executeCheck = check, Guard = g) =>
+        | StateTransition(executeCheck = check, guard = g) =>
 
             def check = GetCheck(check, ctx);
             def check = match (g)
@@ -383,7 +389,7 @@ namespace Nemerle.Statechart
       {
         | RegionCompletion(reg, tr) => 
           def check_reg = CheckNode.RegionStates(tr.Map(x => x.From));
-          def check_guard = if (tr.Exists(x => x.guard.HasValue)) CheckNode.Guard(tr.FilterValues(x => x.Guard).NToList()) else CheckNode.Empty();
+          def check_guard = if (tr.Exists(x => x.guard.HasValue)) CheckNode.Guard(tr.FilterValues(x => x.guard).NToList()) else CheckNode.Empty();
           def check = check_reg + check_guard;
           def check = GetCheck(check, ctx);
           def name = GetExecStateName(reg, ctx);
@@ -470,26 +476,26 @@ namespace Nemerle.Statechart
       } 
     }
 
-    //DefineTransBody(tr : StateTransition, ctx : GenCtx, alt : PExpr = null) : PExpr
-    //{
-    //  def get_body(tr)
-    //  {
-    //    def name = tr.Name;
-    //    if (tr.MaybeInlined && IsEmpty(tr.PathNode))
-    //    {
-    //         <[ $(GetTransitionBody(tr, ctx)) ]>
-    //    } else 
-    //      if (ctx.IsInEventHandler) <[ fsm.$(name : usesite)(); ]> else <[ $(name : usesite)();]>
-    //  }
+    DefineTransBody(tr : StateTransition, ctx : GenCtx, alt : PExpr = null) : PExpr
+    {
+      def get_body(tr)
+      {
+        def name = tr.Name;
+        //if (tr.MaybeInlined && IsEmpty(tr.PathNode))
+        //{
+        //     <[ $(GetTransitionBody(tr, ctx)) ]>
+        //} else 
+          if (ctx.IsInEventHandler) <[ fsm.$(name : usesite)(); ]> else <[ $(name : usesite)();]>
+      }
 
-    //    def body = get_body(tr);
-    //        if (alt != null) 
-    //        <[
-    //          def res = $body;
-    //          if (res != null) res else $alt
-    //        ]> else body
+        def body = get_body(tr);
+            if (alt != null) 
+            <[
+              def res = $body;
+              if (res != null) res else $alt
+            ]> else body
         
-    //}
+    }
     
     DefineTransitions(ty : TypeBuilder, st : FsmState) : void
     {
