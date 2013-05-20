@@ -29,10 +29,28 @@ namespace Nemerle.Statechart
         | _ => ()
       }
 
+      def check_init_tran_correct(t)
+      {
+        match (t.pseudo_states.FilterType())
+        {
+          | []           => ()
+          | t1 :: _ :: _ => AddError(FsmError.InitialPseudoStateAtMostOne(t1))
+          | PseudoStateNode.Initial(tran = StateTransition(To = t)) as i :: [] => 
+              match (t)
+              {
+                | TransitionTarget.State => ()
+                | _                      => AddError(FsmError.InitialTransitionMustGoToState(i))
+              }
+        }
+        
+      }
+      
       //States.Iter(x => check_duplicates(x.InitialTransitions().Select(_.Value)));  // check duplicates
+      
       // check state attributes
       foreach (st in States)
       {
+        check_init_tran_correct(st); // check for correct initial transitions
         when (st.Attributes.Exists(x => x is StateAttribute.Initial))
         {
           st.Super.DefineInitial(st)
