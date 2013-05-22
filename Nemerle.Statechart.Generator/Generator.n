@@ -114,16 +114,6 @@ namespace Nemerle.Statechart
 #endif
     DefineEvents() : void
     {
-      def get_body(e)
-      {
-        <[ 
-           lock (this)
-           {
-             TrySwitch($(events_call.Get(e.name)));
-           }
-        ]>
-      }
-
       def decl_events = events;
       def decl_events = decl_events.Map(x =>  <[decl: | $(x : usesite) ]>);
       DefineNested(<[ decl:
@@ -132,15 +122,15 @@ namespace Nemerle.Statechart
               ..$decl_events
             }]>).Compile();
       def events = events.Map(x => GenElement(x, event_for));
-      def (hiden, defs) = events.Partition(_.IsDeclared);
-      def def_events = events.Map(x => (x, x.DeclName));
-      def hiden = hiden.Filter(x => !method_decls.Contains(x.name));
-      def hiden = hiden.Select(x => <[decl: private $(x.name : usesite)() : void {$(get_body(x))} ]>);
-      def defs  = defs.Select(x => <[decl: public $(x.name : usesite)() : void {$(get_body(x))} ]>).Concat(hiden);
+      //def (hiden, defs) = events.Partition(_.IsDeclared);
+      //def def_events = events.Map(x => (x, x.DeclName));
+      //def hiden = hiden.Filter(x => !method_decls.Contains(x.name));
+      //def hiden = hiden.Select(x => <[decl: $(x.name : usesite)() : void {PostEvent(Event.$(x.name : usesite))} ]>);
+      def defs  = events.Select(x => <[decl: public $(x.name : usesite)() : void {PostEvent(Event.$(x.name : usesite))} ]>);//.Concat(hiden);
 
-      def evts = def_events.Map((x, y) => <[case: | Event.$(x.name : usesite) => this.$(y : usesite)();]>);
+      def evts = events.Map(x => <[case: | Event.$(x.name : usesite) => TrySwitch($(events_call.Get(x.name)));]>);
       Define(<[ decl:
-            public SendEvent(evt : Event) : void
+            Dispatch(evt : Event) : void
             {
                 match (evt)
                 {
@@ -148,14 +138,15 @@ namespace Nemerle.Statechart
                 }
             }
             ]>);
-      def evts = def_events.FoldRight([<[case: | _ => throw InvalidOperationException("Unknown event") ]>], ((x, y), a) => <[case: | $(x.name : string) => this.$(y : usesite)();]> :: a);
+      def evts = events.FoldRight([<[case: | _ => throw InvalidOperationException("Unknown event") ]>], (x, a) => <[case: | $(x.name : string) => Event.$(x.name : usesite);]> :: a);
       Define(<[ decl:
-            public SendEvent(evt : string) : void
+            public PostEvent(evt : string) : void
             {
-                match (evt)
+                def res = match (evt)
                 {
                   ..$evts
                 }
+                PostEvent(res)
             }
             ]>);
       Define(defs);
