@@ -59,16 +59,25 @@ namespace Nemerle.Statechart
   public module FormUtils
   {
 
-    public Sync(this form : Form, act : Action) : void
+    public Sync(this form : Control, act : Action) : void
     {
       if (form.InvokeRequired) _ = form.Invoke(act) else act()
     }
 
-    public Sync[T](this form : Form, act : Func[T]) : T
+    public Sync[T](this form : Control, act : Func[T]) : T
     {
       if (form.InvokeRequired) form.Invoke(act) :> T else act()
     }
 
+    public Sync(this form : ISynchronizeInvoke, act : Action) : void
+    {
+      if (form.InvokeRequired) _ = form.Invoke(act, array[]) else act()
+    }
+
+    public Sync[T](this form : ISynchronizeInvoke, act : Func[T]) : T
+    {
+      if (form.InvokeRequired) form.Invoke(act, array[]) :> T else act()
+    }
   }
 
   module Utils
@@ -83,10 +92,17 @@ namespace Nemerle.Statechart
     
     public FormSyncCreate(_ : TypeBuilder, meth : ClassMember.Function, expr : array[PExpr]) : void
     {
+      def ret = meth.header.ReturnType;
+      if (ret is <[ void ]>)
       match (expr.NToList())
       {
         | []        => meth.Body = <[ this.Sync(() => { $(meth.Body) }) ]>
         | head :: _ => meth.Body = <[ $head.Sync(() => { $(meth.Body) }) ]>
+      } else
+      match (expr.NToList())
+      {
+        | []        => meth.Body = <[ this.Sync(Func.[$ret](_ => { $(meth.Body) })) ]>
+        | head :: _ => meth.Body = <[ $head.Sync(Func.[$ret](_ => { $(meth.Body) })) ]>
       }
     }
 
