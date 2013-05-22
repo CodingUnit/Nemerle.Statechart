@@ -75,7 +75,17 @@ namespace Nemerle.Statechart
     {
       def conflict = trans.OrderByDescending(x => x.From.hierarchy_pos).NToList();
       def by_hierarchy = conflict.GroupBy(x => x.From.hierarchy_pos);
-
+      
+      // check for duplicates
+      foreach (tr in by_hierarchy)
+      {
+        def dups = tr.NToList().Duplicates(FsmState.Compare(StateTransition.GuardComparer)); // find duplicates with same guards and same triggers
+        when (!dups.IsEmpty())
+        {
+          AddError(FsmError.DuplicateTransition(dups))
+        }
+      }
+      
       def search_for_no_guard(g)
       {
         if (!g.IsMoreThanOne()) g else
@@ -100,37 +110,6 @@ namespace Nemerle.Statechart
 
     CreateAndCheckConflictTransitions() : void
     {
-
-
-      def check_duplicate_tran(tr)
-      {
-        def dups = tr.NToList().Duplicates(FsmState.Compare(StateTransition.GuardComparer)); // find duplicates with same guards and same triggers
-        when (!dups.IsEmpty())
-        {
-          AddError(FsmError.DuplicateTransition(dups))
-        }
-      }
-
-      //def check_override(st, tr)
-      //{
-      //  // без гуарда переопределяет на том же уровне с гуардами и без гуардов, если такое возникает то необходимо сигнализировать
-      //  // create group of conflict on each level
-      //  //def group = tr.GroupBy(x => x.Source.hierarchy_pos);
-      //  foreach (gr in group) // foreach group
-      //  match (gr.Find(x => x.Guard.IsNone)) // without guard already enabled and have more priority
-      //  {
-      //    | Some(t) => 
-      //            def tr = gr.Except(t); // other transitions must be deleted
-      //            st.DeleteTransitions(tr);
-      //            def warn = tr.Map(x => FsmWarning.TransitionOverriden(x, t)); // signal this, not needed declaration, design error
-      //            AddWarnings(warn)
-
-      //    | _ => ()
-      //  }
-
-
-      //}
-
       def set_super_state_transition(st)
       {
         def super_tran = st.super_states.SelectMany(_.transitions);
@@ -145,8 +124,7 @@ namespace Nemerle.Statechart
       {
         foreach (group in st.ConflictTransitions)
         {
-          check_duplicate_tran(group);
-          ResolveConflictTransitions(st, group)
+          ResolveConflictTransitions(st, group);
         }
       }
     }
