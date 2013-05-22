@@ -21,13 +21,16 @@ namespace fsm_test
   class FileFsmFormControl 
   {
     form : FileFsmForm;
+    fsm_dialogs : FileFsmDialogs = FileFsmDialogs();
     fsm : FileFsm;
-
+    
     public this()
     {
       form = FileFsmForm();
-      fsm = FileFsm();
-      init()
+      fsm = fsm_dialogs.FileFsm;
+      init();
+      fsm.Initiate();
+      fsm_dialogs.Initiate();
     }
 
     public Form : FileFsmForm
@@ -38,21 +41,25 @@ namespace fsm_test
       }
     }
 
+    [FormSync(form)]
     WaitingEntry() : void 
     {
       form.CaptionChange("program_name")
     }
 
+    [FormSync(form)]
     NewEntry() : void 
     {
       form.CaptionChange("program_name - [new document]")
     }
 
+    [FormSync(form)]
     ChangedEntry() : void 
     {
       form.CaptionChange("program_name - [document]*")
     }
 
+    [FormSync(form)]
     SavedEntry() : void 
     {
       form.CaptionChange("program_name - [document]")
@@ -60,6 +67,7 @@ namespace fsm_test
 
     mutable exit : bool = false;
     
+    [FormSync(form)]
     ForceClose() : void
     {
       exit = true;
@@ -70,42 +78,43 @@ namespace fsm_test
     {
       when (!exit)
       {
-        fsm.Exit();
+        fsm_dialogs.ExitButtonPressed();
         evt.Cancel = true;
       }
     }
     
     init() : void 
     {
-      Form.NewHandler         += _ => fsm.New();
-      Form.OpenHandler        += _ => fsm.Open();
-      Form.SaveHandler        += _ => fsm.Save();
+      Form.NewHandler         += _ => fsm_dialogs.NewButtonPressed();
+      Form.OpenHandler        += _ => fsm_dialogs.OpenButtonPressed();
+      Form.SaveHandler        += _ => fsm_dialogs.SaveButtonPressed();
       Form.ChangeHandler      += _ => fsm.Change();
-      Form.SaveAsHandler      += _ => fsm.SaveAs();
+      Form.SaveAsHandler      += _ => fsm_dialogs.SaveAsButtonPressed();
       Form.FormClosing        += Closing;
-      fsm.SaveEnaAction       += form.SaveEna;
-      fsm.SaveDisAction       += form.SaveDis;
-      fsm.SaveAsEnaAction     += form.SaveAsEna;
-      fsm.SaveAllDisAction    += form.SaveAllDis;
-      fsm.SavedEntry          += SavedEntry;
-      fsm.WaitingEntry        += WaitingEntry;
-      fsm.NewEntry            += NewEntry;
-      fsm.ChangedEntry        += ChangedEntry;
-      fsm.SaveDialog          = Form.SaveDlg;
-      fsm.OpenDialog          = Form.OpenDlg;
-      fsm.ForceExitAction     += ForceClose;
+      fsm_dialogs.Terminated += _ => ForceClose();
+      fsm_dialogs.sync        = form;
+      fsm.SaveEna             += form.SaveEna;
+      fsm.SaveDis             += form.SaveDis;
+      fsm.SaveAsEna           += form.SaveAsEna;
+      fsm.SaveAllDis          += form.SaveAllDis;
+      fsm.EntrySaved          += SavedEntry;
+      fsm.EntryWaiting        += WaitingEntry;
+      fsm.EntryNew            += NewEntry;
+      fsm.EntryChanged        += ChangedEntry;
+      fsm_dialogs.SaveDialog = Form.SaveDlg;
+      fsm_dialogs.OpenDialog = Form.OpenDlg;
+      fsm.Terminated          += _ => fsm_dialogs.Terminate();
       fsm.TransitionCompleted += fsm_TransitionCompleted;
-      fsm.NewDialog           = _ => MessageBox.Show("New file", "New file", MessageBoxButtons.OKCancel) == DialogResult.OK;
-      fsm.OpenFileAction      = file => MessageBox.Show($"Opening file $file", "Opening file", MessageBoxButtons.OKCancel) == DialogResult.OK;
-      fsm.SaveFileAction      = file => MessageBox.Show($"File $file saved", "Saving file", MessageBoxButtons.OKCancel) == DialogResult.OK;
+      fsm_dialogs.NewDialog = _ => MessageBox.Show("New file", "New file", MessageBoxButtons.OKCancel) == DialogResult.OK;
+      fsm_dialogs.OpenFileAction = file => MessageBox.Show($"Opening file $file", "Opening file", MessageBoxButtons.OKCancel) == DialogResult.OK;
+      fsm_dialogs.SaveFileAction = file => MessageBox.Show($"File $file saved", "Saving file", MessageBoxButtons.OKCancel) == DialogResult.OK;
       
-      fsm.Initiate();
       UpdateState()
     }
 
     UpdateState() : void 
     {
-      Form.SetState(if (fsm.IsTerminated) "Terminated" else fsm.ToString(), fsm.LastSaved)
+      Form.SetState(if (fsm.IsTerminated) "Terminated" else fsm.ToString(), fsm_dialogs.CurFile)
     }
 
     fsm_TransitionCompleted(_ : object, _ : EventArgs) : void 

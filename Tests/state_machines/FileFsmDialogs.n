@@ -7,90 +7,235 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Statechart;
+using System.Windows.Forms;
+using System.Threading;
+using System.ComponentModel;
 
 namespace Nemerle.Statechart.Tests
 {
   using FileFsm.Event;
-  
+  using FileFsm;
+
   /// <summary>
   /// Description of FileFsmDialogs.
   /// </summary>
   [statechart(<#
 
-  flags : auto_initial transition_completed_events;
+  flags : transition_completed_events;
   //flags : debug;
 
+  //flags : all_sync_invoke;
+  
   name : FileDialogs;
 
+  //sync_invoke form;
+  
+  [Initial]
   state Working
   {
-    ButtonPressed => Dialogs;
+    NewButtonPressed  => NewSaveChecking;
+    OpenButtonPressed => OpenSaveChecking;
+    ExitButtonPressed   => ExitSaveChecking;
+    SaveButtonPressed => SaveFile;
+    SaveAsButtonPressed => SaveFileAs;
   }
-  
+
   state Dialogs
   {
     Cancel => Working;
     _      => Working;
-    
-    state SaveChecking
+
+    state NewSaveChecking
     {
       do / save_checking;
-      
-      _ [NewFile]  => NewDialog;
-      _ [OpenFile] => OpenDialog;
-      _ [Exit] / send_event() => $0; // Exiting)
+
+      _ => NewDialog;
+    }
+
+    state OpenSaveChecking
+    {
+      do / save_checking;
+      _ => OpenDialog;
+    }
+
+    state ExitSaveChecking
+    {
+      do / save_checking;
+      _ / send_event(Exiting) => $0;
+    }
+
+    state SaveFile
+    {
+      do / saving_file;
+      _ / send_event(FileSaved) => $0;
+    }
+    
+    state SaveFileAs
+    {
+      do / saving_file_as;
+      _ / send_event(FileSaved) => $0;
     }
     
     state NewDialog
     {
-      OK / send_event() => $0; // NewFileCreated
+      do / new_dialog;
+      OK / send_event(NewFileCreated) => $0;
     }
-    
+
     state OpenDialog
     {
-      OK / send_event() => $0; // FileSaved
+      do / open_dialog;
+      OK / send_event(FileSaved) => $0;
     }
   }
 
   #>
   )]
-  class FileFsmDialogs
+  public class FileFsmDialogs
   {
+    [Accessor]
     file_fsm : FileFsm = FileFsm();
+    public sync : ISynchronizeInvoke {get;set;}
     
-    [Constructor]
-    Init() : void
+    send_event(evt : FileFsm.Event) : void // 
     {
-      file_fsm.Initiate();
+      file_fsm.PostEvent(evt)
     }
-    
-    send_event() : void // evt : FileFsm.Event
-    {
-      //file_fsm.SendEvent(evt)
-    }
-    
-    NewFile : bool
+
+    public IsNewFile : bool
     {
       get
       {
-        true
+        file_fsm.IsInState(State.New());
       }
     }
-    
-    OpenFile : bool
+
+    public IsNeedSave : bool
     {
       get
       {
-        true
+        file_fsm.IsInState(State.NotSaved());
       }
+    }
+
+    DoSaveFile() : bool
+    {
+      if (IsNewFile)
+      {
+        SaveAsDialog()
+      }
+      else
+      {
+        match (ViewOverwrite())
+        {
+          | Yes => SaveCurrentFile()
+          | No  => SaveAsDialog()
+          | _   => false
+        }
+      }
+    }
+
+    save_checking(_tok : CancellationToken) : void
+    {
+      def ready = if (IsNeedSave)
+                   {
+                     match (ViewWantToSave())
+                     {
+                       | Yes    => DoSaveFile()
+                       | No     => true
+                       | _      => false
+                     }
+                   } else true;
+
+      when (!ready) Cancel()
+    }
+
+    new_dialog(_tok : CancellationToken) : void
+    {
+      def res = if (ViewNewDialog()) OnNewFileAction() else false;
+      if (res) OK() else Cancel()
+    }
+
+    open_dialog(_tok : CancellationToken) : void
+    {
+      def res = if (ViewOpenDialog())
+                 {
+                   CurFile = OpenDialog.FileName;
+                   OnOpenFileAction()
+                 } else false;
+      if (res) OK() else Cancel()
+    }
+
+    saving_file(_tok : CancellationToken) : void
+    {
+      when (!DoSaveFile()) Cancel()
     }
     
-    Exit : bool
+    saving_file_as(_tok : CancellationToken) : void
     {
-      get
-      {
-        true
-      }
+      when (!SaveAsDialog()) Cancel()
     }
+    
+    ViewOverwrite() : DialogResult
+    {
+      MessageBox.Show("Want to overwrite file?", "Warning", MessageBoxButtons.YesNoCancel);
+    }
+
+    ViewWantToSave() : DialogResult
+    {
+      MessageBox.Show("Want to save file?", "Warning", MessageBoxButtons.YesNoCancel);
+    }
+
+    SaveAsDialog() : bool
+    {
+      SaveDialog.FileName = CurFile;
+      def res = ViewSaveAsDialog();
+      if (res == DialogResult.OK)
+      {
+        CurFile = SaveDialog.FileName;
+        SaveCurrentFile()
+      }
+      else false
+    }
+
+    ViewOpenDialog() : bool
+    {
+      //OpenDialog.ShowDialog() 
+      sync.Sync(OpenDialog.ShowDialog) == DialogResult.OK
+    }
+
+    ViewSaveAsDialog() : DialogResult
+    {
+      sync.Sync(SaveDialog.ShowDialog)
+    }
+
+    ViewNewDialog() : bool
+    {
+      NewDialog == null || NewDialog()
+    }
+
+    OnOpenFileAction() : bool
+    {
+      OpenFileAction == null || OpenFileAction(CurFile)
+    }
+
+    OnNewFileAction() : bool
+    {
+      NewFileAction == null || NewFileAction()
+    }
+
+    public OpenDialog : OpenFileDialog {get;set;}
+    public SaveDialog : SaveFileDialog {get;set;}
+    
+    SaveCurrentFile() : bool
+    {
+      SaveFileAction == null || SaveFileAction(CurFile)
+    }
+
+    public CurFile   : string {get;private set;}
+    public NewFileAction  : void -> bool {get;set;}
+    public OpenFileAction : string -> bool {get;set;}
+    public SaveFileAction : string -> bool {get;set;}
+    public NewDialog  : void -> bool {get;set;}
   }
 }
