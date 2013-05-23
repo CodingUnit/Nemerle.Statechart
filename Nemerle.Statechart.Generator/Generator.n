@@ -9,7 +9,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
-using Nemerle.Statechart;
 using System.Threading.Tasks;
 using System.Threading;
 
@@ -114,42 +113,16 @@ namespace Nemerle.Statechart
 #endif
     DefineEvents() : void
     {
-      def decl_events = events;
-      def decl_events = decl_events.Map(x =>  <[decl: | $(x : usesite) ]>);
-      DefineNested(<[ decl:
-            public enum Event
-            {
-              ..$decl_events
-            }]>).Compile();
-      def events = events.Map(x => GenElement(x, event_for));
       //def (hiden, defs) = events.Partition(_.IsDeclared);
       //def def_events = events.Map(x => (x, x.DeclName));
       //def hiden = hiden.Filter(x => !method_decls.Contains(x.name));
       //def hiden = hiden.Select(x => <[decl: $(x.name : usesite)() : void {PostEvent(Event.$(x.name : usesite))} ]>);
-      def defs  = events.Select(x => <[decl: public $(x.name : usesite)() : void {PostEvent(Event.$(x.name : usesite))} ]>);//.Concat(hiden);
+      //.Concat(hiden);
 
-      def evts = events.Map(x => <[case: | Event.$(x.name : usesite) => TrySwitch($(events_call.Get(x.name)));]>);
-      Define(<[ decl:
-            Dispatch(evt : Event) : void
-            {
-                match (evt)
-                {
-                  ..$evts
-                }
-            }
-            ]>);
-      def evts = events.FoldRight([<[case: | _ => throw InvalidOperationException("Unknown event") ]>], (x, a) => <[case: | $(x.name : string) => Event.$(x.name : usesite);]> :: a);
-      Define(<[ decl:
-            public PostEvent(evt : string) : void
-            {
-                def res = match (evt)
-                {
-                  ..$evts
-                }
-                PostEvent(res)
-            }
-            ]>);
-      Define(defs);
+      
+      def evt = GenEvent(util, events);
+      evt.Generate()
+      //Define(defs);
     }
 
     DefineGuards() : void

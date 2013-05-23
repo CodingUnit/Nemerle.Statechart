@@ -1,0 +1,181 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Compiler.Parsetree;
+using System.Collections.Concurrent;
+using System.Threading;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of GenEvent.
+  /// </summary>
+  [Record]
+  class GenEvent
+  {
+    util : GenUtil;
+    events : list[string];
+    //event_for : Map[string, string];
+   
+    //[Memoized]
+    //Events : list[GenElement]
+    //{
+    //  get
+    //  {
+    //    events.Map(x => GenElement(x, event_for))
+    //  }
+    //}
+    [Memoized]
+    QueueStruct : list[ClassMember]
+    {
+      get
+      {
+        <[decl: queue : ConcurrentQueue[Event] = ConcurrentQueue(); ]> ::
+        <[decl: most_priority_queue : ConcurrentQueue[Event] = ConcurrentQueue(); ]> ::
+        <[decl: work_event : ManualResetEvent = ManualResetEvent(false); ]> ::
+        <[decl: complete_event : ManualResetEvent = ManualResetEvent(true); ]> :: []
+      }
+    }
+    
+    [Memoized]
+    RunEventInState : list[MatchCase]
+    {
+      get
+      {
+        events.Map(x => <[case: | Event.$(x : usesite) => cur_state.$(x : usesite)(this) ]>);
+      }
+    }
+    
+    GenBaseStruct() : void
+    {
+      util.Define(<[ decl:
+            Dispatch(evt : Event) : void
+            {
+                def res = match (evt)
+                {
+                  ..$RunEventInState
+                }
+                TrySwitch(res)
+            }
+            ]>);
+            
+     def thread = <[ decl:
+      
+                    QueueThread() : void
+                    {
+                      while (!IsTerminated)
+                      {
+                        mutable item;
+                        if (most_priority_queue.TryDequeue(out item))
+                        {
+                          Dispatch(item)
+                        } else
+                        if (queue.TryDequeue(out item))
+                        {
+                          Dispatch(item)
+                        } else 
+                        {
+                          _ = complete_event.Set();
+                          _ = work_event.Reset();
+                          _ = work_event.WaitOne()
+                        }
+                      }
+                    }
+      ]>;
+     util.Define(thread);
+     util.Define(QueueStruct);
+     
+    }
+    
+    GenEvents() : void
+    {
+      def get_events(evt)
+      {
+        evt.Map(x => <[decl: public $(x : usesite)() : void { PostEvent(Event.$(x : usesite)) } ]>);
+      }
+      
+      def lst = match (events.Partition(_ == "Completion"))
+      {
+        | (head :: _, other) => def comp = <[decl: public $(head : usesite)() : void { PostEventMostPriority(Event.$(head : usesite)) }]>;
+                                def evt = get_events(other);
+                                comp :: evt
+        | (_, evt)           => get_events(evt)
+      }
+      util.Define(lst);
+      
+      def decl_events = events.Map(x =>  <[decl: | $(x : usesite) ]>);
+      util.DefineNested(<[ decl:
+            public enum Event
+            {
+              ..$decl_events
+            }]>).Compile();
+    }
+    
+    [Memoized]
+    StringToEvent : list[MatchCase]
+    {
+      get
+      {
+        events.FoldRight([<[case: | _ => throw InvalidOperationException("Unknown event") ]>], 
+                                  (x, a) => <[case: | $(x : string) => Event.$(x : usesite); ]> :: a);
+      }
+    }
+    
+    GenPost() : void
+    {
+      util.Define(<[ decl:
+            PostEventMostPriority(evt : Event) : void
+            {
+                _ = complete_event.Reset();
+                most_priority_queue.Enqueue(evt);
+                _ = work_event.Set();
+            }
+            ]>);
+      util.Define(<[ decl:
+            public PostEvent(evt : string) : void
+            {
+                def res = match (evt)
+                {
+                  ..$StringToEvent
+                }
+                PostEvent(res)
+            }
+            ]>);
+      util.Define(<[decl:
+        
+        public PostEvent(evt : Event) : void
+                    {
+                      _ = complete_event.Reset();
+                      queue.Enqueue(evt);
+                      _ = work_event.Set();
+                    }
+                ]>);
+      util.Define(<[ decl:
+            public SendEvent(evt : Event) : void
+            {
+                PostEvent(evt);
+                WaitComplete();
+            }
+            ]>);
+      util.Define(<[ decl:
+            public SendEvent(evt : string) : void
+            {
+                PostEvent(evt);
+                WaitComplete();
+            }
+            ]>);
+    }
+    
+    public Generate() : void
+    {
+      GenBaseStruct();
+      GenEvents();
+      GenPost();
+    }
+  }
+}

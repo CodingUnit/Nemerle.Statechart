@@ -78,33 +78,16 @@ namespace Nemerle.Statechart
                       }
                     }
 
-                    QueueThread() : void
+                    WaitComplete() : void
                     {
-                      while (!IsTerminated)
-                      {
-                        mutable item;
-                        if (queue.TryDequeue(out item))
-                        {
-                          Dispatch(item)
-                        } else 
-                        {
-                          _ = reset_event.Reset();
-                          _ = reset_event.WaitOne()
-                        }
-                      }
-                    }
-                    
-                    public PostEvent(evt : Event) : void
-                    {
-                      queue.Enqueue(evt);
-                      _ = reset_event.Set();
+                      _ = complete_event.WaitOne()
                     }
                     
                     //public IsEventDeclined : bool {get;private set;}
                     public Initiate() : void
                     {
                         queue_thread = Thread(QueueThread);
-                        _ = reset_event.Reset();
+                        _ = work_event.Reset();
                         Switch($initial);
                         queue_thread.Start();
                     }
@@ -119,8 +102,7 @@ namespace Nemerle.Statechart
                     public static ExecActions    : array[string] = array[..$actions];
                     
                     mutable queue_thread : Thread;
-                    queue : ConcurrentQueue[Event] = ConcurrentQueue();
-                    reset_event : ManualResetEvent = ManualResetEvent(false);
+                    
                   }
 
                   ]>;
@@ -160,7 +142,7 @@ namespace Nemerle.Statechart
                          {
                            {..$stop_body}
                            cur_state = null;
-                           _ = reset_event.Set();
+                           _ = work_event.Set();
                            when (Thread.CurrentThread != queue_thread : object) queue_thread.Join();
                            OnTerminated();
                          }
@@ -277,7 +259,7 @@ namespace Nemerle.Statechart
 
       //tran_events = analyser.Events.;
       events = analyser.Events.NToList();
-      events_call = Map(events.Map(x => (x, <[ cur_state.$(x : usesite)(this) ]>)));
+      //events_call = Map(events.Map(x => (x, )));
       //history_paths = analyser.HistoryPaths.Select(x => (x.Key, x.Value)).Map((x, y) => (x.Name(), GenAction.CreateActions(y.Path, action_for)));
       //history_transitions = analyser.history_transitions.Map((x, y) => (x, GenAction.CreateActions(y.PathNode, action_for)));
       //history_def_transitions = analyser.history_default_transitions.Map(x => (x.Name, GenAction.CreateActions(x.PathNode, action_for)));
