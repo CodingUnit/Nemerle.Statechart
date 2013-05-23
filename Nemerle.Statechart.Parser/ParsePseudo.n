@@ -1,0 +1,114 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Peg;
+
+namespace Nemerle.Statechart
+{
+  using StateNode;
+  
+  /// <summary>
+  /// Description of ParsePseudo.
+  /// </summary>
+  partial class FsmParser
+  {
+ 
+    
+    junc_tran_body(guard : option[GuardNode], act : option[Actions], target : TargetType) : StateNode.Transition
+    {
+      StateNode.Transition(-1, [], guard, act, target, TransitionType.Local)
+    }
+
+    junction_body(beg : NToken, nodes : List[StateNode.Transition], _ : NToken) : List[JunctionNode]
+    {
+      def pos = beg.StartPos;
+      
+      def create_node(n)
+      {
+        | StateNode.Transition(_, g, a, t, _) => JunctionNode(pos, g, a, t)
+      }
+      
+      def pseudo = nodes.Select(create_node);
+      pseudo.ToList()
+    }
+    
+    junction_target(node : List[JunctionNode]) : TargetType
+    {
+      def pos = if (node.Count() != 0) node.First().pos else 0;
+      TargetType.PseudoState(pos, PseudoStateModelNode.Junction(pos, null, node.NToList(), JunctionType.Junction))
+    }
+
+    junction(tok : NToken, name : NToken, node : List[JunctionNode]) : StateNode.PseudoState
+    {
+      def pos = tok.StartPos;
+      StateNode.PseudoState(pos, PseudoStateModelNode.Junction(pos, GetText(name), node.NToList(), JunctionType.Junction))
+    }
+
+    choice_target(tok : NToken, node : List[JunctionNode]) : TargetType
+    {
+      def pos = tok.StartPos;
+      TargetType.PseudoState(pos, PseudoStateModelNode.Junction(pos, null, node.NToList(), JunctionType.Choice))
+    }
+
+    choice(tok : NToken, name : NToken, _ : NToken, node : List[JunctionNode]) : StateNode.PseudoState
+    {
+      def pos = tok.StartPos;
+      PseudoState(pos, PseudoStateModelNode.Junction(pos, GetText(name), node.NToList(), JunctionType.Choice))
+    }
+
+    merge(tok : NToken, name : NToken, tran : StateNode.Transition) : StateNode.PseudoState
+    {
+      def pos = tok.StartPos;
+      PseudoState(pos, PseudoStateModelNode.Junction(pos, GetText(name), JunctionNode(pos, tran.guard, tran.action, tran.to) :: [], JunctionType.Merge))
+    }
+
+    initial(name : NToken, guard : option[GuardNode], act : option[Actions], to : TargetType) : StateNode.PseudoState
+    {
+      def pos = name.StartPos;
+      PseudoState(pos, PseudoStateModelNode.Initial(pos, StateNode.Transition(pos, [], guard, act, to, TransitionType.Local)))
+    }
+
+     history_deep(tok : NToken, tran : option[StateNode.Transition]) : StateNode
+    {
+      def_history(HistoryType.Deep, tok, tran)
+    }
+
+    history_shallow(tok : NToken, tran : option[StateNode.Transition]) : StateNode
+    {
+      def_history(HistoryType.Shallow, tok, tran)
+    }
+
+    history_long(type : NToken, tran : option[StateNode.Transition]) : StateNode
+    {
+      match (GetText(type))
+      {
+        | "Deep"
+        | "deep"     => def_history(HistoryType.Deep, type, tran)
+        | "Shallow"
+        | "shallow"  => def_history(HistoryType.Shallow, type, tran)
+        | _          => StateNode.Error(type.StartPos, def_history(HistoryType.None, type, tran))
+      }
+    }
+
+    terminate_node(tok : NToken) : PseudoState
+    {
+      StateNode.PseudoState(tok.StartPos, PseudoStateModelNode.Terminate(tok.StartPos))
+    }
+
+    join(tok : NToken, name : NToken, target : TargetType) : PseudoState
+    {
+      StateNode.PseudoState(tok.StartPos, PseudoStateModelNode.Join(tok.StartPos, GetText(name), target))
+    }
+    
+    def_history(hist : HistoryType, tok : NToken, tran : option[StateNode.Transition]) : StateNode
+    {
+      def pos = tok.StartPos;
+      StateNode.PseudoState(pos, PseudoStateModelNode.History(pos, hist, tran))
+    }
+  }
+}
