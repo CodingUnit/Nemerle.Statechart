@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Statechart;
+using Nemerle.Compiler.Parsetree;
 
 namespace Nemerle.Statechart
 {
@@ -133,68 +134,60 @@ namespace Nemerle.Statechart
       identifier                                      =  letter+;
       qualified_id                                    =  (letter / '.')+;
       target_id                                       =  identifier;//target_letter+;
-      open_brace  : void                              =  "{"s;
-      close_brace : void                              =  "}"s;
-      slash       : void                              =  '/'s;
-      dollar                                          = '$'s;
+      //open_brace  : void                              =  "{"s;
+      //close_brace : void                              =  "}"s;
+      //slash       : void                              =  '/'s;
+      //dollar                                          = '$'s;
       numeric                                         = [Nl,  Nd]+;
       
       goto        : void                              =   "=>"s;
       entry_key                                       =  ("entry" / "$>")s;
       exit_key                                        =  ("exit" / "$<")s;
       state_key   : void                              =  "state"s;
-      initial_key                                     =  ("initial" / "0")s;
+      
       //flags_key   : void                              =  "flags"s;
-      history_key : void                              =  "history"s;
-      attr_begin  : void                              =  '['s;
-      attr_end    : void                              =  ']'s;
-      colon       : void                              =  ':'s;
-      point       : void                              =  '.'s;
-      comma       : void                              =  ','s;
+      //history_key : void                              =  "history"s;
+      //attr_begin  : void                              =  '['s;
+      //attr_end    : void                              =  ']'s;
+      //colon       : void                              =  ':'s;
+      //point       : void                              =  '.'s;
+      //comma       : void                              =  ','s;
       equal      : void                               =  '='s;
       open_round_brace : void                         =  '('s;
       close_round_brace : void                        =  ')'s;
       terminate_key                                   = ("terminate" / "X" / "x") s;
+      initial_key                                     =  ("initial" / "0")s;
       // terminal rules
       // guards
       
       else_guard         : GuardNode                  =  "else"s;
       guard_type         : GuardNode                  =  else_guard / expr_guard;
-      syntax_delim       : void                       =  colon / equal;
+      syntax_delim       : void                       =  (':' / '=') s;
       
-      lit_string         : StateLit                   =  <#"#>s identifier s<#"#>s;
-      lit_double         : StateLit                   =  numeric s point numeric? s;
-      lit_num            : StateLit                   =  numeric s;
-      lit_bool           : StateLit                   =  "true"s / "false"s;
-      braces_guard       : StateExpr                  =  '('s guard_expr ')'s;
-      var_guard          : StateExpr                  =  identifier s;
-      is_in_state        : StateExpr                  =  "in_state"s open_round_brace fully_qualified close_round_brace;
-      meth_guard         : StateExpr                  =  method_action;
-      lit_guard          : StateExpr                  =  lit_bool / lit_string / lit_double / lit_num;
+      guard_expr         : PExpr                      =  (!']' [Any])* s;//simple_guard_expr (two_op_expr s simple_guard_expr)*;
       
-      two_op_expr        : StateBinaryOp              =  "==" / "!=" / ">=" / ">" / "<=" / "<"  / "||" / "&&";
-      
-      one_op_expr        : StateUnaryOp               =  "!";
-      one_op_guard       : StateExpr                  =  one_op_expr s guard_expr;
-      simple_guard_expr  : StateExpr                  =  one_op_guard / braces_guard / lit_guard / is_in_state / meth_guard / var_guard;
-      guard_expr         : StateExpr                  =  simple_guard_expr (two_op_expr s simple_guard_expr)*;
-      
-      guard              : GuardNode                  =  attr_begin guard_type attr_end;
+      guard              : GuardNode                  =  '['s guard_type ']'s;
       expr_guard         : GuardNode                  =  guard_expr;
       
-      fully_qualified    : NameIdentifier             =  target_id (point target_id)* s;
-      simple_attrs       : List[NToken]               =  (attr_begin (identifier s comma?)+ attr_end s)+;
+      fully_qualified    : NameIdentifier             =  target_id ('.'s target_id)* s;
+      simple_attrs       : List[NToken]               =  ('['s (identifier s (','s)?)+ ']'s)+;
 
       attributes         : List[StateAttribute]       =  simple_attrs;
-      delim_action_list  : Actions                    =  '/'s (!end_symb action delimiter?)+ s end_symb;
-      block_action_list  : Actions                    =  '/'s "{"s (!close_brace action delimiter?)+ "}"s;
       
-      action_list        : Actions                    =  delim_action_list / block_action_list;
-      parameters         : List[string]               =  (!close_round_brace identifier s comma?)*;
-      empty_action       : FsmAction                  =  '('s ')'s;
-      method_action      : FsmAction                  =  identifier s (open_round_brace parameters close_round_brace);
-      tran_action        : FsmAction                  =  identifier s (open_round_brace parameters close_round_brace)?;
-      action             : FsmAction                  =  empty_action / tran_action;
+      //block_action_list  : Actions                    =  '/'s "{"s (!close_brace action delimiter?)+ "}"s;
+      
+      //action_expr        : ActionExpr                 =  guard_expr;
+      
+      
+      expr_action        : Actions                    =  '/'s (!';' [Any])* s;
+      delim_action_list  : Actions                    =  '/'s (!end_symb action delimiter?)+ s end_symb;
+      
+      action_list        : Actions                    =  delim_action_list / expr_action;
+      parameters         : List[string]               =  (!close_round_brace identifier s (','s)?)*;
+      empty_action       : FsmAction.Normal           =  '('s ')'s;
+      //method_action      : FsmAction                  =  identifier s (open_round_brace parameters close_round_brace);
+      tran_action        : FsmAction.Normal           =  identifier s (open_round_brace parameters close_round_brace)?;
+      action             : FsmAction.Normal           =  empty_action / tran_action;
       
       entry              : StateNode                  =  simple_attrs? entry_key action_list? end_symb?;
       exit               : StateNode                  =  simple_attrs? exit_key action_list? end_symb?;
@@ -206,21 +199,23 @@ namespace Nemerle.Statechart
       join               : StateNode                  =  "join"s identifier s goto transition_target;
       junction           : StateNode                  =  "junction"s identifier s junction_body;
       junc_tran_body     : StateNode.Transition       =  guard_type? trans_act_list? goto transition_target;
-      junction_body      : List[JunctionNode]         =  "{"s (!close_brace junc_tran_body)+ "}"s;
+      junction_body      : List[JunctionNode]         =  "{"s (!'}' junc_tran_body)+ "}"s;
       junction_target    : TargetType                 =  junction_body;
-      choice             : StateNode                  =  "choice"s identifier s dollar? junction_body;
-      choice_target      : TargetType                 =  dollar junction_body;
+      choice             : StateNode                  =  "choice"s identifier s '$'? junction_body;
+      choice_target      : TargetType                 =  '$' junction_body;
       merge              : StateNode                  =  "merge"s identifier junc_tran_body;
       simple_target      : TargetType                 =  fully_qualified end_symb;
       //fork_trans_target  : TargetType                 =  simple_target s simple_target s (!end_symb simple_target s delimiter)* end_symb;
       transition_target  : TargetType                 =  choice_target / junction_target / simple_target;
       
-      trans_act_list     : Actions                    =  '/'s (!goto action s delimiter)*;
+      expr_tran_action   : Actions                    = '/'s (!goto [Any])* s;
+      norm_act_list      : Actions                    = '/'s (!goto action s delimiter)*;
+      trans_act_list     : Actions                    =  norm_act_list / expr_tran_action;
       //transition_mark    : StateNode.Transition       =  s guard? trans_act_list? goto transition_target;
       default_transition : StateNode.Transition       =  s trans_act_list? goto transition_target;// s end_symb?;
       internal_trans     : StateNode                  =  identifier s guard? action_list;
       
-      events             : List[TransitionEvent]      =  identifier s (!('[' / '=' / '/') comma identifier s)* s;
+      events             : List[TransitionEvent]      =  identifier s (!('[' / '=' / '/') ','s identifier s)* s;
       transitions        : List[StateNode]            =  simple_transition*;
       local_goto         : void                       =  "(=>"s;
       ext_goto           : void                       =  ")=>"s / "=>"s;
@@ -232,27 +227,27 @@ namespace Nemerle.Statechart
       history_deep       : StateNode                  =  "(H*)"s default_transition?;
       history_shallow    : StateNode                  =  "(H)"s default_transition?;
       history_short      : StateNode                  =  history_deep / history_shallow;
-      history_long       : StateNode                  =  history_key colon identifier s default_transition?;
+      history_long       : StateNode                  =  "history"s ':'s identifier s default_transition?;
       history            : StateNode                  =  (history_long / history_short) end_symb?;
 
-      machine_decls      : StateNode                  =  simple_transition;
-      machine_body       : List[StateNode]            =  open_brace machine_decls* close_brace;
-      statemachine       : StateNode                  =  "statemachine"s identifier s parent? machine_body;
+      //machine_decls      : StateNode                  =  simple_transition;
+      //machine_body       : List[StateNode]            =  '{'s machine_decls* '}'s;
+      //statemachine       : StateNode                  =  "statemachine"s identifier s parent? machine_body;
       //inlined_fsm        : StateNode                  =  "new"s fsm_key identifier s ':'s identifier s stateBody;
-      stateDecl          : StateNode                  =  flags / name / region / pseudo_state / entry / exit / do_activity / transition / state / statemachine;// / inlined_fsm / statemachine;
-      stateBody          : List[StateNode]            =  open_brace stateDecl* close_brace;
-      parent             : NameIdentifier             =  colon fully_qualified;
+      stateDecl          : StateNode                  =  flags / name / region / pseudo_state / entry / exit / do_activity / transition / state;// / statemachine;// / inlined_fsm / statemachine;
+      stateBody          : List[StateNode]            =  '{'s stateDecl* '}'s;
+      parent             : NameIdentifier             =  ':'s fully_qualified;
       state              : StateNode                  =  attributes? state_key identifier s parent? stateBody;
 
-      region             : StateNode                  =  attr_begin "---" '-'* attr_end;
-      flags              : StateNode                  =  "flags"s syntax_delim (identifier s comma?)+ end_symb;
+      region             : StateNode                  =  '['s "---" '-'* ']'s;
+      flags              : StateNode                  =  "flags"s syntax_delim (identifier s (','s)?)+ end_symb;
       name               : StateNode                  =  "name"s syntax_delim? identifier s end_symb;
-      stateMachine       : StateMachine               =  spaces_def stateDecl+ s;
+      stateMachine       : StateMachine               =  s stateDecl+ s;
 
   })]
   public partial class FsmParser
   {
-
+    public env : GlobalEnv {get;set;}
   }
 
 }

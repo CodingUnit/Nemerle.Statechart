@@ -20,10 +20,10 @@ namespace Nemerle.Statechart
 
   public partial class FsmParser
   {
-    fully_qualified(id : NToken, tail : List[NToken]) : NameIdentifier
+    fully_qualified(id : NToken, tail : List[NToken * NToken]) : NameIdentifier
     {
       def pos = id.StartPos;
-      def tail = tail |> GetText(_);
+      def tail = tail.Map((_, x) => GetText(x));
       match (GetText(id), tail)
       {
         | (s, []) => NameIdentifier.Name(pos, s)
@@ -32,7 +32,6 @@ namespace Nemerle.Statechart
             NameIdentifier.QualifiedName(pos, joined, lst)
       }
     }
-
     
     simple_target(name : NameIdentifier) : TargetType
     {
@@ -73,8 +72,9 @@ namespace Nemerle.Statechart
       StateNode.Transition(target.pos, [], None(), act, target, TransitionType.Local)
     }
 
-    events(id : NToken, evt : List[NToken]) : List[TransitionEvent]
+    events(id : NToken, evt : List[NToken * NToken]) : List[TransitionEvent]
     {
+      def evt = evt.Select((_, x : NToken) => x);
       def lst = evt.AddBefore(id);
       lst.Select(create_event).ToList()
     }
@@ -91,9 +91,9 @@ namespace Nemerle.Statechart
       Transition(pos, evt.NToList(), guard, act, to, TransitionType.Local)
     }
     
-    simple_attrs(attr : List[List[NToken]]) : List[NToken]
+    simple_attrs(attr : List[NToken * List[NToken * NToken] * NToken]) : List[NToken]
     {
-      attr.Flatten().ToList()
+      attr.SelectMany((_, x, _) => x.Map((x, _) => x)).ToList()
     }
 
     attributes(attr : List[NToken]) : List[StateAttribute]
@@ -110,46 +110,7 @@ namespace Nemerle.Statechart
       attr.Map(get_attr).ToList()
     }
 
-    trans_act_list(act : NToken, lst : List[FsmAction]) : Actions
-    {
-      create_action(act, lst)
-    }
 
-    block_action_list(start : NToken, _ : NToken, lst : List[FsmAction], _ : NToken) : Actions
-    {
-      create_action(start, lst)
-    }
-
-    //empty_action_list(tok : NToken) : Actions
-    //{
-    //  Actions(tok.StartPos, [])
-    //}
-
-    empty_action(s : NToken, _ : NToken) : FsmAction
-    {
-      FsmAction(s.StartPos, null, [])
-    }
-    
-    delim_action_list(tok : NToken, lst : List[FsmAction]) : Actions
-    {
-      create_action(tok, lst)
-    }
-
-    entry(attr : option[List[NToken]], key : NToken, acts : option[Actions]) : Entry
-    {
-      def acts = acts.WithDefault(Actions(key.StartPos, []));
-      def attr = attr.WithDefault(Enumerable.Empty());
-      def attr = get_action_attr(attr);
-      Entry(key.StartPos, attr, acts)
-    }
-
-    exit(attr : option[List[NToken]], key : NToken,  acts : option[Actions]) : Exit
-    {
-      def acts = acts.WithDefault(Actions(key.StartPos, []));
-      def attr = attr.WithDefault(Enumerable.Empty());
-      def attr = get_action_attr(attr);
-      Exit(key.StartPos, attr, acts)
-    }
 
     get_action_attr(attr : IEnumerable[NToken]) : ActionFlags
     {
@@ -189,11 +150,11 @@ namespace Nemerle.Statechart
     }
 
 
-    flags(s : NToken, tok : List[NToken]) : StateNode
+    flags(s : NToken, tok : List[NToken * NToken]) : StateNode
     {
       def err = List();
       
-      def proc_tok(tok, flag)
+      def proc_tok((tok, _), flag)
       {
         def nflag= match (GetText(tok))
                     {
@@ -247,26 +208,17 @@ namespace Nemerle.Statechart
       State(tok.StartPos, name, parent.Map(x => x.FullName), [], [], [], trans, [], [], pseudo, StateType.SubMachine(type), errors)
     }
 
-    region(beg : NToken, _ : NToken) : StateNode
+    region(_ : NToken, beg : NToken, _ : NToken, _ : NToken) : StateNode
     {
       StateNode.Region(beg.StartPos)
       //State(beg.StartPos, StateType.SubRegion())
     }
     
-    parameters(lst : List[NToken]) : List[string]
-    {
-      lst.Select(GetText).ToList()
-    }
     
-    tran_action(n : NToken, pars : option[List[string]]) : FsmAction
-    {
-      FsmAction(n.StartPos, GetText(n), pars.MapDefault(x => x.NToList(), []))
-    }
-    
-    method_action(n : NToken, pars : List[string]) : FsmAction
-    {
-      FsmAction(n.StartPos, GetText(n), pars.NToList())
-    }
+    //method_action(n : NToken, pars : List[string]) : FsmAction
+    //{
+    //  FsmAction(n.StartPos, GetText(n), pars.NToList())
+    //}
     
   }
 

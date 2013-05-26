@@ -101,7 +101,7 @@ namespace Nemerle.Statechart
 
     public this(act : FsmAction, map : Map[string, string], util : GenUtil)
     {
-      base(act.name, map);
+      if (act is FsmAction.Normal(n, _)) base(n, map); else base(null, map);
       action = act;
       this.util = util
     }
@@ -111,7 +111,11 @@ namespace Nemerle.Statechart
     {
       get
       {
-        action.parameters.Map(x => <[ $(x : usesite) ]>)
+        match (action)
+        {
+          | FsmAction.Normal(_, p) => p.Map(x => <[ $(x : usesite) ]>)
+          | _                      => []
+        }
       }
     }
     
@@ -120,7 +124,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        <[ $(ExecName : usesite)(..$Params); ]>
+        if (action is FsmAction.Expr(e)) e else <[ $(ExecName : usesite)(..$Params) ]>
       }
     }
     
@@ -129,7 +133,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        <[ $(DeclName : usesite)(..$Params); ]>
+        if (action is FsmAction.Expr(e)) e else <[ $(DeclName : usesite)(..$Params); ]>
       }
     }
     
@@ -155,12 +159,14 @@ namespace Nemerle.Statechart
     {
       def body = if (BodyFunc != null) BodyFunc(EventActionCall) else EventActionCall;
       
-      util.Define(<[decl: public event $(DeclName: usesite) : Action;]>);
-      util.Define(<[decl: $(ExecName : usesite)() : void 
+      when (!IsDeclared)
+      {
+        util.Define(<[decl: public event $(DeclName: usesite) : Action;]>);
+        util.Define(<[decl: $(ExecName : usesite)() : void 
                             {
                               $body
                             }]>);
-                            
+      }
 
     }
 

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Statechart;
+using Nemerle.Compiler;
 
 namespace Nemerle.Statechart
 {
@@ -42,47 +43,79 @@ namespace Nemerle.Statechart
     //  }
     //}
     
-    create_action(start : NToken, lst : List[FsmAction]) : Actions
+    //trans_act_list(lst : Actions) : Actions
+    //{
+    //  create_action(act, lst)
+    //}
+
+    //block_action_list(start : NToken, _ : NToken, lst : List[FsmAction], _ : NToken) : Actions
+    //{
+    //  create_action(start, lst)
+    //}
+
+    //empty_action_list(tok : NToken) : Actions
+    //{
+    //  Actions(tok.StartPos, [])
+    //}
+
+    empty_action(s : NToken, _ : NToken) : FsmAction.Normal
+    {
+      FsmAction.Normal(s.StartPos, null, [])
+    }
+    
+    delim_action_list(tok : NToken, lst : List[FsmAction.Normal]) : Actions
     {
       def lst = lst.Where(x => x.name != null).NToList();
-      Actions(start.StartPos, lst)
+      Actions(lst, tok.StartPos)
     }
 
-    CreateState(pos : int, name : string, attr : IEnumerable[StateAttribute], decls : IEnumerable[StateNode], type : StateType, parent : option[NameIdentifier]) : StateNode.State
+    entry(attr : option[List[NToken]], key : NToken, acts : option[Actions]) : Entry
     {
-      def get_decls(decls) 
-      {
-        def (en, decls)       = decls.PartitionType();
-        def (ex, decls)       = decls.PartitionType();
-        def (states, decls)   = decls.PartitionType();
-        def (trans, decls)    = decls.PartitionType();
-        //def (trans, other)    = trans.Partition(x => x.type == TransitionType.Transition);
-        //def (in_trans, other) = other.Partition(x => x.type == TransitionType.Internal);
-        //def (init, _)         = other.Partition(x => x.type == TransitionType.Initial);
-        def (do_act, decls)   = decls.PartitionType();
-        
-        def (pseudo, decls) = decls.PartitionType();
-        
-        (en, ex, states, trans, do_act, pseudo, decls)
-      } 
-      
-      def create_sub_regions(reg)
-      {
-        def (en, ex, states, trans, do_act, pseudo, _) = get_decls(reg);
-        State(0, null, None(), [], en, ex, trans, do_act, states, pseudo, StateType.SubRegion(), [])
-      }
-      
-      def decls = decls.OrderBy(_.pos).NToList();
-      def (reg_trans, reg) = decls.Partition(_ is StateNode.Transition);
-      def regions = reg.FindDelimited(_ is State(type = StateType.SubRegion)); // split list by regions
-      def (regions, decls) = if (regions.IsEmpty()) ([], decls) else (regions.Map(create_sub_regions), reg_trans); // create regions
-      def (en, ex, states, trans, do_act, pseudo, decls) = get_decls(decls);
-      def (states, type) = if (regions.IsEmpty()) (states, type) else (regions, StateType.Region());
-      def parent = parent.Map(_.FullName);
-      State(pos, name, parent, attr.NToList(), en, ex, trans, do_act, states, pseudo, type, decls.Map(x => Error(x.pos, x)))
-      }
+      def acts = acts.WithDefault(Actions([], key.StartPos));
+      def attr = attr.WithDefault(Enumerable.Empty());
+      def attr = get_action_attr(attr);
+      Entry(key.StartPos, attr, acts)
+    }
 
+    exit(attr : option[List[NToken]], key : NToken,  acts : option[Actions]) : Exit
+    {
+      def acts = acts.WithDefault(Actions([], key.StartPos));
+      def attr = attr.WithDefault(Enumerable.Empty());
+      def attr = get_action_attr(attr);
+      Exit(key.StartPos, attr, acts)
+    }
     
+    expr_action(tok : NToken, text : NToken) : Actions
+    {
+      def pos = tok.StartPos;
+      def text = GetText(text);
+      def expr = MainParser.ParseExpr(env, text);
+      def act = FsmAction.Expr(pos, expr);
+      Actions(act :: [], pos)
+    }
+
+    expr_tran_action(p : NToken, tok : NToken) : Actions
+    {
+      def pos = p.StartPos;
+      def text = GetText(tok);
+      def expr = MainParser.ParseExpr(env, text);
+      def act = FsmAction.Expr(pos, expr);
+      Actions(act :: [], pos)
+    }
     
+    parameters(lst : List[NToken * NToken]) : List[string]
+    {
+      lst.Select((x, _) => GetText(x)).ToList()
+    }
+    
+    tran_action(n : NToken, pars : option[List[string]]) : FsmAction.Normal
+    {
+      FsmAction.Normal(n.StartPos, GetText(n), pars.MapDefault(x => x.NToList(), []))
+    }
+    
+    norm_act_list(tok : NToken, lst : List[FsmAction.Normal]) : Actions
+    {
+      Actions(lst.Map(_ : FsmAction), tok.StartPos)
+    }
   }
 }

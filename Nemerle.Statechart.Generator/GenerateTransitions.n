@@ -201,69 +201,73 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    EvalGuardExpr(expr : StateExpr, ctx : GenCtx) : PExpr
+    EvalGuardExpr(expr : PExpr, ctx : GenCtx) : PExpr
     {
-      def unary_eval(o, a)
+      //def unary_eval(o, a)
+      //{
+      //  match (o)
+      //  {
+      //    | StateUnaryOp.Not => <[ ! $a]>
+      //    | _                => a
+      //  }
+      //}
+
+      //def two_eval(a, op, b)
+      //{
+      //  match (op)
+      //  {
+      //    | StateBinaryOp.Above => <[ $a > $b]>
+      //    | Equal               => <[ $a == $b]>
+      //    | NotEqual            => <[ $a != $b]>
+      //    | AboveEq             => <[ $a >= $b]>
+      //    | Below               => <[ $a < $b]>
+      //    | BelowEq             => <[ $a <= $b]>
+      //    | Or                  => <[ $a || $b]>
+      //    | And                 => <[ $a && $b]>
+      //    | Error               => <[ true ]>
+      //  }
+      //}
+
+      def check_eval(_, after, e)
       {
-        match (o)
+        if (after)
+        match (e)
         {
-          | StateUnaryOp.Not => <[ ! $a]>
-          | _                => a
-        }
+          | <[ in_state($st) ]>
+          | <[ InState($st) ]>   => def st = st.ToString();
+                                    def st = GetExecStateName(st, ctx);
+                                    if (ctx.IsInEventHandler) <[ fsm.IsInState($st) ]> else <[ IsInState($st) ]>
+          //| FsmAction(_, name, pars)      => //def pars = pars.Map(x => <[ $x ]>);
+          //                                   def pars = $[<[ $x ]>, x in pars];
+          //                                   <[ $(name : usesite)(..$pars) ]>
+          | t => t
+        } else e
       }
 
-      def two_eval(a, op, b)
-      {
-        match (op)
-        {
-          | StateBinaryOp.Above => <[ $a > $b]>
-          | Equal               => <[ $a == $b]>
-          | NotEqual            => <[ $a != $b]>
-          | AboveEq             => <[ $a >= $b]>
-          | Below               => <[ $a < $b]>
-          | BelowEq             => <[ $a <= $b]>
-          | Or                  => <[ $a || $b]>
-          | And                 => <[ $a && $b]>
-          | Error               => <[ true ]>
-        }
-      }
+      //def lit_eval(l)
+      //{
+      //  match (l.lit)
+      //  {
+      //    | StateLit.Double(d) => <[ $d ]> 
+      //    | Integer(i)         => <[ $i ]> 
+      //    | String(s)          => <[ $s ]>
+      //    | Bool(b)            => <[ $b ]>
+      //  }
+      //}
 
-      def method_eval(m)
-      {
-        def meth = m.m;
-        match (meth)
-        {
-          | FsmAction(_, "InState", [st]) => def st = GetExecStateName(st, ctx);
-                                             if (ctx.IsInEventHandler) <[ fsm.IsInState($st) ]> else <[ IsInState($st) ]>  
-          | FsmAction(_, name, pars)      => //def pars = pars.Map(x => <[ $x ]>);
-                                             def pars = $[<[ $x ]>, x in pars];
-                                             <[ $(name : usesite)(..$pars) ]>
-        }
-      }
-
-      def lit_eval(l)
-      {
-        match (l.lit)
-        {
-          | StateLit.Double(d) => <[ $d ]> 
-          | Integer(i)         => <[ $i ]> 
-          | String(s)          => <[ $s ]>
-          | Bool(b)            => <[ $b ]>
-        }
-      }
-
-      def eval(expr)
-      {
-        | StateExpr.Braces(e) => eval(e)
-        | Error               => <[ true ]>
-        | Literal as lit      => lit_eval(lit)
-        | Method as m         => method_eval(m)
-        | TwoOp(e, op, b)     => two_eval(eval(e), op, eval(b))
-        | UnaryOp(e, a)       => unary_eval(e, eval(a))
-        | Var(v)              => <[ $(v : usesite) ]>
-      }
+      //def eval(expr)
+      //{
+      //  | GuardExpr.Braces(e) => eval(e)
+      //  | Error               => <[ true ]>
+      //  | Literal as lit      => lit_eval(lit)
+      //  | Method as m         => method_eval(m)
+      //  | TwoOp(e, op, b)     => two_eval(eval(e), op, eval(b))
+      //  | UnaryOp(e, a)       => unary_eval(e, eval(a))
+      //  | Var(v)              => <[ $(v : usesite) ]>
+      //}
       
-      eval(expr)
+      Macros.TraverseExpr(None(), expr, false, check_eval)
+      //eval(expr)
       //expr.Fold(<[ true ]>, _ => <[ true ]>, unary_eval, two_eval, (_, a) => a, method_eval, var_eval, lit_eval);
       
       //def GuardNode = GenElement(cond, guard_for);

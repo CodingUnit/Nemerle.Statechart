@@ -31,16 +31,24 @@ namespace Nemerle.Statechart
     {
       get
       {
-        activity.actions
+        activity.action.actions
       }
     }
 
+    normal_actions : list[FsmAction.Normal]
+    {
+      get
+      {
+        actions.FilterType();
+      }
+    }
+    
     [Memoized]
     action_list : list[GenElement]
     {
       get
       {
-        def acts = actions.Map(x => x.name);
+        def acts = normal_actions.Map(x => x.name);
         acts.Map(x => GenElement(x, map))
       }
     }
@@ -109,7 +117,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    static mutable has_do_activity_gen : bool;
+    mutable has_do_activity_gen : bool;
     
     GenBaseStruct() : void
     {
@@ -122,7 +130,7 @@ namespace Nemerle.Statechart
       def not_def_act = action_list.Exclude(_.IsDeclared);
       not_def_act.Iter(x => util.DefineEvent(x.name, <[ Action[CancellationToken] ]>, [<[parameter: tok : CancellationToken ]>], <[ tok ]>));
 
-      when (!has_do_activity_gen) util.Define(<[decl: task_factory : TaskFactory = TaskFactory(); ]>);
+      
             // cancellation source
       util.Define(<[decl: mutable $(CancelSourceName : usesite) : CancellationTokenSource; ]>);
       util.Define(<[decl: mutable $(task_name : usesite) : Task;]>); // declare task
@@ -236,6 +244,7 @@ namespace Nemerle.Statechart
                           Completion()
                         } ]>);
           }
+        Define(<[decl: task_factory : TaskFactory = TaskFactory(); ]>);
         foreach (act in act)
         {
           def act = GenActivity(act, action_for, util);
