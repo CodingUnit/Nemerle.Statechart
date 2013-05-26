@@ -1,0 +1,77 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  [Record]
+  public variant FsmJunctionNode : IGeneralTree[FsmJunctionNode]
+  {
+    | Node { nodes : list[FsmJunctionNode]; }
+    | Target
+      {
+        target : TransitionTarget {get;set;}
+        dest   : TransitionDestination {get;set;}
+      }
+
+    public guard : option[GuardNode];
+    public action : option[Actions];
+    public state : FsmState;
+
+    public Current : FsmJunctionNode 
+    {
+      get
+      {
+        this
+      }
+    }
+
+    public ChildNodes : IEnumerable[IGeneralTree[FsmJunctionNode]] 
+    {
+      get
+      {
+        match (this)
+        {
+          | Node(n) => n
+          | Target  => Enumerable.Empty()
+        }
+      }
+    }
+
+    public static Create(st : FsmState, node : list[JunctionNode]) : FsmJunctionNode
+    {
+      def create(x, acc)
+      {
+        match (x, x.ChildNodes.NToList())
+        {
+          | (JunctionNode(_, g, a, t), [])  => FsmJunctionNode.Target(g, a, st, TransitionTarget.Create(null, st, t), null)
+          | (JunctionNode(_, g, a, _), _)   => FsmJunctionNode.Node(g, a, st, acc.NToList())
+        }
+      }
+
+      def nodes = node.Map(x => x.FoldTree(null, create));
+      FsmJunctionNode.Node(None(), None(), st, nodes)
+    }
+    
+    public Iter(func : FsmJunctionNode -> void) : void
+    {
+      this.GetBreadthFirstEnumerable().Iter(func)
+    }
+    
+    public Iter(node_func : Node -> void, tar_func : Target -> void) : void
+    {
+      def func(n)
+      {
+        | Node as n   => when (node_func != null) node_func(n)
+        | Target as n => when (tar_func != null) tar_func(n)
+      }
+      
+      this.GetBreadthFirstEnumerable().Iter(func)
+    }
+  }
+}

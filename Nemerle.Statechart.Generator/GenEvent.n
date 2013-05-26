@@ -15,13 +15,31 @@ namespace Nemerle.Statechart
   /// <summary>
   /// Description of GenEvent.
   /// </summary>
+  
   [Record]
   class GenEvent
   {
+    an : FsmAnalyser;
     util : GenUtil;
     events : list[string];
     //event_for : Map[string, string];
    
+    NeedEvtContextName : bool
+    {
+      get
+      {
+        an.EventCtx.NeedName
+      }
+    }
+    
+    NeedEvtContext : bool
+    {
+      get
+      {
+        an.EventCtx.NeedContext
+      }
+    }
+    
     //[Memoized]
     //Events : list[GenElement]
     //{
@@ -51,11 +69,41 @@ namespace Nemerle.Statechart
       }
     }
     
+    [Memoized]
+    EventCtxBody : PExpr
+    {
+      get
+      {
+        if (NeedEvtContext) <[ Evt.evt = evt ]> else <[]>
+      }
+    }
+    
+    GenEventCtx() : void
+    {
+      def cls = <[decl: public class EventCtx
+                        {
+                          public evt : Event {get;set;}
+                          
+                          public name : string
+                          {
+                            get
+                            {
+                              evt.ToString()
+                            }
+                          }
+                        } ]>;
+      def field = <[decl: public Evt : EventCtx = EventCtx() ]>;
+      util.DefineNested(cls).Compile();
+      util.Define(field);
+    }
+    
     GenBaseStruct() : void
     {
+      when (NeedEvtContext) GenEventCtx();
       util.Define(<[ decl:
             Dispatch(evt : Event) : void
             {
+                $EventCtxBody;
                 def res = match (evt)
                 {
                   ..$RunEventInState

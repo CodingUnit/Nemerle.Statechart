@@ -28,10 +28,26 @@ namespace Nemerle.Statechart
       {
         | Initial(tran = tr)
         | History(default = Some(tr)) => UpdateTransitionReference(tr, st)
+        //| Junction(tree = n) as p     => UpdateJunctionReference(p, st)
         | _            => ()
       }
     }
 
+    UpdateJunctionReference(p : PseudoStateNode.Junction, st : FsmState, tran : StateTransition) : void
+    {
+      def check_target(t)
+      {
+        def tar = t.target;
+        match (ResolveTarget(t.state, tar, tran))
+        {
+          | null => ()
+          | nt    => t.target = nt;
+        }
+      }
+      
+      p.tree.Iter(null, check_target)
+    }
+    
     UpdateTransitionReference(tr : StateTransition, st : FsmState) : void
     {
       match (ResolveTarget(st, tr.To, tr))
@@ -40,14 +56,21 @@ namespace Nemerle.Statechart
         | t    => tr.To = t
       }
     }
-
     
-    ResolvePseudoState(p : PseudoStateNode, st : FsmState) : PseudoStateNode
+    ResolvePseudoState(p : PseudoStateNode, st : FsmState, tran : StateTransition) : PseudoStateNode
     {
       match (p)
       {                                   // get history from state
         | PseudoStateNode.History as h => st.GetHistory(h)
         | Terminate as p               => p // it is must be resolved
+        | Junction(Name = n, IsUnnamed = false) => match (GetPseudoIn(n, PseudoStates))
+                                                   {
+                                                     | null          => null
+                                                     | Junction as p => UpdateJunctionReference(p, st, tran); p
+                                                     | _             => null
+                                                   }
+                                                         
+        | Junction as j => UpdateJunctionReference(j, st, tran); j
         | _ => match (p.NativeName) // find for name
             {
               | Some(p)   => GetPseudoIn(p, null)
@@ -76,7 +99,7 @@ namespace Nemerle.Statechart
                                                                   null
                                                    | (res, _)  => ResolveTarget(res, t, tran)
                                                  }
-        | PseudoState(p) as t                 => match (ResolvePseudoState(p, st))
+        | PseudoState(p) as t                 => match (ResolvePseudoState(p, st, tran))
                                                   {
                                                     | null => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
                                                               null
