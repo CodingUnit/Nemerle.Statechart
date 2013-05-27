@@ -33,63 +33,6 @@ namespace Nemerle.Statechart
       }
     }
     
-    simple_target(name : NameIdentifier) : TargetType
-    {
-      def pos = name.pos;
-      
-      def get_target(n)
-      {
-          | "history"  with hist = HistoryType.None
-          | "H"  with hist = HistoryType.Shallow
-          | "h"  with hist = HistoryType.Shallow
-          | "h*" with hist = HistoryType.Deep
-          | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, hist, None()))
-          | "final"
-          | "$0"       => TargetType.Final(pos)
-          | "self"
-          | "@"        => TargetType.Self(pos)
-          | "terminate"
-          | "x"
-          | "X"        => TargetType.PseudoState(name.pos, PseudoStateModelNode.Terminate(0))
-          | x when (x.IndexOf('(') != -1 ) => 
-              def n = string(n.Explode().Except(['(', ')']).ToArray());
-              TargetType.Named(name.pos, n)
-          //| _ => TargetType.Named(name.pos, name.TargetName.Trim('(',')'))
-          | _                      => TargetType.Named(name.pos, n)
-      }
-
-      match (name)
-      {
-        | Name(name = n) => get_target(n)
-        | QualifiedName(parts = n) => def (tar, lst) = n.SplitLast();
-            def st = $<#..$(lst;".")#>;
-            TargetType.Qualified(name.pos, st, get_target(tar))//State(st, StateType.State()), 
-      }
-    }
-
-    default_transition(act : option[Actions], target : TargetType) : StateNode.Transition
-    {
-      StateNode.Transition(target.pos, [], None(), act, target, TransitionType.Local)
-    }
-
-    events(id : NToken, evt : List[NToken * NToken]) : List[TransitionEvent]
-    {
-      def evt = evt.Select((_, x : NToken) => x);
-      def lst = evt.AddBefore(id);
-      lst.Select(create_event).ToList()
-    }
-
-    simple_transition(evt : List[TransitionEvent], guard : option[GuardNode], act : option[Actions], to : TargetType) : StateNode.Transition
-    {
-      def pos = evt.First().pos;
-      Transition(pos, evt.NToList(), guard, act, to, TransitionType.Transition)
-    }
-
-    local_trans(evt : List[TransitionEvent], guard : option[GuardNode], act : option[Actions], to : TargetType) : StateNode.Transition
-    {
-      def pos = evt.First().pos;
-      Transition(pos, evt.NToList(), guard, act, to, TransitionType.Local)
-    }
     
     simple_attrs(attr : List[NToken * List[NToken * NToken] * NToken]) : List[NToken]
     {
@@ -144,12 +87,6 @@ namespace Nemerle.Statechart
       DoActivity(key.StartPos, acts, ActivityFlag.None)
     }
 
-    internal_trans(evt : NToken, guard : option[GuardNode], acts : Actions) : StateNode.Transition
-    {
-      Transition(evt.StartPos, create_event(evt) :: [], guard, Some(acts), TargetType.NoTarget(evt.StartPos), TransitionType.Internal)
-    }
-
-
     flags(s : NToken, tok : List[NToken * NToken]) : StateNode
     {
       def err = List();
@@ -197,16 +134,16 @@ namespace Nemerle.Statechart
     //  CreateState(pos, name, [], body, StateType.InlinedSubMachine(GetText(type)), None());
     //}
 
-    statemachine(tok : NToken, name : NToken, parent : option[NameIdentifier], decls : List[StateNode]) : StateNode
-    {
-      def decls = decls.NToList();
-      def (trans, decls) = decls.PartitionType();
-      def (pseudo, other) = decls.PartitionType();
-      def name = GetText(name);
-      def type = if (parent is Some(p)) p.FullName else name;
-      def errors = other.Map(x => StateNode.Error(x.pos, x));
-      State(tok.StartPos, name, parent.Map(x => x.FullName), [], [], [], trans, [], [], pseudo, StateType.SubMachine(type), errors)
-    }
+    //statemachine(tok : NToken, name : NToken, parent : option[NameIdentifier], decls : List[StateNode]) : StateNode
+    //{
+    //  def decls = decls.NToList();
+    //  def (trans, decls) = decls.PartitionType();
+    //  def (pseudo, other) = decls.PartitionType();
+    //  def name = GetText(name);
+    //  def type = if (parent is Some(p)) p.FullName else name;
+    //  def errors = other.Map(x => StateNode.Error(x.pos, x));
+    //  State(tok.StartPos, name, parent.Map(x => x.FullName), [], [], [], trans, [], [], pseudo, StateType.SubMachine(type), errors)
+    //}
 
     region(_ : NToken, beg : NToken, _ : NToken, _ : NToken) : StateNode
     {
