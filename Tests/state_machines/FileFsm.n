@@ -22,15 +22,21 @@ namespace Nemerle.Statechart.Tests
   
   entry / SaveDis;
   
-  save_as => SaveFileAs;
+  save_as_pressed => SaveFileAs;
   
   0 => Waiting;
   
-  state NotNeedSaving
+  state Interface
   {
-    open => OpenDialog;
-    new  => NewDialog;
-    exiting => X;
+    (H*)
+  }
+  
+  state NotNeedSaving : Interface
+  {
+    open_pressed => OpenDialog;
+    new_pressed  => NewDialog;
+    exit_pressed => X;
+    entry / SaveDis;
     
     state Saved
     {
@@ -46,16 +52,17 @@ namespace Nemerle.Statechart.Tests
   
   }
   
-  state NotSaved
+  state NotSaved : Interface
   {
       entry / SaveEna;
 
-      new, open, save, exiting / last_event = Evt.evt => SaveChecking;
+      new_pressed, open_pressed, save_pressed, exit_pressed / last_event = Evt.evt => SaveChecking;
       
       state New
       {
           entry / CaptionFile SaveAsEna;
-          Save => SaveFileAs;
+          entry / CurFile = null;
+          save_pressed => SaveFileAs;
       }
 
       state Changed
@@ -63,12 +70,11 @@ namespace Nemerle.Statechart.Tests
           entry / CaptionChanged;
       }
 
-      (H)
   }
 
   state SaveChecking
   {
-    Cancel => NotSaved.H;
+    cancel => Interface.H;
     OK / send(last_event) => NotNeedSaving;
     
     do / save_checking;
@@ -76,12 +82,13 @@ namespace Nemerle.Statechart.Tests
   
   state FileDialogs
   {
-    _, Cancel => NotNeedSaving;
-    OK => $0;
+    _ => Interface;
+    cancel => Interface.H;
     
     state OpenDialog
     {
       do / open_dialog;
+      OK => $0;
     }
     
     state NewDialog
@@ -93,6 +100,7 @@ namespace Nemerle.Statechart.Tests
     state SaveFileAs
     {
       do / saving_file_as;
+      OK     => $0;
     }
     
   }
@@ -101,13 +109,13 @@ namespace Nemerle.Statechart.Tests
   public class FileFsm
   {
     
-    last_event : Event;
+    mutable last_event : Event;
     
     public sync : ISynchronizeInvoke {get;set;}
     
     DoSaveFile() : bool
     {
-      if (InState(State.New()))
+      if (CurFile == null)
       {
         SaveAsDialog()
       }
@@ -131,13 +139,13 @@ namespace Nemerle.Statechart.Tests
                   | _      => false
                 }
 
-      if (res) OK() else Cancel()
+      if (res) OK() else cancel()
     }
 
     new_dialog(_tok : CancellationToken) : void
     {
       def res = if (ViewNewDialog()) OnNewFileAction() else false;
-      if (res) OK() else Cancel()
+      if (res) OK() else cancel()
     }
 
     open_dialog(_tok : CancellationToken) : void
@@ -147,7 +155,7 @@ namespace Nemerle.Statechart.Tests
                    CurFile = OpenDialog.FileName;
                    OnOpenFileAction()
                  } else false;
-      if (res) OK() else Cancel()
+      if (res) OK() else cancel()
     }
 
     //saving_file(_tok : CancellationToken) : void
@@ -158,7 +166,7 @@ namespace Nemerle.Statechart.Tests
     saving_file_as(_tok : CancellationToken) : void
     {
       def res = SaveAsDialog();
-      if (res) OK() else Cancel()
+      if (res) OK() else cancel()
     }
     
     ViewOverwrite() : DialogResult
@@ -218,6 +226,7 @@ namespace Nemerle.Statechart.Tests
     }
 
     public CurFile   : string {get;private set;}
+    //public LastSaved : string {get;private set;}
     public NewFileAction  : void -> bool {get;set;}
     public OpenFileAction : string -> bool {get;set;}
     public SaveFileAction : string -> bool {get;set;}
