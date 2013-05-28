@@ -85,58 +85,17 @@ namespace Nemerle.Statechart
         }
       }
 
-      def check_exit_actions(st)
-      { // if not exit actions, add it
-        | FsmState(exit = []) => st.exit = StateAction.Exit(st, FsmAction.Empty, ActionFlags.None) :: []
-        | _                   => ()
-      }
-
       def check_default_tran(h)
       {
-        | PseudoStateNode.History(default = Some(d)) => when (d.ToState == null) 
-                                                          AddError(FsmError.DefaultTransitionMustGoToState(d, h))
+        | PseudoStateNode.History(default = Some(d)) when (d.ToState == null) =>
+                                                        AddError(FsmError.DefaultTransitionMustGoToState(d, h))
         | _                                          => ()
       }
       
       foreach (FsmState(history = TwoOption(HasValue = true) as h) as st in States)
       {
         check_dup_history(h, st);
-        check_exit_actions(st);
         h.Value.Iter(check_default_tran);
-      }
-    }
-
-    CreateActions() : void
-    {
-      //def check_do(st, act)
-      //{
-      //  def check(act)
-      //  {
-      //    | StateAction.Do(actions = [_], flags = f) => 
-      //          def err = FsmWarning.NoConcurrentActivity(act);
-      //          AddWarning(err);
-      //          //act.ChangeFlags(f & ~ActivityFlag.Concurrently);
-      //    | _ => act
-      //  }
-
-      //  def act = act.Map(check);
-      //  st.do_activity = act//Update(x => x.ChangeDoActivity(act))
-      //}
-
-      foreach (st in States)
-      {
-        //check_do(st, st.do_activity);
-        when (FsmFlags.AutoEntryExitActions) 
-        {
-          when (st.entry.IsEmpty())
-          {
-            st.entry = [StateAction.Entry(st, FsmAction.Empty, ActionFlags.None)];
-          }
-          when (st.exit.IsEmpty())
-          {
-            st.exit  = [StateAction.Exit(st,  FsmAction.Empty, ActionFlags.None)];
-          }
-        }
       }
     }
 
@@ -171,7 +130,6 @@ namespace Nemerle.Statechart
         //CreateSubMachines();
         CheckInitialTransitions();
         CreateTransitions();
-        CreateActions();
         BreakIfError();
         CreateTransitionPaths();
         CreateHistoryPaths(); // create history paths

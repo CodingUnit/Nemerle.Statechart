@@ -104,24 +104,51 @@ namespace Nemerle.Statechart
 
   module FsmHelper
   {
+    static GetLoc(this parser : FsmParser, pos : int, loc : Location, macro_col : int) : Location
+    {
+      def line = parser.ParsingSource.GetSourceLine(pos);
+      def (line, col) = line.StartLineColumn;
+      def line = loc.Line + line;
+      def col = col + macro_col;
+      Location(loc, line, col);
+    }
+
     Parse(ty : TypeBuilder, body : string, loc : Location) : StateNode.StateMachine
     {
       def parser = FsmParser();
       parser.env = ty.GlobalEnv;
       def macro_col = ty.Ast.ParsedAttributsAndModifiers.GetMacroAttributes().Head.Location.Column;
-      if (!body.Trim().IsEmpty()) 
+      
+      def get_loc(pos)
+      {
+        parser.GetLoc(pos, loc, macro_col);
+      }
+      
+      def text = body.Trim();
+      if (!text.IsEmpty()) 
       {
         def (pos, ast) = parser.TryParse(body);
-        if (pos > 0) ast
+        if (pos > 0) 
+        {
+          //def len = body.Length;
+          //when (pos < len)
+          //{
+          //  def loc = get_loc(pos);
+          //  Message.Error(loc, $"Not full text is parsed, parsing stopped at $(loc.Line):$(loc.Column), pos: $pos");
+          //}
+          def len = body.Length;
+          when (pos < len)
+          {
+            def loc = get_loc(pos);
+            Message.Error(loc, $"Not full text is parsed, parsing stopped at $(loc.Line):$(loc.Column).");
+          }
+          ast
+        }
         else
         {
           def (pos,  ids)  =  parser.GetMaxRollbackPosAndNames();
-          def line = parser.ParsingSource.GetSourceLine(pos);
-          def (line, col) = line.StartLineColumn;
-          def line = loc.Line + line;
-          def col = col + macro_col;
-          def loc = Location(loc, line, col);
-          Message.Error(loc, $"Error in input at $line:$col. Expected: ..$(ids;\r\n    )");
+          def loc = get_loc(pos);
+          Message.Error(loc, $"Error in input at $(loc.Line):$(loc.Column). Expected: ..$(ids;\r\n    )");
           null
         }
       } else null
