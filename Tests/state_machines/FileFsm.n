@@ -16,7 +16,7 @@ namespace Nemerle.Statechart.Tests
   [statechart(<#
 
   flags : auto_initial transition_completed_events;
-  flags : debug;// all_sync;
+  //flags : debug;// all_sync;
 
   //sync form;
   
@@ -42,6 +42,7 @@ namespace Nemerle.Statechart.Tests
     {
         
         entry / CaptionFileName SaveAsEna;
+        entry / LastSaved = CurFile;
         Change => Changed;
     }
     
@@ -56,12 +57,12 @@ namespace Nemerle.Statechart.Tests
   {
       entry / SaveEna;
 
-      new_pressed, open_pressed, save_pressed, exit_pressed / last_event = Evt.evt => SaveChecking;
+      new_pressed, open_pressed, save_pressed, exit_pressed / last_event = Evt.evt => FileDialogs;
       
       state New
       {
           entry / CaptionFile SaveAsEna;
-          entry / CurFile = null;
+          entry / LastSaved = "";
           save_pressed => SaveFileAs;
       }
 
@@ -72,9 +73,9 @@ namespace Nemerle.Statechart.Tests
 
   }
 
-  state SaveChecking
+  [Initial]
+  state SaveChecking : FileDialogs
   {
-    cancel => Interface.H;
     OK / send(last_event) => NotNeedSaving;
     
     do / save_checking;
@@ -82,13 +83,12 @@ namespace Nemerle.Statechart.Tests
   
   state FileDialogs
   {
-    _ => Interface;
+    OK => Interface;
     cancel => Interface.H;
     
     state OpenDialog
     {
       do / open_dialog;
-      OK => $0;
     }
     
     state NewDialog
@@ -100,7 +100,6 @@ namespace Nemerle.Statechart.Tests
     state SaveFileAs
     {
       do / saving_file_as;
-      OK     => $0;
     }
     
   }
@@ -132,7 +131,8 @@ namespace Nemerle.Statechart.Tests
 
     save_checking(_tok : CancellationToken) : void
     {
-      def res = match (ViewWantToSave())
+      def res = if (last_event == Event.save_pressed) DoSaveFile() else
+                match (ViewWantToSave())
                 {
                   | Yes    => DoSaveFile()
                   | No     => true
@@ -225,8 +225,8 @@ namespace Nemerle.Statechart.Tests
       SaveFileAction == null || SaveFileAction(CurFile)
     }
 
+    public LastSaved : string {get;private set;}
     public CurFile   : string {get;private set;}
-    //public LastSaved : string {get;private set;}
     public NewFileAction  : void -> bool {get;set;}
     public OpenFileAction : string -> bool {get;set;}
     public SaveFileAction : string -> bool {get;set;}
