@@ -20,30 +20,30 @@ namespace Nemerle.Statechart
 
   public partial class FsmParser
   {
-    
-        simple_target(name : NameIdentifier) : TargetType
+
+    simple_target(name : NameIdentifier) : TargetType
     {
       def pos = name.pos;
-      
+
       def get_target(n)
       {
-          | "history"  with hist = HistoryType.None
-          | "H"  with hist = HistoryType.Shallow
-          | "h"  with hist = HistoryType.Shallow
-          | "h*" with hist = HistoryType.Deep
-          | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, hist, None()))
-          | "final"
-          | "$0"       => TargetType.Final(pos)
-          | "self"
-          | "@"        => TargetType.Self(pos)
-          | "terminate"
-          | "x"
-          | "X"        => TargetType.PseudoState(name.pos, PseudoStateModelNode.Terminate(0))
-          | x when (x.IndexOf('(') != -1 ) => 
+        | "history"  with hist = HistoryType.None
+        | "H"  with hist = HistoryType.Shallow
+        | "h"  with hist = HistoryType.Shallow
+        | "h*" with hist = HistoryType.Deep
+        | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, hist, None()))
+        | "final"
+        | "$0"       => TargetType.Final(pos)
+        | "self"
+        | "@"        => TargetType.Self(pos)
+        | "terminate"
+        | "x"
+        | "X"        => TargetType.PseudoState(name.pos, PseudoStateModelNode.Terminate(0))
+        | x when (x.IndexOf('(') != -1 ) => 
               def n = string(n.Explode().Except(['(', ')']).ToArray());
               TargetType.Named(name.pos, n)
           //| _ => TargetType.Named(name.pos, name.TargetName.Trim('(',')'))
-          | _                      => TargetType.Named(name.pos, n)
+        | _                      => TargetType.Named(name.pos, n)
       }
 
       match (name)
@@ -55,7 +55,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    default_transition(act : Actions, target : TargetType) : StateNode.Transition
+    default_transition(act : Actions, target : TargetType, _ : NToken) : StateNode.Transition
     {
       def act = if (act.Empty) None() else Some(act);
       StateNode.Transition(target.pos, [], None(), act, target, TransitionType.Local)
@@ -68,14 +68,14 @@ namespace Nemerle.Statechart
       lst.Select(create_event).ToList()
     }
 
-    simple_transition(evt : List[TransitionEvent], guard : option[GuardNode], act : Actions, to : TargetType) : StateNode.Transition
+    simple_transition(evt : List[TransitionEvent], guard : option[GuardNode], act : Actions, to : TargetType, _ : NToken) : StateNode.Transition
     {
       def pos = evt.First().pos;
       def act = if (act.Empty) None() else Some(act);
       Transition(pos, evt.NToList(), guard, act, to, TransitionType.Transition)
     }
 
-    local_trans(evt : List[TransitionEvent], guard : option[GuardNode], act : Actions, to : TargetType) : StateNode.Transition
+    local_trans(evt : List[TransitionEvent], guard : option[GuardNode], act : Actions, to : TargetType, _ : NToken) : StateNode.Transition
     {
       def pos = evt.First().pos;
       def act = if (act.Empty) None() else Some(act);
@@ -86,32 +86,32 @@ namespace Nemerle.Statechart
     {
       Transition(evt.StartPos, create_event(evt) :: [], guard, Some(acts), TargetType.NoTarget(evt.StartPos), TransitionType.Internal)
     }
-    
+
     expr_ext_tran_action(_ : NToken, text : NToken, _ : NToken) : Actions
     {
       parse_action(text)
     }
-    
+
     expr_loc_tran_action(_ : NToken, text : NToken, _ : NToken) : Actions
     {
       parse_action(text)
     }
-    
+
     empty_ext_act_list(_ : NToken) : Actions
     {
       Actions([])
     }
-    
+
     empty_loc_act_list(_ : NToken) : Actions
     {
       Actions([])
     }
-    
+
     ext_act_list(tok : NToken, lst : List[FsmAction], _ : NToken) : Actions
     {
       Actions(lst.NToList(), tok.StartPos)
     }
-    
+
     loc_act_list(tok : NToken, lst : List[FsmAction], _ : NToken) : Actions
     {
       Actions(lst.NToList(), tok.StartPos)
