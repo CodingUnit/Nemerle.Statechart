@@ -31,7 +31,7 @@ namespace Nemerle.Statechart
       
       def create_node(n)
       {
-        | StateNode.Transition(_, g, a, t, _) => JunctionNode(pos, g, a, t)
+        | StateNode.Transition(_, g, a, t, _) => JunctionNode(pos, g.WithDefault(GuardNode.Empty(pos)), a, t)
       }
       
       def pseudo = nodes.Select(create_node);
@@ -65,10 +65,12 @@ namespace Nemerle.Statechart
     merge(tok : NToken, name : NToken, tran : StateNode.Transition) : StateNode.PseudoState
     {
       def pos = tok.StartPos;
-      PseudoState(pos, PseudoStateModelNode.Junction(pos, GetText(name), JunctionNode(pos, tran.guard, tran.action, tran.to) :: [], JunctionType.Merge))
+      def junc = JunctionNode(pos, tran.guard.WithDefault(GuardNode.Empty(pos)), tran.action, tran.to);
+      def node = PseudoStateModelNode.Junction(pos, GetText(name), junc :: [], JunctionType.Merge);
+      PseudoState(pos, node)
     }
 
-    initial(name : NToken, guard : option[GuardNode], act : Actions, to : TargetType, _ : NToken) : StateNode.PseudoState
+    initial(name : NToken, guard : option[GuardNode], act : Actions, to : TargetType) : StateNode.PseudoState
     {
       def pos = name.StartPos;
       def act = if (act.Empty) None() else Some(act);

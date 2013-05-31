@@ -74,6 +74,7 @@ namespace Nemerle.Statechart
         //[TraverseIgnore] parent : Junction;
         type : JunctionType;
 
+        decision_tree : DecisionNode {get;set;}
         IsUnnamed : bool;
         //ChangeDecisionTree(tree : DecisionNode) : Junction
         //{
@@ -89,8 +90,9 @@ namespace Nemerle.Statechart
         //  this.type = type;
         //}
 
-        Create(st : FsmState, node : PseudoStateModelNode.Junction) : PseudoStateNode
+        this(st : FsmState, node : PseudoStateModelNode.Junction)
         {
+          base(st);
           def an = st.analyser;
           def (name, unnamed) =  match (node) 
           {
@@ -105,8 +107,11 @@ namespace Nemerle.Statechart
             FsmJunctionNode.Create(x)
           }
           //def tree = TreeJunctionNode.Create(node);//lst |> JunctionNode(st, tran, _, this);
-          def tree = create_node(st, node.nodes);
-          Junction(st, name, tree, node.type, unnamed)
+          tree = create_node(st, node.nodes);
+          this.name = name;
+          IsUnnamed = unnamed;
+          type = node.type;
+          //Junction(st, name, tree, node.type, unnamed)
         }
         //Nodes : IEnumerable[TransitionTarget.JunctionNode]
         //{
@@ -202,7 +207,7 @@ namespace Nemerle.Statechart
       {
         | Initial(tr)                                => Initial(st, tr)
         | History as hist                            => History(st, hist)
-        | Junction as j                              => Junction.Create(st, j)
+        | Junction as j                              => Junction(st, j)
         //| Fork(target = lst)                         => Fork(0, lst.Map(TransitionTarget.Create(st, _)), [])
         //| Join(name = n, target = t)                 =>  Join(0, n, TransitionTarget.Create(st, t), null, null, null))
         | EntryPoint                                 //EntryPoint(0, num, an))
@@ -220,7 +225,7 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public state : FsmState;// {get;set;}
+    public state : FsmState {get;set;}
 
     public NativeName : option[string]
     {
@@ -258,6 +263,7 @@ namespace Nemerle.Statechart
           | PseudoStateNode.Terminate => $"$(state)Terminate"
           | Fork(target = t)          => $<#Fork$(state)To..$(t;"_")#>
           | Initial                   => $"$(state)Initial"
+          | Junction(name = n)        => $"$state$n"
           | n                         => n.ToString()
           //| FsmNode.State(st)                                => st.Value.Name
           //| FsmNode.PseudoState(n)                           => n.ToString()

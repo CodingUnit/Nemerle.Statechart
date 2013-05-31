@@ -13,145 +13,49 @@ namespace Nemerle.Statechart
   using PseudoStateNode;
   using GuardNode;
 
-  #if 0
   /// <summary>
   /// Description of DecisionNodeImpl.
   /// </summary>
   public partial variant DecisionNode
   {
 
-      public static create_decision_tree(an : FsmAnalyser, target : PseudoStateNode) : void
+    public static create_decision_tree(target : PseudoStateNode.Junction) : void
     {
-      //def create_target(n)
-      //{
-      //  //DecisionNode.Target(n.analyser, [], n, n.analyser.statemap.GetNextGlobalNum())
-      //}
-      //def create_junction_node(n : BinaryTree[TreeJunctionNode], acc : list[DecisionNode])
-      //{
-      //  def create_node(n, acc)
-      //  {
-      //    match (n, acc)
-      //    {
-      //      | (DecisionNode.Target(condition = GuardNode.Else) as t, null) => t
-      //      | (DecisionNode.Target(condition = g, actions = a) as t, null) => DecisionNode.Condition(an, a, g, t.ChangeActionsCondition([], null), None())
-      //      | (DecisionNode.Target(condition = g, actions = a) as t, acc)  => DecisionNode.Condition(an, a, g, t.ChangeActionsCondition([], null), Some(acc))
-      //      | (DecisionNode.Condition as t, null)                          => t.ChangeElseNode(None())
-      //      | (DecisionNode.Condition as t, acc)                           => t.ChangeElseNode(Some(acc))
-      //    }
-      //  }
-        
-      //  match (n.Data)
-      //  {
-      //    | TreeJunctionNode.Node(guard = g, action = a)               => //DecisionNode.Condition(an, g, a, toacc, Some(nacc))
-      //                                                                    def node = acc.FoldBack(null, create_node);
-      //                                                                    DecisionNode.Condition(an, a, g, node, None())
-      //    | TreeJunctionNode.Target(guard = g, action = a, target = t) => DecisionNode.Target(an, a, g, t)
-      //                                                                    //DecisionNode.Condition(an, g, a, DecisionNode.Target(an, [], t), )
-      //    | _                                                          => null
-      //  }
-      //}
-
-      //def tree = node.tree.Fold(null, create_junction_node);
-
-      //create_states(tree);
-      //tree
-      create_junc_tree_node(an, target)
-    }
-
-    //public static create_states(tar : DecisionNode) : void
-    //{
-
-    //  def check_node(n)
-    //  {
-    //    def set_state(n, st)
-    //    {
-    //      match (n)
-    //      {
-    //        | DecisionNode.Condition(state = null) as t
-    //        | DecisionNode.Target(state = null) as t    => t.state = st
-    //        | _                                         => ()
-    //      }
-    //    }
-
-    //    def child = n.GetChild();
-    //    child.Iter(set_state(_, n.state));
-    //  }
-
-    //  tar.LevelOrderIterator().Iter(check_node);
-    //}
-
-    public static create_junc_tree_node(an : FsmAnalyser, target : PseudoStateNode) : void
-    {
-      //def junc = target.JunctionPseudo;
-      def targ = target.Value :> PseudoStateNode.Junction;
       
-      def check_node_decision(n : BinaryTree[TreeJunctionNode])
+      
+      def create_tree(node, a) : DecisionNode
       {
-        | BinaryTree(Data = TreeJunctionNode.Node(guard = GuardNode.Else), Left = n) when (n != null) => 
-            an.AddError(if (targ.type == JunctionType.Junction) FsmError.JunctionElseMustBeLast(target) else FsmError.ChoiceElseMustBeLast(target))
-
-        | BinaryTree(Data = TreeJunctionNode.Node(guard = Empty, action = [])) => 
-            an.AddError(if (targ.type == JunctionType.Junction) FsmError.EmptyJunction(target) else FsmError.EmptyChoice(target))
-
-        | BinaryTree(Data = TreeJunctionNode.Node(guard = GuardNode.Empty, action = _ :: _ as a), Left = n) when (n != null)=> 
-            an.AddError(if (targ.type == JunctionType.Junction) FsmError.JunctionActionMaybeLast(target, a) else FsmError.ChoiceActionMaybeLast(target, a))
-
-        | BinaryTree(Data = TreeJunctionNode.Node(guard = GuardNode.Empty), Left = n) when (n != null)
-        | BinaryTree(Right = BinaryTree(Data = TreeJunctionNode.Node(guard = Else))) => 
-            an.AddError(if (targ.type == JunctionType.Junction) FsmError.JunctionElseMustAfterAnotherGuard(target) else FsmError.ChoiceElseMustAfterAnotherGuard(target))
-
+        match (node)
+        {
+          | FsmJunctionNode.Node(path = seq, guard = g, nodes = n) => 
+              def a = if (a != null) Some(a) else None();
+              DecisionNode.Condition(seq, g, n.FoldBack(null, create_tree), a)
+          | Target(path = seq, target = t, dest = d)               => DecisionNode.Target(seq, t, d)
+        }
+      } 
+              
+      def check(n)
+      {
+        | FsmJunctionNode.Target(guard = GuardNode.Else) as n => n.guard = GuardNode.Empty(-1);
+                                                                 n
+        | FsmJunctionNode.Target(guard = GuardNode.Expr as g) as n => 
+           n.guard = GuardNode.Empty(-1);
+           FsmJunctionNode.Node(g, [], n.state, n.Parent, n.path, [n])
+        | _ => n
+      }
+      
+      def check_node(n)
+      {
+        | FsmJunctionNode.Node(nodes = n) as node => def n = n.Map(check);
+                                                     node.nodes = n;
         | _ => ()
       }
-
-      def add_act(x, a)
-      {
-        x.Update(x => x.ChangeAction(x.action.Concat(a).NToList()));
-      }
-
-      def create_actions(n : BinaryTree[TreeJunctionNode])
-      {
-        
-        | BinaryTree(Data = TreeJunctionNode.Node(action = a, type = JunctionType.Junction)) as n => 
-            //def body = add_act(b, a);
-            //def els  = add_act(els, a);
-            //n.ChangeBodyActionsElseNode(body, [], Some(els))
-            when (n.Left != null) add_act(n.Left, a);
-            when (n.Right != null) add_act(n.Right, a);
-            n.Update(x => x.ChangeAction([]));
-    
-        | _ => ()
-      }
-
-      def merge_tree_node(n, b, e)
-      {
-        
-        | (BinaryTree(Data = TreeJunctionNode.Node(guard = GuardNode.Else, action = [])), b, null) => b
-        | (BinaryTree(Data = TreeJunctionNode.Node(action = act)), BinaryTree(Data = TreeJunctionNode.Node(action = a, guard = Empty), Right = b), null) => n.Update(x => x.ChangeAction(act.Concat(a).NToList()));
-                                                                                                                                                            n.Right = b;
-                                                                                                                                                            n
-                                                                                                                                                 
-        | (n, b, e)                                                                              => n.Right = b;
-                                                                                                    n.Left = e;
-                                                                                                    n
-      }
-
-      def tree  = targ.tree;//create_decision_tree(an, targ); // create decision tree
-      def tree = tree.Reduce(merge_tree_node); // merge tree nodes
-      tree.GetBreadthFirstEnumerable().Iter(check_node_decision);
-      tree.GetBreadthFirstEnumerable().Iter(create_actions);
-      target.Update(_ => targ.ChangeTree(tree));
-      //def old_nodes = tree.LevelOrderIterator();
-      //old_nodes.Iter(check_node_decision);
-      //def new_nodes = tree.LevelOrderMap(create_actions);
-      //def node_map = old_nodes.MakeArrayMap(new_nodes, an.statemap.GlobalId, _.Num);
-      //tree.ReduceSingle((x, _) => node_map[x.Num])
+      
+      target.tree.Iter(check_node);
+      def tree = create_tree(target.tree, null);
+      def tree = if (tree is DecisionNode.Condition(condition = GuardNode.Empty, else_node = None, body = b)) b else tree;
+      target.decision_tree = tree;
     }
-
-    //public static Create(an : FsmAnalyser, node : TransitionTarget.PseudoState) : DecisionNode
-    //{
-    //  create_junc_tree_node(an, node)
-    //}
 
   }
-  #endif
 }

@@ -129,17 +129,11 @@ namespace Nemerle.Statechart
       spaces_def                                      =  (' ' / '\t' / '\u000B' / '\u000C' / newLine / comment)*;
       spaces : void                                   =  spaces_def;
       letter                                          =  [Lu,  Ll,  Lt,  Lm,  Lo,  Nl,  Nd] / '_' / '-' / '@' / '*' / '$';
-      //target_letter                                   =  letter / '(' / ')' / '[' / ']';
-      //end_symb  : void                                =  ';'s;
       delimiter : void                                =  ',' / spaces_def;
       s : void                                        =  spaces;
       identifier                                      =  letter+;
       qualified_id                                    =  (letter / '.')+;
       target_id                                       =  identifier;//target_letter+;
-      //open_brace  : void                              =  "{"s;
-      //close_brace : void                              =  "}"s;
-      //slash       : void                              =  '/'s;
-      //dollar                                          = '$'s;
       numeric                                         = [Nl,  Nd]+;
       
       goto        : void                              =   "=>"s;
@@ -147,13 +141,6 @@ namespace Nemerle.Statechart
       exit_key                                        =  ("exit" / "$<")s;
       state_key   : void                              =  "state"s;
       
-      //flags_key   : void                              =  "flags"s;
-      //history_key : void                              =  "history"s;
-      //attr_begin  : void                              =  '['s;
-      //attr_end    : void                              =  ']'s;
-      //colon       : void                              =  ':'s;
-      //point       : void                              =  '.'s;
-      //comma       : void                              =  ','s;
       equal      : void                               =  '='s;
       open_round_brace : void                         =  '('s;
       close_round_brace : void                        =  ')'s;
@@ -165,7 +152,7 @@ namespace Nemerle.Statechart
       guard_type         : GuardNode                  =  else_guard / expr_guard;
       syntax_delim       : void                       =  (':' / '=') s;
       
-      guard_expr         : PExpr                      =  (!']' [Any])* s;//simple_guard_expr (two_op_expr s simple_guard_expr)*;
+      guard_expr         : PExpr                      =  (!(']' / goto) [Any])+ s;
       
       guard              : GuardNode                  =  '['s guard_type ']'s;
       expr_guard         : GuardNode                  =  guard_expr;
@@ -175,10 +162,7 @@ namespace Nemerle.Statechart
 
       attributes         : List[StateAttribute]       =  simple_attrs;
       
-      //block_action_list  : Actions                    =  '/'s "{"s (!close_brace action delimiter?)+ "}"s;
-      
-      //action_expr        : ActionExpr                 =  guard_expr;
-      
+      // actions
       long_expr_action   : Actions                    =  '/'s "${"s (!"}$" [Any])+ "}$"s;
       expr_act_action    : Actions                    =  (long_expr_action / expr_action) ';'s;
       delim_action_list  : Actions                    =  '/'s (!';' action delimiter?)+ s ';'s;
@@ -196,9 +180,11 @@ namespace Nemerle.Statechart
       do_activity        : StateNode                  =  simple_attrs? "do"s action_list;
       
       terminate_node     : StateNode                  =  ("terminate" / "X" / "x") s ';'s;
-      initial            : StateNode                  =  initial_key s guard? ext_trans_act_list simple_target ';'s;
+      initial            : StateNode                  =  initial_key s guard? ext_trans_act_list simple_target;
       pseudo_state       : StateNode                  =  initial / history / terminate_node / join / junction / choice / merge;
       join               : StateNode                  =  "join"s identifier s goto transition_target;
+      
+      // junction
       junction           : StateNode                  =  "junction"s identifier s junction_body;
       junc_tran_body     : StateNode.Transition       =  guard_type? ext_trans_act_list transition_target;
       junction_body      : List[JunctionNode]         =  "{"s (!'}' junc_tran_body)+ "}"s;
@@ -206,7 +192,9 @@ namespace Nemerle.Statechart
       choice             : StateNode                  =  "choice"s identifier s '$'? junction_body;
       choice_target      : TargetType                 =  '$' junction_body;
       merge              : StateNode                  =  "merge"s identifier junc_tran_body;
-      simple_target      : TargetType                 =  fully_qualified;
+      
+      // target
+      simple_target      : TargetType                 =  fully_qualified  ';'s;
       //fork_trans_target  : TargetType                 =  simple_target s simple_target s (!end_symb simple_target s delimiter)* end_symb;
       transition_target  : TargetType                 =  choice_target / junction_target / simple_target;
       
@@ -231,8 +219,8 @@ namespace Nemerle.Statechart
       local_goto                                      =  "(=>"s;
       ext_goto                                        =  ")=>"s / "=>"s;
       
-      simple_transition  : StateNode                  =  events guard? ext_trans_act_list transition_target ';'s;
-      local_trans        : StateNode                  =  events guard? loc_trans_act_list transition_target ';'s; // / local_goto)
+      simple_transition  : StateNode                  =  events guard? ext_trans_act_list transition_target;
+      local_trans        : StateNode                  =  events guard? loc_trans_act_list transition_target; // / local_goto)
       transition         : StateNode                  =  internal_trans / local_trans / simple_transition;
        
       history_deep       : StateNode                  =  "(H*)"s default_transition?;

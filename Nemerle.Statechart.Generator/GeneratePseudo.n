@@ -19,55 +19,86 @@ namespace Nemerle.Statechart
   /// </summary>
   public partial class StaticGenerator
   {
-    #if 0
-    get_junction_body(node : DecisionNode, ctx : GenCtx) : PExpr
+    
+    get_junction_body(node : PseudoStateNode.Junction, ctx : GenCtx) : PExpr
     {
 
-      def get_cond(t, b, e)
+      //def get_code(t, b,)
+      //{
+      //  def c = t.condition;
+      //  def check = GetGuards([c], ctx);
+      //  def act = GetActions(t.Path, true);
+      //  def body = <[ $act; $b ]>;
+      //  match (e)
+      //  {
+      //    | Some(e)                     => 
+      //        <[ 
+      //          if ($check) 
+      //          {
+      //            $body
+      //          } else $e
+      //        ]>
+
+      //    | _ when c is GuardNode.Empty => body
+      //    | _                           => 
+      //      <[ 
+      //        when ($check) 
+      //        {
+      //          $body
+      //        }
+      //      ]>
+      //  }
+      //}
+
+      //def get_target(t)
+      //{
+      //  def d = t.destination;
+      //  GetBody(t.Path, d, d.PostConditions, ctx)
+      //}
+
+      def loop(n)
       {
-        def c = t.condition;
-        def check = GetGuards([c], ctx);
-        def act = GetActions(t.Path, true);
-        def body = <[ $act; $b ]>;
-        match (e)
-        {
-          | Some(e)                     => 
-              <[ 
-                if ($check) 
-                {
-                  $body
-                } else $e
-              ]>
-
-          | _ when c is GuardNode.Empty => body
-          | _                           => 
-            <[ 
-              when ($check) 
-              {
-                $body
-              }
-            ]>
-        }
+        
+        | DecisionNode.Condition(g, b, e) =>
+        
+          def check = GetGuards([g], ctx);
+          def body = loop(b);
+          match (g)
+          {
+            | GuardNode.Empty => body
+            | _               => 
+                    match (e)
+                    {
+                      | Some(e) => def els = loop(e);
+                                    <[
+                                      if ($check)
+                                      {
+                                         $body
+                                      } else
+                                      {
+                                         $els
+                                      }
+                                   ]>
+                      | _       => <[ when ($check) $body ]>
+                    }
+                    
+          }
+          
+         | Target(destination = d, path = seq) => GetBody(seq, d, d.PostConditions, ctx)
       }
-
-      def get_target(t)
-      {
-        def d = t.destination;
-        GetBody(t.Path, d, d.PostConditions, ctx)
-      }
-
-      def body = node.Fold(<[ null ]>, get_cond, get_target);
-      <[
-        {
-          res:
-            {
-              $body
-            }
-        }
-      ]>
-
+      
+      loop(node.decision_tree)
+      //<[
+      //  {
+      //    res:
+      //      {
+      //        $body
+      //      }
+      //  }
+      //]>
     }
 
+#if 0    
     get_choice_body(p : DecisionNode, ctx : GenCtx, ret : bool = true) : PExpr
     {
 
