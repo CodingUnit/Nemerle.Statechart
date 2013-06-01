@@ -98,8 +98,8 @@ namespace Nemerle.Statechart
     public Source : FsmState {get;set;}
     // state in from arrow start in diagram
     public From : FsmState {get;set;}
-    public guard : option[GuardNode] = None(); 
-    public action : list[FsmAction] = [];
+    public guard : GuardNode {get;set;default GuardNode.Empty(-1)}
+    public action : list[FsmAction] {get;set;default []}
     
     
     public To : TransitionTarget {get;set;}
@@ -117,7 +117,7 @@ namespace Nemerle.Statechart
     //[NeedChange]
     //public clones : list[StateTransition] = [];
 
-    
+    public DecisionTree : DecisionNode {get;set;}
     //[NeedChange]
     public Local : bool
     {
@@ -230,13 +230,13 @@ namespace Nemerle.Statechart
       {
         match (guard)
         {
-          | Some(g) => $"$(name)With$(g.Name)"
-          | _       => name
+          | GuardNode.Empty => name
+          | g               => $"$(name)With$(g.Name)"
         }
       }
     }
 
-    public static GuardComparer : StateTransition * StateTransition -> int = (g1, g2) => g2.guard.Compare(g1.guard, (x, y) => x.CompareTo(y));
+    public static GuardComparer : StateTransition * StateTransition -> int = (g1, g2) => g2.guard.CompareTo(g1.guard);
 
     public static Comparer : StateTransition * StateTransition -> int  =  (t1, t2)  => t1.Name.CompareTo(t2.Name);
 
@@ -282,6 +282,39 @@ namespace Nemerle.Statechart
       }
     }
 
+    public ToJunction : PseudoStateNode.Junction
+    {
+      get
+      {
+        match (ToPseudo)
+        {
+          | null => null
+          | PseudoStateNode.Junction as j => j
+          | _    => null
+        }
+      }
+    }
+    
+    public EmptyDecisionTarget : DecisionNode
+    {
+      get
+      {
+        DecisionNode.Target(null, Source, To, null)
+      }
+    }
+    
+    public StateObtainPseudoState(st : FsmState) : FsmState
+    {
+      if (Local) st else st.Super;
+    }
+    
+    public StateObtainPseudoStateFromThis : FsmState
+    {
+      get
+      {
+        StateObtainPseudoState(From)
+      } 
+    }
     /// <summary>
     /// Concrete State for where transition ends known at compile time
     /// </summary>
@@ -375,8 +408,8 @@ namespace Nemerle.Statechart
         def to = To.Guards;
         match (guard)
         {
-          | Some(g) => to.AddBefore(g)
-          | _       => to
+          | Empty => to
+          | _     => to.AddBefore(guard)
         }
       }
     }

@@ -37,7 +37,7 @@ namespace Nemerle.Statechart
           | t1 :: _ :: _ => AddError(FsmError.InitialPseudoStateAtMostOne(t1))
           | PseudoStateNode.Initial(tran = tran) as i :: [] => 
               if (tran.To is TransitionTarget.State) () else AddError(FsmError.InitialTransitionMustGoToState(i));
-              when (tran.guard.HasValue) AddError(FsmError.InitialTransitionCannotHaveGuards(i));
+              when (tran.guard.NotEmpty) AddError(FsmError.InitialTransitionCannotHaveGuards(i));
         }
         
       }
@@ -89,7 +89,7 @@ namespace Nemerle.Statechart
       def search_for_no_guard(g)
       {
         if (!g.IsMoreThanOne()) g else
-          match (g.Find(x => x.guard.IsNone))
+          match (g.Find(x => x.guard.IsEmpty))
           {
             | Some(t) => def tr   = g.Except(t); // without guard already enabled and have more priority
                          def warn = tr.Map(FsmWarning.TransitionOverriden(_, t)); // signal this, not needed declaration, design error
@@ -103,7 +103,7 @@ namespace Nemerle.Statechart
 
       def resolve_on_levels = by_hierarchy.SelectMany(search_for_no_guard).NToList();
       //def del = trans.Except(resolve_on_levels);
-      def (left, _) = resolve_on_levels.SplitFind(x => x.guard.IsNone);
+      def (left, _) = resolve_on_levels.SplitFind(x => x.guard.IsEmpty);
       def del = trans.Except(left);
       st.DeleteTransitions(del);// conflicted deleted from set of enabled without signal, normal situation
     }
@@ -224,20 +224,6 @@ namespace Nemerle.Statechart
     /// </summary>
     CreateTransitions() : void
     {
-      //def check_targets(node)
-      //{
-      //  match (node.Value.To)
-      //  {
-      //    //| TransitionTarget.PseudoState(NodeValue(Value = PseudoStateNode.Junction) as n) => CheckJunction(n);
-      //    | _                                                                              => ()
-      //  }
-
-      //}
-
-      //def check_tran(st)
-      //{
-      //  st.StateTransitions().Iter(x => check_targets(x))
-      //}
 
       //States.Iter(check_tran);
       //create_join_transitions(); // creating join transitions
@@ -247,34 +233,15 @@ namespace Nemerle.Statechart
       //CheckCrossTransitions(); // look for cross transitions
     }
 
+
+    
     CheckTransitions() : void
     {
-      //def proc_tran(st, tran)
-      //{
-      //  match (tran.To)
-      //  {
-      //    | TransitionTarget.State as t when (!statemap.Contains(st)) => AddError(FsmError.UnknownTarget(tran, t))
-      //    | _                                                         => ()
-      //  }
-      //}
-
-      def check_cross_orthogonal(tr)
+      foreach (tr in StateTransitions)
       {
         when (is_crossed_orthogonal(tr, tr.Source)) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr));
       }
-
-      //def check_tran(st, _)
-      //{
-        //st.TraverseTargets(resolve_targets(st, _, _), true); // first pass named and qualified
-        //st.TraverseTargets(resolve_targets(st, _, _)) // second pass final
-      //}
-
-
-        //st.StateTransitions().Iter(proc_tran(st, _));
-      StateTransitions.Iter(check_cross_orthogonal)
-
-
-      //UpdateStateMap(TopState.ReduceSingle(check_tran))
+      
     }
 
     RenameTransition(tran : IEnumerable[StateTransition]) : void

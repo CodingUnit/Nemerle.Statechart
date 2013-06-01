@@ -76,10 +76,11 @@ namespace Nemerle.Statechart.Tests
   [Initial]
   state SaveChecking : FileDialogs
   {
-    OK / send(last_event) => NotNeedSaving;
+    _ / send(last_event) => NotNeedSaving;
     
     state WantToSave
     {
+      do / want_to_save;
       Yes => { 
                LastSaved.IsEmpty() => SaveAs;
                else                => Overwrite;
@@ -90,25 +91,28 @@ namespace Nemerle.Statechart.Tests
     
     state Overwrite
     {
+      do / overwrite;
       Yes => SaveCurrentFile;
       No  => SaveAs;
     }
     
     state SaveCurrentFile
     {
+      do / save_current_file;
       OK => $0;
     }
     
     state SaveAs
     {
       OK => $0;
+      do / saving_file_as;
     }
     // do / save_checking;
   }
   
   state FileDialogs
   {
-    OK => Interface;
+    OK     => Interface;
     cancel => Interface.H;
     
     state OpenDialog
@@ -137,35 +141,35 @@ namespace Nemerle.Statechart.Tests
     
     public sync : ISynchronizeInvoke {get;set;}
     
-    DoSaveFile() : bool
-    {
-      if (LastSaved.IsEmpty())
-      {
-        SaveAsDialog()
-      }
-      else
-      {
-        match (ViewOverwrite())
-        {
-          | Yes => SaveCurrentFile()
-          | No  => SaveAsDialog()
-          | _   => false
-        }
-      }
-    }
+    //DoSaveFile() : bool
+    //{
+    //  if (LastSaved.IsEmpty())
+    //  {
+    //    SaveAsDialog()
+    //  }
+    //  else
+    //  {
+    //    match (ViewOverwrite())
+    //    {
+    //      | Yes => SaveCurrentFile()
+    //      | No  => SaveAsDialog()
+    //      | _   => false
+    //    }
+    //  }
+    //}
 
-    save_checking(_tok : CancellationToken) : void
-    {
-      def res = if (last_event == Event.save_pressed) DoSaveFile() else
-                match (ViewWantToSave())
-                {
-                  | Yes    => DoSaveFile()
-                  | No     => true
-                  | _      => false
-                }
+    //save_checking(_tok : CancellationToken) : void
+    //{
+    //  def res = //if (last_event == Event.save_pressed) DoSaveFile() else
+    //            match (ViewWantToSave())
+    //            {
+    //              | Yes    => DoSaveFile()
+    //              | No     => true
+    //              | _      => false
+    //            }
 
-      if (res) OK() else cancel()
-    }
+    //  if (res) OK() else cancel()
+    //}
 
     new_dialog(_tok : CancellationToken) : void
     {
@@ -190,8 +194,22 @@ namespace Nemerle.Statechart.Tests
     
     saving_file_as(_tok : CancellationToken) : void
     {
-      def res = SaveAsDialog();
-      if (res) OK() else cancel()
+      DoActionComplete(SaveAsDialog)
+    }
+    
+    want_to_save(_tok : CancellationToken) : void
+    {
+      ViewDialog(ViewWantToSave)
+    }
+    
+    overwrite(_tok : CancellationToken) : void
+    {
+      ViewDialog(ViewOverwrite)
+    }
+    
+    save_current_file(_tok : CancellationToken) : void
+    {
+      DoActionComplete(SaveCurrentFile)
     }
     
     ViewOverwrite() : DialogResult
@@ -204,6 +222,22 @@ namespace Nemerle.Statechart.Tests
       MessageBox.Show("Want to save file?", "Warning", MessageBoxButtons.YesNoCancel);
     }
 
+    ViewDialog(dlg : void -> DialogResult) : void
+    {
+      match (dlg())
+      {
+        | DialogResult.Yes => Yes()
+        | DialogResult.No  => No()
+        | DialogResult.Cancel => cancel()
+        | _                   => ()
+      }
+    }
+    
+    DoActionComplete(act : void -> bool) : void
+    {
+      if (act()) OK() else cancel()
+    }
+    
     SaveAsDialog() : bool
     {
       SaveDialog.FileName = CurFile;
