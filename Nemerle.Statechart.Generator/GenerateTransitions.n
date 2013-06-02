@@ -203,31 +203,6 @@ namespace Nemerle.Statechart
 
     EvalGuardExpr(expr : PExpr, ctx : GenCtx) : PExpr
     {
-      //def unary_eval(o, a)
-      //{
-      //  match (o)
-      //  {
-      //    | StateUnaryOp.Not => <[ ! $a]>
-      //    | _                => a
-      //  }
-      //}
-
-      //def two_eval(a, op, b)
-      //{
-      //  match (op)
-      //  {
-      //    | StateBinaryOp.Above => <[ $a > $b]>
-      //    | Equal               => <[ $a == $b]>
-      //    | NotEqual            => <[ $a != $b]>
-      //    | AboveEq             => <[ $a >= $b]>
-      //    | Below               => <[ $a < $b]>
-      //    | BelowEq             => <[ $a <= $b]>
-      //    | Or                  => <[ $a || $b]>
-      //    | And                 => <[ $a && $b]>
-      //    | Error               => <[ true ]>
-      //  }
-      //}
-
       def check_eval(_, after, e)
       {
         if (after)
@@ -237,58 +212,11 @@ namespace Nemerle.Statechart
           | <[ InState($st) ]>   => def st = st.ToString();
                                     def st = GetExecStateName(st, ctx);
                                     if (ctx.IsInEventHandler) <[ fsm.IsInState($st) ]> else <[ IsInState($st) ]>
-          //| FsmAction(_, name, pars)      => //def pars = pars.Map(x => <[ $x ]>);
-          //                                   def pars = $[<[ $x ]>, x in pars];
-          //                                   <[ $(name : usesite)(..$pars) ]>
           | t => t
         } else e
       }
 
-      //def lit_eval(l)
-      //{
-      //  match (l.lit)
-      //  {
-      //    | StateLit.Double(d) => <[ $d ]> 
-      //    | Integer(i)         => <[ $i ]> 
-      //    | String(s)          => <[ $s ]>
-      //    | Bool(b)            => <[ $b ]>
-      //  }
-      //}
-
-      //def eval(expr)
-      //{
-      //  | GuardExpr.Braces(e) => eval(e)
-      //  | Error               => <[ true ]>
-      //  | Literal as lit      => lit_eval(lit)
-      //  | Method as m         => method_eval(m)
-      //  | TwoOp(e, op, b)     => two_eval(eval(e), op, eval(b))
-      //  | UnaryOp(e, a)       => unary_eval(e, eval(a))
-      //  | Var(v)              => <[ $(v : usesite) ]>
-      //}
-      
       Macros.TraverseExpr(None(), expr, false, check_eval)
-      //eval(expr)
-      //expr.Fold(<[ true ]>, _ => <[ true ]>, unary_eval, two_eval, (_, a) => a, method_eval, var_eval, lit_eval);
-      
-      //def GuardNode = GenElement(cond, guard_for);
-      //def name = GuardNode.exec_name;
-      //if (GuardNode.IsDeclared)
-      //{
-      //  if (!decls.Contains(name)) <[ $(name : usesite)() ]> else
-      //    match (decls.Get(name))
-      //    {
-      //      | Field(ParsedType  =  <[ bool ]>)
-      //      | Property(returnType  =  <[ bool ]>)  => <[ $(name : usesite) ]>
-      //      | Field(ParsedType  =  <[ void -> bool ]>)
-      //      | Property(returnType  =  <[ void -> bool ]>)  => <[ if ($(name : usesite) != null) $(name : usesite)() else false]>
-      //      | Function
-      //      | _  => <[ $(name : usesite)() ]>
-      //    }
-      //} else
-      //{
-      //  def name = GenElement.CreateExecName(g.Name);
-      //        <[$(name : usesite)()]>
-      //}
     }
 
     GetGuardCondExpr(g : GuardNode, ctx : GenCtx) : PExpr
@@ -349,41 +277,40 @@ namespace Nemerle.Statechart
       }
     }
 
-    GetGuards(g : IEnumerable[GuardNode], ctx : GenCtx) : PExpr
+    GetGuards(g : GuardNode, ctx : GenCtx) : PExpr
     {
-      def body = g.Map(GetGuardCondExpr(_, ctx));//(_, ctx));
-      MergeExprAnd(body)
+      GetGuardCondExpr(g, ctx);//(_, ctx));
     }
 
-    GetGuardedBody(tran : StateTransition, body : PExpr, ctx : GenCtx) : PExpr
-    {
-      match (tran)
-      {
-        | StateTransition(executeCheck = check, guard = g) =>
+    //GetGuardedBody(tran : StateTransition, body : PExpr, ctx : GenCtx) : PExpr
+    //{
+    //  match (tran)
+    //  {
+    //    | StateTransition(executeCheck = check, guard = g) =>
 
-            def check = GetCheck(check, ctx);
-            def check = match (g)
-                        {
-                          | Empty => [check]
-                          | _     => [GetGuardCondExpr(g, ctx), check]
-                        }
-            match (check)
-            {
-              | [<[ () ]>] => body
-              | _ => 
-                  def check = MergeExprAnd(check);
-                  <[
-                  {
-                    res:
-                    {
-                      unless ($check) res(null);
-                      $body
-                    }
-                  }
-                  ]>
-            }
-      }
-    }
+    //        def check = GetCheck(check, ctx);
+    //        def check = match (g)
+    //                    {
+    //                      | Empty => [check]
+    //                      | _     => [GetGuardCondExpr(g, ctx), check]
+    //                    }
+    //        match (check)
+    //        {
+    //          | [<[ () ]>] => body
+    //          | _ => 
+    //              def check = MergeExprAnd(check);
+    //              <[
+    //              {
+    //                res:
+    //                {
+    //                  unless ($check) res(null);
+    //                  $body
+    //                }
+    //              }
+    //              ]>
+    //        }
+    //  }
+    //}
 
     GetPostConditions(body : PExpr, post : TransitionPostConditions, ctx : GenCtx = null) : PExpr
     {
@@ -393,7 +320,8 @@ namespace Nemerle.Statechart
       {
         | RegionCompletion(reg, tr) => 
           def check_reg = CheckNode.RegionStates(tr.Map(x => x.From));
-          def check_guard = if (tr.Exists(x => x.guard.NotEmpty)) CheckNode.Guard(tr.MapLazyFiltered(x => (x.guard.NotEmpty, x.guard)).NToList()) else CheckNode.Empty();
+          def guard = tr.FoldLeft(GuardNode.Empty(), (x, a) => a + x.guard);
+          def check_guard = if (tr.Exists(x => x.guard.NotEmpty)) CheckNode.Guard(guard) else CheckNode.Empty();
           def check = check_reg + check_guard;
           def check = GetCheck(check, ctx);
           def name = GetExecStateName(reg, ctx);
@@ -407,21 +335,27 @@ namespace Nemerle.Statechart
       }
     }
 
-    GetBody(tran : StateTransition, ctx : GenCtx) : PExpr
+    //GetBody(tran : StateTransition, ctx : GenCtx) : PExpr
+    //{
+    //  | (StateTransition(Destination = dest, PostConditions = post), _) =>
+
+    //      GetBody(tran.Path.Path, dest, post, ctx);
+    //}
+
+    GetPath(path : PathSequence) : PExpr
     {
-      | (StateTransition(Destination = dest, PostConditions = post), _) =>
-
-          GetBody(tran.Path.Path, dest, post, ctx);
+      def path = GenTranPath(path, action_for, util, analyser.FsmFlags);
+      path.TranBody
     }
-
+    
     GetBody(acts : PathSequence, dest : TransitionDestination, post : TransitionPostConditions = null, ctx : GenCtx) : PExpr
     {
       //def acts = acts.NToList();
       def target = GetDestination(dest, ctx);
       
-      def path = GenTranPath(acts, action_for, util, analyser.FsmFlags);//.Map(x => GenPath(action_for, x, util));//GetActions(acts);
+      //.Map(x => GenPath(action_for, x, util));//GetActions(acts);
       //def acts = paths.GetTranActions();
-      def body = path.TranBody;//Map(x => x.ExecExpr);
+      def body = GetPath(acts);//Map(x => x.ExecExpr);
       def body = <[
                     $body;
                     $target
@@ -435,8 +369,9 @@ namespace Nemerle.Statechart
 
     GetTransitionBody(tran : StateTransition, ctx : GenCtx) : PExpr
     {
-      def body = GetBody(tran, ctx);
-      GetGuardedBody(tran, body, ctx)
+      get_junction_body(tran.DecisionTree, ctx)
+      //def body = GetBody(tran, ctx);
+      //GetGuardedBody(tran, body, ctx)
     }
 
     DefineTransBody(tr : IEnumerable[StateTransition], ctx : GenCtx, alt : PExpr = null) : PExpr

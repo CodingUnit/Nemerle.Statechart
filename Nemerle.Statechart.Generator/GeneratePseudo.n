@@ -20,48 +20,16 @@ namespace Nemerle.Statechart
   public partial class StaticGenerator
   {
     
-    get_junction_body(node : PseudoStateNode.Junction, ctx : GenCtx) : PExpr
+    get_junction_body(node : DecisionNode, ctx : GenCtx) : PExpr
     {
-
-      //def get_code(t, b,)
-      //{
-      //  def c = t.condition;
-      //  def check = GetGuards([c], ctx);
-      //  def act = GetActions(t.Path, true);
-      //  def body = <[ $act; $b ]>;
-      //  match (e)
-      //  {
-      //    | Some(e)                     => 
-      //        <[ 
-      //          if ($check) 
-      //          {
-      //            $body
-      //          } else $e
-      //        ]>
-
-      //    | _ when c is GuardNode.Empty => body
-      //    | _                           => 
-      //      <[ 
-      //        when ($check) 
-      //        {
-      //          $body
-      //        }
-      //      ]>
-      //  }
-      //}
-
-      //def get_target(t)
-      //{
-      //  def d = t.destination;
-      //  GetBody(t.Path, d, d.PostConditions, ctx)
-      //}
 
       def loop(n)
       {
         
         | DecisionNode.Condition(g, b, e) =>
         
-          def check = GetGuards([g], ctx);
+          def check = GetGuards(g, ctx);
+          //def acts = if (c.path != null) GetPath(c.path) else <[]>;
           def body = loop(b);
           match (g)
           {
@@ -71,15 +39,25 @@ namespace Nemerle.Statechart
                     {
                       | Some(e) => def els = loop(e);
                                     <[
-                                      if ($check)
-                                      {
-                                         $body
-                                      } else
-                                      {
-                                         $els
+                                     {
+                                       res:
+                                         {
+                                          unless ($check) 
+                                          {
+                                            res($els)
+                                          }
+                                          $body
+                                         }
                                       }
                                    ]>
-                      | _       => <[ when ($check) $body ]>
+                      | _       => <[ 
+                                    { res: 
+                                      {
+                                        unless ($check) res(null); 
+                                        $body
+                                      }
+                                    } ]>
+                                      
                     }
                     
           }
@@ -87,7 +65,7 @@ namespace Nemerle.Statechart
          | Target(destination = d, path = seq) => GetBody(seq, d, d.PostConditions, ctx)
       }
       
-      loop(node.decision_tree)
+      loop(node)
       //<[
       //  {
       //    res:

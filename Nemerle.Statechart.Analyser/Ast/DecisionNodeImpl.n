@@ -19,41 +19,64 @@ namespace Nemerle.Statechart
   public partial variant DecisionNode
   {
 
-    public static create_decision_tree(target : PseudoStateNode.Junction) : void
+    public static create_decision_tree(target : PseudoStateNode.Junction, tr : StateTransition) : void
     {
-      
-      
-      def create_tree(node, a) : DecisionNode
+
+      def create_tree(node, a)
       {
         match (node)
         {
-          | FsmJunctionNode.Node(path = seq, guard = g, nodes = n, state = st) => 
-              def a = if (a != null) Some(a) else None();
-              DecisionNode.Condition(seq, st, g, n.FoldBack(null, create_tree), a)
-          | Target(path = seq, target = t, dest = d, state = st) => DecisionNode.Target(seq, st, t, d)
+          | FsmJunctionNode.Node(actions = act, guard = g, nodes = n, state = st) => 
+              Some(DecisionNode.Condition(act, null, st, g, n.FoldBack(None(), create_tree).WithDefault(null), a))
+          | Target(actions = act, path = seq, target = t, dest = d, state = st) => Some(DecisionNode.Target(act, seq, st, t, d))
         }
       } 
-              
-      def check(n)
+
+      def check_prepare(n)
       {
-        | FsmJunctionNode.Target(guard = GuardNode.Else) as n => n.guard = GuardNode.Empty(-1);
-                                                                 n
+        | FsmJunctionNode.Target(guard = GuardNode.Else) as n => n.guard = GuardNode.Empty();
+                                                                n
         | FsmJunctionNode.Target(guard = GuardNode.Expr as g) as n => 
-           n.guard = GuardNode.Empty(-1);
-           FsmJunctionNode.Node(g, [], n.state, n.Parent, n.path, [n])
+            n.guard = GuardNode.Empty();
+            FsmJunctionNode.Node(g, [], n.ParentNode, n.Parent, n.path, [n])
         | _ => n
       }
-      
-      def check_node(n)
+
+      def tree = target.tree;
+      // check tree nodes and prepare
+      foreach (FsmJunctionNode.Node(nodes = n) as node in tree.GetBreadthFirstEnumerable())
       {
-        | FsmJunctionNode.Node(nodes = n) as node => def n = n.Map(check);
-                                                     node.nodes = n;
-        | _ => ()
+        def n = n.Map(check_prepare);
+        node.nodes = n;
       }
-      
-      target.tree.Iter(check_node);
-      def tree = create_tree(target.tree, null);
-      def tree = if (tree is DecisionNode.Condition(condition = GuardNode.Empty, else_node = None, body = b)) b else tree;
+
+      // if junction not in super of transition, or cross state, need run actions not at end, but in each segment
+      when (tr.From.Super != target.state || tree.GetBreadthFirstEnumerable().Exists(x => x.state != target.state))
+      {
+        // move guards to targets
+        foreach (FsmJunctionNode.Node(guard = g) as n in tree.GetBreadthFirstEnumerable())
+        {
+          foreach (sub in n.nodes)
+          {
+            sub.guard = g + sub.guard;
+            n.guard   = GuardNode.Empty();
+          }
+        }
+      }
+
+      // move actions to targets
+      foreach (FsmJunctionNode.Node(actions = a) as n in tree.GetBreadthFirstEnumerable())
+      {
+        foreach (sub in n.nodes)
+        {
+          sub.actions = a + sub.actions;
+          n.actions   = [];
+        }
+      }
+
+      def tree = create_tree(target.tree, None()).WithDefault(null);
+      def tree = if (tree is DecisionNode.Condition(condition = GuardNode.Empty, actions = [], else_node = None, body = b)) b else tree;
+
       target.decision_tree = tree;
     }
 

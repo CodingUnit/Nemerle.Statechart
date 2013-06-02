@@ -22,7 +22,17 @@ namespace Nemerle.Statechart
 
     public guard : GuardNode {get;set;}
     public actions : list[FsmAction] {get;set;}
-    public state : FsmState;
+    
+    public ParentNode : PseudoStateNode.Junction {get;set;}
+    
+    public state : FsmState 
+    {
+      get
+      {
+        ParentNode.state
+      }
+    }
+    
     public Parent : FsmJunctionNode {get;set;}
     public path   : PathSequence {get;set;}
 
@@ -60,13 +70,13 @@ namespace Nemerle.Statechart
       }
     }
 
-    public static Create(st : FsmState, node : list[JunctionNode]) : FsmJunctionNode
+    public static Create(st : PseudoStateNode.Junction, node : list[JunctionNode]) : FsmJunctionNode
     {
       def create(x, acc)
       {
         def node = match (x, x.ChildNodes.NToList())
                     {
-                      | (JunctionNode(_, g, a, t), [])  => FsmJunctionNode.Target(g, a.GetActions(), st, null, null, TransitionTarget.Create(st, t), null)
+                      | (JunctionNode(_, g, a, t), [])  => FsmJunctionNode.Target(g, a.GetActions(), st, null, null, TransitionTarget.Create(st.state, t), null)
                       | (JunctionNode(_, g, a, _), _)   => FsmJunctionNode.Node(g, a.GetActions(), st, null, null, acc.NToList())
                     }
 
@@ -76,7 +86,7 @@ namespace Nemerle.Statechart
 
       // TODO: различающиеся гуарды должны быть на ветках junction и на переходах (объединить гуард перехода и nodes)
       def nodes = node.Map(x => x.FoldTree(null, create));
-      FsmJunctionNode.Node(GuardNode.Empty(-1), [], st, null,null, nodes)
+      FsmJunctionNode.Node(GuardNode.Empty(-1), [], st, null, null, nodes)
     }
 
     public Iter(func : FsmJunctionNode -> void) : void

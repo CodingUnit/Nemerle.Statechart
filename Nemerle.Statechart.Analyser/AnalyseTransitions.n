@@ -110,17 +110,17 @@ namespace Nemerle.Statechart
 
     CreateAndCheckConflictTransitions() : void
     {
-      def set_super_state_transition(st)
-      {
-        def super_tran = st.super_states.SelectMany(_.transitions);
-        st.DefineTransitions(super_tran);
-      }
-
       def (simple, other) = States.NToList().Partition(_.IsSimple);
 
-      simple.Iter(set_super_state_transition); // create super state transitions in simple states
+      // create super state transitions in simple states
+      foreach (st when st.Super != null in States)
+      {
+        st.DefineTransitions(st.Super.transitions)
+        //def super_tran = st.super_states.SelectMany(_.transitions);
+      }
+       
       other.Iter(_.DeleteTransitions());  // delete other transitions from composite states
-      foreach (st in States)
+      foreach (st in simple)
       {
         foreach (group in st.ConflictTransitions)
         {
@@ -224,17 +224,15 @@ namespace Nemerle.Statechart
     /// </summary>
     CreateTransitions() : void
     {
-
       //States.Iter(check_tran);
       //create_join_transitions(); // creating join transitions
       //create_fork_transitions(); // creating fork transitions
       CreateAndCheckConflictTransitions(); // create parent transitions
+      CreateDecisionTree();
       //CheckDuplicates(); // check duplicates
       //CheckCrossTransitions(); // look for cross transitions
     }
 
-
-    
     CheckTransitions() : void
     {
       foreach (tr in StateTransitions)
@@ -250,12 +248,6 @@ namespace Nemerle.Statechart
       dups.Iter(x => x.NeedGuardedName = true);
       def dups = tran.DuplicatesGroup(x => x.Name);
       dups.Iter(x => x.Iter(x => Used[x] = false));
-      //def dups = tran.Duplicates((x, y) => x.Value.Name.CompareTo(y.Value.Name));
-      //def dups = dups.Map(x => (x.Value.GuardedName, x));
-      //def tran = tran.Map(x => (x.Value.Name, x));
-      //def tran = tran.Concat(dups);
-      //def (dups, tran) = tran.DuplicatesPartition(x => x[0]);
-      //def dups = dups.GroupBy(x => x[0]);
       def err = dups.Map(x => FsmError.DuplicateTransition(x.NToList()));
       AddErrors(err);
     }
@@ -270,24 +262,6 @@ namespace Nemerle.Statechart
         traverser = null;
       }
 
-      //def update_states()
-      //{
-      //  //def dest = trans_paths.SelectMany(x => x.Paths.Map((_, y) => y.Transition.Destination));
-      //  //def tran = dest.SelectMany(_.Transition);
-      //  //UpdateTransitions(tran);
-      //  //def hist = dest.OfType.[TransitionDestination.History]().Select(_.state);
-      //  //def hist = hist.RemoveDuplicatesSort(_.Name).Select(_.ChangeUsed(true));
-
-      //  //def update_hist(s, _)
-      //  //{
-      //  //  def hist = hist.Where(x => x.Num == s.Num);
-      //  //  hist.FoldLeft(s, (x, a) => a.UpdateHistory(x))
-      //  //}
-
-      //  ////statemap.Update(st);
-      //  //def top = TopState.ReduceSingle(update_hist);
-      //  //UpdateStateMap(top)
-      //}
       def obj = States.Select(_ : object).Concat(all_transitions_with_spec).Concat(PseudoStates);
       obj.Iter(Used.Add(_, false)); // init used properties
 

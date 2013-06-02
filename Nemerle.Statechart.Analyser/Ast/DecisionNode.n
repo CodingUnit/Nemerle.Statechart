@@ -12,10 +12,11 @@ namespace Nemerle.Statechart
 {
 
   using ListUtils;
-
+  using TreeUtils;
+  
   //[Traversable]
   [Record]
-  public partial variant DecisionNode
+  public partial variant DecisionNode : IGeneralTree[DecisionNode]
   {
     | Condition 
       {
@@ -48,13 +49,50 @@ namespace Nemerle.Statechart
 
       }
 
+    public actions : list[FsmAction] {get;set;}
     public path  : PathSequence {get;set;}
     public state : FsmState {get;set;}
     //public actions : list[Actions] = [];
     //[NeedChange]
     //public PrevState : FsmState;
 
+    public ChildNodes : IEnumerable[DecisionNode]
+    {
+      get
+      {
+        match (this)
+        {
+          | Condition(_, a, Some(b)) => yield a; yield b;
+          | Condition(_, a, _)       => yield a
+          | Target                   => ()
+        }
+      }
+    }
+    
+    public Current : DecisionNode
+    {
+      get
+      {
+        this
+      }
+    }
+    
+    public Iter(cond : Condition -> void, target : Target -> void) : void
+    {
+      def iter(a)
+      {
+        | Condition as a => when (cond != null) cond(a)
+        | Target as a    => when (target != null) target(a)
+      }
+      
+      Iter(iter)
+    }
 
+    public Iter(iter : DecisionNode -> void) : void
+    {
+      GetBreadthFirstEnumerable().Iter(iter)
+    }
+    
     //public this(an : FsmAnalyser) { analyser = an }
 
     //public GetChild() : IEnumerable[DecisionNode]

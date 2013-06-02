@@ -29,7 +29,7 @@ namespace Nemerle.Statechart
       this(st.state, evt, tran);
       FromPseudo = Some(st);
     }
-    
+
     public this(st : FsmState, evt : option[TransitionEvent], tran : StateNode.Transition)
     {
       def an = st.analyser;
@@ -77,17 +77,18 @@ namespace Nemerle.Statechart
       //omit_guard = tran.omit_guard;
       From = tran.From;
       Source = tran.Source;
-      Path = tran.Path;
+      //Path = tran.Path;
       Destination = tran.Destination;
       ActualTo = tran.ActualTo;
       node = tran.node;
-      Path = tran.Path;
+      //Path = tran.Path;
       type = tran.type;
       executeCheck = tran.executeCheck;
       NeedGuardedName = tran.NeedGuardedName;
       trigger = tran.trigger;
       FromPseudo = tran.FromPseudo;
       internal_kind = tran.internal_kind;
+      DecisionTree = tran.DecisionTree;
     }
 
     public node : StateNode.Transition;
@@ -100,15 +101,22 @@ namespace Nemerle.Statechart
     public From : FsmState {get;set;}
     public guard : GuardNode {get;set;default GuardNode.Empty(-1)}
     public action : list[FsmAction] {get;set;default []}
-    
-    
+
+
     public To : TransitionTarget {get;set;}
     public FromPseudo : option[PseudoStateNode] = None();// {get;set;default None()}
 
     public internal_kind : TransitionKind {get;set;}
-    
+
     public ActualTo : FsmState {get;set;}
-    public Path : TransitionPath {get;set;}
+
+    public Path : list[PathSequence] 
+    {
+      get
+      {
+        DecisionTree.Fold([], (x, a) => x.path :: a)
+      }
+    }
     public Destination : TransitionDestination {get;set;}
     //public omit_guard : bool {get;set;}
     public analyser : FsmAnalyser;
@@ -193,7 +201,7 @@ namespace Nemerle.Statechart
         FromPseudo is Some(PseudoStateNode.Initial)
       }
     }
-    
+
     name : string
     {
       get
@@ -294,20 +302,20 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
+
     public EmptyDecisionTarget : DecisionNode
     {
       get
       {
-        DecisionNode.Target(null, Source, To, null)
+        DecisionNode.Target(action, null, From, To, null)
       }
     }
-    
+
     public StateObtainPseudoState(st : FsmState) : FsmState
     {
       if (Local) st else st.Super;
     }
-    
+
     public StateObtainPseudoStateFromThis : FsmState
     {
       get
@@ -327,7 +335,8 @@ namespace Nemerle.Statechart
           | Final(st)
           | State(st)       => st
           //| History(PseudoStateNode.History(state = st))
-          | PseudoState(st) => st.state
+          //| PseudoState(Junction) => null
+          | PseudoState(st)   => st.state
           //| JunctionNode(state = st)
           | _                 => null
         }
@@ -335,19 +344,30 @@ namespace Nemerle.Statechart
       }
     }
 
-
-
-    public PathNode : IEnumerable[PathNode]
+    public SimpleDecisionTree : TransitionTarget
     {
       get
       {
-        match (type)
+        match (DecisionTree)
         {
-          | Internal => action.Select(PathNode.Action(From, _))//TraverseUtils.SingleElement(node)
-          | _        => Path.Path.Path
+          | DecisionNode.Target(target = t)
+          | DecisionNode.Condition(body = DecisionNode.Target(target = t), else_node = None) when (!t.IsJunction) => t
+          | _                                                                                                     => null
         }
       }
     }
+
+    //public PathNode : IEnumerable[PathNode]
+    //{
+    //  get
+    //  {
+    //    match (type)
+    //    {
+    //      | Internal => action.Select(PathNode.Action(From, _))//TraverseUtils.SingleElement(node)
+    //      | _        => Path.Path.Path
+    //    }
+    //  }
+    //}
 
     //public PathNodeRecursive : IEnumerable[PathNode]
     //{
@@ -434,11 +454,12 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (type)
-        {
-          | Internal => action
-          | _        => Path.Actions
-        }
+        Path.SelectMany(x => x.action_nodes.FilterValues(x => x.PathAction))
+        //match (type)
+        //{
+        //  | Internal => action
+        //  | _        => 
+        //}
       }
     }
 
@@ -560,6 +581,28 @@ namespace Nemerle.Statechart
       get
       {
         Source.PartOfSubRegion
+      }
+    }
+
+    public CreateSimpleDecisionTree() : void
+    {
+      match (guard)
+      {
+        | GuardNode.Empty      => DecisionTree = EmptyDecisionTarget;
+        | GuardNode.Expr as g  => def target = EmptyDecisionTarget;
+                                  DecisionTree = DecisionNode.Condition(action, null, From, g, target, None())
+        | _                    => throw InvalidOperationException("GuardNode.Else is not permitted on this stage")
+      }
+    }
+
+    public InitSimpleDecisionTree(path : PathSequence) : void
+    {
+      when (SimpleDecisionTree != null)
+      foreach (n in DecisionTree.GetBreadthFirstEnumerable())
+      {
+        | DecisionNode.Target as t => t.destination = Destination;
+                                      n.path = path;
+        | _                        => n.path = path;
       }
     }
 

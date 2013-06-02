@@ -24,20 +24,20 @@ namespace Nemerle.Statechart
     //  statemap.GetNextGlobalNum()
     //}
 
-    CheckJunction(node : PseudoStateNode.Junction) : void
-    {
-      def create_actions(a)
-      {
-        when (a.Parent != null)
-        {
-          a.actions += a.Parent.actions;
-          a.Parent.actions = [];
-        }
-      }
+    //CheckJunction(node : PseudoStateNode.Junction) : void
+    //{
+    //  def create_actions(a)
+    //  {
+    //    when (a.Parent != null)
+    //    {
+    //      a.actions += a.Parent.actions;
+    //      a.Parent.actions = [];
+    //    }
+    //  }
 
-      node.tree.Iter(create_actions)
-        //DecisionNode.create_junc_tree_node(this, node)
-    }
+    //  node.tree.Iter(create_actions)
+    //    //DecisionNode.create_junc_tree_node(this, node)
+    //}
     //CheckJunctionNode(node : TransitionTarget.JunctionNode) : TransitionTarget.JunctionNode
     //{
     //  | JunctionNode(state = st) => 
@@ -49,7 +49,7 @@ namespace Nemerle.Statechart
 
     CheckPseudoStates() : void
     {
-      Junctions.Iter(CheckJunction)
+      //Junctions.Iter(CheckJunction)
     }
 
     CreateJunctionFromGuards() : void
@@ -84,7 +84,7 @@ namespace Nemerle.Statechart
                                                                               t
               | _                                                           => throw InvalidOperationException("invalid FsmJunctionNode tree")
             }
-        | x => FsmJunctionNode.Target(x.guard, x.action, x.From, null, null, x.To, null)
+        | x => FsmJunctionNode.Target(x.guard, x.action, null, null, null, x.To, null)
       }
 
       def type = JunctionType.Junction;
@@ -92,9 +92,10 @@ namespace Nemerle.Statechart
       def name = PseudoStateNode.Junction.GetUnnamedName(this, type);
       def nodes = guards_tr.Append(els);
       def nodes = nodes.Map(create_node);
-      def tree  = FsmJunctionNode.Node(GuardNode.Empty(), [], st, null, null, nodes);
+      def tree  = FsmJunctionNode.Node(GuardNode.Empty(), [], null, null, null, nodes);
       //FsmJunctionNode.Node();
       def to = PseudoStateNode.Junction(st, name, tree, type, null, true);
+      tree.Iter(x => x.ParentNode = to);
       els.To = TransitionTarget.PseudoState(to);
       els.guard = GuardNode.Empty();
       els.action = [];
@@ -105,20 +106,15 @@ namespace Nemerle.Statechart
     CreateDecisionTree() : void
     {
       CreateJunctionFromGuards();
-      Junctions.Iter(DecisionNode.create_decision_tree);
 
       foreach (tr in all_transitions_with_spec)
       {
         match (tr.ToJunction)
         {
-          | null => match (tr.guard)
-              {
-                | GuardNode.Empty      => tr.DecisionTree = tr.EmptyDecisionTarget;
-                | GuardNode.Expr as g  => def target = tr.EmptyDecisionTarget;
-                                          tr.DecisionTree = DecisionNode.Condition(null, tr.Source, g, target, None())
-                | _                    => throw InvalidOperationException("GuardNode.Else is not permitted on this stage")
-              }
-          | PseudoStateNode.Junction(decision_tree = t) => tr.DecisionTree = t;
+          | null => tr.CreateSimpleDecisionTree()
+          | j => 
+             DecisionNode.create_decision_tree(j, tr);
+             tr.DecisionTree = j.decision_tree;
         }
       }
     }
