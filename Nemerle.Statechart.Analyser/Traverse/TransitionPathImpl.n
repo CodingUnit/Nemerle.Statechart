@@ -23,8 +23,8 @@ namespace Nemerle.Statechart
                           exit : IEnumerable[FsmState],
                           entry : IEnumerable[FsmState]) : IEnumerable[FsmState] * IEnumerable[FsmState]
     {
-      def src = src_st.super_states;
-      def dest = dest_st.super_states;
+      def src = if (src_st != null) src_st.SuperStatesIncludeFromTop else [];
+      def dest = if (dest_st != null) dest_st.SuperStatesIncludeFromTop else [];
       def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x == y : object);
       (exit.Concat(ex.Reverse()), en.Concat(entry))
     }
@@ -77,7 +77,11 @@ namespace Nemerle.Statechart
     //  //FindPath(st.Super, dest, TraverseUtils.SingleElement(st), TraverseUtils.SingleElement(dest_st))
     //}
 
-    
+
+    AddEntry(node : PathNode) : void
+    {
+      path.AddEntry(node)
+    }
 
     static GetEntryNode(st : FsmState) : IEnumerable[PathNode]
     {
@@ -102,7 +106,7 @@ namespace Nemerle.Statechart
       $[TranPath(st, PathNode.Action(st, a) :: [], PathKind.Action), a in act]
       //nodes.Concat(act.Map(PathNode.Action(PathKind.Action(), st, _)))
     }
-    
+
     static GetExitNode(st : FsmState) : IEnumerable[PathNode]
     {
       def do_act = st.do_activity.Map(StopDoActivity(st, _));
@@ -133,19 +137,44 @@ namespace Nemerle.Statechart
       $[TranPath(st, GetExitNode(st).NToList(), PathKind.Exit), st in nodes]
     }
 
-    NodesCreate(ex : IEnumerable[FsmState], tran : StateTransition) : void
-    {
-      def (exit, en) = TraverseTransitionPath(tran);
-      def ex = ex.Concat(exit);
+    //AddNodes(st : FsmState, ex : IEnumerable[FsmState], en : IEnumerable[FsmState], act : list[FsmAction]) : void
+    //{
+    //  def exit = GetExitPath(ex); // create nodes for exit exit actions
+    //  def act = GetActionPath(st, act); // add transition action
+    //  def entry = GetEntryPath(en); // create nodes for entry exit actions
+    //  path.AddExit(exit);
+    //  path.AddAction(act);
+    //  path.AddEntry(entry)
+    //}
 
+    GetPath(st : FsmState, ex : IEnumerable[FsmState], en : IEnumerable[FsmState], act : list[FsmAction]) : PathSequence
+    {
+      def path = PathSequence();
       def exit = GetExitPath(ex); // create nodes for exit exit actions
-      def act = GetActionPath(tran.From, tran.action); // add transition action
+      def act = GetActionPath(st, act); // add transition action
       def entry = GetEntryPath(en); // create nodes for entry exit actions
       path.AddExit(exit);
       path.AddAction(act);
-      path.AddEntry(entry)
-      //node.Concat(entry_nodes) // merge together
+      path.AddEntry(entry);
+      path
     }
+
+    CreatePath(st : FsmState, ex : IEnumerable[FsmState], en : IEnumerable[FsmState], act : list[FsmAction]) : void
+    {
+      def exit = GetExitPath(ex); // create nodes for exit exit actions
+      def act = GetActionPath(st, act); // add transition action
+      def entry = GetEntryPath(en); // create nodes for entry exit actions
+      path.AddExit(exit);
+      path.AddAction(act);
+      path.AddEntry(entry);
+    }
+    
+    //NodesCreate(ex : IEnumerable[FsmState], tran : StateTransition) : void
+    //{
+    //  def (exit, en) = TraverseTransitionPath(tran);
+    //  def ex = ex.Concat(exit);
+    //  AddNodes(tran.From, ex, en, tran.action)
+    //}
 
     //NodesCreate(ex : IEnumerable[FsmState], en : IEnumerable[FsmState]) : IEnumerable[PathNode]
     //{
@@ -154,28 +183,21 @@ namespace Nemerle.Statechart
     //  node.Concat(entry_nodes) // merge together
     //}
 
-    TraverseTransitionPath(tran : StateTransition) : IEnumerable[FsmState] * IEnumerable[FsmState]
+    TraverseTransitionPath(tran : StateTransition) : void
     {
-      match (tran.type)
-      {
         // initial и pseudo is local transitions by default
         //| Initial(AtLeastStaticTo = st, From = from)
         //| History(From = from, ToState = st)
         // fork transition
-        | Local => def from = tran.From;
-                   def st = tran.AtLeastStaticTo;
-                   def (ex, en) = FindPath(from, st, [], []);
-                   def en = en.Skip(1); // remove entry in state
-                   def en = en.Append(st); // add entry to target state
-                   (ex, en)
-                   
-      // transition to pseudo state
-        | Transition => def st = tran.AtLeastStaticTo;
-                        def (ex, en) = FindPath(tran.From, st, [], []);
-                        (ex, en.Append(st))
-        | Internal  // no path for internal transition
-        | _        => (Enumerable.Empty(), Enumerable.Empty())
-      }
+      def from = tran.From;
+      def to = tran.AtLeastStaticTo;
+      
+      def (ex, en) = if (to != null)
+      {
+        if (tran.Local) FindPath(from, to, [], []) else FindPath(from.Super, to.Super, [from], [to]);
+      } else ([], []);
+      CreatePath(tran.From, ex, en, tran.action)
+      
     }
 
     //DefExitPath(src : FsmState, dest : FsmState) : void
@@ -184,27 +206,24 @@ namespace Nemerle.Statechart
     //  AddNode(ExitNodeCreate(ex))
     //}
 
-    //DefPath(src : FsmState, dest : FsmState, local : bool = true, skip : FsmState = null) : void
-    //{
-    //  def node = GetPath(src, dest, local, skip);
-    //  AddNode(node)
-    //}
-
-    //GetPath(src : FsmState, dest : FsmState, local : bool = true, skip : FsmState = null) : IEnumerable[PathNode]
-    //{
-    //  if (src == null || dest == null) Enumerable.Empty() else
-    //  {
-    //    def (ex, en) = if (local) FindPath(src, dest, Enumerable.Empty(), Enumerable.Empty()) else FindLCA(src, dest);
-    //    def ex = if (ex.IsEmpty()) ex else 
-    //               if (skip != null && ex.First() == skip : object) ex.Skip(1) else ex;
-    //    NodesCreate(ex, en)
-    //  }
-    //}
-
-    DefPath(src : FsmState, dest : FsmState, tr : StateTransition) : void//, ex_node : IEnumerable[PathNode] = null) : void
+    DefPath(src : FsmState, dest : FsmState, local : bool = true, act : list[FsmAction]) : void
     {
-      def ex = if (tr.Local) FindPath(src, dest, [], [])[0]; else FindPath(src, dest, [src], [dest])[0];
-      NodesCreate(ex, tr);
+      def (ex, en) = if (local) FindPath(src, dest, [], []) else FindPath(src.Super, dest.Super, [src], [dest]);
+      CreatePath(src, ex, en, act)
+    }
+
+    GetPath(src : FsmState, dest : FsmState, local : bool = true, act : list[FsmAction]) : PathSequence
+    {
+      def (ex, en) = if (local) FindPath(src, dest, [], []) else FindPath(src.Super, dest.Super, [src], [dest]);
+      GetPath(src, ex, en, act)
+    }
+
+    DefPath(src : FsmState, dest : FsmState) : void//, ex_node : IEnumerable[PathNode] = null) : void
+    {
+      //def ex = if (tr.Local) 
+      def ex = FindPath(src, dest, [], [])[0];// else FindPath(src.Super, dest.Super, [src], [dest])[0];
+      path.AddExit(GetExitPath(ex));
+      //NodesCreate(ex, tr);
       //def node = if (ex_node != null) ex_node + node else node;
       //AddEntry(node)
     }
