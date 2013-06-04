@@ -63,7 +63,10 @@ namespace Nemerle.Statechart
             | ([], _)  => ()
             | ([e], g) => def guards_tr = g.Filter(x => x.guard.NotEmpty);
                           if (guards_tr.IsEmpty()) AddError(FsmError.ElseMustHaveOtherTransition(e)); else
-                            CreateJunctionFromGuards(guards_tr, e);
+                          {
+                            def tr = guards_tr.Filter(x => x.type != TransitionType.Internal);
+                            when (!tr.IsEmpty()) CreateJunctionFromGuards(tr, e);
+                          }
             | (e, _)   => AddError(FsmError.SeveralElseGuards(e))
           }
         }
@@ -77,11 +80,11 @@ namespace Nemerle.Statechart
         | StateTransition(To = PseudoState(PseudoStateNode.Junction(tree = t)), guard = g, action = a) => 
             match (t)
             {
-              | FsmJunctionNode.Node(guard = GuardNode.Empty, actions = []) => t.guard = g;
-                                                                              t.actions = a;
-                                                                              tr.guard = GuardNode.Empty();
-                                                                              tr.action = [];
-                                                                              t
+              | FsmJunctionNode.Node(guard = GuardNode.Empty, actions = [])  => t.guard = g;
+                                                                                t.actions = a;
+                                                                                tr.guard = GuardNode.Empty();
+                                                                                tr.action = [];
+                                                                                t
               | _                                                           => throw InvalidOperationException("invalid FsmJunctionNode tree")
             }
         | x => FsmJunctionNode.Target(x.guard, x.action, null, null, null, x.To, null)

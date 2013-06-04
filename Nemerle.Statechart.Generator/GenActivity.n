@@ -16,17 +16,21 @@ using System.Threading;
 namespace Nemerle.Statechart
 {
 
+  [Record]
   class GenActivity
   {
     activity : StateAction.Do;
     map : Map[string, string];
-    util : GenUtil;
-    
-    //[FlagAccessor (Concurrently,  NoWaitCancel, NotLong)]
-    flags : ActivityFlag;
+    gen : StaticGenerator;
 
-    public InitExpr : list[PExpr] {get;set;default []}
-    
+    flags : ActivityFlag
+    {
+      get
+      {
+        activity.flags
+      }
+    }
+
     actions : list[FsmAction]
     {
       get
@@ -35,21 +39,24 @@ namespace Nemerle.Statechart
       }
     }
 
-    normal_actions : list[FsmAction.Normal]
+    one_normal_action : bool
     {
       get
       {
-        actions.FilterType();
+        match (actions)
+        {
+          | FsmAction.Normal(_, []) :: [] => true
+          | _                             => false
+        }
       }
     }
-    
+
     [Memoized]
-    action_list : list[GenElement]
+    action_list : list[GenAction]
     {
       get
       {
-        def acts = normal_actions.Map(x => x.name);
-        acts.Map(x => GenElement(x, map))
+        actions.Map(x => GenAction(x, map, gen.util))
       }
     }
 
@@ -61,166 +68,106 @@ namespace Nemerle.Statechart
       }
     }
 
-    public this(act : StateAction.Do, map : Map[string, string], util : GenUtil)
+    public static StartCode(act : StateAction.Do) : PExpr
     {
-      activity = act;
-      flags = activity.flags;
-      this.map = map;
-      this.util = util;
-    }
-
-    public act_exec_name : string
-    {
-      get
-      {
-        $"$(Name)Actions"
-      }
-    }
-
-    public activity_start_name : string
-    {
-      get
-      {
-        $"$(Name)Run"
-      }
+      if (act.need_completion) <[ $(act.Name : usesite).StartContinued() ]> else
+                               <[ $(act.Name : usesite).Start() ]>
     }
     
-    public activity_stop_name : string
+    public static StopCode(act : StateAction.Do) : PExpr
     {
-      get
-      {
-        $"$(Name)Stop"
-      }
+      <[ $(act.Name : usesite).Stop() ]>
     }
-    
+
     public run_action_name : string
     {
       get
       {
-        $"$(act_exec_name)Action"
-      }
-    }
-    
-    public task_name : string
-    {
-      get
-      {
-        $"$(Name)Task"
+        match (action_list)
+        {
+          | GenAction(action = FsmAction.Normal(n, [])) :: [] => $"$n"
+          | _                                                 => $"$(Name)Action"
+        }
       }
     }
 
-    public CancelSourceName : string
+    public CannotCancel : bool
     {
       get
       {
-        $"$(Name)CancelSource"
+        def not_canceled = actions.All(x => x is FsmAction.Normal(_, _ :: _) || x is FsmAction.Expr);
+        activity.NoCancel || not_canceled
+      }
+    }
+    
+    public DeclarationType : PExpr
+    {
+      get
+      {
+        if (CannotCancel) <[ DoActivity ]> else <[ CancelableDoActivity ]>
       }
     }
 
-    mutable has_do_activity_gen : bool;
+    public RunParams : list[PParameter]
+    {
+      get
+      {
+        if (CannotCancel) [] else <[parameter: tok : CancellationToken ]> :: []
+      }
+    }
     
+    public init : PExpr
+    {
+      get
+      {
+        if (activity.need_completion) <[ $DeclarationType($(run_action_name : usesite), CompletionAfterActivity) ]> 
+        else <[ $DeclarationType($(run_action_name : usesite)) ]>
+      }
+    }
+
     GenBaseStruct() : void
     {
-      //def act = act.Map(x => x.name);
-            //def name = do_act.Name;
-            //def actions = $"$(name)Actions";
-            //def cancel_source = CancelSourceName;
-            //def act_list = act.Map(x => GenElement(x, action_for));//act |> $"On$_";
-            // events for not declared actions
-      def not_def_act = action_list.Exclude(_.IsDeclared);
-      not_def_act.Iter(x => util.DefineEvent(x.name, <[ Action[CancellationToken] ]>, [<[parameter: tok : CancellationToken ]>], <[ tok ]>));
-
-      
-            // cancellation source
-      util.Define(<[decl: mutable $(CancelSourceName : usesite) : CancellationTokenSource; ]>);
-      util.Define(<[decl: mutable $(task_name : usesite) : Task;]>); // declare task
-      
-      // creation of action
-      InitExpr ::= <[ $(run_action_name : usesite) = Action($(act_exec_name : usesite)) ]>;
-      util.Define(<[decl: $(run_action_name : usesite) : Action; ]>); // action for task
+      gen.Define(<[decl: $(Name : usesite) : $DeclarationType;]>); // declare do activity
+      gen.init_exprs ::= <[ $(Name : usesite) = $init ]>; // create it in constructor
     }
 
     DefineActions() : void
     {
-      def act_body = match (action_list)
-                      {
-                        | head :: [] => <[ $(head.ExecName : usesite)($(CancelSourceName : usesite).Token); ]>
-                        | _          => def run_acts = action_list.Map(x => <[ $(x.ExecName : usesite)(tok); ]>);
-                                        <[ 
-                                            def tok = $(CancelSourceName : usesite).Token;
-                                            {..$run_acts}
-                                        ]>
-
-                      }
-      util.DefineMethod(act_exec_name, act_body);
-    }
-    
-    GenRunBody() : void
-    {
-      //init_exprs.Add(<[ $(run_act : usesite) = ;]>); // create action
-      
-      def task = if (activity.need_completion) 
+      // for not declared actions generate event members
+      foreach (GenAction(action = FsmAction.Normal as act) as a when !a.IsDeclared in action_list)
       {
-        <[ Task.Factory.StartNew($(run_action_name : usesite), $(CancelSourceName : usesite).Token).ContinueWith(CompletionAfterActivityAction) ]>
-      } else
-      {
-        <[ Task.Factory.StartNew($(run_action_name : usesite), $(CancelSourceName : usesite).Token) ]>;
+        gen.DefineEvent(act.name, <[ Action[CancellationToken] ]>, [<[parameter: tok : CancellationToken ]>], <[ tok ]>)
       }
-      util.Define(<[decl: $(activity_start_name : usesite)() : void
-                          {
-                            $(CancelSourceName : usesite) = System.Threading.CancellationTokenSource();
-                            $(task_name : usesite) = $task;
-                          } ]>);
-    }
+      
+      when (!one_normal_action || actions.Exists(_ is FsmAction.Expr))
+      {
+        def get_body(act)
+        {
+          match (act.action)
+          {
+            | FsmAction.Normal(_, []) => <[ $(act.ExecName : usesite)(tok); ]>
+            | FsmAction.Normal        => <[ $(act.ExecExpr) ]>
+            | Expr(e)                 => e
+          }
+        }
+        
+        def run_acts = action_list.Map(get_body);
+        def body = <[ {..$run_acts} ]>;
+        
+        gen.Define(<[decl: $(run_action_name : usesite)(..$RunParams) : void
+                     {
+                       $body
+                     }]>);
+      }
 
-    //GetRunBodyConc() : PExpr
-    //{
-    //  def acts    = act_list.Map(x => if (x.IsDeclared) (x, x.name) else (x, $"$name$(x)Action"));
-    //                                      def act_run = acts.Exclude((x, _) => x.IsDeclared);
-    //                                      gen_members = gen_members.HeadAppend(act_run.Map((n, x) => <[decl: $(x : usesite) : Action = () => $(n.exec_name : usesite)($(cancel_source : usesite).Token);]>));
-    //                                      def tasks = act.Map(x => $"$task$x");
-    //                                      def task_arr = <[decl: mutable $(task : usesite) : array[Task] = array($(tasks.Length));]>;
-    //                                      gen_members ::= task_arr;
-    //                                      def stop = if (no_wait) <[ () ]> else <[ Task.WaitAll($(task : usesite)); ]>;
-    //                                      def tasks = acts.MapIndex(((_, y), i) => 
-    //                                                                    if (not_long) <[$(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok, TaskCreationOptions.None, TaskScheduler.Current);]> else
-    //                                          <[ $(task : usesite)[$i] = Task.Factory.StartNew($(y : usesite), tok); ]>
-    //                                          );
-    //                                      (<[ $tok;{..$tasks}]>, <[ $stop ]>)
-    //}
-
-
-    GenStopBody() : void
-    {
-      util.Define(<[decl: $(activity_stop_name : usesite)() : void
-              {
-                when ($(CancelSourceName : usesite) != null)
-                {
-                  try
-                  {
-                    $(CancelSourceName : usesite).Cancel();
-                    $(task_name : usesite).Wait();
-                  }
-                  catch
-                  {
-                    |_ is AggregateException => ()
-                  }
-                }
-              } ]>);
     }
 
     public Generate() : void
     {
       GenBaseStruct();
       DefineActions();
-      GenRunBody();
-      GenStopBody();
-      has_do_activity_gen = true;
     }
-    
-    //GetStopBodyConc() : PExpr
-    //{
-    //}
+
   }
 
   /// <summary>
@@ -236,22 +183,20 @@ namespace Nemerle.Statechart
       {
         def have_completion = act.Exists(_.need_completion);
         when (have_completion)
-          {
-            init_exprs ::= <[ CompletionAfterActivityAction = Action(CompletionAfterActivity); ]>;
-            Define(<[decl: CompletionAfterActivityAction : Action[Task]; ]>);
-            Define(<[ decl: CompletionAfterActivity(_ : Task) : void
+        {
+          //init_exprs ::= <[ CompletionAfterActivityAction = Action(CompletionAfterActivity); ]>;
+          //Define(<[decl: CompletionAfterActivityAction : Action[Task]; ]>);
+          Define(<[ decl: CompletionAfterActivity(_ : Task) : void
                         {
                           Completion()
                         } ]>);
-          }
-        Define(<[decl: task_factory : TaskFactory = TaskFactory(); ]>);
+        }
         foreach (act in act)
         {
-          def act = GenActivity(act, action_for, util);
+          def act = GenActivity(act, action_for, this);
           act.Generate();
-          init_exprs += act.InitExpr;
         }
-        
+
       }
     }
 
