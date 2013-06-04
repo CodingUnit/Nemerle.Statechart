@@ -374,68 +374,30 @@ namespace Nemerle.Statechart
       //GetGuardedBody(tran, body, ctx)
     }
 
-    DefineTransBody(tr : IEnumerable[StateTransition], ctx : GenCtx, alt : PExpr = null) : PExpr
+    DefineTransBody(tr : StateTransition, ctx : GenCtx) : PExpr
     {
-      def get_body(tr)
-      {
-        def name = tr.Name;
-        //if (tr.MaybeInlined && IsEmpty(tr.PathNode))
-        //{
-        //     <[ $(GetTransitionBody(tr, ctx)) ]>
-        //} else 
-          if (ctx.IsInEventHandler) <[ fsm.$(name : usesite)(); ]> else <[ $(name : usesite)();]>
-      }
-
-      match (tr.NToList())
-      {
-        //| [StateTransition(IsCrossed = true) as tr] => 
-        //    def body =  get_body(tr);
-        //          <[
-        //            {
-        //            def res =  $body;
-        //            if (res != null) res else $(DefineTransBody(tr.ParentCrossed, ctx, alt))
-        //            }
-        //          ]>
-        | [tr]  => def body = get_body(tr);
-            if (alt != null) 
-            <[
-              def res = $body;
-              if (res != null) res else $alt
-            ]> else body
-
-        | tr :: tail  =>
-            def body = get_body(tr);
-                  <[
-                  {
-                    def res =  $body;
-                    if (res != null) res else $(DefineTransBody(tail, ctx, alt))
-                  }
-                  ]>
-        |  _  => if (alt != null) alt else <[ null ]>
-      } 
-    }
-
-    DefineTransBody(tr : StateTransition, ctx : GenCtx, alt : PExpr = null) : PExpr
-    {
-      def get_body(tr)
-      {
-        def name = tr.Name;
-        //if (tr.MaybeInlined && IsEmpty(tr.PathNode))
-        //{
-        //     <[ $(GetTransitionBody(tr, ctx)) ]>
-        //} else 
-          if (ctx.IsInEventHandler) <[ fsm.$(name : usesite)(); ]> else <[ $(name : usesite)();]>
-      }
-
-        def body = get_body(tr);
-            if (alt != null) 
-            <[
-              def res = $body;
-              if (res != null) res else $alt
-            ]> else body
-        
+      def name = tr.Name;
+      if (ctx.IsInEventHandler) <[ fsm.$(name : usesite)(); ]> else <[ $(name : usesite)();]>
     }
     
+    DefineTransBody(tr : list[StateTransition], ctx : GenCtx, els : PExpr = null) : PExpr
+    {
+      def get_body(x, a)
+      {
+          def body = DefineTransBody(x, ctx);
+          <[
+            def res = $body;
+            if (res != null) res else $a
+          ]>
+      }
+      
+      match (tr)
+      {
+        | [tr] => DefineTransBody(tr, ctx)
+        | _    => tr.FoldBack(if (els == null) <[ null ]> else els, get_body)
+      }
+    }
+
     DefineTransitions(ty : TypeBuilder, st : FsmState) : void
     {
       def defs = 

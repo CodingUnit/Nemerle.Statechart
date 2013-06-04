@@ -14,63 +14,67 @@ namespace Nemerle.Statechart
   /// </summary>
   public partial class TransitionPath
   {
-    //TraverseDefaultTransition(tran : StateTransition) : TransitionDestination
-    //{
-
-    //  | Default(history = hist, From = from) as tr =>
-    //      DefPath(tran.Source, from, tran); // unwind path from Source up to transition begining (From)
-    //      def st = tr.ToState;
-    //      when (st == null) throw FsmErrorException(FsmError.DefaultTransitionMustGoToState(tran, hist));
-    //      tran.Used = true;
-    //      TraverseTargetReg(tr.To, tran)
-    //  | _ => null
-    //}
 
     TraverseOrdinaryTransition(tran : StateTransition) : TransitionDestination
     {
-      DefPath(tran.Source, tran.From); // unwind path from Source up to transition begining (From)
-      TraverseTransitionPath(tran);
-      tran.Used = true;
+      TraverseTransitionPath(tran); // unwind path from Source up to transition begining (From) 
+      tran.Used = true; //exec actions and enter to target configuration
       TraverseTargetReg(tran.To, tran)
-      //def target = tran.SimpleDecisionTree;
-      //if (target != null) 
-      //{
-        
-      //} else 
-      //{
-      //  TraverseDecisionTree(tran.DecisionTree, tran);
-      //  TransitionDestination.Junction(tran.DecisionTree)
-      //}
     }
-
-    //TraverseHistoryPath(tran : StateTransition) : TransitionDestination
-    //{
-
-    //  | StateTransition.History(From = from, history = hist, ToState = st) =>
-
-    //      def src = tran.Source;
-    //      //def tran = if (tr.From == null) tr.ChangeFrom(tr.From) else tran;
-    //      DefPath(src, from, tran); // unwind path from Source up to transition begining (From)
-    //      tran.Used = true;
-    //      if (st.type is StateType.Region) TransitionDestination.HistoryRestore(hist) 
-    //      else TraverseStateTarget(st);
-    //  | _ => null
-    //}
-
-    //TraverseInitialTransition(tran : StateTransition) : TransitionDestination
-    //{
-    //  DefPath(tran.Source, tran.From, tran); // unwind path from Source up to transition begining (From)
-    //  tran.Used = true;
-    //  TraverseTarget(tran.To, tran)
-    //}
 
     TraverseInternalTransition(tran : StateTransition) : TransitionDestination
     {
-      DefPath(tran.Source, tran.From);
-      TraverseTransitionPath(tran);
+      //DefPath(tran.Source, tran.From);
+      CreatePath(tran.From, [], [], tran.action); // create empty path
       //TraverseDecisionTree(tran.DecisionTree, tran);
       tran.Used = true;
       TransitionDestination.NoStateChange()
     }
+    
+    TraverseTransition(tran : StateTransition) : TransitionDestination
+    {
+      match (tran.type)
+      {
+        | Internal                                => TraverseInternalTransition(tran)
+          // if not exit from region
+        | Transition when tran.WithinRegion       => TraverseWithinRegionTransition(tran)
+          // if go to join pseudo state
+      //| Transition(To = TransitionTarget.PseudoState(node = Join as j)) => TraverseJoinTransition(j, tran)
+    // | Transition(IsCompletion = true)         => tran.
+          // if from state in orthogonal region, and transition begins in orthogonal regions boundary or upper
+        | _ 
+                                                  => 
+            if (tran.Source.PartOfSubRegion is Some(r))
+              TraverseTransitionFromRegion(r, tran) else TraverseOrdinaryTransition(tran)
+                                                // else ordinary transition
+      }
+    }
+
+    TraverseDecisionTree(tree : DecisionNode, tran : StateTransition) : void
+    {
+      foreach (j in tree.GetBreadthFirstEnumerable())
+      {
+        | DecisionNode.Target(target = tar) as t => 
+            def p = TransitionPath(tran, recursive); // create path new path 
+            p.path = this.path.Clone(); // copy from this
+            def dest = tar.ToState; // if we know the target
+            p.DefPath(t.state, dest, true, j.actions); // create nodes to
+            def dest = p.TraverseTargetReg(tar, tran); // traversing target
+            t.path = p.path; // set node path to calculated
+            t.destination = dest; // destination set to dest
+          
+        | _ => 
+        
+            def src = j.state;
+            j.path = path.Clone(); // foreach nodes path from parent to childs
+            foreach (n in j.ChildNodes)
+            {
+              def dest = n.state;
+              def path = GetPath(src, dest, true, j.actions);
+              n.path = path;
+            }
+      }
+    }
+    
   }
 }
