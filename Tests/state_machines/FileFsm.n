@@ -105,8 +105,10 @@ namespace Nemerle.Statechart.Tests
     
     state SaveAs
     {
-      OK => $0;
-      do / DoActionComplete(SaveAsDialog);
+      entry / SaveDialog.FileName = CurFile;
+      
+      do / ViewDialog(ViewSaveAsDialog);
+      OK / CurFile = SaveDialog.FileName => SaveCurrentFile;
     }
   }
   
@@ -119,7 +121,7 @@ namespace Nemerle.Statechart.Tests
     {
       state ViewOpenDialog
       {
-        do / DoActionComplete(ViewOpenDialog);
+        do / ViewDialog(ViewOpenDialog);
         OK / CurFile = OpenDialog.FileName => OpenFile;
       }
       
@@ -155,36 +157,6 @@ namespace Nemerle.Statechart.Tests
     
     public sync : ISynchronizeInvoke {get;set;}
     
-    //DoSaveFile() : bool
-    //{
-    //  if (LastSaved.IsEmpty())
-    //  {
-    //    SaveAsDialog()
-    //  }
-    //  else
-    //  {
-    //    match (ViewOverwrite())
-    //    {
-    //      | Yes => SaveCurrentFile()
-    //      | No  => SaveAsDialog()
-    //      | _   => false
-    //    }
-    //  }
-    //}
-
-    //save_checking(_tok : CancellationToken) : void
-    //{
-    //  def res = //if (last_event == Event.save_pressed) DoSaveFile() else
-    //            match (ViewWantToSave())
-    //            {
-    //              | Yes    => DoSaveFile()
-    //              | No     => true
-    //              | _      => false
-    //            }
-
-    //  if (res) OK() else cancel()
-    //}
-
     ViewOverwrite() : DialogResult
     {
       MessageBox.Show("Want to overwrite file?", "Warning", MessageBoxButtons.YesNoCancel);
@@ -197,8 +169,10 @@ namespace Nemerle.Statechart.Tests
 
     ViewDialog(dlg : void -> DialogResult) : void
     {
-      match (dlg())
+      def res = dlg();
+      match (res)
       {
+        | DialogResult.OK     => OK()
         | DialogResult.Yes    => Yes()
         | DialogResult.No     => No()
         | DialogResult.Cancel => cancel()
@@ -211,22 +185,9 @@ namespace Nemerle.Statechart.Tests
       if (act()) OK() else cancel()
     }
     
-    SaveAsDialog() : bool
+    ViewOpenDialog() : DialogResult
     {
-      SaveDialog.FileName = CurFile;
-      def res = ViewSaveAsDialog();
-      if (res == DialogResult.OK)
-      {
-        CurFile = SaveDialog.FileName;
-        SaveCurrentFile()
-      }
-      else false
-    }
-
-    ViewOpenDialog() : bool
-    {
-      //OpenDialog.ShowDialog() 
-      sync.Sync(OpenDialog.ShowDialog) == DialogResult.OK
+      sync.Sync(OpenDialog.ShowDialog)
     }
 
     ViewSaveAsDialog() : DialogResult
