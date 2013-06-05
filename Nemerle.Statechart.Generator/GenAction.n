@@ -119,6 +119,17 @@ namespace Nemerle.Statechart
       }
     }
     
+    Evaluate(expr : PExpr) : PExpr
+    {
+      def check(e)
+      {
+        | <[ send($x) ]> => <[ PostEvent($x) ]>
+        | e              => e
+      }
+      
+      Macros.TraverseExpr(None(), expr, false, (_, after, e) => if (after) check(e) else e)
+    }
+    
     [Memoized]
     public ExecExpr : PExpr
     {
@@ -126,7 +137,7 @@ namespace Nemerle.Statechart
       {
         match (action)
         {
-         | FsmAction.Expr(e)     => e 
+         | FsmAction.Expr(e)     => Evaluate(e) 
          | Normal(name = "send") => <[ PostEvent(..$Params) ]>
          | Normal(name = null)   => <[ () ]>
          | _                     => <[ $(ExecName : usesite)(..$Params) ]>
@@ -141,7 +152,7 @@ namespace Nemerle.Statechart
       {
         match (action)
         {
-         | FsmAction.Expr(e)     => e 
+         | FsmAction.Expr(e)     => Evaluate(e)
          | Normal(name = "send") => <[ PostEvent(..$Params) ]>
          | Normal(name = null)   => <[ () ]>
          | _                     => <[ $(DeclName : usesite)(..$Params); ]>

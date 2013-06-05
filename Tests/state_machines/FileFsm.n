@@ -22,7 +22,7 @@ namespace Nemerle.Statechart.Tests
   
   entry / SaveDis;
   
-  save_as_pressed => SaveFileAs;
+  save_as_pressed / last_event = Event.save_pressed => SaveChecking.SaveAs;
   
   0 => Waiting;
   
@@ -63,12 +63,13 @@ namespace Nemerle.Statechart.Tests
       {
           entry / CaptionFile SaveAsEna;
           entry / LastSaved = "";
-          save_pressed => SaveFileAs;
+          save_pressed / last_event = Evt.evt => SaveChecking.SaveAs;
       }
 
       state Changed
       {
           entry / CaptionChanged;
+          save_pressed / last_event = Evt.evt => SaveChecking.Overwrite;
       }
 
   }
@@ -116,18 +117,32 @@ namespace Nemerle.Statechart.Tests
     
     state OpenDialog
     {
-      do / open_dialog;
+      state ViewOpenDialog
+      {
+        do / DoActionComplete(ViewOpenDialog);
+        OK / CurFile = OpenDialog.FileName => OpenFile;
+      }
+      
+      state OpenFile
+      {
+        do / DoActionComplete(OnOpenFileAction);
+      }
     }
     
     state NewDialog
     {
-      OK => NotSaved;
-      do / new_dialog;
-    }
-    
-    state SaveFileAs
-    {
-      do / DoActionComplete(SaveAsDialog);
+      
+      state ViewNewDialog
+      {
+        do / DoActionComplete(ViewNewDialog);
+        OK => NewDialogAction;
+      }
+      
+      state NewDialogAction
+      {
+        do / DoActionComplete(OnNewFileAction);
+        OK => NotSaved;
+      }
     }
     
   }
@@ -170,27 +185,6 @@ namespace Nemerle.Statechart.Tests
     //  if (res) OK() else cancel()
     //}
 
-    new_dialog(_tok : CancellationToken) : void
-    {
-      def res = if (ViewNewDialog()) OnNewFileAction() else false;
-      if (res) OK() else cancel()
-    }
-
-    open_dialog(_tok : CancellationToken) : void
-    {
-      def res = if (ViewOpenDialog())
-                 {
-                   CurFile = OpenDialog.FileName;
-                   OnOpenFileAction()
-                 } else false;
-      if (res) OK() else cancel()
-    }
-
-    //saving_file(_tok : CancellationToken) : void
-    //{
-    //  when (!DoSaveFile()) Cancel()
-    //}
-    
     ViewOverwrite() : DialogResult
     {
       MessageBox.Show("Want to overwrite file?", "Warning", MessageBoxButtons.YesNoCancel);
