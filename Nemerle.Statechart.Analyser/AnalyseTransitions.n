@@ -128,6 +128,33 @@ namespace Nemerle.Statechart
       }
     }
 
+    check_deffered_events() : void
+    {
+      def check_override(tr, st, defer)
+      {
+        // transitions with trigger exists in defered list
+        def tr = tr.Where(x => defer.Exists(y => if (x.trigger is Some(t)) t == y else false));
+        // filter and partition transition with position in hierarchy lower or equal current state
+        def (left_tr, removed) = tr.PartitionLazy(x => x.From.hierarchy_pos >= st.hierarchy_pos);
+        // left_tr transitions that overrides defered events in current state
+        def left_events = left_tr.FilterValues(_.trigger); // left events that override other defered
+        def left_defer = defer.Except(left_events).NToList(); // remove from defer that events
+        //def tr = tr.Except(removed); // remove from transition list removed events
+        (removed, left_defer)
+      }
+      
+      foreach (st in States)
+      {
+        when (st.Super != null) 
+        {
+          def evts = st.Super.deferred_events; // super state deffered events
+          def (rem_tran_evts, evts) = check_override(st.transitions, st.Super, evts); // transition events in current state
+          st.DeleteTransitions(rem_tran_evts); // removed transitions overriden by defered events
+          st.deferred_events += evts;
+        }
+      }
+    }
+    
 #if 0    
     create_join_transitions() : void
     {
@@ -226,6 +253,7 @@ namespace Nemerle.Statechart
       //States.Iter(check_tran);
       //create_join_transitions(); // creating join transitions
       //create_fork_transitions(); // creating fork transitions
+      check_deffered_events(); // check defered events
       CreateAndCheckConflictTransitions(); // create parent transitions
       CreateDecisionTree();
       //CheckDuplicates(); // check duplicates

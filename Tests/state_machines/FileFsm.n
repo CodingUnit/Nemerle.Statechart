@@ -16,13 +16,13 @@ namespace Nemerle.Statechart.Tests
   [statechart(<#
 
   flags : auto_initial transition_completed_events;
-  flags : debug;// all_sync;
+  flags : debug;
 
   //sync form;
   
   entry / SaveDis;
   
-  save_as_pressed / last_event = Event.save_pressed => SaveChecking.SaveAs;
+  save_as_pressed => SaveChecking.SaveAs;
   
   0 => Waiting;
   
@@ -40,10 +40,9 @@ namespace Nemerle.Statechart.Tests
     
     state Saved
     {
-        
-        entry / CaptionFileName SaveAsEna;
-        entry / LastSaved = CurFile;
-        Change => Changed;
+      entry / CaptionFileName SaveAsEna;
+      entry / LastSaved = CurFile;
+      Change => Changed;
     }
     
     state Waiting
@@ -55,34 +54,41 @@ namespace Nemerle.Statechart.Tests
   
   state NotSaved : Interface
   {
-      entry / SaveEna;
+    entry / SaveEna;
 
-      new_pressed, open_pressed, save_pressed, exit_pressed / last_event = Evt.evt => FileDialogs;
+    new_pressed, open_pressed, exit_pressed => FileDialogs;
       
-      state New
-      {
-          entry / CaptionFile SaveAsEna;
-          entry / LastSaved = "";
-          save_pressed / last_event = Evt.evt => SaveChecking.SaveAs;
-      }
+    state New
+    {
+        entry / CaptionFile SaveAsEna;
+        entry / LastSaved = "";
+        save_pressed => SaveChecking.SaveAs;
+    }
 
-      state Changed
-      {
-          entry / CaptionChanged;
-          save_pressed / last_event = Evt.evt => SaveChecking.Overwrite;
-      }
+    state Changed
+    {
+        entry / CaptionChanged;
+        save_pressed => SaveChecking.Overwrite;
+    }
 
   }
 
   [Initial]
   state SaveChecking : FileDialogs
   {
-    _ / send(last_event) => NotNeedSaving;
+    $> / last_event = Evt.evt;
     
+    _ => {
+          last_event == Event.new_pressed  => NewDialog;
+          last_event == Event.open_pressed => OpenDialog;
+          last_event == Event.exit_pressed => X;
+          else                             => NotNeedSaving;
+         }
+         
     state WantToSave
     {
       do / ViewDialog(ViewWantToSave);
-      Yes => { 
+      Yes => {
                LastSaved.IsEmpty() => SaveAs;
                else                => Overwrite;
              }

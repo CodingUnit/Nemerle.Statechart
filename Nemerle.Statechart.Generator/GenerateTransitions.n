@@ -335,13 +335,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    //GetBody(tran : StateTransition, ctx : GenCtx) : PExpr
-    //{
-    //  | (StateTransition(Destination = dest, PostConditions = post), _) =>
-
-    //      GetBody(tran.Path.Path, dest, post, ctx);
-    //}
-
     GetPath(path : PathSequence) : PExpr
     {
       def path = GenTranPath(path, action_for, util, analyser.FsmFlags);
@@ -350,12 +343,9 @@ namespace Nemerle.Statechart
     
     GetBody(acts : PathSequence, dest : TransitionDestination, post : TransitionPostConditions = null, ctx : GenCtx) : PExpr
     {
-      //def acts = acts.NToList();
       def target = GetDestination(dest, ctx);
       
-      //.Map(x => GenPath(action_for, x, util));//GetActions(acts);
-      //def acts = paths.GetTranActions();
-      def body = GetPath(acts);//Map(x => x.ExecExpr);
+      def body = GetPath(acts);
       def body = <[
                     $body;
                     $target
@@ -370,8 +360,6 @@ namespace Nemerle.Statechart
     GetTransitionBody(tran : StateTransition, ctx : GenCtx) : PExpr
     {
       get_junction_body(tran.DecisionTree, ctx)
-      //def body = GetBody(tran, ctx);
-      //GetGuardedBody(tran, body, ctx)
     }
 
     DefineTransBody(tr : StateTransition, ctx : GenCtx) : PExpr
@@ -398,22 +386,60 @@ namespace Nemerle.Statechart
       }
     }
 
+    DefineDeferedEvents() : void
+    {
+      when (HasDeferedEvents)
+      {
+        ty.Define(<[decl: mutable defered : List[Event] = List();]>);
+        ty.Define(<[decl: CheckDefered() : void
+                   {
+                     for (mutable i = 0; i < defered.Count; ++i)
+                     {
+                       def e = defered[i];
+                       unless (cur_state.IsDefer(e)) 
+                       {
+                         Dispatch(e);
+                         defered.RemoveAt(i);
+                         i--;
+                       }
+                     }
+                   }]>);
+        ty.Define(<[decl: Defer(evt : Event) : void
+                    {
+                      defered.Add(evt)
+                    }]>)
+      }
+    }
+    
+    DefineDeferedEvents(ty : TypeBuilder, st : FsmState) : void
+    {
+      def evt = st.deferred_events;
+      when (!evt.IsEmpty()) 
+      {
+        def cases = evt.FoldBack([<[case: _ => false ]>], (x, a) => <[case: | Event.$(x.Name : usesite) => true ]> :: a);
+        def is_defer = <[decl: public override IsDefer(evt : Event) : bool { match (evt) { ..$cases } } ]>;
+        Define(ty, is_defer);
+        def decls = evt.Map(x => <[ decl: public override $(x.Name : usesite)(fsm : $(ChartName : usesite)) : State { fsm.Defer(Event.$(x.Name : usesite)); null }]>);
+        Define(ty, decls)
+      }
+    }
+    
     DefineTransitions(ty : TypeBuilder, st : FsmState) : void
     {
-      def defs = 
-                  if (st.IsTopState) 
+      def defs =  if (st.IsTopState) 
                   {
+                    Define(ty, <[decl: public virtual IsDefer(_ : Event) : bool { false } ]>);
                     analyser.Events.Map(x => <[decl: public virtual $(x : usesite)(_ : $(ChartName : usesite)) : State {null}]>);
                   } else
                     if (st.Lived)
                     {
                       def group = st.WorkTransitions.GroupBy(x => x.FriendlyTriggerName).Select(x => (x.Key, x.NToList()));
+                      DefineDeferedEvents(ty, st);
                       group.MapToList((x, y) => <[decl: 
                             public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(DefineTransBody(y, GenCtx.InEventHandler()))}]>)
                     } else 
                     {
                       []
-                          //throw NotImplementedException();
                     }
       Define(ty, defs)
     }

@@ -34,6 +34,10 @@ namespace Nemerle.Statechart
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
       def trans_complete_expr =  if (analyser.FsmFlags.TransitionCompleted) <[ OnTransitionCompleted(); ]> else <[ () ]>;
       def actions = actions.Exclude(x => x.IsDeclared);
+      def defer_check = if (HasDeferedEvents)
+                        {
+                          <[ CheckDefered() ]>
+                        } else <[ () ]>;
       //def actions = actions.RemoveDuplicatesSort(_.end_name);
       //def actions = actions.Map(x => <[ $(x.exec_name) ]>);
       def actions = actions.Map(x => <[ $(x.ExecName) ]>);
@@ -55,11 +59,7 @@ namespace Nemerle.Statechart
                     // define method for changing state
                     TrySwitch(st : State) : void
                     {
-                       when (st != null)
-                       {
-                         cur_state = st;
-                         $trans_complete_expr;
-                       }
+                       when (st != null) Switch(st)
                     }
 
                     // define method for changing state
@@ -68,6 +68,7 @@ namespace Nemerle.Statechart
                         //IsEventDeclined = false;
                         cur_state = st;
                         $trans_complete_expr;
+                        $defer_check
                     }
 
                     public IsTerminated : bool
