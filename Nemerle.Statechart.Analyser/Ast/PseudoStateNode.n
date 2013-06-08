@@ -201,8 +201,8 @@ namespace Nemerle.Statechart
         }
 
       }
-    | EntryPoint
-    | ExitPoint
+    | EntryPoint { name : string; tran : StateTransition;}
+    | ExitPoint { name : string; tran : option[StateTransition] {get;set;default None()} }
     | Terminate { override ToString() : string {"Terminate"} }
 
     public static Create(st : FsmState, pseudo : PseudoStateModelNode) : PseudoStateNode
@@ -214,8 +214,8 @@ namespace Nemerle.Statechart
         | Junction as j                              => Junction(st, j)
         //| Fork(target = lst)                         => Fork(0, lst.Map(TransitionTarget.Create(st, _)), [])
         //| Join(name = n, target = t)                 =>  Join(0, n, TransitionTarget.Create(st, t), null, null, null))
-        | EntryPoint                                 //EntryPoint(0, num, an))
-        | ExitPoint                                  => null//ExitPoint(0, num, an)
+        | EntryPoint(n, tr)                          => EntryPoint(st, n, StateTransition.Create(st, tr).First())
+        | ExitPoint(n, tr)                           => ExitPoint(st, n, tr.Map(x => StateTransition.Create(st, x).First()))
         | Terminate                                  => Terminate(st)
         | _                                          => throw NotImplementedException("this TransitionTarget not implemented")
       }
@@ -237,9 +237,11 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | Join(name = n) => Some(n)
-          //| Junction(name = n) 
-          | _                  => None()
+          | Join(name = n)
+          | Junction(name = n, IsUnnamed = false) 
+          | EntryPoint(name = n)
+          | ExitPoint(name = n) => Some(n)
+          | _                   => None()
         }
       }
     }
@@ -268,7 +270,9 @@ namespace Nemerle.Statechart
           | Fork(target = t)          => $<#Fork$(state)To..$(t;"_")#>
           | Initial                   => $"$(state)Initial"
           | Junction(name = n)        => $"$state$n"
-          | n                         => n.ToString()
+          | EntryPoint(name = n)      => $"EntryPoint$n"
+          | ExitPoint(name = n)       => $"ExitPoint$n"
+          //| n                         => n.ToString()
           //| FsmNode.State(st)                                => st.Value.Name
           //| FsmNode.PseudoState(n)                           => n.ToString()
         }
@@ -299,23 +303,6 @@ namespace Nemerle.Statechart
         analyser.Used[this] = value
       }
     }
-
-    //public Clone() : PseudoStateNode
-    //{
-    //  match (this)
-    //  {
-    //    //| Junction(tree = t) as n => n.ChangeTree(t.Clone())
-    //    | n                       => n
-    //  }
-    //}
-    //public static @==(a : PseudoStateNode, b : PseudoStateNode) : bool
-    //{
-    //  | (null, null) => true
-    //  | (null, _)    
-    //  | (_, null)    => false
-    //  | _            => a.Num == b.Num
-    //}
-
 
   }
 

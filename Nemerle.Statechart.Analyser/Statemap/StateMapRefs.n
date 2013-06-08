@@ -27,8 +27,10 @@ namespace Nemerle.Statechart
       match (p)
       {
         | Initial(tran = tr)
+        | EntryPoint(tran = tr)
+        | ExitPoint(tran = Some(tr))
         | History(default = Some(tr)) => UpdateTransitionReference(tr, st)
-        //| Junction(tree = n) as p     => UpdateJunctionReference(p, st)
+        | Junction as p               => UpdateJunctionReference(p, st, null)
         | _            => ()
       }
     }
@@ -57,7 +59,7 @@ namespace Nemerle.Statechart
       }
     }
     
-    ResolvePseudoState(p : PseudoStateNode, st : FsmState, tran : StateTransition) : PseudoStateNode
+    ResolvePseudoState(p : PseudoStateNode, st : FsmState) : PseudoStateNode
     {
       match (p)
       {                                   // get history from state
@@ -67,14 +69,14 @@ namespace Nemerle.Statechart
                                                       | x    => x
                                                     }
         | Terminate as p                         => p // it is must be resolved
-        | Junction(Name = n, IsUnnamed = false)  => match (GetPseudoIn(n, PseudoStates))
+        | Junction(name = n, IsUnnamed = false)  => match (GetPseudoIn(n, PseudoStates))
                                                     {
                                                       | null          => null
-                                                      | Junction as p => UpdateJunctionReference(p, st, tran); p
+                                                      | Junction as p => p
                                                       | _             => null
                                                     }
                                                          
-        | Junction as j                          => UpdateJunctionReference(j, st, tran); j
+        | Junction as j                          => j
         | _                                      => match (p.NativeName) // find for name
                                                     {
                                                       | Some(p)   => GetPseudoIn(p, null)
@@ -103,7 +105,7 @@ namespace Nemerle.Statechart
                                                                   null
                                                    | (res, _)  => ResolveTarget(res, t, tran)
                                                  }
-        | PseudoState(p) as t                 => match (ResolvePseudoState(p, st, tran))
+        | PseudoState(p) as t                 => match (ResolvePseudoState(p, st))
                                                   {
                                                     | null => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
                                                               null

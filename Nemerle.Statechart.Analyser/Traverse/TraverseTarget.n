@@ -18,23 +18,28 @@ namespace Nemerle.Statechart
   public partial class TransitionPath
   {
     
+    
     TraverseJunction(j : PseudoStateNode.Junction, tran : StateTransition) : TransitionDestination
     {
-      TraverseDecisionTree(j.decision_tree, tran);
+      def tree =  TraverseDecisionTree(j.decision_tree, tran);
       //j.decision_tree.Iter(traverse_node, traverse_target);
-      TransitionDestination.Junction(j.decision_tree)
+      tran.DecisionTree = tree;
+      TransitionDestination.Junction(tree)
     }
+    
     TraversePseudo(st : PseudoStateNode, tr : StateTransition) : TransitionDestination
     {
       match (st)
       {
         | History as p                                => TraverseHistory(p)
         | Terminate as p                              => tr.Used = true;
-                                                        Terminate(p)
+                                                         Terminate(p)
         | Fork(target = t) as p                       => TraverseFork(p, t)
         | Junction(type = JunctionType.Junction) as j => TraverseJunction(j, tr)
+        | Junction(type = JunctionType.Merge) as j    => TraverseJunction(j, tr)
+        | EntryPoint(tran = t)                        => tr.Used = true;CheckExecuteTran(t)
+        | ExitPoint(tran = Some(t))                   => tr.Used = true;CheckExecuteTran(t)
         | Junction(type = JunctionType.Choice)      //TraverseChoice(j, tr)
-        | Junction(type = JunctionType.Merge)       //TraverseMerge(m, tr)
         | _                                           => Unknown()
       }
     }
@@ -83,8 +88,7 @@ namespace Nemerle.Statechart
                   | [StateTransition(guard = Empty) as tran]  => 
                 // if not defined transition path create it
                         traverser?.Log($"..and pass it by completion transition $tran");
-                        traverser?.Add(tran);
-                        TransitionExecute(tran)// if not defined transition path create it
+                        CheckExecuteTran(tran) // if not defined transition path create it
 
                   | tran       => 
                       traverser?.Add(tran);
@@ -111,8 +115,7 @@ namespace Nemerle.Statechart
                           | [StateTransition(guard = Empty) as tran]  => 
                         // if not defined transition path create it
                                 traverser?.Log($"..and pass it by completion transition $tran");
-                                traverser?.Add(tran);
-                                TransitionExecute(tran)// if not defined transition path create it
+                                CheckExecuteTran(tran) // if not defined transition path create it
 
                           | tran       => 
                               traverser?.Add(tran);
@@ -169,8 +172,7 @@ namespace Nemerle.Statechart
               | Some(init) =>
         // check initial transition path, and traverse it if it null
                   traverser?.Log($"\nEntering state $(st) and pass through initial transition $(init)");
-                  traverser?.Add(init);
-                  TransitionExecute(init)
+                  CheckExecuteTran(init)
 
               //| init => 
               //    def init = init.Map(_ : StateTransition);

@@ -37,8 +37,9 @@ namespace Nemerle.Statechart
       Source = st;
       From = st;
       trigger = evt.Map(StateEvent);
-      type = tran.type;
+      kind = tran.kind;
       node = tran;
+      RelocateFrom = tran.from.Map(x => PseudoStateNode.ExitPoint(st, x.FullName, Some(this)));
       when (tran != null)
       {
         guard = tran.guard;
@@ -47,24 +48,24 @@ namespace Nemerle.Statechart
       To = if (tran.to != null) TransitionTarget.Create(st, tran.to) else TransitionTarget.Nowhere();
     }
 
-    public this(st : FsmState, to : FsmState, type : TransitionKind)
+    public this(st : FsmState, to : FsmState, kind : TransitionKind)
     {
-      this(st, TransitionTarget.State(to), type)
+      this(st, TransitionTarget.State(to), kind)
     }
 
-    public this(st : PseudoStateNode, to : FsmState, type : TransitionKind)
+    public this(st : PseudoStateNode, to : FsmState, kind : TransitionKind)
     {
-      this(st.state, TransitionTarget.State(to), type);
+      this(st.state, TransitionTarget.State(to), kind);
       FromPseudo = Some(st);
     }
 
-    public this(st : FsmState, to : TransitionTarget, type : TransitionKind)
+    public this(st : FsmState, to : TransitionTarget, kind : TransitionKind)
     {
       this(st.analyser);
       //From = st;
       To = to;
       From = st;
-      this.type = type;
+      this.kind = kind;
       Source = From;
     }
 
@@ -82,18 +83,19 @@ namespace Nemerle.Statechart
       ActualTo = tran.ActualTo;
       node = tran.node;
       //Path = tran.Path;
-      type = tran.type;
+      kind = tran.kind;
       executeCheck = tran.executeCheck;
       NeedGuardedName = tran.NeedGuardedName;
       trigger = tran.trigger;
       FromPseudo = tran.FromPseudo;
       internal_kind = tran.internal_kind;
-      DecisionTree = tran.DecisionTree;
+      DecisionTree = if (tran.DecisionTree != null) tran.DecisionTree.Clone() else null;
+      RelocateFrom = tran.RelocateFrom;
     }
 
     public node : StateNode.Transition;
 
-    public type : TransitionKind;
+    public kind : TransitionKind {get;set;}
     public trigger : option[StateEvent];
     // state in from start transition in real time app
     public Source : FsmState {get;set;}
@@ -102,9 +104,10 @@ namespace Nemerle.Statechart
     public guard : GuardNode {get;set;default GuardNode.Empty(-1)}
     public action : list[FsmAction] {get;set;default []}
 
-
+    // used in exit entry points to set from another state begining of transition
+    public RelocateFrom : option[PseudoStateNode] {get;set;default None()}
     public To : TransitionTarget {get;set;}
-    public FromPseudo : option[PseudoStateNode] = None();// {get;set;default None()}
+    public FromPseudo : option[PseudoStateNode] {get;set; default None()}
 
     public internal_kind : TransitionRunKind {get;set;}
 
@@ -131,7 +134,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        type == TransitionKind.Local
+        kind == TransitionKind.Local
       }
     }
 
@@ -206,10 +209,11 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (type, FromPseudo)
+        match (kind, FromPseudo)
         {
           | (Internal, None)                         => $"InternalTransition$(From)By$FriendlyTriggerName"
-          | (Transition, None)                       => $"Transition$(Source)To$(To)By$FriendlyTriggerName"
+          | (Local, _) when (internal_kind == TransitionRunKind.History) => $"HistoryFrom$(From)To$ToState"
+          | (_, None)                                => $"Transition$(Source)To$(To)By$FriendlyTriggerName"
           | (_, Some(PseudoStateNode.Initial))       => $"InitialTransitionFrom$(From)To$To"
           | (_, Some(PseudoStateNode.History as h))  => 
               match (Destination)
@@ -217,7 +221,8 @@ namespace Nemerle.Statechart
                 | History(state = st) => $"DefaultTransition$(h)To$st"
                 | _                   => $"DefaultTransition$(h)To$ActualTo"
               }
-          | (Local, _) when (internal_kind == TransitionRunKind.History) => $"HistoryFrom$(From)To$ToState"
+          | (_, Some(PseudoStateNode.ExitPoint as e))     => $"TransitionFrom$(e)To$(To)"
+          
           | _                                                         => throw InvalidOperationException("invalid transition name")
         }
       }
@@ -344,43 +349,19 @@ namespace Nemerle.Statechart
       }
     }
 
-    public SimpleDecisionTree : TransitionTarget
+    public SimpleDecisionTree : bool
     {
       get
       {
-        match (DecisionTree)
-        {
-          | DecisionNode.Target(target = t)
-          | DecisionNode.Condition(body = DecisionNode.Target(target = t), else_node = None) when (!t.IsJunction) => t
-          | _                                                                                                     => null
-        }
+        !(Destination is TransitionDestination.Junction)
+        //match (DecisionTree)
+        //{
+        //  | DecisionNode.Target(target = t)
+        //  | DecisionNode.Condition(body = DecisionNode.Target(target = t), else_node = None) when (!t.IsJunction) => t
+        //  | _                                                                                                     => null
+        //}
       }
     }
-
-    //public PathNode : IEnumerable[PathNode]
-    //{
-    //  get
-    //  {
-    //    match (type)
-    //    {
-    //      | Internal => action.Select(PathNode.Action(From, _))//TraverseUtils.SingleElement(node)
-    //      | _        => Path.Path.Path
-    //    }
-    //  }
-    //}
-
-    //public PathNodeRecursive : IEnumerable[PathNode]
-    //{
-    //  get
-    //  {
-    //    match (Destination)
-    //    {
-    //      | null               => PathNode
-    //      //| JunctionNode(node) => PathNode.Concat(node.Paths)
-    //      | _                  => PathNode
-    //    }
-    //  }
-    //}
 
     public Trigger : StateEvent
     {
@@ -393,33 +374,6 @@ namespace Nemerle.Statechart
         }
       }
     }
-
-    //public MaybeInlined : bool
-    //{
-    //  get
-    //  {
-    //    def path_inlined(p)
-    //    {
-    //      def false_paths(p)
-    //      {
-    //        | PathNode.Entry
-    //        | Exit  => true
-    //        | _     => false
-    //      }
-
-    //      !p.Exists(false_paths) && p.PathActions().IsEmpty()
-    //    }
-
-    //    def path_ok = path_inlined(Path.Path.Path) && Guards.IsEmpty();
-    //    def targ_ok = match (Destination)
-    //                   {
-    //                     | ForceStateChange                                  => false
-    //                    //| JunctionNode(DecisionNode(Paths = p, Guards = g)) => path_inlined(p) && g is [] 
-    //                     | _                                                 => true
-    //                   }
-    //    path_ok && targ_ok
-    //  }
-    //}
 
     public Guards : IEnumerable[GuardNode]
     {
@@ -597,7 +551,7 @@ namespace Nemerle.Statechart
 
     public InitSimpleDecisionTree(path : PathSequence) : void
     {
-      when (SimpleDecisionTree != null)
+      when (SimpleDecisionTree)
       foreach (n in DecisionTree.GetBreadthFirstEnumerable())
       {
         | DecisionNode.Target as t => t.destination = Destination;

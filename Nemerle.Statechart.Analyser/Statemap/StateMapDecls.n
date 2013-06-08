@@ -63,6 +63,24 @@ namespace Nemerle.Statechart
       }
     }
 
+    CheckRelocateTran(tr : StateTransition) : void
+    {
+      | StateTransition(RelocateFrom = Some(PseudoStateNode(NativeName = Some(n)))) => 
+          match (GetPseudo(n.SplitToList('.')))
+          {
+            | null                                        => Analyser.AddError(FsmError.RelocatePseudoNotFound(tr))
+            | PseudoStateNode.ExitPoint(tran = Some) as p => Analyser.AddError(FsmError.RelocatePseudoAlreadyHaveTarget(tr, p))
+            | PseudoStateNode.ExitPoint(state = st) as p  => tr.From.DeleteTransition(tr);
+                                                             p.tran = Some(tr);
+                                                             tr.FromPseudo = Some(p);
+                                                             tr.From = st;
+                                                             tr.Source = st;
+                                                             tr.kind = TransitionKind.Local;
+            | p                                           => Analyser.AddError(FsmError.RelocateSourceNotSupported(p))
+          }
+      | _                                        => ()
+    }
+    
     CreatePreDecls() : void
     {
       foreach (tr in Transitions)
@@ -72,6 +90,7 @@ namespace Nemerle.Statechart
           | null => ()
           | t    => tr.To = t
         }
+        CheckRelocateTran(tr)
       }
     }
 
