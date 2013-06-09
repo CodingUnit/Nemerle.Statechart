@@ -20,9 +20,8 @@ namespace Nemerle.Statechart
   class GenEvent
   {
     an : FsmAnalyser;
-    util : GenUtil;
+    gen : StaticGenerator;
     events : list[string];
-    //event_for : Map[string, string];
    
     NeedEvtContextName : bool
     {
@@ -37,26 +36,6 @@ namespace Nemerle.Statechart
       get
       {
         an.EventCtx.NeedContext
-      }
-    }
-    
-    //[Memoized]
-    //Events : list[GenElement]
-    //{
-    //  get
-    //  {
-    //    events.Map(x => GenElement(x, event_for))
-    //  }
-    //}
-    [Memoized]
-    QueueStruct : list[ClassMember]
-    {
-      get
-      {
-        <[decl: queue : ConcurrentQueue[Event] = ConcurrentQueue(); ]> ::
-        <[decl: most_priority_queue : ConcurrentQueue[Event] = ConcurrentQueue(); ]> ::
-        <[decl: work_event : ManualResetEvent = ManualResetEvent(false); ]> ::
-        <[decl: complete_event : ManualResetEvent = ManualResetEvent(true); ]> :: []
       }
     }
     
@@ -93,51 +72,24 @@ namespace Nemerle.Statechart
                           }
                         } ]>;
       def field = <[decl: public Evt : EventCtx = EventCtx() ]>;
-      util.DefineNested(cls).Compile();
-      util.Define(field);
+      gen.DefineNested(cls).Compile();
+      gen.Define(field);
     }
     
     GenBaseStruct() : void
     {
       when (NeedEvtContext) GenEventCtx();
-      util.Define(<[ decl:
-            Dispatch(evt : Event) : void
+      gen.Define(<[ decl:
+            protected override DispatchEvent(evt : Event) : State
             {
                 $EventCtxBody;
-                def res = match (evt)
+                match (evt)
                 {
                   ..$RunEventInState
                 }
-                TrySwitch(res)
             }
             ]>);
             
-     def thread = <[ decl:
-      
-                    QueueThread() : void
-                    {
-                      while (!IsTerminated)
-                      {
-                        mutable item;
-                        if (most_priority_queue.TryDequeue(out item))
-                        {
-                          Dispatch(item)
-                        } else
-                        if (queue.TryDequeue(out item))
-                        {
-                          Dispatch(item)
-                        } else 
-                        {
-                          _ = complete_event.Set();
-                          _ = work_event.Reset();
-                          _ = work_event.WaitOne()
-                        }
-                      }
-                    }
-      ]>;
-     util.Define(thread);
-     util.Define(QueueStruct);
-     
     }
     
     GenEvents() : void
@@ -154,10 +106,10 @@ namespace Nemerle.Statechart
                                 comp :: evt
         | (_, evt)           => get_events(evt)
       }
-      util.Define(lst);
+      gen.Define(lst);
       
       def decl_events = events.Map(x =>  <[decl: | $(x : usesite) ]>);
-      util.DefineNested(<[ decl:
+      gen.DefineNested(<[ decl:
             public enum Event
             {
               ..$decl_events
@@ -176,45 +128,14 @@ namespace Nemerle.Statechart
     
     GenPost() : void
     {
-      util.Define(<[ decl:
-            PostEventMostPriority(evt : Event) : void
-            {
-                _ = complete_event.Reset();
-                most_priority_queue.Enqueue(evt);
-                _ = work_event.Set();
-            }
-            ]>);
-      util.Define(<[ decl:
-            public PostEvent(evt : string) : void
+      gen.Define(<[ decl:
+            public override PostEvent(evt : string) : void
             {
                 def res = match (evt)
                 {
                   ..$StringToEvent
                 }
                 PostEvent(res)
-            }
-            ]>);
-      util.Define(<[decl:
-        
-        public PostEvent(evt : Event) : void
-                    {
-                      _ = complete_event.Reset();
-                      queue.Enqueue(evt);
-                      _ = work_event.Set();
-                    }
-                ]>);
-      util.Define(<[ decl:
-            public SendEvent(evt : Event) : void
-            {
-                PostEvent(evt);
-                WaitComplete();
-            }
-            ]>);
-      util.Define(<[ decl:
-            public SendEvent(evt : string) : void
-            {
-                PostEvent(evt);
-                WaitComplete();
             }
             ]>);
     }

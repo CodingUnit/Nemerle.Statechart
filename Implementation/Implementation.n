@@ -1,0 +1,186 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Collections.Concurrent;
+using System.Threading;
+
+namespace Nemerle.Statechart
+{
+
+  /// <summary>
+  /// Description of Implementation.
+  /// </summary>
+  public abstract class StateMachine[TState, TEvent] where TState : class
+  {
+    [Accessor]
+    protected mutable cur_state : TState;
+
+    protected abstract Initial() : TState;
+    
+    public this(completion : bool = false)
+    {
+      def queue = if (completion)
+      {
+        most_priority_queue = ConcurrentQueue();
+        QueueThread
+      } else
+      {
+        QueueThreadSimple
+      }
+      queue_thread = Thread(ThreadStart(queue))
+    }
+    
+    public Initiate() : void
+    {
+	    _ = work_event.Reset();
+	    Switch(Initial());
+	    queue_thread.Start();
+    }
+
+    queue : ConcurrentQueue[TEvent] = ConcurrentQueue();
+    mutable most_priority_queue : ConcurrentQueue[TEvent] = ConcurrentQueue();
+    mutable queue_thread : Thread;
+    work_event : ManualResetEvent = ManualResetEvent(false);
+    complete_event : ManualResetEvent = ManualResetEvent(true);
+
+    public IsTerminated : bool
+    {
+      get
+      {
+        cur_state == null
+      }
+    }
+
+    protected abstract DispatchEvent(evt : TEvent) : TState;
+    
+    Dispatch(evt : TEvent) : void
+    {
+      def st = DispatchEvent(evt);
+      TrySwitch(st)
+    }
+    
+    public SendEvent(evt : TEvent) : void
+    {
+      PostEvent(evt);
+      WaitComplete();
+    }
+    
+    public SendEvent(evt : string) : void
+    {
+      PostEvent(evt);
+      WaitComplete();
+    }
+    
+    public abstract PostEvent(evt : string) : void;
+    
+    public PostEvent(evt : TEvent) : void
+    {
+      _ = complete_event.Reset();
+	    queue.Enqueue(evt);
+	    _ = work_event.Set();
+    }
+    
+    WaitComplete() : void
+    {
+	    _ = complete_event.WaitOne()
+    }
+    
+    protected PostEventMostPriority(evt : TEvent) : void
+    {
+	    _ = complete_event.Reset();
+	    most_priority_queue.Enqueue(evt);
+	    _ = work_event.Set();
+    }
+
+    public override ToString() : string
+    {
+      cur_state.ToString()
+    }
+    
+    TrySwitch(st : TState) : void
+    {
+      when (st != null) Switch(st)
+    }
+    
+    protected virtual OnSwitch() : void
+    {
+    }
+    
+    protected virtual Switch(st : TState) : void
+    {
+      cur_state = st;
+      OnSwitch()
+    }
+    
+    protected abstract DoActivityStop() : void;
+    
+    public Terminate() : void
+    {
+      DoActivityStop();
+      cur_state = null;
+	    _ = work_event.Set();
+      when (Thread.CurrentThread != this.queue_thread : object)
+	    {
+		    queue_thread.Join();
+	    }
+
+	    OnTerminated()
+    }
+    
+    OnTerminated() : void
+    {
+      Terminated?.Invoke(this, null)
+    }
+    
+    public event Terminated : EventHandler;
+    
+    QueueThreadSimple() : void
+    {
+      while (!IsTerminated)
+      {
+        mutable item;
+        if (queue.TryDequeue(out item))
+        {
+          Dispatch(item);
+        }
+        else
+        {
+          _ = complete_event.Set();
+          _ = work_event.Reset();
+          _ = work_event.WaitOne();
+        }
+      }
+     }
+    
+    QueueThread() : void
+    {
+      while (!IsTerminated)
+      {
+        mutable item;
+        if (this.most_priority_queue.TryDequeue(out item))
+        {
+          Dispatch(item);
+        }
+        else
+        {
+          if (queue.TryDequeue(out item))
+          {
+            Dispatch(item);
+          }
+          else
+          {
+            _ = complete_event.Set();
+            _ = work_event.Reset();
+            _ = work_event.WaitOne();
+          }
+        }
+      }
+    }
+  }
+}
+   
