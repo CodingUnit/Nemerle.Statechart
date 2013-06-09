@@ -35,7 +35,7 @@ namespace Nemerle.Statechart
       def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x == y : object);
       (ex.Reverse(), en)
     }
-    
+
     AddEntry(node : PathNode) : void
     {
       path.AddEntry(node)
@@ -48,32 +48,25 @@ namespace Nemerle.Statechart
               def en = act.Map(Entry(st, _));
               def do_act = do_act.Select(RunDoActivity(st, _));
               en.Concat(do_act)
-          //def act = Actions(st.entry.SelectMany(_.actions).NToList());
-          //def inl = do_act.Map(x => (RunDoActivity(x, st), true));
-          //if (!en.IsEmpty() || !inl.IsEmpty()) Entry(act, inl, st) :: a else a
     }
 
     static GetEntryPath(nodes : IEnumerable[FsmState]) : list[TranPath]
     {
-      //nodes.SelectMany(EnterState).NToList()
       $[TranPath(st, GetEntryNode(st).NToList(), PathKind.Entry), st in nodes]
     }
 
     static GetActionPath(st : FsmState, act : list[FsmAction]) : list[TranPath]
     {
       $[TranPath(st, PathNode.Action(st, a) :: [], PathKind.Action), a in act]
-      //nodes.Concat(act.Map(PathNode.Action(PathKind.Action(), st, _)))
     }
 
     static GetExitNode(st : FsmState) : IEnumerable[PathNode]
     {
       def do_act = st.do_activity.Map(StopDoActivity(st, _));
       def nodes = if (st.history.HasValue) SaveHistory(st, st.history.Value) :: do_act; else do_act;
-      //def inline = inline.Map(x => (x, false));
       def act = st.exit.Map(_.action);
       def exit = act.Select(Exit(st, _));
       nodes.Concat(exit)
-      //if (!st.exit.IsEmpty() || !inline.IsEmpty()) Exit(act, st) else Empty()
     }
 
     public static GetExitPath(nodes : IEnumerable[FsmState]) : list[TranPath]
@@ -102,17 +95,17 @@ namespace Nemerle.Statechart
       path.AddAction(act);
       path.AddEntry(entry);
     }
-    
+
     CheckExecuteTran(tr : StateTransition) : TransitionDestination
     {
       traverser?.Add(tr);
       TransitionDestination.TransitionExecute(tr)
     }
-    
+
     TraverseTransitionPath(tran : StateTransition) : void
     {
       ExitToLca(tran);
-      def local = if (tran.ToJunction != null) true else tran.Local;
+      def local = tran.RunLocal;
       DefPath(tran.From, tran.AtLeastStaticTo, local, tran.action);
     }
 
@@ -121,13 +114,13 @@ namespace Nemerle.Statechart
       def ex = FindPath(tran.Source, tran.From)[0];
       path.AddExit(GetExitPath(ex));
     }
-    
+
     DefPath(src : FsmState, dest : FsmState, local : bool = true, act : list[FsmAction]) : void
     {
       def (ex, en) = if (local) FindPath(src, dest) else 
-      {
-        FindPath(src?.Super, dest?.Super, [src], [dest]);
-      }
+                      {
+                        FindPath(src?.Super, dest?.Super, [src], [dest]);
+                      }
       CreatePath(src, ex, en, act)
     }
 
@@ -136,15 +129,6 @@ namespace Nemerle.Statechart
       def (ex, en) = if (local) FindPath(src, dest) else FindPath(src?.Super, dest?.Super, [src], [dest]);
       GetPath(src, ex, en, act)
     }
-
-    //DefPath(src : FsmState, dest : FsmState) : void
-    //{
-    //  def ex = FindPath(src, dest, [], [])[0];// else FindPath(src.Super, dest.Super, [src], [dest])[0];
-    //  path.AddExit(GetExitPath(ex));
-    //  //NodesCreate(ex, tr);
-    //  //def node = if (ex_node != null) ex_node + node else node;
-    //  //AddEntry(node)
-    //}
 
   }
 }
