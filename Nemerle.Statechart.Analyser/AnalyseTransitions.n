@@ -115,7 +115,6 @@ namespace Nemerle.Statechart
       foreach (st when st.Super != null in States)
       {
         st.DefineTransitions(st.Super.transitions)
-        //def super_tran = st.super_states.SelectMany(_.transitions);
       }
        
       other.Iter(_.DeleteTransitions());  // delete other transitions from composite states
@@ -128,7 +127,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    check_deffered_events() : void
+    CheckDefferedEvents() : void
     {
       def check_override(tr, st, defer)
       {
@@ -245,6 +244,23 @@ namespace Nemerle.Statechart
       //statemap.Update();
     }
 #endif
+    CheckLocalTrans() : void
+    {
+      foreach (tr when tr.kind == TransitionKind.Local in StateTransitions)
+      {
+        def src = match (tr.FromPseudo)
+        {
+          | Some(PseudoStateNode.EntryPoint as p) => p.state
+          | _                                     => tr.From
+        }
+        def dest = tr.AtLeastStaticTo;
+        if (dest.IsSubstateOf(src) || src == dest : object) () else
+        {
+          AddError(FsmError.LocalTransitionTargetMustBeWithin(tr))
+        }
+      }
+    }
+    
     /// <summary>
     /// Creating Transitions
     /// </summary>
@@ -253,7 +269,8 @@ namespace Nemerle.Statechart
       //States.Iter(check_tran);
       //create_join_transitions(); // creating join transitions
       //create_fork_transitions(); // creating fork transitions
-      check_deffered_events(); // check defered events
+      CheckLocalTrans();
+      CheckDefferedEvents(); // check defered events
       CreateAndCheckConflictTransitions(); // create parent transitions
       CreateDecisionTree();
       //CheckDuplicates(); // check duplicates
