@@ -184,7 +184,7 @@ namespace Nemerle.Statechart
         match (val)
         {
           | val is TRes => val :: res
-          | _ => res
+          | _           => res
         }
       }
 
@@ -211,6 +211,31 @@ namespace Nemerle.Statechart
       loop()
     }
 
+    public FindType[T, TRes](this lst : IEnumerable[T]) : option[TRes]
+    {
+      def lst = lst.GetEnumerator();
+
+      def loop()
+      {
+        if (lst.MoveNext())
+        {
+          match (lst.Current)
+          {
+            | val is TRes => Some(val)
+            | _           => loop()
+          }
+        } else None()
+      }
+
+      loop()
+    }
+
+    public FindTypeWhen[T, TRes](this lst : IEnumerable[T], func : TRes -> bool) : option[TRes]
+    {
+      def vals = lst.FilterType();
+      vals.Find(func)
+    }
+    
     /// <summary>
     /// Find first element corresponds to result type
     /// </summary>
@@ -248,42 +273,15 @@ namespace Nemerle.Statechart
       loop(lst)
     }
     
-    /// <summary>
-    /// Find first element corresponds to result type
-    /// </summary>
-    /// <param name = "lst">список</param>
-    /// <returns>результат * оставшиеся элементы</returns>
-    public FindType[T, TRes](this lst : IEnumerable[T]) : option[TRes]
+    public IfDefault[T](this opt : option[T], deflt : T, on_dflt : T -> void) : T
     {
-      def loop(lst : IEnumerator[T])
+      match (opt)
       {
-        if (lst.MoveNext())
-        {
-          match (lst.Current)
-          {
-            | cur is TRes => Some(cur)
-            | _ => loop(lst)
-          }
-        } else None()
+        | Some(o) => o
+        | _       => on_dflt(deflt); deflt
       }
-
-      loop(lst.GetEnumerator())
     }
-
-    //public FilterValues[T, TRes](this lst : list[T], pred : T -> option[TRes]) : list[TRes]
-    //{
-    //  def loop(head, res)
-    //  {
-    //    match (pred(head))
-    //    {
-    //      | Some(val)  => val :: res
-    //      | _          => res
-    //    }
-    //  }
-
-    //  lst.FoldBack([], loop)
-    //} 
-
+    
     public FilterType[T, TRes](this lst : IEnumerable[T], pred : T -> TRes) : IEnumerable[TRes] where TRes : class
     {
       def en = lst.GetEnumerator();

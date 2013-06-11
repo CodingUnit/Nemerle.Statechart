@@ -28,11 +28,12 @@ namespace Nemerle.Statechart
       name
     }
     
-    submachine(tok : NToken, id : NToken, par : option[NameIdentifier], _ : NToken, body : List[StateNode], _ : NToken) : StateNode
+    submachine(attr : option[List[StateAttribute]], tok : NToken, id : NToken, par : option[NameIdentifier], _ : NToken, body : List[StateNode], _ : NToken) : StateNode
     {
       def (trans, other) = body.PartitionType();
       def exit  = other.FilterType();
-      StateNode.State(tok.StartPos, GetText(id), par.Map(_.FullName), [], [], [], trans.NToList(), [], [], [], exit.NToList(), StateType.SubMachine, [])
+      def attr = attr.WithDefault(Enumerable.Empty()).NToList();
+      StateNode.State(tok.StartPos, GetText(id), par.Map(_.FullName), attr, [], [], trans.NToList(), [], [], [], exit.NToList(), StateType.SubMachine, [])
     }
     
     stateMachine(nodes : List[StateNode]) : StateNode.StateMachine
@@ -50,7 +51,7 @@ namespace Nemerle.Statechart
       
       def (flags, nodes) = nodes.PartitionType();
       def (name, nodes) = nodes.PartitionType();
-      
+      def (usings, nodes) = nodes.PartitionType();
       def pos = if (nodes.IsEmpty()) 0 else nodes.First().pos;
       def state = CreateState(pos, null, [], nodes, StateType.State, None());
       
@@ -61,7 +62,7 @@ namespace Nemerle.Statechart
                    | StateNode.Name as n :: _ => n.name
                    | _                        => null
                  }
-      StateNode.StateMachine(pos, flags, name, state, null)
+      StateNode.StateMachine(pos, flags, name, state, null, usings.NToList())
     }
 
     state(attr : option[List[StateAttribute]], _ : NToken, name : NToken, parent : option[NameIdentifier], _ : NToken, nodes : List[StateNode], _ : NToken) : StateNode.State
@@ -81,9 +82,6 @@ namespace Nemerle.Statechart
         def (trans, decls)    = decls.PartitionType();
         def (defer, decls)    = decls.PartitionType();
         def defer = defer.SelectMany(x : Defer => x.evt).NToList();
-        //def (trans, other)    = trans.Partition(x => x.type == TransitionKind.Transition);
-        //def (in_trans, other) = other.Partition(x => x.type == TransitionKind.Internal);
-        //def (init, _)         = other.Partition(x => x.type == TransitionKind.Initial);
         def (do_act, decls)   = decls.PartitionType();
         
         def (pseudo, decls) = decls.PartitionType();

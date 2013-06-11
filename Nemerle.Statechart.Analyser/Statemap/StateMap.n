@@ -71,33 +71,41 @@ namespace Nemerle.Statechart
         {
           | "top" => st.MoveToNewSuper(state_tree)
           | n     => match (Get(n))
-                      {
-                        | null => Analyser.AddError(FsmError.ParentStateNotFound(st, FsmState(p, Analyser, StateType.State())));
-                        | s    => st.MoveToNewSuper(s)
-                      }
+                     {
+                       | null => Analyser.AddError(FsmError.ParentStateNotFound(st, p));
+                       | s    => st.MoveToNewSuper(s)
+                     }
         }
       }
     }
 
-    public Bind(st : FsmState) : void
+    Bind(st : FsmState) : FsmState
     {
       st.ChangeBind("sub_states", _ => OnPropertyChanged("state_tree"));
       Transitions_memoized.Bind(st, "transitions");
       PseudoStates_memoized.Bind(st, "pseudo_states");
+      st
+    }
+    
+    public static Create(an : FsmAnalyser, state : StateNode.StateMachine) : FsmState
+    {
+      def map = StateMap(an);
+      map.Create(state);
+      map.StateTree
     }
     
     /// <summary>
     /// create state tree map and specific structures, update references etc
     /// </summary>
-    public Create(state : StateNode.State) : void
+    public Create(state : StateNode.StateMachine) : void
     {
       // fold general rose tree and convert it to FsmState general rose tree
-      def top = TreeUtils.FoldTree(state, null, _.sub_states, FsmState(_, _, Analyser));
-      top.name = FsmState.TopStateName; // change name
+      def top = TreeUtils.FoldTree(state.state, null, _.sub_states, (x, sb) => FsmState(x, sb, Analyser) |> Bind);      
       state_tree = top;
       CreateSuperStates(); // check create super states setted with : parent syntax
+      CreateSubMachines(state);
       CreatePreDecls(); // create and resolve pre declarations
-
+      
       UpdateReferences(); // resolve references
     }
 

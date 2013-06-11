@@ -6,6 +6,9 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Windows.Forms;
+using System.Threading;
+using System.ComponentModel;
 
 namespace Nemerle.Statechart.Tests
 {
@@ -14,6 +17,7 @@ namespace Nemerle.Statechart.Tests
   /// </summary>
   [statechart(<#
   
+  flags : debug;
   name SaveChecking;
   
   $> / last_event = Evt.evt;
@@ -29,7 +33,7 @@ namespace Nemerle.Statechart.Tests
              LastSaved.IsEmpty() => SaveAs;
              else                => Overwrite;
            }
-             
+           
     No  => $0;
   }
     
@@ -56,5 +60,50 @@ namespace Nemerle.Statechart.Tests
   #>)]
   class SaveCheckingMachine
   {
+    
+    public sync : ISynchronizeInvoke {get;set;}
+    
+    ViewOverwrite() : DialogResult
+    {
+      MessageBox.Show("Want to overwrite file?", "Warning", MessageBoxButtons.YesNoCancel);
+    }
+
+    ViewWantToSave() : DialogResult
+    {
+      MessageBox.Show("Want to save file?", "Warning", MessageBoxButtons.YesNoCancel);
+    }
+
+    ViewDialog(dlg : void -> DialogResult) : void
+    {
+      def res = dlg();
+      match (res)
+      {
+        | DialogResult.OK     => OK()
+        | DialogResult.Yes    => Yes()
+        | DialogResult.No     => No()
+        | DialogResult.Cancel => cancel()
+        | _                   => ()
+      }
+    }
+    
+    DoActionComplete(act : void -> bool) : void
+    {
+      if (act()) OK() else cancel()
+    }
+
+    ViewSaveAsDialog() : DialogResult
+    {
+      sync.Sync(SaveDialog.ShowDialog)
+    }
+    
+    SaveCurrentFile() : bool
+    {
+      SaveFileAction == null || SaveFileAction(CurFile)
+    }
+    
+    public LastSaved : string {get;private set;}
+    public CurFile   : string {get;private set;}
+    public SaveDialog : SaveFileDialog {get;set;}
+    
   }
 }

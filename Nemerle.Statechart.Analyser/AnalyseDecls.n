@@ -70,14 +70,6 @@ namespace Nemerle.Statechart
       }
     }
     
-    //public actions : IEnumerable[FsmAction]
-    //{
-    //  get
-    //  {
-    //    trans_paths.SelectMany(_.Actions);
-    //  }
-    //}
-
     [Memoized]
     public actions : list[FsmAction]
     {
@@ -185,7 +177,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def regs = States.Where(x => x.type is StateType.Region);
+        def regs = States.Where(x => x.type == StateType.Region);
         regs.Where(x => x.LivedNested);
       }
     }
@@ -194,7 +186,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def regs = States.Where(x => x.type is StateType.Region);
+        def regs = States.Where(x => x.type == StateType.Region);
         regs.Where(x => !x.LivedNested)
       }
     }
@@ -249,7 +241,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        States.Where(x => x.type is StateType.Region)
+        States.Where(x => x.type == StateType.Region)
       }
     }
 
@@ -365,6 +357,7 @@ namespace Nemerle.Statechart
       | RelocateSourceNotSupported(p)                            => $<#Source "$p" of relocate element not supported#>
       | RelocatePseudoAlreadyHaveTarget(t, p)                    => $<#Relocate element "$p" from transition $t already have target#>
       | LocalTransitionTargetMustBeWithin(tran)                  => $<#Local transition target must be inside of source state: "$tran"#>
+      | StateMachineNotFound(StateNode.Using(n, f))              => $<#Class "$f" declared statemachine "$n" not found#>
       //| ThereMustBeOnlyOneInitial(s, t)                             => $<#In state "$s" may be only one unguarded initial transition, these transitions erroneus: "..$t"#>
       //| Sequence(e)                                            => $<#..$(e;"\n";GetError)#>
       //| n                                                        => throw InvalidOperationException($"unnkown error $n")
@@ -444,12 +437,13 @@ namespace Nemerle.Statechart
 
     public StatesId : StateId;
 
-    public StateMachines : Hashtable[string, StateNode.StateMachine];
+    public StateMachinesInProj : Hashtable[string, StateNode.StateMachine];
+   
     
     public this(fsm : StateNode.StateMachine, name : string, mach : list[StateNode.StateMachine])
     {
       this.Fsm = fsm;
-      StateMachines = Hashtable(mach.Select(x => (x.from_type, x)));
+      StateMachinesInProj = Hashtable(mach.Select(x => (x.from_type, x)));
       Name = fsm.name ?? name;
       statemap  = StateMap(this);
       StatesId = StateId(this);
@@ -464,8 +458,6 @@ namespace Nemerle.Statechart
       StatesId.CreateMasks();
       def longest = States.Max(x => x.Name.Length);
       def len = States.Count();
-      //def num_len = len.ToString().Length;
-      
       
       def create_state_report(st)
       {
@@ -497,20 +489,11 @@ namespace Nemerle.Statechart
       }
     }
 
-    public guards : IEnumerable[GuardNode]
-    {
-      get
-      {
-        def guards = StateTransitions.SelectMany(x => x.Guards);// transitions.Values().Concat(initial_transitions.Values());// |>< Guards;
-        guards.RemoveDuplicatesSort(_.Name)
-      }
-    }
-
     public history_default_transitions : IEnumerable[StateTransition]
     {
       get
       {
-        HistoryStates.FilterValues(x => x.default)//.Where(x => Used[x])//x.ActualTo != null)
+        HistoryStates.FilterValues(x => x.default)
       }
     }
 
@@ -568,17 +551,6 @@ namespace Nemerle.Statechart
       }
     }
     
-    //public ActionNodes : IEnumerable[PathNode]
-    //{
-    //  get
-    //  {
-    //    action_node//.RemoveDuplicatesSort(PathNode.Compare)
-    //  }
-    //}
-
-    //public static StringComparator : string * string -> int = string.Compare(_, _, StringComparison.CurrentCulture);
-    //public static StrEq : string * string -> bool = (x, y) => StringComparator(x, y) == 0;
-
     public TopState : FsmState
     {
       get

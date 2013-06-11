@@ -22,28 +22,16 @@ namespace Nemerle.Statechart
         | TransitionTarget.PseudoState(p) as t => 
               def p = match (p)
               {
-                | PseudoStateNode.Terminate => // 
+                | PseudoStateNode.Terminate as p => def pseudo = PseudoStates.FindType();
+                                                    pseudo.IfDefault(p, x => state_tree.AddPseudo(x));
                         // search for terminate in automata
-                        match (PseudoStates.Find(x => x is PseudoStateNode.Terminate))
-                        {
-                          // if not find add to top state
-                          | None        => def t = PseudoStateNode.Terminate(state_tree);
-                                           state_tree.AddPseudo(t);
-                                           t
-                            // if find select it
-                          | Some(t)     => t
-                        }
-                | Junction(IsUnnamed = true) as j  => def super = tr.StateObtainPseudoStateFromThis;//st.Super;
-                                                      super.AddPseudo(p);
-                                                      j.state = super;
-                                                      p
+                | Junction(IsUnnamed = true, name = n) as j =>  
+                                                      def super = tr.StateObtainPseudoStateFromThis;//st.Super;
+                                                      def find = super.pseudo_states.FindTypeWhen(x => x.name == n);
+                                                      find.IfDefault(j, x => {super.AddPseudo(x);x.state = super})
                 | ExitPoint(name = n) as p => 
                      def st = tr.From;
-                     match (st.pseudo_states.Find(x => if (x is PseudoStateNode.ExitPoint(name = n2)) n == n2 else false))
-                     {
-                       | Some(p) => p
-                       | _       => st.AddPseudo(p);p
-                     }
+                     st.pseudo_states.FindTypeWhen(x => x.name == n).IfDefault(p, x => st.AddPseudo(x));
                 // another pseudo state is not used
                 | t => t
               }
@@ -51,20 +39,17 @@ namespace Nemerle.Statechart
               
         | TransitionTarget.Final as t    => def st = tr.From; // begining of transition
                                             def super = st.Super; // if transition is initial use super this state or super state of this
-                                            // if super is top state it is terminate
-                                            if (super.IsTopState) CreateAndResolvePreDecl(TransitionTarget.PseudoState(PseudoStateNode.Terminate(state_tree)), tr) else
-                                            {
                                               // search for final state in super
-                                              match (super.sub_states.Find(x => x.type is StateType.Final))
-                                              {
-                                                // if find select it
-                                                | Some(st) => t.ChangeState(st)
-                                                | _        => def fin = FsmState(Analyser, StateType.Final()); // else create and add and select
-                                                              fin.name = $"$(super)Final";
-                                                              super.Add(fin);
-                                                              t.ChangeState(fin);
-                                              }
+                                            def st = match (super.sub_states.Find(x => x.type == StateType.Final))
+                                            {
+                                              // if find select it
+                                              | Some(st) => st
+                                              | _        => def fin = FsmState(Analyser, StateType.Final); // else create and add and select
+                                                            fin.name = $"$(super)Final";
+                                                            super.Add(fin);
+                                                            fin
                                             }
+                                            t.ChangeState(st)
         | _ => null
 
       }
