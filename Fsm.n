@@ -9,6 +9,7 @@ using Nemerle.Text;
 using Nemerle.Utility;
 using Nemerle.Compiler.Parsetree;
 using System.IO;
+using System.Linq;
 
 namespace Nemerle.Statechart
 {
@@ -116,11 +117,23 @@ namespace Nemerle.Statechart
       Location(loc, line, col);
     }
 
-    Parse(ty : TypeBuilder, body : string, loc : Location) : StateNode.StateMachine
+    Memoize(ty : TypeBuilder, tree : StateNode.StateMachine) : void
+    {
+      def data = ty.Manager.UserData;
+      def name = ty.Name;
+      def tree = if (tree.name == null) tree.ChangeName(name) else tree;
+      def tree = tree.ChangeFromType(ty.Name);
+      when (!data.Contains(name))
+      {
+        data.Add(name, tree)
+      }
+    }
+    
+    Parse(ty : TypeBuilder, body : string, attr_loc : Location, loc : Location) : StateNode.StateMachine
     {
       def parser = FsmParser();
       parser.env = ty.GlobalEnv;
-      def macro_col = ty.Ast.ParsedAttributsAndModifiers.GetMacroAttributes().Head.Location.Column;
+      def macro_col = attr_loc.Column;
       
       def get_loc(pos)
       {
@@ -133,18 +146,13 @@ namespace Nemerle.Statechart
         def (pos, ast) = parser.TryParse(body);
         if (pos > 0) 
         {
-          //def len = body.Length;
-          //when (pos < len)
-          //{
-          //  def loc = get_loc(pos);
-          //  Message.Error(loc, $"Not full text is parsed, parsing stopped at $(loc.Line):$(loc.Column), pos: $pos");
-          //}
           def len = body.Length;
           when (pos < len)
           {
             def loc = get_loc(pos);
             Message.Error(loc, $"Not full text is parsed, parsing stopped at $(loc.Line):$(loc.Column).");
           }
+          Memoize(ty, ast);
           ast
         }
         else
@@ -157,16 +165,45 @@ namespace Nemerle.Statechart
       } else null
     }
 
+    GetParsedResult(ty : TypeBuilder) : StateNode.StateMachine
+    {
+      def data = ty.Manager.UserData;
+      def name = ty.Name;
+      if (data.Contains(name)) data[name] :> StateNode.StateMachine else null
+    }
+    
+    ParseAll(ty : TypeBuilder) : void
+    {
+      def types = ty.Manager.Hierarchy.TopTypeBuilders();
+      foreach (ty when (GetParsedResult(ty) == null) in types)
+      {
+        def attr = ty.Ast.ParsedAttributsAndModifiers.ParsedCustomAttributes;
+        foreach (<[ statechart($x) ]> as a in attr)
+        {
+          match (x)
+          {
+            | <[ $(str : string) ]> => _ = Parse(ty, str, a.Location, x.Location);
+            | _                     => ()
+          }
+        }
+      }
+    }
+    
     public ParseAndGenerate(ty : TypeBuilder, body : PExpr) : void
     {
 
       def parse(val)
       {
-        def fsm = Parse(ty, val, body.Location);
+        //assert2(false);
+        ParseAll(ty);
+        def res = GetParsedResult(ty);
+        def loc = ty.Ast.ParsedAttributsAndModifiers.ParsedCustomAttributes.First(_ is <[ statechart($_)]>).Location;
+        def fsm = if (res != null) res else Parse(ty, val, loc, body.Location);
         if (fsm != null)
         {
           when (fsm.flags.Debug) assert2(false);
-          def analyser = FsmAnalyser(fsm, ty.Name);
+          def mach = ty.Manager.UserData.Values.OfType.[StateNode.StateMachine]();
+          def analyser = FsmAnalyser(fsm, ty.Name, mach.NToList());
           analyser.Analyse();
           def warn = analyser.Warnings;
           def warn_file = $"$(ty.Name)Warnings.log";

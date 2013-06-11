@@ -24,6 +24,8 @@ namespace Nemerle.Statechart.Tests
   
   save_as_pressed (=> SaveChecking.save_as;
   
+  using SaveChecking SaveCheckingMachine; // include statemachine SaveChecking from SaveCheckingMachine class
+  
   0 => Waiting;
   
   state Interface
@@ -75,65 +77,22 @@ namespace Nemerle.Statechart.Tests
 
   }
 
-  [Initial]
-  state SaveChecking : FileDialogs
+  submachine SaveChecking : FileDialogs
   {
-    $> / last_event = Evt.evt;
-    cancel => (X) cancel; // exit point cancel
-    
-    entry: save => Overwrite; // entry point syntax 1
-    
-    save_as:    => SaveAs; // entry point syntax 2
-    
+    exit: cancel => merge_cancel;
     _ => {
           last_event == Event.new_pressed  => NewDialog;
           last_event == Event.open_pressed => OpenDialog;
           last_event == Event.exit_pressed => X;
           else                             => NotNeedSaving;
          }
-         
-    state WantToSave
-    {
-      do / ViewDialog(ViewWantToSave);
-      Yes => {
-               LastSaved.IsEmpty() => SaveAs;
-               else                => Overwrite;
-             }
-             
-      No  => $0;
-    }
-    
-    state Overwrite
-    {
-      do / ViewDialog(ViewOverwrite);
-      Yes => SaveCurrentFile;
-      No  => SaveAs;
-    }
-    
-    state SaveCurrentFile
-    {
-      do / DoActionComplete(SaveCurrentFile);
-      OK => $0;
-    }
-    
-    state SaveAs
-    {
-      entry / SaveDialog.FileName = CurFile;
-      
-      do / ViewDialog(ViewSaveAsDialog);
-      OK / CurFile = SaveDialog.FileName => SaveCurrentFile;
-    }
   }
   
-  
-    
   state FileDialogs
   {
     OK     => Interface;
     cancel => merge_cancel;
     
-    SaveChecking::cancel => merge_cancel;
-      
     state OpenDialog
     {
       state ViewOpenDialog

@@ -19,104 +19,6 @@ namespace Nemerle.Statechart
     using StateNode;
     using PseudoStateModelNode;
     //using TransitionNode;
-    /*
-
-<#
-  flags : no_auto_initial,  local_default,  auto_initial
-
-  state NManager
-  {
-      $> Action // entry alternative
-      $< Action2 // exit alternative
-
-    initial  => Working
-    0  => Working // another initial
-
-    event => terminate; // terminate pseudo state
-
-    event => X;
-
-    [local]
-    state NotConnected
-    {
-        (H)  => Working
-    [local]
-    Connect  => Working
-    Connect2 / Action
-    Connect4 ( => Working // local transition syntax
-    Connect5 ) => Working // external transition syntax
-    Connect3
-     {
-         Action
-         Action2
-     }
-    }
-
-    [Initial]
-    state ClosingPort
-    {
-        (H*)
-        entry / action
-
-        event1  => final
-        completion  => State2
-        _  => State2 // another completion syntax
-
-        SelfEvent  =>@ // self transition
-        SelfEvent2  => self // self transition
-
-        Event1,  Event2  => Working  // many events for one transition
-    }
-
-    state Working
-    {
-
-     history : Deep  => ABC
-     entry
-     exit
-     {
-     Something2
-     Something3
-     }
-        (H*)
-
-      junction j1
-      {
-      guard1 => a;
-      guard2 => b;
-      }
-
-     // junction syntax
-      a => {guard1 / A1 => b;
-             guard2 / A2 => c;
-             guard3 / A3 => {
-                             guard4 / A4 => e;
-                             guard5 / A5=> (j1);
-                             else => f;
-                             }
-             else => d;
-            }
-            
-      merge m1 => A; // merge syntax
-      // choice syntax
-      a => ${guard1 / A1 => b;
-             guard2 / A2 => c;
-             guard3 / A3 => {
-                             guard4 / A4 => e;
-                             guard5 / A5=> (j1);
-                             else => f;
-                             }
-             else => d;
-            }
-       
-            state AnotherSyntax : A
-            {
-              a => B; //
-            }
-   }
- }
-   #>
-    */
 
   [PegGrammar(Options  =  EmitDebugSources, stateMachine,
   grammar
@@ -183,9 +85,11 @@ namespace Nemerle.Statechart
       entry_point_v2     : StateNode                  = identifier s ':'s default_transition;
       entry_point_v3     : StateNode                  = '('s identifier s ')'s default_transition;
 
+      
       exit_point         : StateNode                  = exit_point_decl default_transition? (';'s)?;
       exit_point_decl    : NameIdentifier             = ("exit:" / exit_point_v2_head) s identifier s;
       exit_point_v2_head                              = '('s ('X' / 'x')s ')';
+      machine_exit_point : StateNode                  = exit_point_decl default_transition;
       
       terminate_node     : StateNode                  = ("terminate" / "X" / "x") s ';'s;
       initial            : StateNode                  = ("initial" / '0') s guard? ext_trans_act_list simple_target;
@@ -244,11 +148,11 @@ namespace Nemerle.Statechart
       history_long       : StateNode                  = "history"s ':'s identifier s default_transition? (';'s)?;
       history            : StateNode                  = history_long / history_short;
 
-      //machine_decls      : StateNode                  =  simple_transition;
-      //machine_body       : List[StateNode]            =  '{'s machine_decls* '}'s;
-      //statemachine       : StateNode                  =  "submachine"s identifier s s parent? machine_body;
+      using_mach         : StateNode                  = "using"s identifier s fully_qualified ';'s;
+      machine_decls      : StateNode                  = machine_exit_point / ext_transition;
+      submachine         : StateNode                  = "submachine"s identifier s parent? '{'s machine_decls* '}'s;
       //inlined_fsm        : StateNode                  =  "new"s fsm_key identifier s s ':'s identifier s s stateBody;
-      stateDecl          : StateNode                  = flags / name / region / pseudo_state / entry / exit / do_activity / defer / transition / state;// / statemachine;// / inlined_fsm / statemachine;
+      stateDecl          : StateNode                  = flags / name / using_mach / region / pseudo_state / entry / exit / do_activity / defer / transition / state / submachine;// / inlined_fsm / statemachine;
       //stateBody          : List[StateNode]            = ;
       parent             : NameIdentifier             = ':'s fully_qualified;
       state              : StateNode                  = attributes? "state"s identifier s parent? '{'s stateDecl* '}'s;
