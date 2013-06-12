@@ -14,8 +14,8 @@ namespace Nemerle.Statechart
   /// </summary>
   partial class StateMap
   {
-    
-    CreateAndResolvePreDecl(tar : TransitionTarget, tr : StateTransition) : TransitionTarget
+
+    CreateAndResolvePreDecl(tar : TransitionTarget, tr : StateTransition, mach : bool = false) : TransitionTarget
     {
       match (tar)
       {
@@ -30,26 +30,29 @@ namespace Nemerle.Statechart
                                                       def find = super.pseudo_states.FindTypeWhen(x => x.name == n);
                                                       find.IfDefault(j, x => {super.AddPseudo(x);x.state = super})
                 | ExitPoint(name = n) as p => 
-                     def st = tr.From;
-                     st.pseudo_states.FindTypeWhen(x => x.name == n).IfDefault(p, x => st.AddPseudo(x));
+                    def st = tr.From;
+                    st.pseudo_states.FindTypeWhen(x => x.name == n).IfDefault(p, x => st.AddPseudo(x));
                 // another pseudo state is not used
                 | t => t
               }
               t.ChangeNode(p)
-              
+
         | TransitionTarget.Final as t    => def st = tr.From; // begining of transition
-                                            def super = st.Super; // if transition is initial use super this state or super state of this
-                                              // search for final state in super
-                                            def st = match (super.sub_states.Find(x => x.type == StateType.Final))
-                                            {
-                                              // if find select it
-                                              | Some(st) => st
-                                              | _        => def fin = FsmState(Analyser, StateType.Final); // else create and add and select
-                                                            fin.name = $"$(super)Final";
-                                                            super.Add(fin);
-                                                            fin
-                                            }
-                                            t.ChangeState(st)
+                                      def super = st.Super; // if transition is initial use super this state or super state of this
+                                        // search for final state in super
+                                      if (super.IsTopState && !mach) CreateAndResolvePreDecl(TransitionTarget.PseudoState(PseudoStateNode.Terminate(state_tree)), tr, mach) else
+                                      {
+                                        def st = match (super.sub_states.Find(x => x.type == StateType.Final))
+                                        {
+                                          // if find select it
+                                          | Some(st) => st
+                                          | _        => def fin = FsmState(Analyser, StateType.Final); // else create and add and select
+                                                        fin.name = $"$(super)Final";
+                                                        super.Add(fin);
+                                                        fin
+                                        }
+                                      t.ChangeState(st)
+                                      }
         | _ => null
 
       }
@@ -63,21 +66,21 @@ namespace Nemerle.Statechart
             | null                                        => Analyser.AddError(FsmError.RelocatePseudoNotFound(tr))
             | PseudoStateNode.ExitPoint(tran = Some) as p => Analyser.AddError(FsmError.RelocatePseudoAlreadyHaveTarget(tr, p))
             | PseudoStateNode.ExitPoint(state = st) as p  => tr.From.DeleteTransition(tr);
-                                                             p.tran = Some(tr);
-                                                             tr.FromPseudo = Some(p);
-                                                             tr.From = st;
-                                                             tr.Source = st;
-                                                             tr.kind = TransitionKind.Local;
+                                                            p.tran = Some(tr);
+                                                            tr.FromPseudo = Some(p);
+                                                            tr.From = st;
+                                                            tr.Source = st;
+                                                            tr.kind = TransitionKind.Local;
             | p                                           => Analyser.AddError(FsmError.RelocateSourceNotSupported(p))
           }
       | _                                        => ()
     }
-    
-    CreatePreDecls() : void
+
+    CreatePreDecls(mach : bool = false) : void
     {
       foreach (tr in Transitions)
       {
-        match (CreateAndResolvePreDecl(tr.To, tr))
+        match (CreateAndResolvePreDecl(tr.To, tr, mach))
         {
           | null => ()
           | t    => tr.To = t

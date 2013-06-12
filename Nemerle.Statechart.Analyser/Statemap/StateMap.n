@@ -87,21 +87,27 @@ namespace Nemerle.Statechart
       st
     }
     
-    public static Create(an : FsmAnalyser, state : StateNode.StateMachine) : FsmState
+    public static CreateSub(an : FsmAnalyser, state : StateNode.StateMachine) : FsmState
     {
       def map = StateMap(an);
-      map.Create(state);
+      map.CreateStateMachine(state);
+      map.CreateSuperStates(); // check create super states setted with : parent syntax
+      map.CreatePreDecls(true); // create and resolve pre declarations
       map.StateTree
     }
     
+    public CreateStateMachine(state : StateNode.StateMachine) : void
+    {
+      state_tree = TreeUtils.FoldTree(state.state, null, _.sub_states, (x, sb) => FsmState(x, sb, Analyser) |> Bind)
+    }
+
     /// <summary>
     /// create state tree map and specific structures, update references etc
     /// </summary>
     public Create(state : StateNode.StateMachine) : void
     {
       // fold general rose tree and convert it to FsmState general rose tree
-      def top = TreeUtils.FoldTree(state.state, null, _.sub_states, (x, sb) => FsmState(x, sb, Analyser) |> Bind);      
-      state_tree = top;
+      CreateStateMachine(state);
       CreateSuperStates(); // check create super states setted with : parent syntax
       CreateSubMachines(state);
       CreatePreDecls(); // create and resolve pre declarations

@@ -125,5 +125,37 @@ namespace Nemerle.Statechart
       gen_paths.DefineHandlers()
     }
 
+    DefineSubMachines() : void
+    {
+      def clone(f)
+      {
+        | ClassMember.Function(name = n) as f => ClassMember.Function(f.Location, n, f.modifiers, f.header, f.implemented, f.body)
+      }
+      
+      def top = ty.Manager.Hierarchy.TopTypeBuilders();
+      def this_mems = ty.Ast.GetMembers().Select(_.Name);
+      foreach (st in analyser.LoadedMachines.Values)
+      {
+        match (top.Find(x => x.Name == st.from_type))
+        {
+          | Some(t) => def mems = t.GetParsedMembers();
+                       foreach (m in mems)
+                       {
+                         when (!this_mems.Exists(x => x == m.Name))
+                         {
+                           def m = match (m)
+                           {
+                             | ClassMember.Property(name = n, modifiers = mod, parameters = pp, getter = g, setter = s, initializer = i) as p =>
+                                 ClassMember.Property(p.Location, n, mod, p.returnType, pp, g.Map(clone), s.Map(clone), i)
+                             | _                      => m
+                           }
+                           ty.Define(m)
+                         }
+                       }
+          | _       => ()
+        }
+        
+      }
+    }
   }
 }
