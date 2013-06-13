@@ -20,7 +20,7 @@ namespace Nemerle.Statechart
     {
       PseudoStates.Iter(x => UpdatePseudoStateReference(x, x.state));
       Transitions.Iter(x => UpdateTransitionReference(x, x.From));
-    }   
+    }
 
     UpdatePseudoStateReference(p : PseudoStateNode, st : FsmState) : void
     {
@@ -79,36 +79,48 @@ namespace Nemerle.Statechart
 
     }
     
+    TraverseQual(st : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
+    {
+      match (tr)
+      {
+        | Qualified(parent = par, target = t) => def res = GetQual(st, par, tran);
+                                                 match (res, t)
+                                                 {
+                                                   | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));null
+                                                   | (res, _)  => TraverseQual(res, t, tran)
+                                                 }
+                                                 
+        | Named(_, n)                         => match (GetNamed(n, st, tran, st)) 
+                                                 {
+                                                   | null => Analyser.AddError(FsmError.UnknownNode(tran, n));null
+                                                   | t    => t
+                                                 }
+        | t                                   => ResolveTarget(st, t, tran)
+      }
+    }
+    
     ResolveTarget(st : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
     {
       match (tr)
       {
         // TODO: продумать алгоритм разрешения неоднозначности из того в каком состояниии
         // осуществляется переход
-        | Named(_, n)                         => match (GetNamed(n, null))
+        | Named(_, n)                         => match (GetNamed(n, null, tran, st))
                                                  {
-                                                   | null => Analyser.AddError(FsmError.UnknownNode(tran, n));
-                                                             null
+                                                   | null => Analyser.AddError(FsmError.UnknownNode(tran, n));null
                                                    | t    => t
                                                  }
-        | Qualified(parent = par, target = t) => def res = Get(par);
-                                                 match (res, t)
-                                                 {
-                                                   | (null, _) => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
-                                                                  null
-                                                   | (res, _)  => ResolveTarget(res, t, tran)
-                                                 }
+        | Qualified                           => TraverseQual(st, tr, tran)
         | PseudoState(p) as t                 => match (ResolvePseudoState(p, st))
-                                                  {
-                                                    | null => Analyser.AddError(FsmError.UnknownTarget(tran, tr));
-                                                              null
-                                                    | n    => t.ChangeNode(n)
-                                                  }
-        | State(s) as t                       => def name = s.NativeName;
-                                                 match (Get(name))
                                                  {
-                                                   | null    => Analyser.AddError(FsmError.StateNotFound(s));t
-                                                   | s       => t.ChangeState(s)
+                                                   | null => Analyser.AddError(FsmError.UnknownTarget(tran, tr));null
+                                                   | n    => t.ChangeNode(n)
+                                                 }
+        | State(s) as t                       => def name = s.NativeName;
+                                                 match (Get(st, name))
+                                                 {
+                                                   | null => Analyser.AddError(FsmError.StateNotFound(s));t
+                                                   | s    => t.ChangeState(s)
                                                  }
         | _                                   => null // other skipped
       }

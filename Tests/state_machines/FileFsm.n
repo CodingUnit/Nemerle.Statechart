@@ -16,21 +16,25 @@ namespace Nemerle.Statechart.Tests
   [statechart(<#
 
   flags : auto_initial transition_completed_events;
-  //flags : debug;
+  flags : debug;
   flags testing;
 
   //sync form;
   
   entry / SaveDis;
   
-  save_as_pressed (=> SaveChecking.save_as;
+  save_as_pressed (=> FileDialogs.SaveChecking.save_as;
+  exit_pressed     => Exiting;
   
   using SaveChecking SaveCheckingMachine; // include statemachine SaveChecking from SaveCheckingMachine class
+  //using SaveCheckingSave SaveCheckingMachine;
   
   0 => Waiting;
   
   state Interface
   {
+    new_pressed => NewDialog;
+    open_pressed => OpenDialog;
     (H*)
   }
   
@@ -38,8 +42,6 @@ namespace Nemerle.Statechart.Tests
   
   state NotNeedSaving : Interface
   {
-    open_pressed => OpenDialog;
-    new_pressed  => NewDialog;
     exit_pressed => X;
     entry / SaveDis;
     
@@ -60,41 +62,47 @@ namespace Nemerle.Statechart.Tests
   {
     entry / SaveEna;
 
-    new_pressed, open_pressed, exit_pressed / last_event = Evt.evt => FileDialogs;
-      
+    save_pressed => FileDialogs.SaveChecking.save;
+    open_pressed => FileDialogs;
+    new_pressed  => NewCreating;
+    
     state New
     {
-        entry / CaptionFile SaveAsEna;
-        save_pressed => SaveChecking.save_as;
+      entry / CaptionFile SaveAsEna;
+      save_pressed / send(save_as_pressed);
     }
 
     state Changed
     {
-        entry / CaptionChanged;
-        save_pressed => SaveChecking.save;
+      entry / CaptionChanged;
     }
 
   }
 
-  [Initial]
   submachine SaveChecking : FileDialogs
   {
-    exit: cancel => merge_cancel;
-    _ => {
-          last_event == Event.new_pressed  => NewDialog;
-          last_event == Event.open_pressed => OpenDialog;
-          last_event == Event.exit_pressed => X;
-          else                             => NotNeedSaving;
-         }
+    _ => $0;
   }
   
   state FileDialogs
   {
-    OK     => Interface;
-    cancel => merge_cancel;
+    _      => Interface;
+    cancel => Interface.H;
     
-    state OpenDialog
+    state Opening
     {
+      _ => final;
+      
+      submachine SaveChecking
+      {
+        _ => OpenDialog;
+      }
+    }
+    
+    state OpenDialog : Opening
+    {
+      _ => $0;
+      
       state ViewOpenDialog
       {
         do / ViewDialog(ViewOpenDialog);
@@ -104,11 +112,24 @@ namespace Nemerle.Statechart.Tests
       state OpenFile
       {
         do / DoActionComplete(OnOpenFileAction);
+        OK => $0;
       }
     }
     
-    state NewDialog
+    state NewCreating
     {
+      _ => NotSaved;
+      initial => SaveChecking.new;
+      
+      submachine SaveChecking
+      {
+        _ => NewDialog;
+      }
+    }
+    
+    state NewDialog : NewCreating
+    {
+      _ => $0;
       
       state ViewNewDialog
       {
@@ -119,10 +140,19 @@ namespace Nemerle.Statechart.Tests
       state NewDialogAction
       {
         do / DoActionComplete(OnNewFileAction);
-        OK => NotSaved;
+        OK => $0;
       }
     }
     
+    state Exiting
+    {
+      _ => X;
+    }
+    
+    submachine SaveChecking : Exiting
+    {
+      _ => $0;
+    }
   }
   #>
   )]
