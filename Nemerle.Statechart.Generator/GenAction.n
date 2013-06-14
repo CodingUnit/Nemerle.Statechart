@@ -13,12 +13,12 @@ namespace Nemerle.Statechart
 {
   using PathNode;
   using CheckNode;
-  
+
   public variant GenCtx
   {
     | Normal
     | InEventHandler
-    
+
     public IsInEventHandler : bool
     {
       get
@@ -28,22 +28,22 @@ namespace Nemerle.Statechart
     }
     public mutable HaveActionsAfter : bool;
   }
-  
+
   class GenElement
   {
     public decl_map : Map[string, string];
-    
+
     public name : string;
     //public mutable exec_name : string;
-    
-    
+
+
     //public this(n : string, exec : string, map : Map[string, string])
     //{
     //  name = n;
     //  decl_map = map;
     //  exec_name = if (IsDeclared) decl_map.Get(name) else CreateExecName(exec);
     //}
-    
+
     public this(n : string, map : Map[string, string])
     {
       name = n;
@@ -81,14 +81,14 @@ namespace Nemerle.Statechart
         if (decl_map.Contains(name)) decl_map.Get(name) else name
       }
     }
-    
+
     public override ToString() : string
     {
       ExecName
     }
-    
+
   }
-  
+
   /// <summary>
   /// Description of GenAction.
   /// </summary>
@@ -105,7 +105,7 @@ namespace Nemerle.Statechart
       action = act;
       this.util = util
     }
-    
+
     [Memoized]
     public Params : list[PExpr]
     {
@@ -118,64 +118,78 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
+
     Evaluate(expr : PExpr) : PExpr
     {
       def check(e)
       {
-        | <[ send($x) ]> => <[ PostEvent($x) ]>
-        | e              => e
+        | <[ send(Event.$x) ]>       => <[ PostEvent(Event.$x) ]>
+        | <[ send($(x : usesite)) ]> => <[ PostEvent(Event.$(x : usesite)) ]>
+        | e                          => e
       }
-      
+
       Macros.TraverseExpr(None(), expr, false, (_, after, e) => if (after) check(e) else e)
     }
-    
+
+    TryEvaluate() : PExpr
+    {
+      match (action)
+      {
+        | FsmAction.Expr(e)     => Evaluate(e) 
+        | Normal(name = "send") => 
+            match (Params)
+            {
+              | [<[ Event.$(_ : usesite)]> as p] => <[ PostEvent($p) ]>
+              | [<[ $(x : usesite)]>]            => <[ PostEvent(Event.$(x : usesite)) ]>
+              | _                                => <[ PostEvent(..$Params) ]>
+            } 
+        | Normal(name = null)   => <[ () ]>
+        | _                     => null
+      }
+    }
+
     [Memoized]
     public ExecExpr : PExpr
     {
       get
       {
-        match (action)
+        match (TryEvaluate())
         {
-         | FsmAction.Expr(e)     => Evaluate(e) 
-         | Normal(name = "send") => <[ PostEvent(..$Params) ]>
-         | Normal(name = null)   => <[ () ]>
-         | _                     => <[ $(ExecName : usesite)(..$Params) ]>
+          | null                  => <[ $(ExecName : usesite)(..$Params) ]>
+          | e                     => e
         }
       }
     }
-    
+
     [Memoized]
     public DeclExecExpr : PExpr
     {
       get
       {
-        match (action)
+        match (TryEvaluate())
         {
-         | FsmAction.Expr(e)     => Evaluate(e)
-         | Normal(name = "send") => <[ PostEvent(..$Params) ]>
-         | Normal(name = null)   => <[ () ]>
-         | _                     => <[ $(DeclName : usesite)(..$Params); ]>
+          | null                  => <[ $(DeclName : usesite)(..$Params); ]>
+          | e                     => e
         }
       }
     }
-    
+
     public override ToString() : string
     {
       ExecName
     }
-    
+
     [Memoized]
     public EventActionCall : PExpr
     {
       get
       {
         <[
-            $(DeclName : usesite)?.Invoke()
+          $(DeclName : usesite)?.Invoke()
         ]>
       }
     }
-    
+
     public IsExpr : bool
     {
       get
@@ -183,9 +197,9 @@ namespace Nemerle.Statechart
         action is FsmAction.Expr
       }
     }
-    
+
     public BodyFunc : PExpr -> PExpr {get;set;}
-    
+
     public Define() : void
     {
       when (!IsDeclared && !IsExpr)
@@ -201,10 +215,10 @@ namespace Nemerle.Statechart
     }
 
   }
-  
+
 }
-  
-  
-  
-  
+
+
+
+
 

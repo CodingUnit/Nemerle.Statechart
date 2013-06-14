@@ -24,16 +24,15 @@ namespace Nemerle.Statechart.Tests
   entry / SaveDis;
   
   save_as_pressed (=> FileDialogs.SaveChecking.save_as;
-  exit_pressed     => Exiting;
+  exit_pressed    (=> Exiting;
   
   using SaveChecking SaveCheckingMachine; // include statemachine SaveChecking from SaveCheckingMachine class
-  //using SaveCheckingSave SaveCheckingMachine;
   
   0 => Waiting;
   
   state Interface
   {
-    new_pressed => NewDialog;
+    new_pressed  => NewDialog;
     open_pressed => OpenDialog;
     (H*)
   }
@@ -69,7 +68,10 @@ namespace Nemerle.Statechart.Tests
     state New
     {
       entry / CaptionFile SaveAsEna;
+      new_pressed  => NewCreating.SaveChecking.new;
       save_pressed / send(save_as_pressed);
+      open_pressed => FileDialogs.Opening.SaveChecking.new;
+      exit_pressed => Exiting.SaveChecking.new;
     }
 
     state Changed
@@ -82,6 +84,7 @@ namespace Nemerle.Statechart.Tests
   submachine SaveChecking : FileDialogs
   {
     _ => $0;
+    exit: cancel => merge_cancel;
   }
   
   state FileDialogs
@@ -96,6 +99,7 @@ namespace Nemerle.Statechart.Tests
       submachine SaveChecking
       {
         _ => OpenDialog;
+        exit: cancel => merge_cancel;
       }
     }
     
@@ -119,11 +123,11 @@ namespace Nemerle.Statechart.Tests
     state NewCreating
     {
       _ => NotSaved;
-      initial => SaveChecking.new;
       
       submachine SaveChecking
       {
         _ => NewDialog;
+        exit: cancel => merge_cancel;
       }
     }
     
@@ -152,6 +156,7 @@ namespace Nemerle.Statechart.Tests
     submachine SaveChecking : Exiting
     {
       _ => $0;
+      exit: cancel => merge_cancel;
     }
   }
   #>
@@ -159,7 +164,7 @@ namespace Nemerle.Statechart.Tests
   public class FileFsm
   {
     
-    mutable last_event : Event;
+    //mutable last_event : Event;
     
     public sync : ISynchronizeInvoke {get;set;}
     
