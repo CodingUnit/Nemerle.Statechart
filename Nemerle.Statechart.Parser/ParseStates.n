@@ -28,12 +28,13 @@ namespace Nemerle.Statechart
       name
     }
     
-    submachine(attr : option[List[StateAttribute]], tok : NToken, id : NToken, par : option[NameIdentifier], _ : NToken, body : List[StateNode], _ : NToken) : StateNode
+    submachine(attr : option[List[StateAttribute]], tok : NToken, id : NToken, type : option[NToken * NToken * NToken], par : option[NameIdentifier], _ : NToken, body : List[StateNode], _ : NToken) : StateNode
     {
       def (trans, other) = body.PartitionType();
       def exit  = other.FilterType();
       def attr = attr.WithDefault(Enumerable.Empty()).NToList();
-      StateNode.State(tok.StartPos, GetText(id), par.Map(_.FullName), attr, [], [], trans.NToList(), [], [], [], exit.NToList(), StateType.SubMachine, [])
+      def type = type.Map((_, x, _) => GetText(x)).WithDefault(null);
+      StateNode.State(tok.StartPos, GetText(id), par.Map(_.FullName), attr, [], [], trans.NToList(), [], [], [], exit.NToList(), StateType.SubMachine(type), [])
     }
     
     stateMachine(nodes : List[StateNode]) : StateNode.StateMachine
@@ -53,7 +54,7 @@ namespace Nemerle.Statechart
       def (name, nodes) = nodes.PartitionType();
       def (usings, nodes) = nodes.PartitionType();
       def pos = if (nodes.IsEmpty()) 0 else nodes.First().pos;
-      def state = CreateState(pos, null, [], nodes, StateType.State, None());
+      def state = CreateState(pos, null, [], nodes, StateType.State(), None());
       
       
       def flags = flags.FoldLeft(MachineFlags(MachineFlag.None, []), merge_flags);
@@ -69,7 +70,7 @@ namespace Nemerle.Statechart
     {
       def name_text = GetText(name);
       def attr = attr.WithDefault(Enumerable.Empty());
-      CreateState(name.StartPos, name_text, attr, nodes, StateType.State, parent)
+      CreateState(name.StartPos, name_text, attr, nodes, StateType.State(), parent)
     }
     
     CreateState(pos : int, name : string, attr : IEnumerable[StateAttribute], decls : IEnumerable[StateNode], type : StateType, parent : option[NameIdentifier]) : StateNode.State
@@ -92,7 +93,7 @@ namespace Nemerle.Statechart
       def create_sub_regions(reg)
       {
         def (en, ex, states, trans, do_act, pseudo, defer, _) = get_decls(reg);
-        State(0, null, None(), [], en, ex, trans, do_act, defer, states, pseudo, StateType.SubRegion, [])
+        State(0, null, None(), [], en, ex, trans, do_act, defer, states, pseudo, StateType.SubRegion(), [])
       }
       
       def decls = decls.OrderBy(_.pos).NToList();
@@ -100,7 +101,7 @@ namespace Nemerle.Statechart
       def regions = reg.FindDelimited(_ is State(type = StateType.SubRegion)); // split list by regions
       def (regions, decls) = if (regions.IsEmpty()) ([], decls) else (regions.Map(create_sub_regions), reg_trans); // create regions
       def (en, ex, states, trans, do_act, pseudo, defer, decls) = get_decls(decls);
-      def (states, type) = if (regions.IsEmpty()) (states, type) else (regions, StateType.Region);
+      def (states, type) = if (regions.IsEmpty()) (states, type) else (regions, StateType.Region());
       def parent = parent.Map(_.FullName);
       State(pos, name, parent, attr.NToList(), en, ex, trans, do_act, defer, states, pseudo, type, decls.Map(x => Error(x.pos, x)))
      }

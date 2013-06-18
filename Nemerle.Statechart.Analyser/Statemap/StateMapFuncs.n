@@ -53,13 +53,18 @@ namespace Nemerle.Statechart
               def path = head :: p;
               match (get_all_state(st, head), tail)
               {
-                | ([], _)    => when (on_error != null) on_error(FsmError.StateNotFound(FsmState(merge_name(path.Rev()), Analyser, StateType.State))); null
+                | ([], _)    => when (on_error != null) on_error(FsmError.StateNotFound(merge_name(path.Rev()))); null
                 | ([st], []) => st
                 | ([st], _)  => get_loop(st.sub_states.NToList(), tail, path)
                 | (lst, _)   => match (GetResolve(source, lst)) // пытаемся разрешить неоднозначность
                                 {
                                   | [st] => st
-                                  | _    => when (on_error != null) on_error(FsmError.SeveralState(lst.Map(x => FsmState(merge_name((x.NativeName :: p).Rev()), Analyser, StateType.State)))); null
+                                  | _    => when (on_error != null) 
+                                            {
+                                              def n = lst.Map(x => merge_name((x.NativeName :: p).Rev()));
+                                              on_error(FsmError.SeveralState(n)); 
+                                            }
+                                            null
                                 }
               }
         | _                => null
@@ -109,16 +114,6 @@ namespace Nemerle.Statechart
     Get(state : string, src : FsmState, states : IEnumerable[FsmState]) : FsmState
     {
       Get(src, state, states, null)
-      //match (states.Filter(x => x.NativeName == state))
-      //{
-      //  | [st] => st
-      //  | []   => null
-      //  | lst  => match (GetResolve(src, lst))
-      //            {
-      //              | [st] => st
-      //              | _    => null
-      //            }
-      //}
     }
     
     GetNamed(n : string, par : FsmState, tran : StateTransition, src : FsmState) : TransitionTarget
