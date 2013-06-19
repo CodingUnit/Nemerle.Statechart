@@ -165,14 +165,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    not_used_states_initial_tran : IEnumerable[StateTransition]
-    {
-      get
-      {
-        InitialTran.Where(x => !Used[x]);
-      }
-    }
-
     public DoActivities : IEnumerable[StateAction.Do]
     {
       get
@@ -253,20 +245,25 @@ namespace Nemerle.Statechart
       }
     }
 
+    [Memoized]
     public empty_states : IEnumerable[FsmState]
     {
       get
       {
         def filter_used(st)
         {
-          | StateType.SubRegion
-          | Region
-          | Final => false
-          | _     => true
+          match (st.type)
+          {
+            | StateType.SubRegion
+            | Region
+            | Final         => false
+            | _             => true
+          }
         }
 
-        def empty =  States.Exclude(x => x.LivedNested); // determine lived states
-        empty.Where(x => filter_used(x.type))
+        def empty = States.Exclude(x => x.LivedNested); // determine lived states
+        def empty = empty.Exclude(x => x.LivedNestedInStateMachine);
+        empty.Where(filter_used)
       }
     }
 
@@ -522,11 +519,25 @@ namespace Nemerle.Statechart
     }
     
 
+    [Memoized]
     public not_used_transitions : IEnumerable[StateTransition]
     {
       get
       {
-        def not_used = StateTransitions.Where(x => !Used[x]);
+        def initial_fsm(i) : bool
+        {
+          if (i.IsInitial)
+          {
+           if (i.FromPseudo.Value.state.PartOfStateMachine is Some(m))
+           {
+             m.AllPseudo.Exists(_ is PseudoStateNode.EntryPoint)
+           } else false
+          } else false
+        }
+        
+        def tran = StateTransitions + InitialTran;
+        def not_used = tran.Where(x => !Used[x]);
+        def not_used = not_used.Exclude(initial_fsm);
         not_used.Where(x => x.From.Lived);
       }
     }
