@@ -117,7 +117,23 @@ namespace Nemerle.Statechart
     
     CheckActivities() : void 
     {
-      
+      def sm = DoActivities.Filter(x => x.state.PartOfStateMachine.HasValue);
+      def do_act = sm.GroupBy(x => x.state.PartOfStateMachine.Value.SubMachineType);
+      foreach (group in do_act)
+      {
+        foreach (st in group.GroupBy(x => x.state.name))
+        {
+          def (need, not) = st.NToList().Partition(x => x.need_completion);
+          def st = FsmState(st.Key, this, StateType.State());
+          if (need.Length > not.Length)
+          {
+            need.Iter(x => x.state = st);
+          } else
+          {
+            not.Iter(x => x.state = st)
+          }
+        }
+      }
     }
     
     public Analyse() : void
@@ -130,10 +146,10 @@ namespace Nemerle.Statechart
         CheckTransitions();
         CheckInitialTransitions();
         CheckPseudoStates();
-        CheckActivities();
         CreateTransitions();
         BreakIfError();
         CreateTransitionPaths();
+        CheckActivities();
         CreateHistoryPaths(); // create history paths
         CreateConcurrentRegion();
         UpdateInitial();
