@@ -42,25 +42,31 @@ namespace Nemerle.Statechart
     CreateSubMachines(fsm : StateNode.StateMachine) : void
     {
       LoadUsings(fsm);
-      foreach (st in SubMachines)
+      foreach (st in SubMachines with i)
       {
         when (LoadedMachines.Values.Find(x => x.name == st.SubMachineType) is Some(loaded))
         {
           def state = StateMap.CreateSub(Analyser, loaded);
-          state.type = StateType.SubMachine(st.SubMachineType);
+          state.copy_num = i; // set copy num for every state machine
+          state.AllPseudo.Iter(x => x.copy = i); // and its pseudo
+          state.type = StateType.SubMachine(st.SubMachineType); // type is sub machine
           state.name = st.name; // copy name of source state
           state.DefineTransitions(st.transitions); // copy transitions
           state.transitions.Iter(x => x.From = state); // set state as in machine
           state.Attributes = st.Attributes; // copy attributes
           foreach (point in st.ExitPoints)
           {
+            when (point.tran is Some(t)) // transition from declaration assign to exit point in imported sub machine
             match (state.ExitPoints.Find(x => x.name == point.name))
             {
-              | Some(e) => e.tran = Some(point.tran.Value)
+              | Some(e) => t.From = state; // source and from machine state
+                           t.Source = state;
+                           t.FromPseudo = Some(e); // from pseudo exit point in machine state
+                           e.tran = Some(t);
               | _       => Analyser.AddError(FsmError.PseudoStateNotFound(point.Name))
             }
           }
-          st.Super.Replace(st, state)
+          st.Super.Replace(st, state) // replace state in tree
         }
       }
     }

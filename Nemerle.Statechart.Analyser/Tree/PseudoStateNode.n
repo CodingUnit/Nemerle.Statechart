@@ -21,13 +21,13 @@ namespace Nemerle.Statechart
       { 
         this(st : FsmState, tran : StateNode.Transition)
         {
-          base(st);
+          base(0, st);
           this.tran = StateTransition(this, None(), tran)
         }
 
         this(st : FsmState, tostate : FsmState)
         {
-          base(st);
+          base(0, st);
           this.tran = StateTransition(this, tostate, TransitionKind.Local)
         }
 
@@ -37,7 +37,7 @@ namespace Nemerle.Statechart
       {
         public this(st : FsmState, hist : PseudoStateModelNode.History)
         {
-          base(st);
+          base(0, st);
           type = hist.type;
           default = hist.default.Map(x => StateTransition(st, None(), x))
         }
@@ -91,7 +91,7 @@ namespace Nemerle.Statechart
         
         this(st : FsmState, node : PseudoStateModelNode.Junction)
         {
-          base(st);
+          base(0, st);
           def an = st.analyser;
           name = match (node) 
           {
@@ -159,7 +159,7 @@ namespace Nemerle.Statechart
         
         this(st : FsmState, node : PseudoStateModelNode.EntryPoint)
         {
-          base(st);
+          base(0, st);
           tran = StateTransition(this, None(), node.tran);
           this.name = node.name;
         }
@@ -172,13 +172,13 @@ namespace Nemerle.Statechart
         
         this(st : FsmState, node : PseudoStateModelNode.ExitPoint)
         {
-          base(st);
+          base(0, st);
           tran = node.tran.Map(StateTransition(this, None(), _));
           this.name = node.name;
         }
       }
       
-    | Terminate { override ToString() : string {"Terminate"} }
+    | Terminate
 
     public static Create(st : FsmState, pseudo : PseudoStateModelNode) : PseudoStateNode
     {
@@ -187,23 +187,23 @@ namespace Nemerle.Statechart
         | Initial(tr)                                => Initial(st, tr)
         | History as hist                            => History(st, hist)
         | Junction as j                              => Junction(st, j)
-        //| Fork(target = lst)                         => Fork(0, lst.Map(TransitionTarget.Create(st, _)), [])
-        //| Join(name = n, target = t)                 =>  Join(0, n, TransitionTarget.Create(st, t), null, null, null))
         | EntryPoint as e                            => EntryPoint(st, e)
         | ExitPoint as e                             => ExitPoint(st, e)
-        | Terminate                                  => Terminate(st)
+        | Terminate                                  => Terminate(0, st)
         | _                                          => throw NotImplementedException("this TransitionTarget not implemented")
       }
     }
 
-    //copy_name : string
-    //{
-    //  get
-    //  {
-    //    if (copy == 0) "" else $"$copy"
-    //  }
-    //}
+    copy_name : string
+    {
+      get
+      {
+        if (copy == 0) "" else $"$copy"
+      }
+    }
 
+    public copy : int {get;set;default 0}
+    
     public state : FsmState {get;set;}
 
     public NativeName : option[string]
@@ -225,7 +225,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (this)
+        def name = match (this)
         {
           | PseudoStateNode.History(type = t) => 
 
@@ -247,10 +247,8 @@ namespace Nemerle.Statechart
           | Junction(name = n)        => $"$state$n"
           | EntryPoint(name = n)      => $"EntryPoint$n"
           | ExitPoint(name = n)       => $"ExitPoint$n"
-          //| n                         => n.ToString()
-          //| FsmNode.State(st)                                => st.Value.Name
-          //| FsmNode.PseudoState(n)                           => n.ToString()
         }
+        $"$name$copy_name"
       }
     }
 
