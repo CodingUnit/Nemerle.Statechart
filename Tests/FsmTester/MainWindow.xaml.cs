@@ -11,6 +11,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Timers;
+using System.Windows.Media.Animation;
 
 namespace FsmTester
 {
@@ -19,9 +21,46 @@ namespace FsmTester
     /// </summary>
     public partial class MainWindow : Window
     {
+
+        static double diameter = 0.6;
+        static double C = Math.PI * diameter;
+        Storyboard story;
+
+        public void SetSpeed(double speed)
+        {
+            var old = story.SpeedRatio;
+            var news = speed / old;
+            story.SetSpeedRatio(news);
+        }
+
         public MainWindow()
         {
             InitializeComponent();
+            DoubleAnimation sb = new DoubleAnimation();
+            story = (Storyboard)canvas1.FindResource("spin");
+            story.Begin();
+            story.SetSpeedRatio(0);
         }
+
+        private void gas_button_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            
+        }
+
+        private void gas_button_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            
+        }
+
+        private void gas_button_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            textBox2.Text = "down";
+        }
+
+        private void gas_button_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            textBox2.Text = "up";
+        }
+
     }
 }
