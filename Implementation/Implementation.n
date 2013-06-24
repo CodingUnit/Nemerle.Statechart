@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Collections.Concurrent;
 using System.Threading;
+using System.ComponentModel;
 
 namespace Nemerle.Statechart
 {
@@ -15,7 +16,7 @@ namespace Nemerle.Statechart
   /// <summary>
   /// Description of Implementation.
   /// </summary>
-  public abstract class StateMachine[TState, TEvent] where TState : class
+  public abstract class StateMachine[TState, TEvent] : INotifyPropertyChanged where TState : class
   {
     [Accessor]
     protected mutable cur_state : TState;
@@ -32,7 +33,7 @@ namespace Nemerle.Statechart
       {
         QueueThreadSimple
       }
-      queue_thread = Thread(ThreadStart(queue))
+      queue_thread = Thread(queue)
     }
     
     public Initiate() : void
@@ -44,7 +45,9 @@ namespace Nemerle.Statechart
 
     queue : ConcurrentQueue[TEvent] = ConcurrentQueue();
     mutable most_priority_queue : ConcurrentQueue[TEvent] = ConcurrentQueue();
+    
     mutable queue_thread : Thread;
+    
     work_event : ManualResetEvent = ManualResetEvent(false);
     complete_event : ManualResetEvent = ManualResetEvent(true);
 
@@ -111,7 +114,7 @@ namespace Nemerle.Statechart
     {
     }
     
-    protected virtual Switch(st : TState) : void
+    Switch(st : TState) : void
     {
       cur_state = st;
       OnSwitch()
@@ -156,7 +159,14 @@ namespace Nemerle.Statechart
         }
       }
      }
-    
+
+     public event PropertyChanged : PropertyChangedEventHandler;
+     
+     protected OnPropertyChanged(name : string) : void
+     {
+       PropertyChanged?.Invoke(this, PropertyChangedEventArgs(name))
+     }
+     
     QueueThread() : void
     {
       while (!IsTerminated)
@@ -181,6 +191,7 @@ namespace Nemerle.Statechart
         }
       }
     }
+    
   }
 }
    

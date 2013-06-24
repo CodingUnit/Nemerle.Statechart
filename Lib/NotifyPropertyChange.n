@@ -16,31 +16,25 @@ namespace Nemerle.Statechart
   [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Property)]
   macro NotifyPropertyChange(typeBuilder : TypeBuilder, prop : ClassMember.Property, params pars : list[PExpr])
   {
-    //assert2(false);
     NotifyPropertyChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, prop, pars)
   }
 
-  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Class)]
+  [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Class)]
   macro NotifyPropertyChange(typeBuilder : TypeBuilder, params pars : list[PExpr])
   {
-    //assert2(false);
     NotifyPropertyChangeImpl.DoTransform2(Macros.ImplicitCTX(), typeBuilder, pars)
   }
 
   [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
   macro NotifyPropertyChange(typeBuilder : TypeBuilder, params pars : list[PExpr])
   {
-    //assert2(false);
     NotifyPropertyChangeImpl.DoTransform2b(Macros.ImplicitCTX(), typeBuilder, pars)
-    //NeedChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, prop, pars)
   }
-  
+
   [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Property)]
   macro NotifyPropertyChange(typeBuilder : TypeBuilder, prop : ClassMember.Property, params pars : list[PExpr])
   {
-    //assert2(false);
     NotifyPropertyChangeImpl.DoTransform1(Macros.ImplicitCTX(), typeBuilder, prop, pars)
-    //NeedChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, prop, pars)
   }
 
   public module NotifyPropertyChangeUtil
@@ -55,7 +49,7 @@ namespace Nemerle.Statechart
 
       from_obj.PropertyChanged += change
     }
-    
+
     public ChangeBind(this from_obj :  INotifyPropertyChanged, func : void -> void) : void
     {
       from_obj.PropertyChanged += _ => func()
@@ -67,9 +61,9 @@ namespace Nemerle.Statechart
   /// </summary>
   module NotifyPropertyChangeImpl
   {
-    public DoTransform1(_typer : Typer, typeBuilder : TypeBuilder, _prop : ClassMember.Property, _aliases : list[PExpr]) : void
+    public DoTransform1(typer : Typer, typeBuilder : TypeBuilder, _prop : ClassMember.Property, _aliases : list[PExpr]) : void
     {
-      when (!typeBuilder.GetModifiers().GetMacroAttributes().Exists(_ is <[ NotifyPropertyChange ]>))
+      when (!IsImplemented(typer, typeBuilder) && !typeBuilder.GetModifiers().GetMacroAttributes().Exists(_ is <[ NotifyPropertyChange ]>))
       {
         typeBuilder.AddMacroAttribute(<[ NotifyPropertyChange ]>);
       }
@@ -78,34 +72,58 @@ namespace Nemerle.Statechart
 
     public DoTransform2(_typer : Typer, typeBuilder : TypeBuilder, _aliases : list[PExpr]) : void
     {
-      def mems = typeBuilder.GetEvents();
+      def mems = typeBuilder.GetEvents(BindingFlags.FlattenHierarchy);
       when (!mems.Exists(x => x.Name == "PropertyChanged"))
       {
         typeBuilder.Define(<[decl: public event PropertyChanged : PropertyChangedEventHandler ]>);
-        typeBuilder.Define(<[decl: OnPropertyChanged(name : string) : void
-                                   {
+        typeBuilder.Define(<[decl: protected OnPropertyChanged(name : string) : void
+                                  {
                                       PropertyChanged?.Invoke(this, PropertyChangedEventArgs(name))
-                                   } ]>);
-        
+                                  } ]>);
+
       }
 
     }
 
+    public Implements(this ty : TypeBuilder, typer : Typer, type : PExpr) : bool
+    {
+      def check_type(t, typ)
+      {
+        def super = typer.BindFixedType(t);
+        super.TryRequire(typ);
+      }
+      
+      def exists(t)
+      {
+        | TopDeclaration.Class(t_extends = e)
+        | TopDeclaration.Interface(t_extends = e)
+        | TopDeclaration.Variant(t_extends = e)   => 
+           
+           def type = typer.BindFixedType(type);
+           e.Exists(check_type(_, type));
+        | _ => false
+      }
+      
+      ty.AstParts.Exists(exists)
+    }
+    
+    IsImplemented(typer : Typer, typeBuilder : TypeBuilder) : bool
+    {
+      def type = <[ INotifyPropertyChanged]>;
+      typeBuilder.Implements(typer, type)
+    }
+
     public DoTransform2b(typer : Typer, typeBuilder : TypeBuilder, _aliases : list[PExpr]) : void
     {
-        def type = <[ INotifyPropertyChanged]>;
-        def type = typer.BindFixedType(type);
-        def super = typeBuilder.HasSuperType(type.TypeInfo);
-        when (!super)
-        {
-          typeBuilder.AddImplementedInterface(<[ INotifyPropertyChanged ]>);
-        }
+      when (!IsImplemented(typer, typeBuilder))
+      {
+        typeBuilder.AddImplementedInterface(<[ INotifyPropertyChanged ]>);
+      }
 
     }
 
     public DoTransform(typer : Typer, typeBuilder : TypeBuilder, prop : ClassMember.Property, _aliases : list[PExpr]) : void
     {
-      //assert2(false);
       def type = prop.returnType;
       def type = typer.BindType(type).Fix();
       def is_value = type.IsValueType;
@@ -159,7 +177,7 @@ namespace Nemerle.Statechart
         def field = match (prop.initializer)
                     {
                       | Some(i) => prop.initializer = None();
-                                   <[ decl: mutable $(name : name) : $type = $i ]>
+                                  <[ decl: mutable $(name : name) : $type = $i ]>
                       | _       => <[ decl: mutable $(name : name) : $type ]>
                     }
         typeBuilder.Define(field);

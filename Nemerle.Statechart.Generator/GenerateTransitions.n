@@ -406,8 +406,11 @@ namespace Nemerle.Statechart
       when (!evt.IsEmpty()) 
       {
         def cases = evt.FoldBack([<[case: _ => false ]>], (x, a) => <[case: | Event.$(x.Name : usesite) => true ]> :: a);
-        def is_defer = <[decl: public override IsDefer(evt : Event) : bool { match (evt) { ..$cases } } ]>;
-        Define(ty, is_defer);
+        when (HasDeferedEvents)
+        {
+          def is_defer = <[decl: public override IsDefer(evt : Event) : bool { match (evt) { ..$cases } } ]>;
+          Define(ty, is_defer);
+        }
         def decls = evt.Map(x => <[ decl: public override $(x.Name : usesite)(fsm : $(ChartName : usesite)) : State { fsm.Defer(Event.$(x.Name : usesite)); null }]>);
         Define(ty, decls)
       }
@@ -435,14 +438,9 @@ namespace Nemerle.Statechart
 
     DefineTransitionActions() : void
     {
-      //def trans = analyser.all_transitions.NToList();
-      //def trans = trans.RemoveDuplicatesSort((x, y) => StateTransition.Comparer(x, y));
-      //def (init : list[StateTransition.Initial], trans) = trans.PartitionType();
-      //def trans = init &+ trans;
       def body = GetTransitionFunction(transitions);
       // history paths
-      def body_name = analyser.HistoryPaths.FoldLeft([], (x, a) => x.Value.FoldLeft(a, (x, a) => (x.Name, x.transition) :: a));//.Map((x, y) => (x.Name(), y.Map(x => x.transition.Value)));
-      //def body = body_name.Map((x, y) => );
+      def body_name = analyser.HistoryPaths.FoldLeft([], (x, a) => x.Value.FoldLeft(a, (x, a) => (x.Name, x.transition) :: a));
       def hist = GetTransitionFunction(body_name);
       Define(hist + body);
     }

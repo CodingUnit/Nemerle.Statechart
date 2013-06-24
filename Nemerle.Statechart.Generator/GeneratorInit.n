@@ -31,7 +31,7 @@ namespace Nemerle.Statechart
       def states = analyser.LivedNestedStates.Exclude(_.IsTopState).Map(x => <[ $(x.Name : string) ]>);
       def state_names = $[(st.Name, $"State$(st)"), st in analyser.LivedNestedStates, st.UsedInGenerate && !st.IsTopState && !(st.type is StateType.SubRegion)]; // создаем имена состояний      
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
-      def trans_complete_expr =  if (analyser.FsmFlags.TransitionCompleted) <[ OnTransitionCompleted(); ]> else <[ () ]>;
+      def prop_st_change_expr =  if (analyser.FsmFlags.PropertyStateChanged) <[ OnPropertyChanged("CurState") ]> else <[ () ]>;
       def actions = actions.Exclude(x => x.IsDeclared);
       def defer_check = if (HasDeferedEvents)
                         {
@@ -54,8 +54,8 @@ namespace Nemerle.Statechart
                     // define method for changing state
                     protected override OnSwitch() : void
                     {
-                        $trans_complete_expr;
-                        $defer_check
+                        $prop_st_change_expr;
+                        $defer_check;
                     }
 
                     protected override Initial() : State
@@ -71,7 +71,7 @@ namespace Nemerle.Statechart
 
                   ]>;
       ty.AddImplementedInterface(<[ StateMachine[State, Event] ]>);
-      when (analyser.FsmFlags.TestingFeatures) ty.AddImplementedInterface(<[ Nemerle.Statechart.IStateMachine ]>);
+      when (analyser.FsmFlags.TestingFeatures) ty.AddImplementedInterface(<[ Nemerle.Statechart.ITestStateMachine ]>);
       Define(state_names.Map((x, y) =>  <[decl: $(y : usesite) : State.$(x : usesite) = State.$(x : usesite)(); ]>)); // create state variables for fast using 
       Define(dummy.td.GetMembers());
     }
@@ -83,10 +83,6 @@ namespace Nemerle.Statechart
     {
       DefineMain();
       DefineStates(); // define states
-      when (analyser.FsmFlags.TransitionCompleted)
-      {
-        util.DefineEvent("TransitionCompleted");
-      }
       DefineIsInState();
       DefineTerminate();
       DefineTesting();

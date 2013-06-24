@@ -16,17 +16,12 @@ namespace FsmTester
         public Car(MainWindow win)
         {
             window = win;
+            window.stackPanel1.DataContext = fsm;
             window.key_button.Click   += new System.Windows.RoutedEventHandler(key_button_Click);
             window.gas_button.Click   += new System.Windows.RoutedEventHandler(gas_button_Click);
             window.break_button.Click += new System.Windows.RoutedEventHandler(break_button_Click);
             fsm.ChangeBind("speed", () => window.Dispatcher.Invoke(new Action(() => window.SetSpeed(fsm.speed))));
             fsm.start += new Action(fsm_start);
-            fsm.TransitionCompleted += new EventHandler(fsm_TransitionCompleted);
-        }
-
-        void fsm_TransitionCompleted(object sender, EventArgs e)
-        {
-            window.Dispatcher.Invoke(new Action(() => window.state_text.Text = fsm.ToString()));
         }
 
         void fsm_start()
