@@ -9,186 +9,235 @@ using System.Linq;
 using System.Console;
 using Nemerle.Statechart;
 
-[statechart(
-  <#
-  flags : testing;
+  /// <summary>
+  /// Description of PathCover.
+  /// </summary>
+  [statechart(<#
 
-  name Car;
+  flags : auto_initial
+          transition_completed
+          auto_entry_exit
+          testing;
 
-  0 / initialize => EngineOff;
-
-  state EngineOff
+  state A
   {
-    TURN_KEY [isBatteryOk()] / start() => MotorOn;
+      (H*)
+      g => H;
   }
 
-  state MotorOn
+  state B : A
   {
-    0 / Oil-Display() => Stand;
+      (H*)
 
-    TURN_KEY / stop => EngineOff;
-    entry / RadioOn;
-    exit  / RadioOff;
-    do    / coolEngine();
+      d => D;
+      f => @;
+      k => A;
+      c => E;
+  }
 
-    state Stand
-    {
-      GAS_PEDAL / accelerate => Drive;
-    }
+  state C : B
+  {
+      a / ();
+      b => E;
+      m => @;
+  }
 
-    BREAK_PEDAL [speed == 0 && battery_level > 100 && Breaked] / ComplexGuard => Stand; // v == 1
+  state E : B
+  {
+      i => D;
+      j => A;
+  }
 
-    state Drive
-    {
-      BREAK_PEDAL [speed == 1] / Break   => Stand; // v == 1
-      BREAK_PEDAL [speed > 1]  / Break() => @;     // v > 1
-      GAS_PEDAL / accelerate();
-    }
-
+  state D : A
+  {
+      e => B;
+      n => B.H;
   }
 
   #>
   )]
-public class CarFsm
-{
-  public battery_level : int {get;set;}
-  public speed : double {get;set;}
-
-  //public Key : string {get;set;}
-  public Breaked : bool {get;set;}
-  
-  initialize() : void
+  public class PathCoverFsm
   {
-    WriteLine("initialize")
+
   }
 
-  isBatteryOk() : bool
-  {
-    battery_level != 0
-  }
-
-}
-
-
-    /// <summary>
+  using PathCoverFsm.Event;
+  /// <summary>
   /// Description of PathCoverFsmTest.
   /// </summary>
-module Test
-{
-
-  public Main() : void
+  module Test
   {
-    def fsm = CarFsm();
-    fsm.accelerate += _ => fsm.speed++;
-    fsm.Break += _ => fsm.speed--;
-    def tester = fsm.GetTester();
-    tester.ConsoleTestInit();
-    // starting with several initial transitions
-    tester.Initiate("EngineOff");
 
-    // test for fail guard
-    fsm.battery_level = 0;
-    tester.Test("TURN_KEY", null); // test for no state change
-    fsm.battery_level = 100; // guard ok
-    /// test for guard ok and executing transition
-    tester.Test("TURN_KEY", "Stand", 
-                            "ExitEngineOff", 
-                            "start", 
-                            "RadioOn", 
-                            "EntryMotorOn",
-                            "Oil-Display");
-    // transition with action
-    tester.Test("GAS_PEDAL", ["Stand"], ["accelerate"], ["Drive"]);
-    // internal transition
-    tester.Test("GAS_PEDAL", null, "accelerate");
-    // self transition
-    tester.Test("BREAK_PEDAL", ["Drive"], ["Break"], ["Drive"]);
-    // transition simple to simple in same composite, with guards
-    tester.Test("BREAK_PEDAL", ["Drive"], ["Break"], ["Stand"]);
-    // go back
-    tester.Test("GAS_PEDAL", ["Stand"], ["accelerate"], ["Drive"]);
-    // no guards evaluated to true
-    fsm.battery_level = 101;
-    fsm.Breaked = false;
-    fsm.speed = 0;
-    // declined transition
-    tester.Test("BREAK_PEDAL", null);
-    fsm.Breaked = true;
-    // speed == 0 && battery_level > 100 && Breaked guard
-    // high level transition with complex guard expression
-    tester.Test("BREAK_PEDAL", "Stand",
-                               "ExitDrive", 
-                               "RadioOff", 
-                               "ExitMotorOn",
-                               "ComplexGuard",
-                               "RadioOn",
-                               "EntryMotorOn");
-    // inner state to outer transition
-    tester.Test("TURN_KEY", "EngineOff", 
-                            "ExitStand", 
-                            "RadioOff", 
-                            "ExitMotorOn",
-                            "stop");
-    fsm.Terminate();
+    public Main() : void
+    {
+      def fsm = PathCoverFsm();
+      def tester = fsm.GetTester();
+      tester.ConsoleTestInit();
+
+      // "Starting state machine"
+      tester.Initiate(["A", "B", "C"]);
+
+      // "Testing Internal transition"
+      tester.Test(A.New(), null);
+
+      // "Testing simple-to-simple transition"
+      tester.Test(B.New(), ["C"], ["E"]);
+
+      // "Testing simple-to-composite transition"
+      tester.Test(J.New(), ["E", "B", "A"], ["A", "B", "C"]);
+
+      // "Testing simple-to-simple, via composite"
+      tester.Test(D.New(), ["C", "B"], ["D"]);
+
+      // "Testing for no match"
+      tester.Test(A.New(), null);
+
+      // "Testing simple to (non-ancestor) composite"
+      tester.Test(E.New(), ["D"], ["B", "C"]);
+
+      // "Testing simple-to-simple transition again"
+      tester.Test(B.New(), ["C"], ["E"]);
+
+      // "Testing simple-to-simple, across ancestor"
+      tester.Test(I.New(), ["E", "B"], ["D"]);
+
+      // "Testing simple-to-composite with history"
+      tester.Test(G.New(), ["D", "A"], ["A", "D"]);
+
+      // "Get back to state C"
+      tester.Test(E.New(), ["D"], ["B", "C"]);
+
+      // "Testing composite-to-composite transition"
+      tester.Test(F.New(), ["C", "B"], ["B", "C"]);
+
+      // "Testing simple to sibling simple via composite transition"
+      tester.Test(C.New(), ["C", "B"], ["B", "E"]);
+
+      // "Testing composite-to-composite transition"
+      tester.Test(K.New(), ["E", "B", "A"], ["A", "B", "C"]);
+
+      // "Testing transition to self, but leaving the state"
+      tester.Test(M.New(), ["C"], ["C"]);
+
+      // "Get to state D"
+      tester.Test(D.New(), ["C", "B"], ["D"]);
+
+      // "Test going to non-ancestor composite with history (and returning to the same state)"
+      tester.Test(N.New(), ["D"], ["B", "C"]);
+
+      // "Get us to state E, then D"
+      tester.Test(B.New(), ["C"], ["E"]);
+
+      // "Go to state D"
+      tester.Test(I.New(), ["E", "B"], ["D"]);
+
+      // "Now, test returning with history to a non-default state"
+      tester.Test(N.New(), ["D"], ["B", "E"]);
+
+      fsm.Terminate();
+    }
+
   }
-
-}
 
 /*
 BEGIN-OUTPUT
-initialize
-EntryEngineOff
+EntryA
+EntryB
+EntryC
 Ok
-Processing a 'TURN_KEY' 
+Processing a 'A' 
 Ok
-Processing a 'TURN_KEY' 
-ExitEngineOff
-start
-RadioOn
-EntryMotorOn
-Oil-Display
-EntryStand
+Processing a 'B' 
+ExitC
+EntryE
 Ok
-Processing a 'GAS_PEDAL' 
-ExitStand
-accelerate
-EntryDrive
+Processing a 'J' 
+ExitE
+ExitB
+ExitA
+EntryA
+EntryB
+EntryC
 Ok
-Processing a 'GAS_PEDAL' 
-accelerate
+Processing a 'D' 
+ExitC
+ExitB
+EntryD
 Ok
-Processing a 'BREAK_PEDAL' 
-ExitDrive
-Break
-EntryDrive
+Processing a 'A' 
 Ok
-Processing a 'BREAK_PEDAL' 
-ExitDrive
-Break
-EntryStand
+Processing a 'E' 
+ExitD
+EntryB
+EntryC
 Ok
-Processing a 'GAS_PEDAL' 
-ExitStand
-accelerate
-EntryDrive
+Processing a 'B' 
+ExitC
+EntryE
 Ok
-Processing a 'BREAK_PEDAL' 
+Processing a 'I' 
+ExitE
+ExitB
+EntryD
 Ok
-Processing a 'BREAK_PEDAL' 
-ExitDrive
-RadioOff
-ExitMotorOn
-ComplexGuard
-RadioOn
-EntryMotorOn
-EntryStand
+Processing a 'G' 
+ExitD
+ExitA
+EntryA
+EntryD
 Ok
-Processing a 'TURN_KEY' 
-ExitStand
-RadioOff
-ExitMotorOn
-stop
-EntryEngineOff
+Processing a 'E' 
+ExitD
+EntryB
+EntryC
+Ok
+Processing a 'F' 
+ExitC
+ExitB
+EntryB
+EntryC
+Ok
+Processing a 'C' 
+ExitC
+ExitB
+EntryB
+EntryE
+Ok
+Processing a 'K' 
+ExitE
+ExitB
+ExitA
+EntryA
+EntryB
+EntryC
+Ok
+Processing a 'M' 
+ExitC
+EntryC
+Ok
+Processing a 'D' 
+ExitC
+ExitB
+EntryD
+Ok
+Processing a 'N' 
+ExitD
+EntryB
+EntryC
+Ok
+Processing a 'B' 
+ExitC
+EntryE
+Ok
+Processing a 'I' 
+ExitE
+ExitB
+EntryD
+Ok
+Processing a 'N' 
+ExitD
+EntryB
+EntryE
 Ok
 END-OUTPUT
 */

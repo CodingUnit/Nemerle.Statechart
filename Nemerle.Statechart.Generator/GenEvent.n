@@ -21,7 +21,7 @@ namespace Nemerle.Statechart
   {
     an : FsmAnalyser;
     gen : StaticGenerator;
-    events : list[string];
+    events : list[StateEvent];
    
     NeedEvtContextName : bool
     {
@@ -44,7 +44,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        events.Map(x => <[case: | Event.$(x : usesite) => cur_state.$(x : usesite)(this) ]>);
+        events.Map(x => <[case: | Event.$(x.TargetName : usesite) => cur_state.$(x.Name : usesite)(this) ]>);
       }
     }
     
@@ -57,11 +57,59 @@ namespace Nemerle.Statechart
       }
     }
     
+    EventDecl(n : StateEvent) : ClassMember.TypeDeclaration
+    {
+      def name = n.TargetName;
+      def full = $"$(gen.Ty.FullName).$name";
+      def hash = full.GetHashCode();
+      <[ variant_option: | $(name : usesite)
+      {
+        static mutable instance : HsmEvent;
+        
+        public override ToString() : string
+        {
+          Name
+        }
+        
+        public override FullName : string
+        {
+          get
+          {
+            $full
+          }
+        }
+        
+        public override Name : string 
+        {
+          get
+          {
+            $name
+          }
+        }
+        
+        public override GetHashCode() : int
+        {
+          $hash
+        }
+        
+        public static New() : HsmEvent
+        {
+          when (instance == null) 
+          {
+            instance = $(name : usesite)()
+          }
+          instance
+        }
+        
+      } 
+      ]>
+    }
+    
     GenEventCtx() : void
     {
       def cls = <[decl: public class EventCtx
                         {
-                          public evt : Event {get;set;}
+                          public evt : HsmEvent {get;set;}
                           
                           public name : string
                           {
@@ -76,44 +124,69 @@ namespace Nemerle.Statechart
       gen.Define(field);
     }
     
+    public static CreateExpr(this evt : StateEvent) : PExpr
+    {
+      <[ Event.$(evt.TargetName : usesite).New() ]>
+    }
+    
     GenBaseStruct() : void
     {
       when (NeedEvtContext) GenEventCtx();
       gen.Define(<[ decl:
-            protected override DispatchEvent(evt : Event) : State
+            protected override DispatchEvent(evt : HsmEvent) : State
             {
-                $EventCtxBody;
                 match (evt)
                 {
-                  ..$RunEventInState
-                }
+                  | e is Event =>
+                  
+                    $EventCtxBody;
+                    match (e)
+                    {
+                      ..$RunEventInState
+                    }
+                    
+                  | _ => null
+              }
             }
             ]>);
-            
+       when (an.FsmFlags.TransitionCompleted)
+      {
+        def expr = <[decl:
+                   protected override OnEventComplete() : void
+                    {
+                      OnTransitionCompleted()
+                    }
+                   ]>;
+        gen.Define(expr);
+        gen.DefineEvent("TransitionCompleted")
+      }      
     }
     
     GenEvents() : void
     {
       def get_events(evt)
       {
-        evt.Map(x => <[decl: public $(x : usesite)() : void { PostEvent(Event.$(x : usesite)) } ]>);
+        evt.Map(x => <[decl: public $(x.Name : usesite)() : void { PostEvent($(x.CreateExpr())) } ]>);
       }
       
-      def lst = match (events.Partition(_ == "Completion"))
+      def lst = match (events.Partition(_.IsCompletion))
       {
-        | (head :: _, other) => def comp = <[decl: public $(head : usesite)() : void { PostEventMostPriority(Event.$(head : usesite)) }]>;
+        | (head :: _, other) => def comp = <[decl: public $(head.Name : usesite)() : void { PostEventMostPriority($(head.CreateExpr())) }]>;
                                 def evt = get_events(other);
                                 comp :: evt
         | (_, evt)           => get_events(evt)
       }
       gen.Define(lst);
       
-      def decl_events = events.Map(x =>  <[decl: | $(x : usesite) ]>);
-      gen.DefineNested(<[ decl:
-            public enum Event
+      def decl_events = events.Map(EventDecl);
+      def ty = gen.DefineNested(<[ decl:
+            public variant Event : HsmEvent
             {
-              ..$decl_events
-            }]>).Compile();
+              
+            }]>);
+      //..$decl_events
+      decl_events.Iter(x => gen.DefineNested(ty, x).Compile());
+      ty.Compile();
     }
     
     [Memoized]
@@ -122,7 +195,7 @@ namespace Nemerle.Statechart
       get
       {
         events.FoldRight([<[case: | _ => throw InvalidOperationException("Unknown event") ]>], 
-                                  (x, a) => <[case: | $(x : string) => Event.$(x : usesite); ]> :: a);
+                                  (x, a) => <[case: | $(x.Name : string) => $(x.CreateExpr()); ]> :: a);
       }
     }
     

@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Statechart;
+using System.ComponentModel;
 
 namespace Nemerle.Statechart
 {
@@ -15,14 +16,17 @@ namespace Nemerle.Statechart
   using ListUtils;
 
   [NotifyPropertyChange]
-  public partial class FsmAnalyser
+  public partial class FsmAnalyser : INotifyPropertyChanged
   {
     InitFlags() : void
     {
       def pflags = Fsm.flags;
       def flags = pflags.flags;
       // if testing, enable auto entry exit actions, transition completed event
-      def flags = if (pflags.TestingFeatures) flags | MachineFlag.AutoEntryExitActions | MachineFlag.PropertyStateChanged
+      def flags = if (pflags.TestingFeatures) 
+                     flags | MachineFlag.AutoEntryExitActions 
+                           | MachineFlag.PropertyStateChanged
+                           | MachineFlag.TransitionCompleted
                   else flags;
       FsmFlags = pflags.ChangeFlags(flags);
     }
@@ -53,26 +57,21 @@ namespace Nemerle.Statechart
 
     RenameDuplicates() : void
     {
-      def rename_group(st)
+      foreach (st when char.IsLower(st.name[0]) in States)
+      {
+        st.name = st.name.ToUpperFirst();
+      }
+      
+      def dups = States.NToList().Duplicates(FsmState.NameComparer);
+      def dups = dups.GroupBy(_.Name).NToList();
+
+      foreach (st in dups)
       {
         foreach (st in st with i)
         {
           st.copy_num = i
         }
       }
-
-      def to_upper(st)
-      {
-        def nname = st.name.ToCharArray();
-        nname[0] = char.ToUpper(nname[0]);
-        st.name = string(nname);
-      }
-      
-      States.Iter(to_upper);
-      def dups = States.NToList().Duplicates(FsmState.NameComparer);
-      def dups = dups.GroupBy(_.Name).NToList();
-
-      dups.Iter(rename_group)
     }
 
     CheckHistoryStates() : void

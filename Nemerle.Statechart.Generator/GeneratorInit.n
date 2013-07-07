@@ -25,19 +25,32 @@ namespace Nemerle.Statechart
       {
         DefineTransBody(i, GenCtx.Normal());
       }
-      
+
       def initial = def_initial(analyser.TopState.initial_tran.Value); // define initial transition
-      def events = analyser.Events.Map(x => <[ $x ]>);
-      def states = analyser.LivedNestedStates.Exclude(_.IsTopState).Map(x => <[ $(x.Name : string) ]>);
+      def events = events.Map(x => x.CreateExpr());
+      def events_expr = <[ array[..$events] ]>;
+      //def states = analyser.LivedNestedStates.Exclude(_.IsTopState).Map(x => <[ $(x.Name : string) ]>);
       def state_names = $[(st.Name, $"State$(st)"), st in analyser.LivedNestedStates, st.UsedInGenerate && !st.IsTopState && !(st.type is StateType.SubRegion)]; // создаем имена состояний      
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
-      def prop_st_change_expr =  if (analyser.FsmFlags.PropertyStateChanged) <[ OnPropertyChanged("CurState") ]> else <[ () ]>;
-      def actions = actions.Exclude(x => x.IsDeclared);
+      def prop_st_change_expr = if (analyser.FsmFlags.PropertyStateChanged) <[ OnPropertyChanged("CurState") ]> else <[ () ]>;
+      //def actions = actions.Exclude(x => x.IsDeclared);
       def defer_check = if (HasDeferedEvents)
-                        {
+                         {
                           <[ CheckDefered() ]>
-                        } else <[ () ]>;
-      def actions = actions.Map(x => <[ $(x.ExecName) ]>);
+                         } else <[ () ]>;
+      when (HasDeferedEvents || analyser.FsmFlags.PropertyStateChanged)
+      {
+        def expr = <[decl: 
+                      // define method for changing state
+                    protected override OnSwitch() : void
+                    {
+                        $prop_st_change_expr;
+                        $defer_check;
+                    }
+                   ]>;
+        Define(expr)
+      }
+      
       def base_ctor = <[ base($have_completion) ]>;
       def dummy =  <[decl:
                   class Test
@@ -49,28 +62,32 @@ namespace Nemerle.Statechart
                         // constructor body
                         {..$init_exprs}
                         $cons_expr;
+                        events = $events_expr;
                     }
-
-                    // define method for changing state
-                    protected override OnSwitch() : void
+                    
+                    events : array[HsmEvent];
+                    
+                    public override Events : IEnumerable[HsmEvent]
                     {
-                        $prop_st_change_expr;
-                        $defer_check;
+                      get
+                      {
+                        events
+                      }
                     }
-
+                    
                     protected override Initial() : State
                     {
                       $initial
                     }
-                    
-                    public static ContainsStates : array[string] = array[..$states];
-                    public static ProcessEvents  : array[string] = array[..$events];
-                    public static ExecActions    : array[string] = array[..$actions];
-                    
+
+                    //public static ContainsStates : array[string] = array[..$states];
+                    //public static ProcessEvents  : array[string] = array[..$events];
+                    //public static ExecActions    : array[string] = array[..$actions];
+
                   }
 
                   ]>;
-      ty.AddImplementedInterface(<[ StateMachine[State, Event] ]>);
+      ty.AddImplementedInterface(<[ ActiveStateMachine[State] ]>);
       when (analyser.FsmFlags.TestingFeatures) ty.AddImplementedInterface(<[ Nemerle.Statechart.ITestStateMachine ]>);
       Define(state_names.Map((x, y) =>  <[decl: $(y : usesite) : State.$(x : usesite) = State.$(x : usesite)(); ]>)); // create state variables for fast using 
       Define(dummy.td.GetMembers());
@@ -92,9 +109,9 @@ namespace Nemerle.Statechart
     {
       def stop_body = analyser.DoActivities.Map(GenActivity.StopCode);
       def terminate = <[ decl: protected override DoActivityStop() : void
-                         {
-                           ..$stop_body
-                         }
+                        {
+                          ..$stop_body
+                        }
                       ]>;
       Define(terminate);
     }
@@ -104,9 +121,9 @@ namespace Nemerle.Statechart
       def create_comp_expr(st_id)
       {
         def comp = ListUtils.Init(StatesId.Length, i => <[ cur_id.$($"id$i" : usesite) & id.$($"id$i" : usesite) == id.$($"id$i" : usesite) ]>);
-        def expr = MergeExpr(comp, (x,y) => <[ $x && $y ]>);
+        def expr = MergeExpr(comp, (x, y) => <[ $x && $y ]>);
         <[
-          def id = $st_id;
+        def id = $st_id;
           def cur_id = cur_state.get_id();
           $expr
         ]>
@@ -120,9 +137,9 @@ namespace Nemerle.Statechart
           {
             | <[ $(_ : usesite) ]> => <[ cur_state.get_id() & id == id ]>
             | _ => <[
-                      def id = $st_id;
+                def id = $st_id;
                       cur_state.get_id() & id  == id 
-                   ]>
+                  ]>
           }
         } else
         {
@@ -173,7 +190,7 @@ namespace Nemerle.Statechart
                               $(get_body(<[ st.get_id() ]>))
                             }
                             ]>;
-                            
+
       def states = analyser.LivedNestedStates.Exclude(_.IsTopState);
       def mexpr = states.FoldRight([<[case: | _ => throw InvalidOperationException("Invalid state") ]>], 
                                    (x, a) => <[case: | $(x.Name : string) => State.$(x.Name : usesite).Id()]> :: a);
@@ -189,7 +206,6 @@ namespace Nemerle.Statechart
     Init() : void
     {
       InitActionNames();
-      events = analyser.Events.NToList();
     }
 
     InitActionNames() : void
