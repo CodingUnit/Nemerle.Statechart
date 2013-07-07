@@ -7,16 +7,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.ComponentModel;
+using System.Threading;
 
 namespace Nemerle.Statechart
 {
   public interface ITestStateMachine : INotifyPropertyChanged
   {
-    Initiate() : void;
-    SendEvent(evt : string) : void;
-    IsInState(st : string)  : bool;
-    event ActionExecuted    : Action[string];
-    //event PropertyChanged   : EventHandler;
+    Initiate()                : void;
+    PostEvent(evt : HsmEvent) : void;
+    IsInState(st : string)    : bool;
+    event ActionExecuted      : Action[string];
+    event TransitionCompleted : EventHandler;
   }
 
   public partial class FsmTester
@@ -34,16 +35,26 @@ namespace Nemerle.Statechart
       FsmTester(fsm)
     }
 
+    // TODO: сделать без ActionExecuted и TransitionCompleted 
+    // пристыковывая ко всем действиям используя внутренний установщик в каждом автомате
     public ConsoleTestInit() : void
     {
-      Print += x => Console.WriteLine($"\n$x");
-      Send += x => Console.WriteLine($"Processing a '$x' ");
+      Print  += x => Console.WriteLine($"\n$x");
+      Send   += x => Console.WriteLine($"Processing a '$x' ");
       OkTest += _ => Console.WriteLine("Ok");
       Failed += _ => Console.WriteLine("Failed");
       fsm.ActionExecuted += Console.WriteLine;
-      
+      fsm.TransitionCompleted += _ => CompleteResult();
     }
 
+    mutable ResultFunc : Action;
+    wait_signal : ManualResetEvent = ManualResetEvent(false);
+    
+    CompleteResult() : void
+    {
+      _ = wait_signal.Set();
+    }
+    
     OnOkTest() : void
     {
       OkTest?.Invoke()
@@ -104,36 +115,33 @@ namespace Nemerle.Statechart
     {
       prepare();
       func();
-      def acts = if (res != null) acts.Append(Entry(res)) else Actions(acts);
-      def acts = if (acts.Length == queue.Count()) acts.ZipLazy(queue).All(_ == _) else false;
-      def state = res == null || fsm.IsInState(res);
-      state && acts
+        def acts = if (res != null) acts.Append(Entry(res)) else Actions(acts);
+        def acts = if (acts.Length == queue.Count()) acts.ZipLazy(queue).All(_ == _) else false;
+        def state = res == null || fsm.IsInState(res);
+        state && acts;
+      
+      
     }
 
-    //TestState(func : void -> void, res : string) : bool
-    //{
-    //  prepare();
-    //  func();
-    //  res == null || fsm.IsInState(res)
-    //}
-
-    SendEvent(evt : string) : void
+    SendEvent(evt : HsmEvent) : void
     {
-      Send?.Invoke(evt);
-      fsm.SendEvent(evt);
+      Send?.Invoke(evt.Name);
+      _ = wait_signal.Reset();
+      fsm.PostEvent(evt);
+      _ = wait_signal.WaitOne()
     }
 
-    public TestCond(evt : string, res : string, params acts : array[string]) : bool
+    public TestCond(evt : HsmEvent, res : string, params acts : array[string]) : bool
     {
       Test(_ => SendEvent(evt), res, acts)
     }
 
-    public TestStateCond(evt : string, res : string) : bool
+    public TestStateCond(evt : HsmEvent, res : string) : bool
     {
       Test(_ => SendEvent(evt), res)
     }
 
-    public TestCond(evt : string, res : string, ex : list[string], act : list[string], en : list[string]) : bool
+    public TestCond(evt : HsmEvent, res : string, ex : list[string], act : list[string], en : list[string]) : bool
     {
       def acts = ExitImpl(ex).Concat(ActionsImpl(act)).Concat(EntryImpl(en)).ToArray();
       Test(_ => SendEvent(evt), res, acts)
@@ -142,58 +150,58 @@ namespace Nemerle.Statechart
     public InitiateName(name : string, res : string, params acts : array[string]) : void
     {
       OnPrint(name);
-      if (InitiateCond(res, acts)) OnOkTest() else OnFailed();
+      if (InitiateCond(res, acts)) OnOkTest() else OnFailed()
     }
 
-    public Test(evt : string, res : string) : void
+    public Test(evt : HsmEvent, res : string) : void
     {
-      if (TestCond(evt, res)) OnOkTest() else OnFailed();
+      if (TestCond(evt, res)) OnOkTest() else OnFailed()
     }
 
-    public TestName(name : string, evt : string, res : string, params acts : array[string]) : void
+    public TestName(name : string, evt : HsmEvent, res : string, params acts : array[string]) : void
     {
       OnPrint(name);
-      if (TestCond(evt, res, acts)) OnOkTest() else OnFailed();
+      if (TestCond(evt, res, acts)) OnOkTest() else OnFailed()
     }
 
-    public Test(evt : string, res : string, params acts : array[string]) : void
+    public Test(evt : HsmEvent, res : string, params acts : array[string]) : void
     {
       TestName(null, evt, res, acts)
     }
 
-    public TestName(name : string, evt : string, res : string) : void
+    public TestName(name : string, evt : HsmEvent, res : string) : void
     {
       OnPrint(name);
-      if (TestCond(evt, res)) OnOkTest() else OnFailed();
+      if (TestCond(evt, res)) OnOkTest() else OnFailed()
     }
 
-    public TestName(name : string, evt : string, res : string, ex : list[string], act : list[string], en : list[string]) : void
+    public TestName(name : string, evt : HsmEvent, res : string, ex : list[string], act : list[string], en : list[string]) : void
     {
       OnPrint(name);
-      if (TestCond(evt, res, ex, act, en)) OnOkTest() else OnFailed();
+      if (TestCond(evt, res, ex, act, en)) OnOkTest() else OnFailed()
     }
 
-    public Test(evt : string, res : string, ex : list[string], act : list[string], en : list[string]) : void
+    public Test(evt : HsmEvent, res : string, ex : list[string], act : list[string], en : list[string]) : void
     {
       TestName(null, evt, res, ex, act, en)
     }
 
-    public Test(evt : string, ex : list[string], act : list[string], en : list[string]) : void
+    public Test(evt : HsmEvent, ex : list[string], act : list[string], en : list[string]) : void
     {
       TestName(null, evt, ex, act, en)
     }
 
-    public Test(name : string, evt : string, ex : list[string], en : list[string]) : void
+    public Test(name : string, evt : HsmEvent, ex : list[string], en : list[string]) : void
     {
-      Test(name, evt, ex, [], en)
+      TestName(name, evt, ex, [], en)
     }
 
-    public Test(evt : string, ex : list[string], en : list[string]) : void
+    public Test(evt : HsmEvent, ex : list[string], en : list[string]) : void
     {
       TestName(null, evt, ex, [], en)
     }
 
-    public TestName(name : string, evt : string, ex : list[string], act : list[string], en : list[string]) : void
+    public TestName(name : string, evt : HsmEvent, ex : list[string], act : list[string], en : list[string]) : void
     {
       def res = en.Last();
       TestName(name, evt, res, ex, act, en.ChopLast().NToList());
@@ -201,7 +209,7 @@ namespace Nemerle.Statechart
 
     InitiateCond(res : string, acts : array[string]) : bool
     {
-      Test(_ => fsm.Initiate(), res, acts)
+      Test(fsm.Initiate, res, acts)
     }
 
     public InitiateName(name : string, en : list[string]) : void

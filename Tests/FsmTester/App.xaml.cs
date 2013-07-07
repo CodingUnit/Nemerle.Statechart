@@ -4,6 +4,7 @@ using System.Configuration;
 using System.Data;
 using System.Linq;
 using System.Windows;
+using GalaSoft.MvvmLight.Threading;
 
 namespace FsmTester
 {
@@ -12,27 +13,22 @@ namespace FsmTester
     /// </summary>
     public partial class App : Application
     {
-        Car car;
 
-        protected override void OnStartup(StartupEventArgs e)
+        static App()
         {
-            base.OnStartup(e);
-            var win = new MainWindow();
-            car = new Car(win);
-            win.Loaded += new RoutedEventHandler(win_Loaded);
-            base.Exit += new ExitEventHandler(App_Exit);
-            MainWindow = win;
-            win.Show();
+            DispatcherHelper.Initialize();
         }
 
-        void App_Exit(object sender, ExitEventArgs e)
-        {
-            car.Stop();
-        }
+        
 
-        void win_Loaded(object sender, RoutedEventArgs e)
-        {
-            car.Init();
-        }
+        //void App_Exit(object sender, ExitEventArgs e)
+        //{
+        //    car.Stop();
+        //}
+
+        //void win_Loaded(object sender, RoutedEventArgs e)
+        //{
+        //    car.Init();
+        //}
     }
 }

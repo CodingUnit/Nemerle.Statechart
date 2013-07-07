@@ -25,18 +25,6 @@ namespace Nemerle.Statechart
     NotifyPropertyChangeImpl.DoTransform2(Macros.ImplicitCTX(), typeBuilder, pars)
   }
 
-  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
-  macro NotifyPropertyChange(typeBuilder : TypeBuilder, params pars : list[PExpr])
-  {
-    NotifyPropertyChangeImpl.DoTransform2b(Macros.ImplicitCTX(), typeBuilder, pars)
-  }
-
-  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Property)]
-  macro NotifyPropertyChange(typeBuilder : TypeBuilder, prop : ClassMember.Property, params pars : list[PExpr])
-  {
-    NotifyPropertyChangeImpl.DoTransform1(Macros.ImplicitCTX(), typeBuilder, prop, pars)
-  }
-
   public module NotifyPropertyChangeUtil
   {
 
@@ -61,25 +49,18 @@ namespace Nemerle.Statechart
   /// </summary>
   module NotifyPropertyChangeImpl
   {
-    public DoTransform1(typer : Typer, typeBuilder : TypeBuilder, _prop : ClassMember.Property, _aliases : list[PExpr]) : void
-    {
-      when (!IsImplemented(typer, typeBuilder) && !typeBuilder.GetModifiers().GetMacroAttributes().Exists(_ is <[ NotifyPropertyChange ]>))
-      {
-        typeBuilder.AddMacroAttribute(<[ NotifyPropertyChange ]>);
-      }
-    }
 
-
-    public DoTransform2(_typer : Typer, typeBuilder : TypeBuilder, _aliases : list[PExpr]) : void
+    public DoTransform2(typer : Typer, typeBuilder : TypeBuilder, aliases : list[PExpr]) : void
     {
-      def mems = typeBuilder.GetEvents(BindingFlags.FlattenHierarchy);
+      DoTransform2b(typer, typeBuilder, aliases);
+      def mems = typeBuilder.GetEvents();
       when (!mems.Exists(x => x.Name == "PropertyChanged"))
       {
         typeBuilder.Define(<[decl: public event PropertyChanged : PropertyChangedEventHandler ]>);
         typeBuilder.Define(<[decl: protected OnPropertyChanged(name : string) : void
-                                  {
-                                      PropertyChanged?.Invoke(this, PropertyChangedEventArgs(name))
-                                  } ]>);
+                                   {
+                                       PropertyChanged?.Invoke(this, PropertyChangedEventArgs(name))
+                                   } ]>);
 
       }
 
@@ -109,7 +90,7 @@ namespace Nemerle.Statechart
     
     IsImplemented(typer : Typer, typeBuilder : TypeBuilder) : bool
     {
-      def type = <[ INotifyPropertyChanged]>;
+      def type = <[ INotifyPropertyChanged ]>;
       typeBuilder.Implements(typer, type)
     }
 
@@ -117,7 +98,7 @@ namespace Nemerle.Statechart
     {
       when (!IsImplemented(typer, typeBuilder))
       {
-        typeBuilder.AddImplementedInterface(<[ INotifyPropertyChanged ]>);
+        Message.Error("Need Implement INotifyPropertyChanged interface");
       }
 
     }

@@ -6,50 +6,17 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Collections.Concurrent;
-using System.Threading;
 using System.ComponentModel;
 
 namespace Nemerle.Statechart
 {
 
-  /// <summary>
-  /// Description of Implementation.
-  /// </summary>
-  public abstract class StateMachine[TState, TEvent] : INotifyPropertyChanged where TState : class
+  public abstract class StateMachine[TState] : INotifyPropertyChanged where TState : HsmState
   {
     [Accessor]
     protected mutable cur_state : TState;
-
+    
     protected abstract Initial() : TState;
-    
-    public this(completion : bool = false)
-    {
-      def queue = if (completion)
-      {
-        most_priority_queue = ConcurrentQueue();
-        QueueThread
-      } else
-      {
-        QueueThreadSimple
-      }
-      queue_thread = Thread(queue)
-    }
-    
-    public Initiate() : void
-    {
-	    _ = work_event.Reset();
-	    Switch(Initial());
-	    queue_thread.Start();
-    }
-
-    queue : ConcurrentQueue[TEvent] = ConcurrentQueue();
-    mutable most_priority_queue : ConcurrentQueue[TEvent] = ConcurrentQueue();
-    
-    mutable queue_thread : Thread;
-    
-    work_event : ManualResetEvent = ManualResetEvent(false);
-    complete_event : ManualResetEvent = ManualResetEvent(true);
 
     public IsTerminated : bool
     {
@@ -58,140 +25,75 @@ namespace Nemerle.Statechart
         cur_state == null
       }
     }
+    
+    protected abstract DispatchEvent(evt : HsmEvent) : TState;
 
-    protected abstract DispatchEvent(evt : TEvent) : TState;
-    
-    Dispatch(evt : TEvent) : void
+    protected Dispatch(evt : HsmEvent) : void
     {
-      def st = DispatchEvent(evt);
-      TrySwitch(st)
+      TrySwitch(DispatchEvent(evt))
     }
     
-    public SendEvent(evt : TEvent) : void
-    {
-      PostEvent(evt);
-      WaitComplete();
-    }
-    
-    public SendEvent(evt : string) : void
-    {
-      PostEvent(evt);
-      WaitComplete();
-    }
-    
-    public abstract PostEvent(evt : string) : void;
-    
-    public PostEvent(evt : TEvent) : void
-    {
-      _ = complete_event.Reset();
-	    queue.Enqueue(evt);
-	    _ = work_event.Set();
-    }
-    
-    WaitComplete() : void
-    {
-	    _ = complete_event.WaitOne()
-    }
-    
-    protected PostEventMostPriority(evt : TEvent) : void
-    {
-	    _ = complete_event.Reset();
-	    most_priority_queue.Enqueue(evt);
-	    _ = work_event.Set();
-    }
-
     public override ToString() : string
     {
       cur_state.ToString()
     }
-    
-    TrySwitch(st : TState) : void
+
+    protected TrySwitch(st : TState) : void
     {
-      when (st != null) Switch(st)
+      when (st != null) Switch(st);
+      OnEventComplete()
     }
-    
+
     protected virtual OnSwitch() : void
     {
     }
     
-    Switch(st : TState) : void
+    protected virtual OnEventComplete() : void
+    {
+    }
+
+    protected Switch(st : TState) : void
     {
       cur_state = st;
       OnSwitch()
     }
     
-    protected abstract DoActivityStop() : void;
-    
-    public Terminate() : void
+    public virtual Terminate() : void
     {
-      DoActivityStop();
       cur_state = null;
-	    _ = work_event.Set();
-      when (Thread.CurrentThread != this.queue_thread : object)
-	    {
-		    queue_thread.Join();
-	    }
-
-	    OnTerminated()
+      OnTerminated()
     }
-    
+
     OnTerminated() : void
     {
       Terminated?.Invoke(this, null)
     }
-    
+
     public event Terminated : EventHandler;
     
-    QueueThreadSimple() : void
-    {
-      while (!IsTerminated)
-      {
-        mutable item;
-        if (queue.TryDequeue(out item))
-        {
-          Dispatch(item);
-        }
-        else
-        {
-          _ = complete_event.Set();
-          _ = work_event.Reset();
-          _ = work_event.WaitOne();
-        }
-      }
-     }
+    public event PropertyChanged : PropertyChangedEventHandler;
 
-     public event PropertyChanged : PropertyChangedEventHandler;
-     
-     protected OnPropertyChanged(name : string) : void
-     {
-       PropertyChanged?.Invoke(this, PropertyChangedEventArgs(name))
-     }
-     
-    QueueThread() : void
+    protected OnPropertyChanged(name : string) : void
     {
-      while (!IsTerminated)
-      {
-        mutable item;
-        if (this.most_priority_queue.TryDequeue(out item))
-        {
-          Dispatch(item);
-        }
-        else
-        {
-          if (queue.TryDequeue(out item))
-          {
-            Dispatch(item);
-          }
-          else
-          {
-            _ = complete_event.Set();
-            _ = work_event.Reset();
-            _ = work_event.WaitOne();
-          }
-        }
-      }
+      PropertyChanged?.Invoke(this, PropertyChangedEventArgs(name))
     }
-    
   }
+  
+  public abstract class HsmEvent
+  {
+    public abstract Name : string {get;}
+    public abstract FullName : string {get;}
+  }
+  
+  public interface IActiveStateMachine
+  {
+    PostEvent(evt : HsmEvent) : void;
+  }
+  
+  public abstract class HsmState
+  {
+  }
+  
+
 }
-   
+

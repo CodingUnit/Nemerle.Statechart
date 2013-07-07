@@ -1,0 +1,156 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Collections.Concurrent;
+using System.Threading;
+//using System.Threading.Tasks;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of Implementation.
+  /// </summary>
+  public abstract class ActiveStateMachine[TState] : StateMachine[TState], IActiveStateMachine where TState : HsmState
+  {
+
+    public ManualRoute : bool {get;set; default false}
+    
+    public this(completion : bool = false)
+    {
+      def queue = if (completion)
+                   {
+                     most_priority_queue = ConcurrentQueue();
+                     QueueThread
+                   } else
+                   {
+                     QueueThreadSimple
+                   }
+      queue_thread = Thread(queue)
+    }
+    
+    public abstract Events : IEnumerable[HsmEvent] {get;}
+    
+    Messenger : FsmMessenger = FsmMessenger.Instance;
+    
+    protected virtual Subscribe() : void
+    {
+      Messenger.Subscribe(Events, this);
+      Messenger.Init(ManualRoute);
+    }
+    
+    protected virtual Unsubscribe() : void
+    {
+      Messenger.Unsubscribe(this)
+    }
+    
+    public Initiate() : void
+    {
+      _ = work_event.Reset();
+      TrySwitch(Initial());
+      queue_thread.Start();
+      Subscribe();
+    }
+
+    queue : ConcurrentQueue[HsmEvent] = ConcurrentQueue();
+    mutable most_priority_queue : ConcurrentQueue[HsmEvent] = ConcurrentQueue();
+
+    mutable queue_thread : Thread;
+
+    work_event : ManualResetEvent = ManualResetEvent(false);
+
+    public abstract PostEvent(evt : string) : void;
+
+    public PostEvent(evt : HsmEvent) : void
+    {
+      queue.Enqueue(evt);
+      _ = work_event.Set();
+    }
+
+    protected PostEventMostPriority(evt : HsmEvent) : void
+    {
+      most_priority_queue.Enqueue(evt);
+      _ = work_event.Set();
+    }
+
+    protected abstract DoActivityStop() : void;
+
+    
+    public override Terminate() : void
+    {
+      Unsubscribe();
+      DoActivityStop();
+      _ = work_event.Set();
+      queue_thread.Abort();
+      
+      when (Thread.CurrentThread != this.queue_thread : object)
+      {
+        queue_thread.Join();
+      }
+
+      base.Terminate();
+    }
+    
+    QueueThreadSimple() : void
+    {
+      try 
+      {
+        while (true)
+        {
+          mutable item;
+          if (queue.TryDequeue(out item))
+          {
+            Dispatch(item)
+          }
+          else
+          {
+            _ = work_event.Reset();
+            _ = work_event.WaitOne();
+          }
+        }
+      }
+      catch
+      {
+        | _ is ThreadAbortException => ()
+        | _                         => throw
+      }
+    }
+
+    QueueThread() : void
+    {
+      try
+      {
+        while (true)
+        {
+          mutable item;
+        // TODO: do this with deque
+          if (most_priority_queue.TryDequeue(out item))
+          {
+            Dispatch(item)
+          }
+          else
+          {
+            if (queue.TryDequeue(out item))
+            {
+              Dispatch(item)
+            }
+            else
+            {
+              _ = work_event.Reset();
+              _ = work_event.WaitOne();
+            }
+          }
+        }
+      }
+      catch
+      {
+        | _ is ThreadAbortException => ()
+        | _                         => throw
+      }
+    }
+  }
+}
