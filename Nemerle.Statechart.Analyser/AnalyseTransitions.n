@@ -23,7 +23,7 @@ namespace Nemerle.Statechart
     {
       def check_auto_initial(st)
       {
-        | FsmState(type = StateType.Final)
+        | FsmState(type = StateType.Final) 
         | FsmState(type = StateType.Region) => ()
         | FsmState(initial = None, sub_states = head :: _) when (!head.IsFinal) => st.DefineInitial(head);
         | _ => ()
@@ -39,6 +39,7 @@ namespace Nemerle.Statechart
               match (tran.To)
               {
                 | TransitionTarget.State 
+                | PseudoState(PseudoStateNode.History)
                 | PseudoState(PseudoStateNode.EntryPoint) => ()
                 | _                                       => AddError(FsmError.InitialTransitionMustGoToState(i))
               }  
@@ -47,7 +48,6 @@ namespace Nemerle.Statechart
         
       }
       
-      //States.Iter(x => check_duplicates(x.InitialTransitions().Select(_.Value)));  // check duplicates
       
       // check state attributes
       foreach (st in States)
@@ -60,7 +60,15 @@ namespace Nemerle.Statechart
         when (FsmFlags.AutoInitial) check_auto_initial(st);
       }
       
-      check_auto_initial(TopState)
+      check_auto_initial(TopState);
+      foreach (reg in concurrent_states) // check if all concurrent states have initial pseudo states
+      {
+        def sreg = reg.sub_states.Where(x => x.initial.IsNone);
+        when (!sreg.IsEmpty())
+        {
+          throw FsmErrorException(FsmError.SubRegionsMustContainInitial(sreg.NToList()));
+        }
+      }
     }
 
     is_crossed_orthogonal(tr : StateTransition, st : FsmState) : bool
@@ -112,17 +120,26 @@ namespace Nemerle.Statechart
       st.DeleteTransitions(del);// conflicted deleted from set of enabled without signal, normal situation
     }
 
-    CreateAndCheckConflictTransitions() : void
+    FlattenTransitions(st : IEnumerable[FsmState] = null) : void
     {
-      def (simple, other) = States.NToList().Partition(_.IsSimple);
-
+      def states = st ?? States;
       // create super state transitions in simple states
-      foreach (st when st.Super != null in States)
+      foreach (st when st.Super != null in states)
       {
         st.DefineTransitions(st.Super.transitions)
       }
-       
-      other.Iter(_.DeleteTransitions());  // delete other transitions from composite states
+      
+      foreach (st when st.IsComposite in states)
+      {
+        st.DeleteTransitions() // delete other transitions from composite states
+      }
+    }
+    
+    CreateAndCheckConflictTransitions() : void
+    {
+      FlattenTransitions();
+      def simple = States.Where(_.IsSimple);
+
       foreach (st in simple)
       {
         foreach (group in st.ConflictTransitions)
@@ -132,7 +149,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    CheckDefferedEvents() : void
+    CheckDeferedEvents() : void
     {
       def check_override(tr, st, defer)
       {
@@ -276,7 +293,7 @@ namespace Nemerle.Statechart
       //create_fork_transitions(); // creating fork transitions
       //RenameEvents();
       CheckLocalTrans();
-      CheckDefferedEvents(); // check defered events
+      CheckDeferedEvents(); // check defered events
       CreateAndCheckConflictTransitions(); // create parent transitions
       CreateDecisionTree();
       //CheckDuplicates(); // check duplicates

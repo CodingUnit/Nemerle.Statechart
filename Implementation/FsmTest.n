@@ -1,4 +1,5 @@
-﻿using Nemerle;
+﻿using System.Windows.Forms.UnsafeNativeMethods;
+using Nemerle;
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
@@ -8,12 +9,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.ComponentModel;
 using System.Threading;
+using System.IO;
 
 namespace Nemerle.Statechart
 {
   public interface ITestStateMachine : INotifyPropertyChanged
   {
     Initiate()                : void;
+    PostEvent(evt : string)   : void;
     PostEvent(evt : HsmEvent) : void;
     IsInState(st : string)    : bool;
     event ActionExecuted      : Action[string];
@@ -48,12 +51,12 @@ namespace Nemerle.Statechart
     }
 
     wait_signal : ManualResetEvent = ManualResetEvent(false);
-    
+
     CompleteResult() : void
     {
       _ = wait_signal.Set();
     }
-    
+
     OnOkTest() : void
     {
       OkTest?.Invoke()
@@ -87,7 +90,7 @@ namespace Nemerle.Statechart
 
     static ActionsImpl(act : IEnumerable[string]) : IEnumerable[string]
     {
-      act//.Select(x => $"$(x)Action")
+      act
     }
 
     public static Entry(params en : array[string]) : array[string]
@@ -114,12 +117,10 @@ namespace Nemerle.Statechart
     {
       prepare();
       func();
-        def acts = if (res != null) acts.Append(Entry(res)) else Actions(acts);
-        def acts = if (acts.Length == queue.Count()) acts.ZipLazy(queue).All(_ == _) else false;
-        def state = res == null || fsm.IsInState(res);
-        state && acts;
-      
-      
+      def acts = if (res != null) acts.Append(Entry(res)) else Actions(acts);
+      def acts = if (acts.Length == queue.Count()) acts.ZipLazy(queue).All(_ == _) else false;
+      def state = res == null || fsm.IsInState(res);
+      state && acts
     }
 
     SendEvent(evt : HsmEvent) : void
@@ -130,6 +131,14 @@ namespace Nemerle.Statechart
       _ = wait_signal.WaitOne()
     }
 
+    SendEvent(evt : string) : void
+    {
+      Send?.Invoke(evt);
+      _ = wait_signal.Reset();
+      fsm.PostEvent(evt);
+      _ = wait_signal.WaitOne()
+    }
+    
     public TestCond(evt : HsmEvent, res : string, params acts : array[string]) : bool
     {
       Test(_ => SendEvent(evt), res, acts)
@@ -228,6 +237,76 @@ namespace Nemerle.Statechart
       InitiateName(null, res, acts.ToArray())
     }
 
+    public exit_string : string {get;set;default "exit"}
+
+    mutable canceled : bool;
+
+    mutable history : list[string * list[string]];
+    
+    public GenerateTest(name : string, code_file : string, out_file : string) : void
+    {
+      def gen_test(e, act)
+      {
+        def act = act.Map(x => $<#"$x"#>);
+        match (e)
+        {
+          | null => $<#$name.Initiate(..$(act;", "))#>
+          | e    => def e = e.ToUpperFirst();
+                    def res = act.Last();
+                    def act = act.ChopLast();
+                    $<#$name.Test(Event.$e.New(), $res, ..$(act;", "))#>
+        }
+      }
+      
+      def gen_out((e, act), a)
+      {
+        match (e)
+        {
+          | null => def res = "OK" :: a;
+                    def res = act + res;
+                    "Initiate state machine" :: res
+          | e    => def res = "OK" :: a;
+                    def res = act + res;
+                    $"Processing a '$e' " :: res
+        }
+      }
+      
+      def history = history.Reverse();
+      def str = history.Map(gen_test);
+      def out_str = history.FoldBack([], gen_out);
+      File.WriteAllLines(code_file, str);
+      File.WriteAllLines(out_file, out_str);
+    }
+    
+    public StartConsole() : void
+    {
+      canceled = false;
+      Console.WriteLine("Initiate state machine");
+      prepare();
+      fsm.Initiate();
+      history = (null, queue.NToList()) :: [];
+      
+      def loop()
+      {
+        def text = Console.ReadLine();
+        prepare();
+        try
+        {
+          if (text == exit_string) canceled = true else 
+          {
+            SendEvent(text);
+            history = (text, queue.NToList()) :: history;
+          }
+        }
+        catch
+        {
+          | _ is InvalidOperationException => Console.WriteLine("unknown event")
+        }
+        if (canceled) () else loop()
+      }
+      
+      loop()
+    }
   }
 
 }

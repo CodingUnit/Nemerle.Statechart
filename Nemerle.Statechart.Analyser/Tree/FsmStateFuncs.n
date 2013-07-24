@@ -55,18 +55,26 @@ namespace Nemerle.Statechart
       }
     }
 
+    public IsSequentialState : bool
+    {
+      get
+      {
+        !IsRegion
+      }
+    }
+    
+    public IsRegion : bool
+    {
+      get
+      {
+        type is StateType.Region
+      }
+    }
     public IsSubstateOf(st : FsmState) : bool
     {
       super_states.Contains(st)
     }
 
-    public SubRegions : IEnumerable[FsmState]
-    {
-      get
-      {
-        if (type is StateType.Region) sub_states else Enumerable.Empty()
-      }
-    }
     /// <summary>
     /// Is it Lived state, consider on nesting lived states
     /// </summary>
@@ -316,7 +324,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-      !ParticipateInHistory.IsEmpty()
+        !ParticipateInHistory.IsEmpty()
       }
     }
 
@@ -328,14 +336,28 @@ namespace Nemerle.Statechart
 
     public RegionsExcept(st : IEnumerable[FsmState]) : IEnumerable[FsmState]
     {
-      sub_states.Where(x => !x.AllSubStates.Exists(y => st.Exists(y : object == _)) && !st.Exists(_ == x : object))
+      //def st = st.Where(x => x.PartOfSubRegion.HasValue);
+      def sreg = st.FoldBack([], (x, a) => if (x.PartOfSubRegion is Some(r)) r :: a else a);
+      sub_states.Except(sreg)
     }
 
     public RegionsExcept(st : FsmState) : IEnumerable[FsmState]
     {
-      sub_states.Where(x => !x.AllSubStates.Contains(st) && x : object != st)
+      | FsmState(PartOfSubRegion = Some(r)) => sub_states.Except(r)
+      | _                                   => sub_states
+      //sub_states.Except(st.P)//Where(x => !x.AllSubStates.Contains(st) && x : object != st)
     }
 
+    //public SequentialFromConcurrent(lst : IEnumerable[FsmState]) : FsmState
+    //{
+    //  def ordered = lst.OrderBy(x => x.sub_region).NToList();
+    //  match (merged_states.Find((x, _) => x.Equals(ordered)))
+    //  {
+    //    | Some((_, x)) => x
+    //    | _            => null
+    //  }
+    //}
+    
     public this_transitions : IEnumerable[StateTransition]
     {
       get
@@ -632,11 +654,19 @@ namespace Nemerle.Statechart
       }
     }
 
+    public TransitionsByTrigger : IEnumerable[IEnumerable[StateTransition]]
+    {
+      get
+      {
+        transitions.GroupBy(x => x.FriendlyTriggerName);
+      }
+    }
+    
     public ConflictTransitions : IEnumerable[IEnumerable[StateTransition]]
     {
       get
       {
-        def by_trigger   = transitions.GroupBy(x => x.FriendlyTriggerName);
+        def by_trigger   = TransitionsByTrigger;
         by_trigger.Where(x => x.IsMoreThanOne());
       }
     }
@@ -679,6 +709,14 @@ namespace Nemerle.Statechart
       new_st.Super = this;
     }
 
+    public Replace(old : FsmState, new_st : IEnumerable[FsmState]) : void
+    {
+      def (before, after) = sub_states.PartitionAround(x => x == old);
+      def sub = before.Concat(new_st).Concat(after);
+      sub_states = sub.NToList();
+      new_st.Iter(x => x.Super = this);
+    }
+    
     public AddPseudo(st : PseudoStateNode) : void
     {
       pseudo_states = pseudo_states.Append(st).NToList();
