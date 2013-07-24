@@ -1,0 +1,98 @@
+﻿// analyser.n
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Statechart;
+using System.ComponentModel;
+
+namespace Nemerle.Statechart
+{
+
+  using StateTransition;
+  using ListUtils;
+
+  [NotifyPropertyChange]
+  public partial class FsmAnalyser : INotifyPropertyChanged
+  {
+
+    CheckHistoryStates() : void
+    {
+      // check for duplicates
+      foreach (FsmState(history = TwoOption.Two(n, n2)) in States)
+      {
+        match (n.type, n2.type)
+        {
+          | (HistoryType.Deep, HistoryType.Deep)
+          | (HistoryType.Shallow, HistoryType.Shallow) => AddError(FsmError.DuplicateHistory(n))
+          | _                                          => ()
+        }
+      }
+      
+      // check history duplicates in state
+      foreach (h in HistoryStates)
+      {
+        | PseudoStateNode.History(default = Some(d)) when (d.ToState == null) => AddError(FsmError.DefaultTransitionMustGoToState(d, h))
+        | _                                                                   => ()
+      }
+    }
+
+    CreateConcurrentRegion() : void
+    {
+      def warn = not_used_regions.Map(FsmWarning.RegionNotUsed);
+      AddWarnings(warn)
+    }
+
+    CheckActivities() : void 
+    {
+      def sm = DoActivities.Filter(x => x.state.PartOfStateMachine.HasValue);
+      def do_act = sm.GroupBy(x => x.state.PartOfStateMachine.Value.SubMachineType);
+      foreach (group in do_act)
+      {
+        foreach (st in group.GroupBy(x => x.state.name))
+        {
+          def (need, not) = st.NToList().Partition(x => x.need_completion);
+          def st = FsmState(st.Key, this, StateType.State());
+          if (need.Length > not.Length)
+          {
+            need.Iter(x => x.state = st);
+          } else
+          {
+            not.Iter(x => x.state = st)
+          }
+        }
+      }
+    }
+    
+    public Analyse() : void
+    {
+      try
+      {
+        CheckParseErrors();
+        CreateStateMap();
+        CheckHistoryStates(); // check for errors in history
+        CheckTransitions();
+        CheckInitialTransitions();
+        CheckPseudoStates();
+        CreateTransitions();
+        CreateActiveStates();
+        BreakIfError();
+        CreateTransitionPaths();
+        CheckActivities();
+        CreateHistoryPaths(); // create history paths
+        CreateConcurrentRegion();
+        FinalizeAnalyse();
+      }
+      catch 
+      {
+        | x is FsmErrorException => 
+          def err = x.error;
+          when (err != null) AddError(err);
+      }
+    }
+
+  }
+}

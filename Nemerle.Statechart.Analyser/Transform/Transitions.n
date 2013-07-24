@@ -1,0 +1,83 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of Transitions.
+  /// </summary>
+  public partial class FsmAnalyser
+  {
+    /// <summary>
+    /// Creating Transitions
+    /// </summary>
+    CreateTransitions() : void
+    {
+      CheckDeferedEvents(); // check defered events
+      CreateAndCheckConflictTransitions(); // create parent transitions
+      CreateDecisionTree();
+    }
+
+    RenameTransition(tran : IEnumerable[StateTransition]) : void
+    {
+      def dups = tran.NToList().Duplicates((x, y) => x.Name.CompareTo(y.Name));
+      dups.Iter(x => x.NeedGuardedName = true);
+      def dups = tran.DuplicatesGroup(x => x.Name);
+      dups.Iter(x => x.Iter(x => Used[x] = false));
+      def err = dups.Map(x => FsmError.DuplicateTransition(x.NToList()));
+      AddErrors(err);
+    }
+
+    CreateTransitionPaths() : void
+    {
+      def traverse()
+      {
+        traverser = TransitionTraverser(this);
+        traverser.Add(TopState.initial_tran.Value);
+        traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
+        traverser = null;
+      }
+
+      //all_transitions_with_spec.dup
+      def obj = States.Select(_ : object).Concat(all_transitions_with_spec).Concat(PseudoStates);
+      obj.Iter(Used.Add(_, false)); // init used properties
+
+      traverse(); // traverse paths
+      //update_states();
+      CreateTransitionsWithPaths()
+    }
+
+    CreateTransitionsWithPaths() : void
+    {
+      def empty = empty_states.Select(FsmWarning.StateNotUsed); // warning about all without substates and not lived that is not used
+      def not_used = not_used_transitions.Select(FsmWarning.TransitionNotUsed);
+      AddWarnings(empty);
+      AddWarnings(not_used); // determine used elements
+
+      RenameTransition(used_transitions);
+      def hist = not_used_history.Select(FsmWarning.HistoryNotUsed);
+      AddWarnings(hist)
+    }
+
+    CreateHistoryPaths() : void
+    {
+      def create_hist_path(h, a)
+      {
+        def sub = h.SubStatesParticipateIn;
+        def parent = h.state;
+        sub.FoldLeft(a, (x, a) => HistoryPath(parent, x, h) :: a)
+      } 
+
+      def paths = HistoryStates.FoldLeft([], create_hist_path);
+      paths.Iter(_.CreatePath());
+      def paths = paths.GroupBy(x => x.To).Select(x => (x.Key, x.NToList()));
+      HistoryPaths = Hashtable(paths);
+    }
+  }
+}
