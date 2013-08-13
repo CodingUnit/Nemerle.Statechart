@@ -48,20 +48,23 @@ namespace Nemerle.Statechart
 
     CheckActivities() : void 
     {
-      def sm = DoActivities.Filter(x => x.state.PartOfStateMachine.HasValue);
-      def do_act = sm.GroupBy(x => x.state.PartOfStateMachine.Value.SubMachineType);
+      def do_act = States.SelectMany(x => x.do_activity.Select(y => (x, y)));
+      //def do_act = do_act.Filter((_, x) => x.Length != 0);
+
+      def sm = do_act.Filter((x : FsmState, _) => x.PartOfStateMachine.HasValue);
+      def do_act = sm.GroupBy((x : FsmState, _) => x.PartOfStateMachine.Value.SubMachineType);
       foreach (group in do_act)
       {
-        foreach (st in group.GroupBy(x => x.state.name))
+        foreach (st in group.GroupBy((x, _) => x.name))
         {
-          def (need, not) = st.NToList().Partition(x => x.need_completion);
+          def (need, not) = st.NToList().Partition((_, x) => x.need_completion);
           def st = FsmState(st.Key, this, StateType.State());
           if (need.Length > not.Length)
           {
-            need.Iter(x => x.state = st);
+            need.Iter((_, x) => x.state = st.name);
           } else
           {
-            not.Iter(x => x.state = st)
+            not.Iter((_, x) => x.state = st.name)
           }
         }
       }
@@ -78,9 +81,10 @@ namespace Nemerle.Statechart
         CheckInitialTransitions();
         CheckPseudoStates();
         CreateTransitions();
-        CreateActiveStates();
+        //CreateActiveStates();
         BreakIfError();
-        CreateTransitionPaths();
+        //CreateTransitionPaths();
+        TransformFsm();
         CheckActivities();
         CreateHistoryPaths(); // create history paths
         CreateConcurrentRegion();

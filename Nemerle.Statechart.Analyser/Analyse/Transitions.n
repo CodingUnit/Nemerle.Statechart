@@ -38,11 +38,16 @@ namespace Nemerle.Statechart
           | PseudoStateNode.Initial(tran = tran) as i :: [] => 
               match (tran.To)
               {
-                | TransitionTarget.State 
-                | PseudoState(PseudoStateNode.History)
-                | PseudoState(PseudoStateNode.EntryPoint) => ()
-                | _                                       => AddError(FsmError.InitialTransitionMustGoToState(i))
-              }  
+                | PseudoState(PseudoStateNode.History(state = st)) 
+                | PseudoState(PseudoStateNode.EntryPoint(state = st))
+                | TransitionTarget.State(st) when (t.AllSubStates.Contains(st)) => ()
+                | _                                                             => AddError(FsmError.InitialTransitionMustGoToState(i))
+              }
+              match (tran.To)
+              {
+                | PseudoState(PseudoStateNode.History(default = None)) => AddError(FsmError.InitialTransitionToHistoryMustHaveDefaultTran(i))
+                | _                                                    => ()
+              }
               when (tran.guard.NotEmpty) AddError(FsmError.InitialTransitionCannotHaveGuards(i));
         }
         
@@ -61,17 +66,25 @@ namespace Nemerle.Statechart
       }
       
       check_auto_initial(TopState);
-      foreach (reg in concurrent_states) // check if all concurrent states have initial pseudo states
+      foreach (st when st.IsComposite in States)
       {
-        def sreg = reg.sub_states.Where(x => x.initial.IsNone);
-        when (!sreg.IsEmpty())
+        when (!st.IncomingTransitions.IsEmpty())
+        if (st.IsConcurrent)
         {
-          throw FsmErrorException(FsmError.SubRegionsMustContainInitial(sreg.NToList()));
+          def sreg = st.sub_states.Where(x => x.initial.IsNone);
+          when (!sreg.IsEmpty())
+          {
+            AddError(FsmError.SubRegionsMustContainInitial(sreg.NToList()))
+          }
+        } else
+        {
+          when (st.initial.IsNone) AddError(FsmError.CompositeStateWithIncomingTransitionsMustHaveInitial(st))
         }
       }
+      
     }
-
-    ResolveConflictTransitions(st : FsmState, trans : IEnumerable[StateTransition]) : void
+    
+    CheckConflictTransitions(st : FsmState, trans : IEnumerable[StateTransition]) : void
     {
       def conflict = trans.OrderByDescending(x => x.From.hierarchy_pos).NToList();
       def by_hierarchy = conflict.GroupBy(x => x.From.hierarchy_pos);
@@ -107,32 +120,33 @@ namespace Nemerle.Statechart
       def del = trans.Except(left);
       st.DeleteTransitions(del);// conflicted deleted from set of enabled without signal, normal situation
     }
-
-    FlattenTransitions(st : IEnumerable[FsmState] = null) : void
-    {
-      def states = st ?? States;
-      // create super state transitions in simple states
-      foreach (st when st.Super != null in states)
-      {
-        st.DefineTransitions(st.Super.transitions)
-      }
+    
+    
+    //FlattenTransitions(st : IEnumerable[FsmState] = null) : void
+    //{
+    //  def states = st ?? States;
+    //  // create super state transitions in simple states
+    //  foreach (st when st.Super != null in states)
+    //  {
+    //    st.DefineTransitions(st.Super.transitions)
+    //  }
       
-      foreach (st when st.IsComposite in states)
-      {
-        st.DeleteTransitions() // delete other transitions from composite states
-      }
-    }
+    //  foreach (st when st.IsComposite in states)
+    //  {
+    //    st.DeleteTransitions() // delete other transitions from composite states
+    //  }
+    //}
     
     CreateAndCheckConflictTransitions() : void
     {
-      FlattenTransitions();
-      def simple = States.Where(_.IsSimple);
+      //FlattenTransitions();
+      //def simple = States.Where(_.IsSimple);
 
-      foreach (st in simple)
+      foreach (st in States)
       {
         foreach (group in st.ConflictTransitions)
         {
-          ResolveConflictTransitions(st, group);
+          //CheckConflictTransitions(st, group);
         }
       }
     }
@@ -142,11 +156,11 @@ namespace Nemerle.Statechart
       def check_override(tr, st, defer)
       {
         // transitions with trigger exists in defered list
-        def tr = tr.Where(x => defer.Exists(y => if (x.trigger is Some(t)) t == y else false));
+        def tr = tr.Where(x => defer.Exists(y => x.trigger == y));
         // filter and partition transition with position in hierarchy lower or equal current state
         def (left_tr, removed) = tr.PartitionLazy(x => x.From.hierarchy_pos >= st.hierarchy_pos);
         // left_tr transitions that overrides defered events in current state
-        def left_events = left_tr.FilterValues(_.trigger); // left events that override other defered
+        def left_events = left_tr.Map(_.trigger); // left events that override other defered
         def left_defer = defer.Except(left_events).NToList(); // remove from defer that events
         //def tr = tr.Except(removed); // remove from transition list removed events
         (removed, left_defer)
@@ -278,9 +292,10 @@ namespace Nemerle.Statechart
       {
         match (to, tr.From)
         {
+          | (null, _) => ()
           | (FsmState(PartOfRegion = Some(r), PartOfSubRegion = Some(sr)), FsmState(PartOfRegion = Some(r2), PartOfSubRegion = Some(sr2))) => 
               when (r : object == r2 && sr : object != sr2) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr))
-          | _ => ()
+          | _         => ()
         }
       }
       

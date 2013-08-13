@@ -36,6 +36,15 @@ namespace Nemerle.Statechart
     public Parent : FsmJunctionNode {get;set;}
     public path   : PathSequence {get;set;}
 
+    [Memoized]
+    public Targets : IEnumerable[TransitionTarget]
+    {
+      get
+      {
+        Fold([], (x, a) => if (x is FsmJunctionNode.Target(target = t)) t :: a else a)
+      }
+    }
+    
     public Rebuild(_ : IEnumerable[FsmJunctionNode]) : FsmJunctionNode
     {
       this
@@ -70,6 +79,19 @@ namespace Nemerle.Statechart
       }
     }
 
+    [Memoized]
+    public ToHJunctionNode : HJunctionNode
+    {
+      get
+      {
+        match (this)
+        {
+          | Node as n   => HJunctionNode.Node(n.nodes.Map(_.ToHJunctionNode))
+          | Target as n => HJunctionNode.Target(n.target.ToHTarget, null)
+        }
+      }
+    }
+    
     public static Create(st : PseudoStateNode.Junction, node : list[JunctionNode]) : FsmJunctionNode
     {
       def create(x, acc)

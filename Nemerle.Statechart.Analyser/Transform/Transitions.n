@@ -14,14 +14,97 @@ namespace Nemerle.Statechart
   /// </summary>
   public partial class FsmAnalyser
   {
+    ConvertEntryExitPoints() : void
+    {
+      def check_target(p, t)
+      {
+        match (p)
+        {
+          | TransitionTarget.PseudoState(PseudoStateNode.EntryPoint(_, p))          => t.AddAction(p.action);
+                                                                                       check_target(p.To, t);
+          | TransitionTarget.PseudoState(PseudoStateNode.ExitPoint(tran = Some(p))) => t.AddAction(p.action);
+                                                                                       check_target(p.To, t)
+          | _                                                                       => p
+        }
+      }
+      
+      def tran = StateTransitions.Concat(InitialTran);
+      foreach (StateTransition(To = p) as t in tran)
+      {
+        def tar = check_target(p, t);
+        t.To = tar
+      }
+    }
+    
+    ConvertInitialTransitions() : void
+    {
+      // transform action on transition to state
+      foreach (FsmState(initial = Some(i)) as state in States)
+      {
+        def tran = i.tran;
+        match (tran.action)
+        {
+          | []  => ()
+          | lst => def st = FsmState(this, StateType.State()); // create simple state
+                   st.name = $"$(state)Initial";
+                   def ntran = StateTransition(st, tran.To, TransitionKind.External);// :: [];
+                   ntran.trigger = StateEvent.Completion;
+                   st.transitions = ntran :: []; // create completion transition to target of initial
+                   st.entry = lst.Map(StateAction.Entry(st.ToString(), _, ActionFlags.None)); // entry action to initial actions
+                   def sub = state.sub_states;
+                   st.Super = state;
+                   state.sub_states = sub.AddBefore(st).NToList(); // add substate before other sub states
+                   tran.To = TransitionTarget.State(st);
+                   tran.action = []; // clear action
+        }
+      }
+    }
+    
     /// <summary>
     /// Creating Transitions
     /// </summary>
     CreateTransitions() : void
     {
-      CheckDeferedEvents(); // check defered events
-      CreateAndCheckConflictTransitions(); // create parent transitions
-      CreateDecisionTree();
+      CheckAndCreateCompletionTransitions();
+      ConvertEntryExitPoints();
+      ConvertInitialTransitions();
+      //CheckDeferedEvents(); // check defered events
+      //CreateAndCheckConflictTransitions(); // create parent transitions
+      //CreateDecisionTree();
+      
+    }
+
+    CheckAndCreateCompletionTransitions() : void
+    {
+      
+      def create_final_state(start, end)
+      {
+        if (start == end) () else
+        {
+          when (!start.Super.HaveFinal)
+          {
+            def final = FsmState(this, StateType.Final());
+            start.Super.Add(final);
+            def tran = StateTransition(start, TransitionTarget.Final(final), TransitionKind.External);
+            start.transitions += [tran];
+            create_final_state(start.Super, end)
+          }
+          create_final_state(start.Super, end)
+        }
+      }
+      
+      foreach (st in States)
+      {
+        when (st.IsSimple || st.HaveFinal)
+        {
+          def tran = st.SuperStatesInclude.SelectMany(_.CompletionTransitions);
+          foreach (tr in tran)
+          {
+            def from = tr.From;
+            create_final_state(st, from)
+          }
+        }
+      }
     }
 
     RenameTransition(tran : IEnumerable[StateTransition]) : void
@@ -34,22 +117,58 @@ namespace Nemerle.Statechart
       AddErrors(err);
     }
 
-    CreateTransitionPaths() : void
+    ResolveConflictTransitions(st : FsmState, trans : IEnumerable[StateTransition]) : void
     {
-      def traverse()
+      def conflict = trans.OrderByDescending(x => x.From.hierarchy_pos).NToList();
+      def by_hierarchy = conflict.GroupBy(x => x.From.hierarchy_pos);
+      
+      // check for duplicates
+      foreach (tr in by_hierarchy)
       {
-        traverser = TransitionTraverser(this);
-        traverser.Add(TopState.initial_tran.Value);
-        traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
-        traverser = null;
+        def dups = tr.NToList().Duplicates(FsmState.Compare(StateTransition.GuardComparer)); // find duplicates with same guards and same triggers
+        when (!dups.IsEmpty())
+        {
+          AddError(FsmError.DuplicateTransition(dups))
+        }
+      }
+      
+      def search_for_no_guard(g)
+      {
+        if (!g.IsMoreThanOne()) g else
+          match (g.Find(x => x.guard.IsEmpty))
+          {
+            | Some(t) => def tr   = g.Except(t); // without guard already enabled and have more priority
+                         def warn = tr.Map(FsmWarning.TransitionOverriden(_, t)); // signal this, not needed declaration, design error
+                         AddWarnings(warn);
+                         ListUtils.SingleElement(t)
+
+            | _       => g
+          }
       }
 
+
+      def resolve_on_levels = by_hierarchy.SelectMany(search_for_no_guard).NToList();
+      //def del = trans.Except(resolve_on_levels);
+      def (left, _) = resolve_on_levels.SplitFind(x => x.guard.IsEmpty);
+      def del = trans.Except(left);
+      st.DeleteTransitions(del);// conflicted deleted from set of enabled without signal, normal situation
+    }
+    
+    CreateTransitionPaths() : void
+    {
+      //def traverse()
+      //{
+      //  traverser = TransitionTraverser(this);
+      //  traverser.Add(TopState.initial_tran.Value);
+      //  traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
+      //  traverser = null;
+      //}
+
       //all_transitions_with_spec.dup
-      def obj = States.Select(_ : object).Concat(all_transitions_with_spec).Concat(PseudoStates);
+      def obj = States.Select(_ : object).Concat(all_transitions_with_spec).Concat(PseudoStates); // all_transitions_with_spec
       obj.Iter(Used.Add(_, false)); // init used properties
 
-      traverse(); // traverse paths
-      //update_states();
+      //traverse(); // traverse paths
       CreateTransitionsWithPaths()
     }
 

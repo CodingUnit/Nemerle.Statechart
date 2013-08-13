@@ -67,6 +67,7 @@ namespace Nemerle.Statechart
       }
     }
 
+    [Memoized]
     public ToState : FsmState
     {
       get
@@ -74,15 +75,40 @@ namespace Nemerle.Statechart
         match (this)
         {
           | PseudoState(PseudoStateNode(state = st))
-          //| History(PseudoStateNode.History(state = st))
           | Final(st)
-          //| SubMachine(machine = st)
           | State(st)  => st
           | _          => null
         }
       }
     }
 
+    /// <summary>
+    /// state on it terminates transition arrow from statechart
+    /// </summary>
+    [Memoized]
+    public TargetStates : list[FsmState]
+    {
+      get
+      {
+        match (this)
+        {
+          | PseudoState(p) => 
+            match (p)
+            {
+              | PseudoStateNode.EntryPoint(_, tr) 
+              | ExitPoint(tran = Some(tr))        => tr.To.TargetStates
+              | Fork(t)                           => t
+              | Join(target = t)                  => t.TargetStates
+              | Junction(tree = t)                => t.Targets.SelectMany(x => x.TargetStates).NToList()
+              | _                                 => []
+            }
+          | Final(st)
+          | State(st)  => [st]
+          | _          => []
+        }
+      }
+    }
+    
     public IsJunction : bool
     {
       get

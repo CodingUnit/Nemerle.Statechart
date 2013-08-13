@@ -1,0 +1,242 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of HFsm.
+  /// </summary>
+  [Record]
+  public class HFsm
+  {
+    public name : string;
+    public states : list[HState];
+    
+    public init_state : HState;
+    
+    public accept_state : option[HState];
+    
+    public super : HState;
+    
+    [Memoized]
+    public all_states : list[HState]
+    {
+      get
+      {
+        states.SelectMany(_.all_states).NToList()
+      }
+    }
+  
+    [Memoized]
+    public all_simple_states : list[HState]
+    {
+      get
+      {
+        states.SelectMany(_.all_simple_states).NToList()
+      }
+    }
+    
+    [Memoized]
+    public active_super : list[HState]
+    {
+      get
+      {
+        if (super != null) super.active_super + [super] else []
+      }
+    }
+  }
+
+  [Record]
+  public class HState
+  {
+    public name : string;
+    public transitions : list[HTransition] {get;set;default []}
+    public hierarchy : list[HFsm] {get;set;default []}
+    public automaton : HFsm {get;set;}
+    
+    public entry : list[StateAction.Entry] {get;set;default []}
+    public exit  : list[StateAction.Exit]  {get;set;default []}
+
+    public do_activity : list[StateAction.Do] {get;set;default []}
+    public deferred_events : list[StateEvent] {get;set;default []}
+    
+    public history : TwoOption[HPseudoState.History] {get;set; default TwoOption.None()}
+    
+    //public entry : list[];
+    public IsSimple : bool
+    {
+      get
+      {
+        hierarchy.IsEmpty()
+      }
+    }
+    
+    public IsConcurrent : bool
+    {
+      get
+      {
+        hierarchy.Length >= 2
+      }
+    }
+    
+    public IsComposite : bool
+    {
+      get
+      {
+        hierarchy.Length == 1
+      }
+    }
+    
+    public IsTop : bool
+    {
+      get
+      {
+        automaton.super == null
+      }
+    }
+    
+    [Memoized]
+    public all_simple_states : list[HState]
+    {
+      get
+      {
+        if (hierarchy.IsEmpty()) this :: [] else
+          hierarchy.SelectMany(x => x.states.SelectMany(x => x.all_simple_states)).NToList()
+      }
+    }
+
+    [Memoized]
+    public all_states : list[HState]
+    {
+      get
+      {
+        this :: hierarchy.SelectMany(x => x.states.SelectMany(x => x.all_states)).NToList()
+      }
+    }
+    
+    public active_super : list[HState]
+    {
+      get
+      {
+        if (automaton != null) automaton.active_super else []
+      }
+    }
+    
+    [Memoized]
+    public region_pos : int
+    {
+      get
+      {
+        if (automaton != null && automaton.states != null) automaton.states.IndexOf(this) else 0
+      }
+    }
+    
+    [Memoized]
+    public hierarchy_pos : int
+    {
+      get
+      {
+        if (automaton == null || automaton.super == null) 0 else
+          automaton.super.hierarchy_pos + 1
+      }
+    }
+    
+    public override ToString() : string { name ?? "Top" }
+  }
+
+  [Record]
+  public class HTransition
+  {
+    public Source  : HTarget;
+    public Trigger : StateEvent;
+    public Guard   : GuardNode;
+    public Actions : list[FsmAction];
+    public Target  : HTarget;
+    public Local   : bool;
+  }
+
+  [Record]
+  public variant HTarget
+  {
+    | Nowhere
+    | PseudoState { node : HPseudoState; }
+    | State { state : HState; }
+  }
+
+  public variant HJunctionNode
+  {
+    | Node { nodes : list[HJunctionNode]; }
+    | Target { target : HTarget; dest : TargetDeterminator {get;set;} } 
+    
+    public guard : GuardNode {get;set;}
+    public actions : list[FsmAction] {get;set;}
+  }
+  
+  [Record]
+  public variant HPseudoState
+  {
+    | History
+      {
+        default : option[HTransition];
+        type : HistoryType;
+      }
+    | Junction
+      {
+        name : string;
+        tree : HJunctionNode;
+        type : JunctionType;
+      }
+    | Fork
+      {
+        states : list[HState];
+      }
+    | Join
+      {
+        name : string;
+        states : list[HState];
+        target : HTarget;
+      }
+    | Terminate
+    
+    
+    public state : HState;
+    
+     public Name : string
+    {
+      get
+      {
+        def name = match (this)
+        {
+          | History(type = t) => 
+
+              def type = match (t)
+                          {
+                            | HistoryType.Deep     => "Deep"
+                            | Shallow              => "Shallow"
+                            | None                 => ""
+                          }
+
+              if (state != null)
+              {
+                if (state.history.IsOne) $"$(state)History" else $"$(state)$(type)History"
+              } else "History";
+          | Join(name = n)           => $"Join$n"//$copy_name
+          | Terminate => $"$(state)Terminate"
+          | Fork(states = t)          => $<#Fork$(state)To..$(t;"_")#>
+          //| Initial                   => $"$(state)Initial"
+          | Junction(name = n)        => $"$state$n"
+          //| EntryPoint(name = n)      => $"EntryPoint$n"
+          //| ExitPoint(name = n)       => $"ExitPoint$n"
+        }
+        name// + copy_name
+      }
+    }
+  }
+
+}

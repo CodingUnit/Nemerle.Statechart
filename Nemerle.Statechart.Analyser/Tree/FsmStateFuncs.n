@@ -15,7 +15,16 @@ namespace Nemerle.Statechart
   public partial class FsmState
   {
 
-    public IsOrthogonal : bool
+    [Memoized]
+    public IncomingTransitions : list[StateTransition]
+    {
+      get
+      {
+        analyser.StateTransitions.Filter(x => x.To.TargetStates.Contains(this))
+      }
+    }
+    
+    public IsConcurrent : bool
     {
       get
       {
@@ -59,17 +68,10 @@ namespace Nemerle.Statechart
     {
       get
       {
-        !IsRegion
+        !IsConcurrent
       }
     }
     
-    public IsRegion : bool
-    {
-      get
-      {
-        type is StateType.Region
-      }
-    }
     public IsSubstateOf(st : FsmState) : bool
     {
       super_states.Contains(st)
@@ -454,7 +456,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public static HistoryName(this lst : list[PseudoStateNode.History]) : string
+    public static HistoryName(this lst : list[HPseudoState.History]) : string
     {
       | n :: [] => n.Name
       | n       => def n = n.Select(x => x.Name);
@@ -516,11 +518,11 @@ namespace Nemerle.Statechart
       }
     }
     
-    public TraverseTransitions() : void
-    {
-      paths = TransitionPaths(this);
-      paths.TraverseTransitions(true);
-    }
+    //public TraverseTransitions() : void
+    //{
+    //  paths = TransitionPaths(this);
+    //  paths.TraverseTransitions(true);
+    //}
 
     public OriginalName : string
     {
@@ -559,7 +561,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        transitions.Where(x => x.IsCompletion)
+        transitions.Where(_.IsCompletion)
       }
     }
 
@@ -608,7 +610,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        transitions.FilterValues(_.trigger)
+        transitions.Select(_.trigger)
       }
     }
 
@@ -619,7 +621,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        WorkTransitions.Select(x => x.Trigger).Distinct()
+        WorkTransitions.Select(_.trigger).Distinct()
       }
     }
    
@@ -636,23 +638,23 @@ namespace Nemerle.Statechart
               /// <summary>
           /// Indicates that maybe transitions from outer states forking control to this orthogonal region
           /// </summary>
-    public MayForkingFromOut : bool 
-    {
-      get
-      {
-        def is_this(r)
-        {
-          | null => false
-          | _    => match (r.PartOfRegion)
-              {
-                | Some(r) when (r : object == this) => true
-                | _                                 => false
-              }
-        }
+    //public MayForkingFromOut : bool 
+    //{
+    //  get
+    //  {
+    //    def is_this(r)
+    //    {
+    //      | null => false
+    //      | _    => match (r.PartOfRegion)
+    //          {
+    //            | Some(r) when (r : object == this) => true
+    //            | _                                 => false
+    //          }
+    //    }
 
-        analyser.forks.Exists(x => x.target.Exists(x => is_this(x.ToState)))
-      }
-    }
+    //    analyser.forks.Exists(x => x.target.Exists(x => is_this(x.ToState)))
+    //  }
+    //}
 
     public TransitionsByTrigger : IEnumerable[IEnumerable[StateTransition]]
     {
@@ -722,6 +724,24 @@ namespace Nemerle.Statechart
       pseudo_states = pseudo_states.Append(st).NToList();
     }
 
+    public InitialState : option[FsmState]
+    {
+      get
+      {
+        initial_tran.Map(_.ToState)
+      }
+    }
+    
+    [Memoized]
+    public ToHState : HState
+    {
+      get
+      {
+        // transitions.Map(x => x.ToHTransition)
+        // history.Map(x => x.ToHPseudo :> HPseudoState.History)
+        HState(Name, [], [], null, entry, exit, do_activity, deferred_events, TwoOption.None())
+      }
+    }
   }
 
 

@@ -1,0 +1,365 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  
+  /// <summary>
+  /// Description of ConfigTraverser.
+  /// </summary>
+  class ConfigTraverser
+  {
+
+    solver : ConfigSolver = ConfigSolver();
+    
+    public transitions : list[HTransition];
+    active_configs : List[ActiveStateConfig] = List();
+    
+    init : HState;
+    
+    res_trans : List[Transition] = List();
+    
+    [Memoized]
+    InitialConfig : ActiveStateConfig 
+    { 
+      get
+      {
+        InitialConfiguration(init)
+      }
+    }
+    
+    [Memoized]
+    public InitialTransition : Transition
+    {
+      get
+      {
+        def entry = GetEntryPath(InitialConfig.states); // create nodes for entry exit actions
+        def path = PathSequence();
+        path.AddEntry(entry);
+        Transition(null, StateEvent.Completion, GuardNode.Empty(), path, TargetDeterminator.State(InitialConfig))
+      }
+    }
+    
+    public this(tran : list[HTransition], init : HState)
+    {
+      transitions = tran;
+      this.init = init;
+    }
+
+    public Transitions : IEnumerable[Transition]
+    {
+      get
+      {
+        res_trans
+      }
+    }
+    
+    public ActiveConfigs : list[ActiveStateConfig]
+    {
+      get
+      {
+        active_configs.NToList()
+      }
+    }
+
+    Solve(conf : Config, selector : HFsm -> list[HState]) : list[ActiveStateConfig]
+    {
+      solver.Init(conf, selector);
+      def conf = solver.Solve();
+      CreateConfig(conf)
+    }
+    
+    CreateConfig(seq : list[Configuration]) : list[ActiveStateConfig]
+    {
+      seq.Map(x => CreateConfig(x.States))
+    }
+    
+    public CreateConfig(seq : IEnumerable[HState]) : ActiveStateConfig
+    {
+      match (active_configs.Find(x => x.states.Equals(seq)))
+      {
+        | null => def nseq = seq.Where(_.IsSimple);
+                  def name = $<#..$(nseq;"")#>;
+                  //def trans = seq.SelectMany(x => x.transitions).NToList();
+                  def conf = ActiveStateConfig(name, [], seq.NToList(), null);
+                  active_configs.Add(conf);
+                  conf
+        | c  => c
+      }
+
+    }
+
+    //GetHierarchy(st : HState) : list[HState]
+    //{
+    //  //match (st.hierarchy)
+    //  //{
+    //  //  | []  => [st];
+    //  //  | fsm => def init = fsm.Map(x => x.init_state);
+    //  //           init.SelectMany(x => GetHierarchy(x)).NToList();
+    //  //}
+    //}
+    
+    //GetOrthogonalCombinations(fsm : list[HFsm], constant : list[HState]) : list[list[HState]]
+    //{
+    //  def regs = if (!constant.IsEmpty()) 
+    //             {
+    //               //def creg = fsm.Filter(x => x.states.Exists(x => constant.Contains(x))); // constant region
+    //               fsm.Map(x => if (x.states.Find(x => constant.Contains(x)) is Some(s)) [s] else x.states);
+    //               //if (x : object == creg) [constant] else x.states);
+    //             } else fsm.Map(_.states);
+      
+    //  def combine(x, acc)
+    //  {
+    //    if (acc.IsEmpty()) x.Map(x => [x]) else
+    //       x.SelectMany(x => acc.Select(y => x :: y)).NToList();
+    //  }
+      
+    //  regs.FoldLeft([], combine)
+    //}
+    
+    InitialConfiguration(st : HState) : ActiveStateConfig
+    {
+      
+      //def unfold_concurrent(x, a)
+      //{
+      //  match (x.hierarchy)
+      //  {
+      //    | []
+      //    | _ :: [] => x :: a
+      //    | lst     => match (a)
+      //                 {
+      //                   | head :: _ => def creg = lst.Filter(x => !x.states.Contains(head)); // constant region
+      //                                  def st = creg.SelectMany(x => GetHierarchy(x.init_state)).NToList();
+      //                                  st + a
+      //                   | _         => a
+      //                 }
+                       
+                       
+      //  }
+      //}
+      
+      //def seq = GetHierarchy(st);
+      //def seq = st.active_super + seq;
+      //def seq = seq.FoldLeft([], unfold_concurrent);
+      //CreateConfig(seq)
+      def conf = Solve(Config.Unknown(st), x => x.init_state :: []);
+      conf.Head
+    }
+    
+    //ConfigurationsOfSimple(st : HState) : list[ActiveStateConfig]
+    //{
+    //  def unfold_concurrent(x, a)
+    //  {
+    //    match (x.hierarchy)
+    //    {
+    //      | []
+    //      | _ :: [] => [x] :: a
+    //      | lst     => match (a)
+    //                   {
+    //                     | [head] :: tail => def comb = GetOrthogonalCombinations(lst, [head]);
+    //                                         def merged = comb.SelectMany(x => tail.Select(y => x + y)).NToList();
+    //                                         merged
+    //                     | _              => a
+    //                   }
+                       
+                       
+    //    }
+    //  }
+      
+    //  def seq = st.active_super + [st];
+    //  def seq = seq.FoldLeft([], unfold_concurrent);
+    //  seq.Map(CreateConfig)
+    //}
+    
+    //ConfigurationsOfConcurrent(st : list[HFsm]) : list[ActiveStateConfig]
+    //{
+    //  def combinations = GetOrthogonalCombinations(st, null);
+    //  def configs = combinations.Map(x => CreateConfig(x.SelectMany(x => x.active_super + [x]).Distinct()));
+    //  configs
+    //}
+    
+    //ConfigurationsOfComposite(st : HFsm) : list[ActiveStateConfig]
+    //{
+    //  def fold(x, a)
+    //  {
+    //    match (x.hierarchy)
+    //    {
+    //      | []                   => ConfigurationsOfSimple(x) + a
+    //      | head :: []           => ConfigurationsOfComposite(head) + a
+    //      | lst                  => ConfigurationsOfConcurrent(lst) + a
+    //    }
+    //  }
+      
+    //  st.states.FoldLeft([], fold)
+    //}
+    
+    //ConfigurationsOfState(st : list[HState], state_sel : HFsm -> list[HState]) : list[ActiveStateConfig]
+    //{
+    //  //match (st.hierarchy)
+    //  //{
+    //  //  | []                   => //ConfigurationsOfSimple(x) + a
+    //  //  | head :: []           => ConfigurationsOfComposite(head) + a
+    //  //  | lst                  => ConfigurationsOfConcurrent(lst) + a
+    //  //}
+      
+    //  def unfold(x)
+    //  {
+    //    match (x.hierarchy)
+    //    {
+    //      | []                   => [x]
+    //      | head :: []           => def st = state_sel(head);//ConfigurationsOfComposite(head) + a
+    //                                st.Map(unfold)
+    //      | lst                  => []//ConfigurationsOfConcurrent(lst) + a
+    //    }
+    //  }
+      
+    //  def states = st.Map(unfold);
+    //}
+    
+    public static FindPath(src_st : list[HState],
+                           dest_st : list[HState],
+                           exit : list[HState] = null,
+                           entry : list[HState] = null) : list[HState] * list[HState]
+    {
+      def src = src_st ?? [];
+      def dest = dest_st ?? [];
+      def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x == y : object);
+      def exit  = exit ?? [];
+      def entry = entry ?? [];
+      (exit.Rev() + ex, en + entry)
+    }
+
+    static GetEntryNode(st : HState) : IEnumerable[PathNode]
+    {
+      | HState(do_activity = do_act, entry = en) => 
+              def act = en.Map(_.action);
+              def en = act.Map(PathNode.Entry(st.name, _));
+              def do_act = do_act.Select(PathNode.RunDoActivity(st.name, _));
+              en.Concat(do_act)
+    }
+
+    static GetEntryPath(nodes : IEnumerable[HState]) : list[TranPath]
+    {
+      $[TranPath(st.name, GetEntryNode(st).NToList(), PathKind.Entry), st in nodes]
+    }
+
+    static GetActionPath(act : list[FsmAction]) : list[TranPath]
+    {
+      $[TranPath(null, PathNode.Action(null, a) :: [], PathKind.Action), a in act]
+    }
+
+    static GetExitNode(st : HState) : IEnumerable[PathNode]
+    {
+      def do_act = st.do_activity.Map(x => PathNode.StopDoActivity(st.name, x));
+      def nodes = if (st.history.HasValue) PathNode.SaveHistory(st.name, st.history.Value) :: do_act; else do_act;
+      def act = st.exit.Map(_.action);
+      def exit = act.Select(PathNode.Exit(st.name, _));
+      nodes.Concat(exit)
+    }
+
+    public static GetExitPath(nodes : IEnumerable[HState]) : list[TranPath]
+    {
+      $[TranPath(st.name, GetExitNode(st).NToList(), PathKind.Exit), st in nodes]
+    }
+    
+    
+    
+    CreatePath(tran : HTransition, source : ActiveStateConfig, target : ActiveStateConfig) : PathSequence
+    {
+      def (exit, entry) = if (tran.Local) FindPath(source.states, target.states) else 
+                          {
+                            FindPath(source.states.Tail, target.states.Tail, [source.states.Head], [target.states.Head]);
+                          }
+      def exit = GetExitPath(exit); // create nodes for exit exit actions
+      def act = GetActionPath(tran.Actions); // add transition action
+      def entry = GetEntryPath(entry); // create nodes for entry exit actions
+      def path = PathSequence();
+      path.AddExit(exit);
+      path.AddAction(act);
+      path.AddEntry(entry);
+      path
+    }
+    
+    CreateTransitionPath(tran : HTransition, src_conf : ActiveStateConfig, target : TargetDeterminator) : Transition
+    {
+      match (target)
+      {
+        | TargetDeterminator.State(st) => def path = CreatePath(tran, src_conf, st);
+                                          
+                                          Transition(src_conf, tran.Trigger, tran.Guard, path, target)
+        | _                            => null
+      }
+    }
+    
+    Traverse(tr : HTransition) : void
+    {
+
+      def src_conf = match (tr.Source)
+                     {
+                       | HTarget.State(st) => 
+                           
+                           match (st.hierarchy)
+                           {
+                             // simple state
+                             | []           => Solve(Config.Simple(st), _.states)
+                             | head :: []   => // sequential composite state
+                               if (tr.Trigger.IsCompletion) // completion
+                               {
+                                 def final = head.accept_state.Value;
+                                 Solve(Config.Simple(final), _.states)
+                                 //ConfigurationsOfSimple(final)
+                               } else
+                               {
+                                 Solve(Config.Composite(st), _.states)
+                               }
+                              | _           => Solve(Config.Composite(st), _.states) // concurrent state
+                           }
+                           
+                       | HTarget.PseudoState(p) =>  
+                               match (p)
+                               {
+                                 | HPseudoState.Join(n, st, t) => 
+                                                               []
+                                 | _                        => []
+                               }
+                     }
+      def dest_conf = match (tr.Target)
+      {
+        | HTarget.State(st) => InitialConfiguration(st)
+        //| HTarget.PseudoState()
+        | _                 => null
+      }
+      if (dest_conf != null)
+      {
+        def target = TargetDeterminator.State(dest_conf);
+        def trans = src_conf.Map(CreateTransitionPath(tr, _, target));
+        res_trans.AddRange(trans);
+      } else
+      {
+      }
+    }
+
+    public Start() : void
+    {
+      foreach (tr in transitions) Traverse(tr);
+      def groups = res_trans.GroupBy(x => x.Source);
+      foreach (gr in groups)
+      {
+        gr.Key.transitions = gr.NToList()
+      }
+      //def init = CreateTransitionPath(HTransition(HTarget.State(top), StateEvent.Completion, GuardNode.Empty(), [], HTarget.State(init), true), );
+      //def names = ActiveConfigs.Map(x => x.name);
+      //foreach (act in ActiveConfigs)
+      //{
+      //  def name = act.name;
+      //  ActiveConfigs.Count(x => x.name == )
+      //}
+    }
+  }
+}

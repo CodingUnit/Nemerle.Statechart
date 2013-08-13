@@ -1,0 +1,104 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of Transform.
+  /// </summary>
+  public partial class FsmAnalyser
+  {
+
+    finite_automatas : list[HFsm] {get;set;default []}
+
+    transitions : list[HTransition] {get;set;default []}
+
+    convert_FsmStateToHState(st : FsmState) : HState
+    {
+      def tran = st.transitions.Filter(x => x.To.TargetStates.All(y => y.Super == x.From.Super));
+      def tran = tran.Map(x => x.ToHTransition);
+      def newst = st.ToHState;
+      newst.history = st.history.Map(x => x.ToHPseudo :> HPseudoState.History);
+      newst.transitions = tran;
+      newst
+    }
+
+    mutable finite_number : int;
+    
+    CreateFiniteAutomata() : void
+    {
+
+      def connected_transitions(gr, initial)
+      {
+        def tr = gr.SelectMany(_.transitions).Append(initial); // transitions in group
+        def to = tr.Select(x => x.To); // to target
+        def targets = to.SelectMany(_.TargetStates); // target states
+        gr.Filter(targets.Contains) // only those states transition targets connects at this level
+      }
+
+      def create_automata(st, a)
+      {
+        //st.ToHState.hierarchy = ;
+        def sub = st.sub_states;
+        def super = convert_FsmStateToHState(st);
+        if (st.IsConcurrent) a else
+        match (sub)
+        {
+          | []  => a
+          | sub =>
+             match (st.InitialState)
+             {
+               | Some(s) => 
+                  def group = connected_transitions(sub, st.initial_tran);
+                  def states = group.Map(convert_FsmStateToHState);
+                  def init = convert_FsmStateToHState(s);
+                  def accept = sub.Find(_.IsFinal).Map(convert_FsmStateToHState);
+                  def name = $"A$finite_number";
+                  finite_number++;
+                  def fsm = HFsm(name, states, init, accept, super);
+                  states.Iter(x => x.automaton = fsm);
+                  fsm :: a
+               | _        => a
+             }
+        }
+      }
+
+      def fsms = States.FoldBack([], create_automata);
+      foreach (st in States)
+      {
+        if (st.IsComposite)
+        {
+          if (st.IsConcurrent)
+          {
+            def sreg = st.sub_states;
+            def fsms = sreg.Map(x => convert_FsmStateToHState(x.sub_states.Head).automaton);
+            st.ToHState.hierarchy = fsms;
+          } else
+          {
+            def fsm = convert_FsmStateToHState(st.sub_states.Head).automaton;
+            st.ToHState.hierarchy = [fsm];
+          }
+        } else
+        {
+          st.ToHState.hierarchy = [];
+        }
+      }
+      finite_automatas = fsms;
+      transitions = StateTransitions.MapToList(_.ToHTransition);
+    }
+
+    
+    TransformFsm() : void
+    {
+      CreateFiniteAutomata();
+      CreateActiveConfigurations();
+    }
+    
+  }
+}

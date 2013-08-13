@@ -1,0 +1,184 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  variant Config
+  {
+    | Concurrent { lst : list[HState] }
+    | Simple { st : HState }
+    | Composite { st : HState }
+    | Unknown { st : HState }
+  }
+  
+  [Record]
+  variant Configuration
+  {
+    | Simple { st : HState }
+    | Sequential { states : list[HState]; }
+    
+    public States : list[HState]
+    {
+      get
+      {
+        match (this)
+        {
+          | Simple(a)     => [a]
+          | Sequential(a) => a
+        }
+      }
+    }
+    
+    public static @+(a : Configuration, b : Configuration) : Configuration
+    {
+      | (Simple(a), Simple(b))         => Sequential([a, b])
+      | (Simple(a), Sequential(b))     => Sequential([a] + b)
+      | (Sequential(a), Simple(b))     => Sequential(a + [b])
+      | (Sequential(a), Sequential(b)) => Sequential(a + b)
+    }
+  }
+  
+  class ConfigSolver
+  {
+    mutable known : Config;
+    
+    mutable sub_selector : HFsm -> list[HState];
+    
+    public Init(known : Config, sel : HFsm -> list[HState]) : void
+    {
+      this.known = known;
+      sub_selector = sel
+    }
+      
+    RegionConstant(st : list[HFsm], constant : list[HState]) : list[list[HState]]
+    {
+      def map(st)
+      {
+        def states = st.states;
+        match (states.Find(x => x.all_states.Exists(x => constant.Contains(x))))
+        {
+          | Some(x) => [x]
+          | _       => sub_selector(st)
+        }
+      }
+      
+      st.Map(map)
+    }
+    
+    GetConcurrentSimpleStateVariants(super : HState, constant : list[HState]) : list[list[HState]]
+    {
+      def st = super.hierarchy;
+      def regs = RegionConstant(st, constant);
+      //def regs = regs.Map(x => [super] + x);
+      
+      //def regs =  regs.Map(x => x.SelectMany(x => GetSimpleStateVariants(x)));
+      //def concurrent = 
+      regs.Combinations()
+      
+      //concurrent.Map(x => x.Reduce(_ + _));
+    }
+    
+    //GetSimpleStateVariants(st : HState) : list[Configuration]
+    //{
+    //  match (st.hierarchy)
+    //  {
+    //    | []        => Configuration.Simple(st) :: []
+    //    | reg :: [] => def sub = sub_selector(reg);
+    //                   def conf = sub.SelectMany(x => GetSimpleStateVariants(x)).NToList();
+    //                   conf.Map(x => Configuration.Sequential([st] + x.States))
+    //    | _         => GetConcurrentSimpleStateVariants(st, []);
+    //  }
+    //}
+    
+    TraverseHierarchy(st : list[HState]) : list[Configuration]
+    {
+      
+      def loop(x, super, left_conf, res)
+      {
+        match (x)
+        {
+          | []           => def super = super.OrderByDescending(_.hierarchy_pos);
+                            def super = super.ThenByDescending(_.region_pos).NToList();
+                            def conf = Configuration.Sequential(super);
+                            def res = conf :: res;
+                            match (left_conf)
+                            {
+                              | []           => res.Rev()
+                              | head :: tail => loop(head, [], tail, res)
+                            }
+          | head :: []   => match (head.hierarchy)
+                            {
+                              | []    => loop([], head :: super, left_conf, res)
+                              | [sub] => def (next :: sub_sel) = sub_selector(sub);
+                                         def confs = sub_sel.Map(x => super + [head, x]);
+                                         loop(next :: [], head :: super, left_conf + confs, res)
+                                         
+                            }
+          | head :: tail => match (head.hierarchy)
+                            {
+                              | []
+                              | [_] => loop(tail, head :: super, left_conf, res)
+                              | _   => def st = GetConcurrentSimpleStateVariants(head, tail);
+                                       def (conf :: tail_conf) = st.Map(x => super + x);
+                                       def tail_conf = tail_conf.Map(x => x + tail);
+                                       loop(tail, conf, left_conf + tail_conf, res)
+                            }
+        }
+      }
+      
+      loop(st, [], [], [])
+    }
+    
+    //ExpandToParent(conf : Configuration) : list[Configuration]
+    //{
+    //  def states = conf.States; // states in configuration
+    //  def states = states.SelectMany(x => x.active_super + [x]); // add path with all super states
+    //  def states = states.Distinct().NToList(); // remove duplicates
+    //  def (orthogonal, normal) = states.Partition(x => x.hierarchy.Length > 1); // orthogonal states in super states
+    //  def (not_completed, completed) = orthogonal.Partition(x => !x.hierarchy.All(x => x.states.Exists(normal.Contains)));
+    //  def orthogonal = not_completed.Map(x => GetConcurrentSimpleStateVariants(x, states));
+    //}
+    
+    //ExpandToParentStates(conf : list[Configuration]) : list[Configuration]
+    //{
+    //  def res = conf.Map(x => ExpandToParent(x));
+      
+    //}
+    
+    public Solve() : list[Configuration]
+    {
+      
+      known = match (known)
+      {
+        | Unknown(st) => 
+           match (st.hierarchy)
+           {
+             | []      => Config.Simple(st)
+             | _       => Config.Composite(st)
+           }
+        | st  => st
+      }
+      
+      def st = match (known)
+      {
+        | Simple(st)
+        | Composite(st)  => st.active_super + [st]
+        | Concurrent(st) => def st = st.SelectMany(x => x.active_super + [x]);
+                            st.Distinct().NToList()
+        | _             => null
+      }
+      def conf = TraverseHierarchy(st);
+      //conf.Map()
+      //def st = ExpandToParentStates(st)
+      conf
+    }
+    
+  }
+  
+}

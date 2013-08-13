@@ -24,19 +24,19 @@ namespace Nemerle.Statechart
       this.analyser = an
     }
 
-    public this(st : PseudoStateNode, evt : option[TransitionEvent], tran : StateNode.Transition)
+    public this(st : PseudoStateNode, evt : TransitionEvent, tran : StateNode.Transition)
     {
       this(st.state, evt, tran);
       FromPseudo = Some(st);
     }
 
-    public this(st : FsmState, evt : option[TransitionEvent], tran : StateNode.Transition)
+    public this(st : FsmState, evt : TransitionEvent, tran : StateNode.Transition)
     {
       def an = st.analyser;
       this.analyser = an;
       Source = st;
       From = st;
-      trigger = evt.Map(StateEvent);
+      trigger = StateEvent(evt);
       kind = tran.kind;
       node = tran;
       RelocateFrom = tran.from.Map(x => PseudoStateNode.ExitPoint(0, st, x.FullName, Some(this)));
@@ -93,7 +93,7 @@ namespace Nemerle.Statechart
     public node : StateNode.Transition;
 
     public kind : TransitionKind {get;set;}
-    public trigger : option[StateEvent];
+    public trigger : StateEvent {get;set;}
     // state in from start transition in real time app
     public Source : FsmState {get;set;}
     // state in from arrow start in diagram
@@ -117,13 +117,13 @@ namespace Nemerle.Statechart
         DecisionTree.Fold([], (x, a) => x.path :: a)
       }
     }
-    
+
     public Destination : TransitionDestination {get;set;}
     public analyser : FsmAnalyser;
     public executeCheck : CheckNode {get;set;default CheckNode.Empty()} 
 
     public DecisionTree : DecisionNode {get;set;}
-    
+
     public Local : bool
     {
       get
@@ -146,11 +146,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (trigger)
-        {
-          | None       => "Completion"
-          | Some(trig) => trig.Name
-        }
+        if (trigger.IsCompletion) "Completion" else trigger.Name
       }
     }
 
@@ -158,7 +154,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        FriendlyTriggerName == "Completion"
+        trigger.IsCompletion
       }
     }
 
@@ -250,16 +246,16 @@ namespace Nemerle.Statechart
       get
       {
         if (FromPseudo.HasValue) true else
-        match (ToPseudo)
-        {
-          | PseudoStateNode.EntryPoint
-          | ExitPoint
-          | Junction  => true
-          | _         => Local
-        }
+          match (ToPseudo)
+          {
+            | PseudoStateNode.EntryPoint
+            | ExitPoint
+            | Junction  => true
+            | _         => Local
+          }
       }
     }
-    
+
     public ToJunction : PseudoStateNode.Junction
     {
       get
@@ -322,17 +318,17 @@ namespace Nemerle.Statechart
       }
     }
 
-    public Trigger : StateEvent
-    {
-      get
-      {
-        match (trigger)
-        {
-          | Some(t) => t
-          | _       => null
-        }
-      }
-    }
+    //public Trigger : StateEvent
+    //{
+    //  get
+    //  {
+    //    match (trigger)
+    //    {
+    //      | Some(t) => t
+    //      | _       => null
+    //    }
+    //  }
+    //}
 
     public Statemap : StateMap
     {
@@ -444,11 +440,11 @@ namespace Nemerle.Statechart
 
     public static NameComparer : StateTransition * StateTransition -> bool = (x, y) => x.Name == y.Name;
 
-    public TraversePath(recursive : bool = false) : void
-    {
-      def path = TransitionPath(this, recursive);
-      path.Traverse();
-    }
+    //public TraversePath(recursive : bool = false) : void
+    //{
+    //  def path = TransitionPath(this, recursive);
+    //  path.Traverse();
+    //}
 
     public FromRegion : option[FsmState]
     {
@@ -472,12 +468,12 @@ namespace Nemerle.Statechart
     public InitSimpleDecisionTree(path : PathSequence) : void
     {
       when (SimpleDecisionTree)
-      foreach (n in DecisionTree.GetBreadthFirstEnumerable())
-      {
-        | DecisionNode.Target as t => t.destination = Destination;
+        foreach (n in DecisionTree.GetBreadthFirstEnumerable())
+          {
+            | DecisionNode.Target as t => t.destination = Destination;
                                       n.path = path;
-        | _                        => n.path = path;
-      }
+            | _                        => n.path = path;
+          }
     }
 
     public static GetPseudo[T](this tran : IEnumerable[StateTransition]) : IEnumerable[T] where T : PseudoStateNode
@@ -497,6 +493,22 @@ namespace Nemerle.Statechart
     public static Compare(comparer : StateTransition * StateTransition -> int) :  StateTransition *  StateTransition -> int
     {
       (x, y) => comparer(x, y)
+    }
+
+    public AddAction(act : list[FsmAction]) : void
+    {
+      this.action += act
+    }
+    
+    [Memoized]
+    public ToHTransition : HTransition
+    {
+      get
+      {
+        def source = HTarget.State(From.ToHState);
+        def target = To.ToHTarget;
+        HTransition(source, trigger, guard, action, target, Local)
+      }
     }
   }
 

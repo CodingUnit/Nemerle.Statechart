@@ -24,79 +24,81 @@ namespace Nemerle.Statechart
   public partial class StaticGenerator
   {
 
-    DefineState(ty : TypeBuilder, type : ClassMember.TypeDeclaration, st : FsmState) : TypeBuilder
+    DefineState(ty : TypeBuilder, type : ClassMember.TypeDeclaration, st : ActiveStateConfig) : TypeBuilder
     {
       def type = DefineNested(ty, type);// else this.ty.GlobalEnv.Define(type);
-      DefineActions(type, st);
+      //DefineActions(type, st);
       DefineTransitions(type, st); // define transitions in state
-      DefineHistoryPaths(type, st); // define history paths
-      match (st)
-      {
-        | _ when st.IsTopState      => DefineRegions(type);
-        | _                         => ()
-      }
+      //DefineHistoryPaths(type, st); // define history paths
+      //match (st)
+      //{
+      //  | _ when st.IsTopState      => DefineRegions(type);
+      //  | _                         => ()
+      //}
       type
     }
 
-    DefineState(builders : list[TypeBuilder], ty : TypeBuilder, st : FsmState) : list[TypeBuilder]
+    DefineState(builders : list[TypeBuilder], ty : TypeBuilder, st : ActiveStateConfig) : list[TypeBuilder]
     {
-      match (st)
-      {
-        | _ when (!st.IsTopState && st.UsedInGenerate) => 
-          def id_type = StateIdType;
-          def (expr, _) = GetId(st.Id);
+      //match (st)
+      //{
+      //  | _ when (!st.IsTopState && st.UsedInGenerate) => 
+          //def id_type = StateIdType;
+          //def (expr, _) = GetId(st.Id);
 
-          def type = <[ variant_option: |  $(st.Name : usesite)
+          def type = <[ variant_option: |  $(st.name : usesite)
                             {
-                                public override get_id() : $id_type {$expr}
+                                //public override get_id() : $id_type {$expr}
 
-                                public static Id() : $id_type
-                                {
-                                    $expr
-                                }
+                                //public static Id() : $id_type
+                                //{
+                                //    $expr
+                                //}
 
                                 public override ToString() : string
                                 {
-                                    $(st.Name)
+                                    $(st.name)
                                 }
                             } 
                      ]>;
             def type = DefineState(ty, type, st);
             type :: builders
 
-        | _ => builders
-      }
+      //  | _ => builders
+      //}
     }
 
-    TopState : FsmState
-    {
-      get
-      {
-        analyser.TopState
-      }
-    }
+    //TopState : FsmState
+    //{
+    //  get
+    //  {
+    //    analyser.TopState
+    //  }
+    //}
     
     DefineStates() : void
     {
-      def st = TopState;
+      //def st = TopState;
       def id_type = StateIdType;
       def default = StateIdDefaultValue;
       def top = <[decl:
                   public variant State : HsmState//$(name : usesite)
                   {
 
-                      public virtual GetCopy(_ : int) : State {this}
-                      public virtual get_id() : $id_type { $default }
+                      //public virtual GetCopy(_ : int) : State {this}
+                      //public virtual get_id() : $id_type { $default }
 
                       public override ToString() : string
                       {
                         null
                       }
                   } ]>;
-      def ty = DefineState(ty, top, st);
+      Define(ty, <[decl: public virtual IsDefer(_ : Event) : bool { false } ]>);
+      def defs = analyser.Events.Map(x => <[decl: public virtual $(x.Name : usesite)(_ : $(ChartName : usesite)) : State {null}]>);
+      Define(ty, defs);
+      //def ty = DefineState(ty, top, st);
       
-      def builders = TopState.Fold(ty :: compile_list, 
-                                   (s, a) => DefineState(a, ty, s));
+      def builders = ActiveStates.Fold(compile_list, (s, a) => DefineState(a, ty, s));
       compile_list = builders;
     }
 

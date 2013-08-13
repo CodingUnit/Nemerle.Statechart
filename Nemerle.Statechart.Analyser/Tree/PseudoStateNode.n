@@ -24,7 +24,7 @@ namespace Nemerle.Statechart
         this(st : FsmState, tran : StateNode.Transition)
         {
           base(0, st);
-          this.tran = StateTransition(this, None(), tran)
+          this.tran = StateTransition(this,TransitionEvent.Completion, tran)
         }
 
         this(st : FsmState, tostate : FsmState)
@@ -39,7 +39,7 @@ namespace Nemerle.Statechart
         {
           base(0, st);
           type = hist.type;
-          default = hist.default.Map(x => StateTransition(st, None(), x))
+          default = hist.default.Map(x => StateTransition(st, TransitionEvent.Completion, x))
         }
 
         public SubStatesParticipateIn : IEnumerable[FsmState]
@@ -53,7 +53,7 @@ namespace Nemerle.Statechart
               | _                    => Enumerable.Empty()
             }
           }
-        }        
+        }
 
         public SimpleName : string
         {
@@ -126,8 +126,8 @@ namespace Nemerle.Statechart
       
     | Fork 
       {
-        target    : list[TransitionTarget];
-        fork_tran : list[StateTransition]  {get;set;default []}
+        target    : list[FsmState];
+        //fork_tran : list[StateTransition] {get;set;default []}
       }
     | Join 
       {
@@ -135,20 +135,20 @@ namespace Nemerle.Statechart
         target : TransitionTarget {get;set;}
         region : FsmState {get;set;}
 
-        joined_tran : list[StateTransition] {get;set;default []}
+        joined_tran : list[FsmState] {get;set;default []}
         transition : StateTransition {get;set;}
 
-        trigger : StateEvent
-        {
-          get
-          {
-            match (joined_tran.NToList())
-            {
-              | []     => null
-              | t :: _ => t.Trigger
-            }
-          }
-        }
+        //trigger : StateEvent
+        //{
+        //  get
+        //  {
+        //    match (joined_tran.NToList())
+        //    {
+        //      | []     => null
+        //      | t :: _ => t.Trigger
+        //    }
+        //  }
+        //}
 
       }
     | EntryPoint 
@@ -159,7 +159,7 @@ namespace Nemerle.Statechart
         this(st : FsmState, node : PseudoStateModelNode.EntryPoint)
         {
           base(0, st);
-          tran = StateTransition(this, None(), node.tran);
+          tran = StateTransition(this, TransitionEvent.Completion, node.tran);
           this.name = node.name;
         }
       }
@@ -172,7 +172,7 @@ namespace Nemerle.Statechart
         this(st : FsmState, node : PseudoStateModelNode.ExitPoint)
         {
           base(0, st);
-          tran = node.tran.Map(StateTransition(this, None(), _));
+          tran = node.tran.Map(StateTransition(this, TransitionEvent.Completion, _));
           this.name = node.name;
         }
       }
@@ -251,6 +251,24 @@ namespace Nemerle.Statechart
       }
     }
 
+    [Memoized]
+    public ToHPseudo : HPseudoState
+    {
+      get
+      {
+        def st = state.ToHState;
+        match (this)
+        {
+          | Fork(t)             => HPseudoState.Fork(st, t.Map(_.ToHState))
+          | History as p        => HPseudoState.History(st, p.default.Map(x => x.ToHTransition), p.type)
+          | Join as p           => HPseudoState.Join(st, p.name, p.joined_tran.Map(x => x.ToHState), p.target.ToHTarget)
+          | Junction as p       => HPseudoState.Junction(st, p.name, p.tree.ToHJunctionNode, p.type)
+          | Terminate           => HPseudoState.Terminate(st)
+          | _                   => null
+        }
+      }
+    }
+    
     public override ToString() : string
     {
       Name
