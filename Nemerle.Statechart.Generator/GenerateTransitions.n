@@ -62,7 +62,7 @@ namespace Nemerle.Statechart
             def name = $"$(t)HistoryFrom$(p)"; // call function of run history
             //if (ctx.IsInEventHandler) <[ fsm.$(n : usesite).$(name : usesite)(fsm) ]> else 
             <[ $(n : usesite).$(name : usesite)(this) ]>;
-
+        | Completion => <[ cur_state.Completion(this) ]>
 
 
         //| Final(st, sr, reg, tran) => 
@@ -101,7 +101,7 @@ namespace Nemerle.Statechart
         | _                     => throw InvalidOperationException("unknown destination")
     }
 
-    EvalGuardExpr(expr : PExpr, ctx : GenCtx) : PExpr
+    EvalGuardExpr(expr : PExpr) : PExpr
     {
       def check_eval(_, after, e)
       {
@@ -110,8 +110,8 @@ namespace Nemerle.Statechart
         {
           | <[ in_state($st) ]>
           | <[ InState($st) ]>   => def st = st.ToString();
-                                    def st = GetExecStateName(st, ctx);
-                                    if (ctx.IsInEventHandler) <[ fsm.IsInState($st) ]> else <[ IsInState($st) ]>
+                                    def st = GetExecStateName(st);
+                                    <[ fsm.IsInState($st) ]>
           | t => t
         } else e
       }
@@ -119,11 +119,11 @@ namespace Nemerle.Statechart
       Macros.TraverseExpr(None(), expr, false, check_eval)
     }
 
-    GetGuardCondExpr(g : GuardNode, ctx : GenCtx) : PExpr
+    GetGuardCondExpr(g : GuardNode) : PExpr
     {
       match (g)
       {
-        | GuardNode.Expr(cond) => EvalGuardExpr(cond, ctx)
+        | GuardNode.Expr(cond) => EvalGuardExpr(cond)
         //| InState(st) => 
         | _                    => <[ true ]>
       }
@@ -177,9 +177,9 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    GetGuards(g : GuardNode, ctx : GenCtx) : PExpr
+    GetGuards(g : GuardNode) : PExpr
     {
-      GetGuardCondExpr(g, ctx);//(_, ctx));
+      GetGuardCondExpr(g);//(_, ctx));
     }
 
     //GetGuardedBody(tran : StateTransition, body : PExpr, ctx : GenCtx) : PExpr
@@ -251,17 +251,20 @@ namespace Nemerle.Statechart
                     $target
                   ]>;
 
-      //if (post != null) 
-      //{
-      //  GetPostConditions(body, post, ctx)
-      //} else 
       body
     }
 
     GetTransitionBody(tran : Transition) : PExpr
     {
       //get_junction_body(tran.DecisionTree, ctx)
-      GetBody(tran.Path, tran.Target)
+      def body = GetBody(tran.Path, tran.Target);
+      
+      if (tran.Guard.IsEmpty) body else 
+      {
+        def guard = GetGuards(tran.Guard);
+        <[ if ($guard) $body else null ]>
+      }
+      
     }
 
     DefineTransBody(tr : Transition) : PExpr
@@ -270,11 +273,17 @@ namespace Nemerle.Statechart
       <[ $(name : usesite)();]>
     }
     
-    DefineTransBody(tr : list[Transition], els : PExpr = null) : PExpr
+    DefineHandlerTransBody(tr : Transition) : PExpr
+    {
+      def name = tr.Name;
+      <[ fsm.$(name : usesite)();]>
+    }
+    
+    DefineHandlerTransBody(tr : list[Transition], els : PExpr = null) : PExpr
     {
       def get_body(x, a)
       {
-          def body = DefineTransBody(x);
+          def body = DefineHandlerTransBody(x);
           <[
             def res = $body;
             if (res != null) res else $a
@@ -283,7 +292,7 @@ namespace Nemerle.Statechart
       
       match (tr)
       {
-        | [tr] => DefineTransBody(tr)
+        | [tr] => DefineHandlerTransBody(tr)
         | _    => tr.FoldBack(if (els == null) <[ null ]> else els, get_body)
       }
     }
@@ -335,7 +344,7 @@ namespace Nemerle.Statechart
                       def group = st.transitions.GroupBy(x => x.Trigger.Name).Select(x => (x.Key, x.NToList()));
                       DefineDeferedEvents(ty, st);
                       group.MapToList((x, y) => <[decl: 
-                            public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(DefineTransBody(y))}]>)
+                            public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(DefineHandlerTransBody(y))}]>)
                     }
       Define(ty, defs)
     }

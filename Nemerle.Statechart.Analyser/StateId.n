@@ -86,8 +86,9 @@ namespace Nemerle.Statechart
   [Record]
   public class StateId
   {
-    analyser : FsmAnalyser;
 
+    public states : list[ActiveStateConfig];
+    
     public IsSimple : bool
     {
       get
@@ -113,36 +114,39 @@ namespace Nemerle.Statechart
       }
     }
 
-    Count : int
+    [Memoized]
+    public States : IEnumerable[HState]
     {
       get
       {
-        analyser.statemap.States.Count()
+        states.SelectMany(_.states).Distinct()
+      }
+    }
+    
+    [Memoized]
+    public Count : int 
+    {
+      get
+      {
+        States.Count()
       }
     }
 
     public CreateMasks() : void
     {
-      def active = analyser.ActiveStates;
-      def st = active.SelectMany(_.states).Distinct().NToList();
-      def idx = st.MapIndex((x, i) => (x, i));
+      def st = states.SelectMany(_.states).Distinct();
+      def idx = st.MapIndex((x, i) => {
+                                            def num = BitArray(Count);
+                                            num[i] = true;
+                                            (x, num)
+                                          });
       def map = Hashtable(idx);
 
-      def create_id(t)
-      {
-        def id = BitArray(Count);
-        def num = map[t];
-        id[num] = true;
-        IdType(id)
-      }
-      
       // first pass
-      foreach (st in active)
+      foreach (st in states)
       {
-        def states = st.states;
-        //def id = create_id(s);
-        //def id = if (s.Super != null) id | s.Super.Id else id;
-        //s.Id = id
+        def id = st.states.FoldLeft(BitArray(Count), (x, a) => map[x] | a);
+        st.Id = IdType(id);
       }
     }
 

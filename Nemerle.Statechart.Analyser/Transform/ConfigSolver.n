@@ -79,7 +79,7 @@ namespace Nemerle.Statechart
       
       //def regs =  regs.Map(x => x.SelectMany(x => GetSimpleStateVariants(x)));
       //def concurrent = 
-      regs.Combinations()
+      regs.Combinations();
       
       //concurrent.Map(x => x.Reduce(_ + _));
     }
@@ -90,10 +90,32 @@ namespace Nemerle.Statechart
     //  {
     //    | []        => Configuration.Simple(st) :: []
     //    | reg :: [] => def sub = sub_selector(reg);
-    //                   def conf = sub.SelectMany(x => GetSimpleStateVariants(x)).NToList();
-    //                   conf.Map(x => Configuration.Sequential([st] + x.States))
+    //                   sub.SelectMany(x => GetSimpleStateVariants(x)).NToList();
+    //                   //conf.Map(x => Configuration.Sequential([st] + x.States))
     //    | _         => GetConcurrentSimpleStateVariants(st, []);
+                       
     //  }
+    //}
+    
+    
+    //TraverseHierarchy(st : list[HState]) : list[Configuration]
+    //{
+    //  def unfold(c)
+    //  {
+    //    def states = c.States;
+    //    def config = states.SelectMany(_.active_config).Distinct();
+    //    []
+    //  }
+      
+    //  def last = st.Last();
+    //  def confs = match (last.hierarchy)
+    //  {
+    //    | []    => Configuration.Sequential(st) :: []
+    //    | [reg] => reg.states.SelectMany(x => TraverseHierarchy(x.active_config))
+    //    | _     => def states = GetConcurrentSimpleStateVariants(last, []);
+    //               states.Map(x => Configuration.Sequential(x))
+    //  }
+    //  confs.SelectMany(unfold).NToList()
     //}
     
     TraverseHierarchy(st : list[HState]) : list[Configuration]
@@ -118,6 +140,10 @@ namespace Nemerle.Statechart
                               | [sub] => def (next :: sub_sel) = sub_selector(sub);
                                          def confs = sub_sel.Map(x => super + [head, x]);
                                          loop(next :: [], head :: super, left_conf + confs, res)
+                              | _   => def st = GetConcurrentSimpleStateVariants(head, []);
+                                       def (conf :: tail_conf) = st.Map(x => super + x);
+                                       //def tail_conf = tail_conf.Map(x => x + tail);
+                                       loop([], conf, left_conf + tail_conf, res)
                                          
                             }
           | head :: tail => match (head.hierarchy)

@@ -77,13 +77,22 @@ namespace Nemerle.Statechart
       }
     }
     
+    public AllTransitions : list[Transition]
+    {
+      get
+      {
+        InitialTransition :: Transitions
+      }
+    }
+    
     [Memoized]
     public actions : list[FsmAction]
     {
       get
       {
-        def st_act = States.SelectMany(_.actions);
-        def act = all_used_transitions.SelectMany(_.action).Concat(st_act);
+        def act = AllTransitions.SelectMany(x => x.Path.Path.FilterValues(_.PathAction));
+        //def st_act = States.SelectMany(_.actions);
+        //def act = all_used_transitions.SelectMany(_.action).Concat(st_act);
         def act = act.Exclude(_ is FsmAction.Normal(name = null));
         act.RemoveDuplicatesSort(_.ToString())
       }
@@ -104,7 +113,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        all_used_transitions.SelectMany(x => x.Path).NToList()
+        AllTransitions.Select(_.Path).NToList()
+        //all_used_transitions
       }
     }
     
@@ -117,7 +127,7 @@ namespace Nemerle.Statechart
         def en = tran_paths.SelectMany(x => x.entry_tran_path);
         def ex = ex.RemoveDuplicatesSort(_.state);
         def en = en.RemoveDuplicatesSort(_.state);
-        ex.Concat(en).NToList()
+        ex + en
       }
     }
     
@@ -290,7 +300,7 @@ namespace Nemerle.Statechart
 
     
 
-    public StatesId : StateId;
+    public mutable StatesId : StateId;
 
     public StateMachinesInProj : list[string * StateNode.StateMachine];
     
@@ -299,8 +309,7 @@ namespace Nemerle.Statechart
       this.Fsm = fsm;
       StateMachinesInProj = mach;
       Name = fsm.name ?? name;
-      statemap  = StateMap(this);
-      StatesId = StateId(this);
+      statemap  = StateMap(this);      
     }
 
     public Name     : string;
@@ -309,6 +318,7 @@ namespace Nemerle.Statechart
 
     FinalizeAnalyse() : void
     {
+      StatesId = StateId(ActiveStates);
       StatesId.CreateMasks();
       def longest = States.Max(x => x.Name.Length);
       def len = States.Count();
