@@ -180,8 +180,16 @@ namespace Nemerle.Statechart
 
     CreatePath(tran : HTransition, source : list[HState], target : list[HState]) : PathSequence
     {
-      def (exit, entry) = if (source.IsEmpty() && target.IsEmpty()) ([], []) else GetPath(source, target, tran.Local);
-      CreatePath(exit, tran.Actions, entry)
+      
+      def (exit, entry) = if (source.IsEmpty() && target.IsEmpty()) ([], []) else 
+      {
+        def st = (tran.Source :> HTarget.State).state;
+        def targ = st.active_config;
+        def path = FindPath(source, targ)[0]; // exit to source transition vertex, but no include
+        def (exit, entry) = GetPath(targ, target, tran.Local); // exit according local or external transition rule from source and enter the target
+        (path + exit, entry) // exit to source vertex + source exit node and entry nodes to target
+      }
+      CreatePath(exit, tran.Actions, entry) // create path for transition
     }
 
     CreateTransitionPath(tran : HTransition, src_conf : ActiveStateConfig, target : ActiveStateConfig) : Transition
@@ -214,7 +222,6 @@ namespace Nemerle.Statechart
             {
               def final = head.accept_state.Value;
               Solve(Config.Simple(final), _.states)
-                  //ConfigurationsOfSimple(final)
             } else
             {
               Solve(Config.Composite(st), _.states)

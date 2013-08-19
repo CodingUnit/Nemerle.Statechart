@@ -20,10 +20,29 @@ namespace Nemerle.Statechart
   public partial class StaticGenerator
   {
 
-    GetTransitionFunction(tran : list[Transition]) : list[ClassMember]
+    GetGroupTransitionName(from : ActiveStateConfig, trigger : StateEvent) : string
     {
-      def group = tran.GroupBy(_.Name);
-      group.Map(x => <[ decl: $(x.Key : usesite)() : State {$(GetTransitionBody(x))} ]>);
+      $"TransitionFrom$(from)By$trigger"
+    }
+    
+    GetTransitionFunction(st : ActiveStateConfig, tran : list[Transition]) : list[ClassMember]
+    {
+      def group = tran.GroupBy(_.Trigger);
+      //def group = by_states.GroupBy(x => x.Trigger);
+      def get_body(x)
+      {
+        def name = if (x.Count() == 1)
+        {
+          def tran = x.First();
+          tran.Name
+        } else
+        {
+          GetGroupTransitionName(st, x.Key)
+        }
+        <[ decl: $(name : usesite)() : State { $(GetTransitionBody(x)) } ]>
+      }
+      
+      group.Map(get_body);
     }
 
     //GetTransitionFunction(tran : list[string * Transition]) : list[ClassMember]
@@ -287,22 +306,28 @@ namespace Nemerle.Statechart
       <[ fsm.$(name : usesite)();]>
     }
     
-    DefineHandlerTransBody(tr : list[Transition], els : PExpr = null) : PExpr
+    DefineHandlerTransBody(tr : list[Transition]) : PExpr
     {
-      def get_body(x, a)
-      {
-          def body = DefineHandlerTransBody(x);
-          <[
-            def res = $body;
-            if (res != null) res else $a
-          ]>
-      }
+      | []          => <[ null ]>
+      | [tran]      => DefineHandlerTransBody(tran)
+      | (head :: _) => def from = head.Source;
+                       def trigger = head.Trigger;
+                       def name = GetGroupTransitionName(from, trigger);
+                       <[ fsm.$(name : usesite)();]>
+      //def get_body(x, a)
+      //{
+      //    def body = DefineHandlerTransBody(x);
+      //    <[
+      //      def res = $body;
+      //      if (res != null) res else $a
+      //    ]>
+      //}
       
-      match (tr)
-      {
-        | [tr] => DefineHandlerTransBody(tr)
-        | _    => tr.FoldBack(if (els == null) <[ null ]> else els, get_body)
-      }
+      //match (tr)
+      //{
+      //  | [tr] => DefineHandlerTransBody(tr)
+      //  | _    => tr.FoldBack(if (els == null) <[ null ]> else els, get_body)
+      //}
     }
 
     DefineDeferedEvents() : void
@@ -349,21 +374,25 @@ namespace Nemerle.Statechart
     DefineTransitions(ty : TypeBuilder, st : ActiveStateConfig) : void
     {
       def defs =  {
-                      def group = st.transitions.GroupBy(x => x.Trigger.Name).Select(x => (x.Key, x.NToList()));
+                      def group = st.transitions.GroupBy(_.Trigger).Select(x => (x.Key, x.NToList()));
                       DefineDeferedEvents(ty, st);
                       group.MapToList((x, y) => <[decl: 
-                            public override $(x : usesite)(fsm : $(ChartName : usesite)) : State {$(DefineHandlerTransBody(y))}]>)
+                            public override $(x.Name : usesite)(fsm : $(ChartName : usesite)) : State { $(DefineHandlerTransBody(y)) }]>)
                     }
       Define(ty, defs)
     }
 
     DefineTransitionActions() : void
     {
-      def body = GetTransitionFunction(transitions);
+      def by_states = transitions.GroupBy(x => x.Source);
+      foreach (st in by_states)
+      {
+        def body = GetTransitionFunction(st.Key, st.NToList());
       // history paths
       //def body_name = analyser.HistoryPaths.FoldLeft([], (x, a) => x.Value.FoldLeft(a, (x, a) => (x.Name, x.transition) :: a));
       //def hist = GetTransitionFunction(body_name);
-      Define(body);
+        Define(body);
+      }
     }
 
   }
