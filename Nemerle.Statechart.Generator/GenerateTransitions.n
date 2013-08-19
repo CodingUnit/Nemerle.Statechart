@@ -22,13 +22,14 @@ namespace Nemerle.Statechart
 
     GetTransitionFunction(tran : list[Transition]) : list[ClassMember]
     {
-      tran.Map(x => <[ decl: $(x.Name : usesite)() : State {$(GetTransitionBody(x))} ]>);
+      def group = tran.GroupBy(_.Name);
+      group.Map(x => <[ decl: $(x.Key : usesite)() : State {$(GetTransitionBody(x))} ]>);
     }
 
-    GetTransitionFunction(tran : list[string * Transition]) : list[ClassMember]
-    {
-      tran.Map((x, y) => <[ decl: $(x : usesite)() : State {$(GetTransitionBody(y))} ]>);
-    }
+    //GetTransitionFunction(tran : list[string * Transition]) : list[ClassMember]
+    //{
+    //  tran.Map((x, y) => <[ decl: $(x : usesite)() : State {$(GetTransitionBody(y))} ]>);
+    //}
 
     //GetActions(act : PathNode, inline_suppress : bool = true) : PExpr
     //{
@@ -62,7 +63,8 @@ namespace Nemerle.Statechart
             def name = $"$(t)HistoryFrom$(p)"; // call function of run history
             //if (ctx.IsInEventHandler) <[ fsm.$(n : usesite).$(name : usesite)(fsm) ]> else 
             <[ $(n : usesite).$(name : usesite)(this) ]>;
-        | Completion => <[ cur_state.Completion(this) ]>
+        | Completion(st) => def tran = st.transitions.First(x => x.Trigger.IsCompletion);
+                            <[ $(tran.Name : usesite)() ]>
 
 
         //| Final(st, sr, reg, tran) => 
@@ -254,17 +256,23 @@ namespace Nemerle.Statechart
       body
     }
 
-    GetTransitionBody(tran : Transition) : PExpr
+    GetTransitionBody(tran : IEnumerable[Transition]) : PExpr
     {
       //get_junction_body(tran.DecisionTree, ctx)
-      def body = GetBody(tran.Path, tran.Target);
       
-      if (tran.Guard.IsEmpty) body else 
+      
+      def def_tran(t, a)
       {
-        def guard = GetGuards(tran.Guard);
-        <[ if ($guard) $body else null ]>
+        def body = GetBody(t.Path, t.Target);
+      
+        if (t.Guard.IsEmpty) body else 
+        {
+          def guard = GetGuards(t.Guard);
+          <[ if ($guard) $body else $a ]>
+        }
       }
       
+      tran.FoldBack(<[ null ]>, def_tran)
     }
 
     DefineTransBody(tr : Transition) : PExpr
