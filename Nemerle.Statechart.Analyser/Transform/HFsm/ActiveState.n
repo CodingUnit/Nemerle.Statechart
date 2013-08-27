@@ -31,9 +31,18 @@ namespace Nemerle.Statechart
         states.SelectMany(_.deferred_events).NToList()
       }
     }
+
+    public IsThis(st : IEnumerable[HState]) : bool
+    {
+      simple_states.All(st.Contains)
+    }
+
+    public HistoryPath : list[HistoryPath] {get;set;default []}
+    
+    public History : list[PseudoState.History] {get;set;default []}
     
     public Id : IdType {get;set;}
-    
+
     [Memoized]
     public simple_states : list[HState]
     {
@@ -42,7 +51,7 @@ namespace Nemerle.Statechart
         states.Filter(_.IsSimple)
       }
     }
-    
+
     public override ToString() : string { name }
   }
 
@@ -79,6 +88,41 @@ namespace Nemerle.Statechart
 
     public override ToString() : string { Name }
 
+  }
+  
+  [Record]
+  public variant PseudoState
+  {
+    | History 
+      {
+        default : option[Transition];
+        type    : HistoryType;
+        state   : HState;
+        
+        [Memoized]
+        Name : string
+        {
+          get
+          {
+              def type = match (type)
+                          {
+                            | HistoryType.Deep     => "Deep"
+                            | Shallow              => "Shallow"
+                            | None                 => ""
+                          }
+
+              if (state != null)
+              {
+                if (state.history.IsOne) $"$(state)History" else $"$(state)$(type)History"
+              } else "History";
+            }
+        }
+        
+        public override ToString() : string
+        {
+          Name
+        }
+      }
   }
 
   public variant TargetDeterminator

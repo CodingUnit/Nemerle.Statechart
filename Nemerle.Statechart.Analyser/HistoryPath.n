@@ -16,20 +16,23 @@ namespace Nemerle.Statechart
   public class HistoryPath
   {
 
-    public transition : StateTransition {get;set;}
-      
-    public this(from : FsmState, to : FsmState, hist : PseudoStateNode.History)
+    public transition : Transition {get;set;}
+
+    trav : ConfigTraverser;
+    
+    public this(traverser : ConfigTraverser, from : HState, to : ActiveStateConfig, hist : PseudoState.History)
     {
-      History = hist;  
-      FromSource = from;
-      ToSource = to;
+      trav = traverser;
+      From = from;  
+      To   = to;
+      History = hist;
     }
-    
-    public FromSource : FsmState;
-    public ToSource   : FsmState;
-    
-    public History : PseudoStateNode.History;
-    
+
+    public From   : HState;
+    public To     : ActiveStateConfig;
+
+    public History : PseudoState.History;
+
     //public IsDefault : bool
     //{
     //  get
@@ -37,7 +40,7 @@ namespace Nemerle.Statechart
     //    transition is StateTransition.Default
     //  }
     //}
-    
+
     //public Path : IEnumerable[PathNode]
     //{
     //  get
@@ -45,57 +48,59 @@ namespace Nemerle.Statechart
     //    transition.PathNode
     //  }
     //}
-    
-    public ActualTo : FsmState
-    {
-      get
-      {
-        transition.ActualTo
-      }
-    }
 
-    public From : FsmState
-    {
-      get
-      {
-        transition.From
-      }
-    }
-      
-    public To : FsmState
-    {
-      get
-      {
-        match (transition.To)
-          {
-            | TransitionTarget.State(state = st) => st
-            | _                                  => null
-          }
-      }
-    }
+    //public ActualTo : FsmState
+    //{
+    //  get
+    //  {
+    //    transition.ActualTo
+    //  }
+    //}
+
+    //public From : FsmState
+    //{
+    //  get
+    //  {
+    //    transition.From
+    //  }
+    //}
+
+    //public To : FsmState
+    //{
+    //  get
+    //  {
+    //    match (transition.To)
+    //      {
+    //        | TransitionTarget.State(state = st) => st
+    //        | _                                  => null
+    //      }
+    //  }
+    //}
 
     public Name : string
     {
       get
       {
         //if (IsDefault) $"$transition" else 
-          if (History.state.BothHistories) $"$(History.type)$transition" else $"$transition"
+        if (History.state.history.IsTwo) $"$(History.type)$transition" else $"$transition"
       }
     }
-    
+
     public override ToString() : string
     {
       Name
     }
-    
+
     public CreatePath() : void
     {
-      def tran = StateTransition(FromSource, ToSource, TransitionKind.Local);
-      tran.CreateSimpleDecisionTree();
-      tran.internal_kind = TransitionRunKind.History;
-      //tran.TraversePath(); // creating transition path
+      def to = To.simple_states.First();
+      def tran = HTransition(HTarget.State(From), StateEvent.Completion, GuardNode.Empty(), [], HTarget.State(to), true);
+      def tran = trav.TraverseTran(tran).Head;
+      //def tran = StateTransition(FromSource, ToSource, TransitionKind.Local);
+      //tran.CreateSimpleDecisionTree();
+      //tran.internal_kind = TransitionRunKind.History;
       transition = tran;
     }
-      
+
   }
 }

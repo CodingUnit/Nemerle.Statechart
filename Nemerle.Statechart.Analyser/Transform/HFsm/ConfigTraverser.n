@@ -13,7 +13,7 @@ namespace Nemerle.Statechart
   /// <summary>
   /// Description of ConfigTraverser.
   /// </summary>
-  class ConfigTraverser
+  public class ConfigTraverser
   {
 
     solver : ConfigSolver = ConfigSolver();
@@ -21,27 +21,21 @@ namespace Nemerle.Statechart
     public transitions : list[HTransition];
     active_configs : List[ActiveStateConfig] = List();
 
-    init : HTransition;
-
     res_trans : List[Transition] = List();
 
-    [Memoized]
-    public InitialTransition : Transition
+    //[Memoized]
+    public InitialTransition(init : HTransition) : Transition
     {
-      get
-      {
-        def source = (init.Source :> HTarget.State).state.active_config;
-        def source = ActiveStateConfig(null, [], source, null);
-        def target = InitialConfiguration((init.Target :> HTarget.State).state);
-        CreateTransitionPath(init, source, target) // create nodes for entry exit actions
+      def source = (init.Source :> HTarget.State).state.active_config;
+      def source = ActiveStateConfig(null, [], source, [], [], null);
+      def target = InitialConfiguration((init.Target :> HTarget.State).state);
+      CreateTransitionPath(init, source, target) // create nodes for entry exit actions
         //Transition(null, StateEvent.Completion, GuardNode.Empty(), path, TargetDeterminator.State(InitialConfig))
-      }
     }
 
-    public this(tran : list[HTransition], init : HTransition)
+    public this(tran : list[HTransition])
     {
       transitions = tran;
-      this.init = init;
     }
 
     public Transitions : IEnumerable[Transition]
@@ -79,12 +73,19 @@ namespace Nemerle.Statechart
         | null => def nseq = seq.Where(_.IsSimple);
                   def name = $<#..$(nseq;"")#>;
                   //def trans = seq.SelectMany(x => x.transitions).NToList();
-                  def conf = ActiveStateConfig(name, [], seq.NToList(), null);
+                  def conf = ActiveStateConfig(name, [], seq.NToList(), [], [], null);
                   active_configs.Add(conf);
                   conf
         | c  => c
       }
 
+    }
+
+    public static GetInitialConfiguration(st : HState) : list[HState]
+    {
+      def solver = ConfigSolver();
+      solver.Init(Config.Unknown(st), x => x.init_state :: []);
+      solver.Solve().Head.States;
     }
 
     InitialConfiguration(st : HState) : ActiveStateConfig
@@ -180,15 +181,15 @@ namespace Nemerle.Statechart
 
     CreatePath(tran : HTransition, source : list[HState], target : list[HState]) : PathSequence
     {
-      
+
       def (exit, entry) = if (source.IsEmpty() && target.IsEmpty()) ([], []) else 
-      {
-        def st = (tran.Source :> HTarget.State).state;
-        def targ = st.active_config;
-        def path = FindPath(source, targ)[0]; // exit to source transition vertex, but no include
-        def (exit, entry) = GetPath(targ, target, tran.Local); // exit according local or external transition rule from source and enter the target
-        (path + exit, entry) // exit to source vertex + source exit node and entry nodes to target
-      }
+                           {
+                             def st = (tran.Source :> HTarget.State).state;
+                             def targ = st.active_config;
+                             def path = FindPath(source, targ)[0]; // exit to source transition vertex, but no include
+                             def (exit, entry) = GetPath(targ, target, tran.Local); // exit according local or external transition rule from source and enter the target
+                             (path + exit, entry) // exit to source vertex + source exit node and entry nodes to target
+                           }
       CreatePath(exit, tran.Actions, entry) // create path for transition
     }
 
@@ -280,19 +281,38 @@ namespace Nemerle.Statechart
       res_trans.Add(tr)
     }
 
+    TraversePseudo(tran : HTransition, source : ActiveStateConfig, pseudo : HPseudoState) : Transition
+    {
+      match (pseudo)
+      {
+        | HPseudoState.History as h  => def st = pseudo.state;
+                                        def path = CreatePath(tran, source.states, st.active_config);
+                                        Transition(source, tran.Trigger, tran.Guard, path, TargetDeterminator.History(h))
+                                        
+        | _                          => null
+      }
+    }
 
-    Traverse(tr : HTransition) : void
+    public TraverseTran(tr : HTransition) : list[Transition]
     {
       def src_conf = SourceConfigs(tr);
       //def (group, other) = src_conf.Partition(x => x.states.Count(x => x.transitions.Exists(x => x.Trigger == tr.Trigger)) >= 1);
       //group.Iter(x => AddTran(TraverseGroupTran(tr.Trigger, x)));
-      def dest_conf = match (tr.Target)
-                       {
-                         | HTarget.State(st) => InitialConfiguration(st)
-                         | _                 => null
-                       }
+      match (tr.Target)
+      {
+        | HTarget.State(st)       => def target = InitialConfiguration(st);
+                                     src_conf.Map(CreateTransitionPath(tr, _, target))
+        | HTarget.PseudoState(st) => src_conf.Map(TraversePseudo(tr, _, st))
+        | HTarget.Nowhere         => src_conf.Map(CreateTransitionPath(tr, _, null))
+      }
         //def target = TargetDeterminator.State(dest_conf);
-      CreateTran(tr, src_conf, dest_conf)
+
+    }
+
+    Traverse(tr : HTransition) : void
+    {
+      def res = TraverseTran(tr);
+      res_trans.AddRange(res)
     }
 
     public Start() : void

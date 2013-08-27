@@ -184,19 +184,68 @@ namespace Nemerle.Statechart
       AddWarnings(hist)
     }
 
+    SubStatesParticipateIn(hist : HPseudoState.History) : IEnumerable[ActiveStateConfig]
+    {
+      //def init_conf(st, c)
+      //{
+      //  match (c.hierarchy)
+      //  {
+      //    | []  
+      //    | [_]  => c :: []
+      //    | regs => def other = regs.Filter(x => !x.all_states.Contains(st));
+      //              def init = other.Map(x => x.init_state);
+      //              init.SelectMany(x => ConfigTraverser.GetInitialConfiguration(x)).NToList();
+      //  }
+      //}
+      
+      def state = hist.state;
+      match (hist.type)
+      {
+        | HistoryType.Deep     => def confs = state.all_simple_states.Select(x => x.active_config);
+                                  def confs = confs.Select(x => ActiveStates.First(y => y.IsThis(x)));
+                                  confs
+                                  //def participate = ActiveStates.Filter(x => x.states.Contains(state));//state.all_simple_states
+        //                          def conf = state.active_super;
+        //                          def conf = conf.SelectMany(x => init_conf(state, x)).NToList();
+        //                          def participate = participate.Map(x => x.states.PartitionFirst(x => x : object == state)[1]);
+        //                          def participate = participate.Map(x => conf + x);
+        //                          def sort = participate.Map(ConfigSolver.CreateConfig);
+        //                          def participate = sort.Select(x => ActiveStates.First(y => y.IsThis(x.States)));
+        //                          participate.SelectMany(x => x.simple_states);
+                                  //def participate = participate.;
+        | HistoryType.Shallow  => match (state.hierarchy)
+                                  {
+                                    | [reg] => def states = reg.states;
+                                               def conf = states.Select(x => ConfigTraverser.GetInitialConfiguration(x));
+                                               //def sort = conf.Map(ConfigSolver.CreateConfig);
+                                               def participate = conf.Select(x => ActiveStates.First(y => y.IsThis(x)));
+                                               participate
+                                    | _     => Enumerable.Empty()
+                                  }
+        | _                    => Enumerable.Empty()
+      }
+    }
+
     CreateHistoryPaths() : void
     {
-      def create_hist_path(h, a)
+      def trav = ConfigTraverser([]);
+      
+      def history = ActiveStates.SelectMany(x => x.states.SelectMany(x => x.history.Value)).Distinct();//HistoryStates.Select(x => x.ToHPseudo :> HPseudoState.History);
+      foreach (hist in history)
       {
-        def sub = h.SubStatesParticipateIn;
-        def parent = h.state;
-        sub.FoldLeft(a, (x, a) => HistoryPath(parent, x, h) :: a)
-      } 
-
-      def paths = HistoryStates.FoldLeft([], create_hist_path);
-      paths.Iter(_.CreatePath());
-      def paths = paths.GroupBy(x => x.To).Select(x => (x.Key, x.NToList()));
-      HistoryPaths = Hashtable(paths);
+        def sub = SubStatesParticipateIn(hist);
+        def parent = hist.state;
+        def tran = hist.default.Map(x => trav.TraverseTran(x).First());
+        def res = PseudoState.History(tran, hist.type, hist.state);
+        def paths = sub.Select(x => HistoryPath(trav, parent, x, res));
+        foreach (p in paths)
+        {
+          def active = p.To;
+          active.HistoryPath ::= p;
+          active.History ::= res;
+        }
+      }
+      
     }
   }
 }
