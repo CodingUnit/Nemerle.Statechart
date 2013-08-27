@@ -1,0 +1,323 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+
+  
+  [Record]
+  class TraversePath
+  {
+    public Source : ActiveStateConfig;
+    public Target : TargetDeterminator;
+    public path   : TransitionPath;
+    
+    path : PathSequence;
+    
+    transition : HTransition
+    {
+      get
+      {
+        path.transition
+      }
+    }
+    
+    tran_source : HTarget
+    {
+      get
+      {
+        transition.Source
+      }
+    }
+    
+    tran_target : HTarget
+    {
+      get
+      {
+        Transition.Target
+      }
+    }
+    
+    public static FindPath(src_st : list[HState],
+                           dest_st : list[HState],
+                           exit : list[HState] = null,
+                           entry : list[HState] = null) : list[HState] * list[HState]
+    {
+      def src = src_st ?? [];
+      def dest = dest_st ?? [];
+      def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x == y : object);
+      def exit  = exit ?? [];
+      def entry = entry ?? [];
+      (exit.Rev() + ex, en + entry)
+    }
+
+    static GetEntryNode(st : HState) : IEnumerable[PathNode]
+    {
+      | HState(do_activity = do_act, entry = en) =>
+              def act = en.Map(_.action);
+              def en = act.Map(PathNode.Entry(st.name, _));
+              def do_act = do_act.Select(PathNode.RunDoActivity(st.name, _));
+              en.Concat(do_act)
+    }
+
+    static GetEntryPath(nodes : IEnumerable[HState]) : list[TranPath]
+    {
+      $[TranPath(st.name, GetEntryNode(st).NToList(), PathKind.Entry), st in nodes]
+    }
+
+    static GetActionPath(act : IEnumerable[FsmAction]) : list[TranPath]
+    {
+      $[TranPath(null, PathNode.Action(null, a) :: [], PathKind.Action), a in act]
+    }
+
+    static GetExitNode(st : HState) : IEnumerable[PathNode]
+    {
+      def do_act = st.do_activity.Map(x => PathNode.StopDoActivity(st.name, x));
+      def nodes = if (st.history.HasValue) PathNode.SaveHistory(st.name, st.history.Value) :: do_act; else do_act;
+      def act = st.exit.Map(_.action);
+      def exit = act.Select(PathNode.Exit(st.name, _));
+      nodes.Concat(exit)
+    }
+
+    public static GetExitPath(nodes : IEnumerable[HState]) : list[TranPath]
+    {
+      $[TranPath(st.name, GetExitNode(st).NToList(), PathKind.Exit), st in nodes]
+    }
+
+    CreatePath(source : HState, target : HState) : PathSequence
+    {
+      CreatePath(source.active_config, target.active_config)
+    }
+
+    CreatePath() : void
+    {
+      match (Target)
+      {
+        | TargetDeterminator.State(st)     => CreatePath(Source.states, st.states)
+        | TargetDeterminator.NoStateChange => CreatePath([], [])
+        | TargetDeterminator.History       => TraversePseudo()
+        | _                                => null
+      }
+    }
+
+    CreatePath(exit : IEnumerable[HState], act : IEnumerable[FsmAction], entry : IEnumerable[HState]) : PathSequence
+    {
+      def exit = GetExitPath(exit); // create nodes for exit exit actions
+      def act = GetActionPath(act); // add transition action
+      def entry = GetEntryPath(entry); // create nodes for entry exit actions
+      def path = PathSequence();
+      path.AddExit(exit);
+      path.AddAction(act);
+      path.AddEntry(entry);
+      path
+    }
+
+    GetPath(source : list[HState], target : list[HState], local : bool) : list[HState] * list[HState]
+    {
+      if (local) FindPath(source, target) else
+      {
+        def (source_last, source) = source.SplitLast();
+        def (target_last, target) = target.SplitLast();
+        FindPath(source, target, [source_last], [target_last])
+      }
+    }
+
+    CreatePath(source : list[HState], target : list[HState]) : PathSequence
+    {
+
+      def (exit, entry) = if (source.IsEmpty() && target.IsEmpty()) ([], []) else 
+                           {
+                             def st = (Transition.Source :> HTarget.State).state;
+                             def targ = st.active_config;
+                             def path = FindPath(source, targ)[0]; // exit to source transition vertex, but no include
+                             def (exit, entry) = GetPath(targ, target, tran.Local); // exit according local or external transition rule from source and enter the target
+                             (path + exit, entry) // exit to source vertex + source exit node and entry nodes to target
+                           }
+      CreatePath(exit, Transition.Actions, entry) // create path for transition
+    }
+
+    CheckCompletion(act : ActiveStateConfig) : TargetDeterminator
+    {
+      def simple = act.simple_states;
+      def w_completion = simple.Filter(x => x.transitions.Exists(_.IsCompletion));
+      def w_do = w_completion.Filter(x => !x.do_activity.IsEmpty());
+      foreach (st in w_do)
+      {
+        st.do_activity.Iter(x => x.need_completion = true);
+      }
+      if (w_completion.IsEmpty()) TargetDeterminator.State(act) else TargetDeterminator.Completion(act)
+    }
+
+    public CreatePath() : Transition
+    {
+      def target = match (Target)
+      {
+        | TargetDeterminator.State(act) => def path = GetPath();
+                                           CheckCompletion(act)
+        | TargetDeterminator.History(h) => TraversePseudo()
+                                           
+        | t                             => t
+      }
+      Transition(Source, transition.Trigger, transition.Guard, path, target)
+    }
+    
+    TraversePseudo() : Transition
+    {
+      match (pseudo)
+      {
+        | HPseudoState.History as h  => def st = pseudo.state;
+                                        def path = CreatePath(tran, source.states, st.active_config);
+                                        Transition(source, tran.Trigger, tran.Guard, path, TargetDeterminator.History(h))
+                                        
+        | _                          => null
+      }
+    }
+    
+  }
+  
+  /// <summary>
+  /// Description of Config.
+  /// </summary>
+  class TransitionPath
+  {
+    public transition : HTransition;
+
+    solver : ConfigSolver;
+
+    traverser : ConfigTraverser;
+
+    public this(tr : HTransition, solver : ConfigSolver, traverser : ConfigTraverser)
+    {
+      transition = tr;
+      this.solver = solver;
+      this.traverser = traverser;
+    }
+
+    Source : HTarget
+    {
+      get
+      {
+        transition.Source
+      }
+    }
+
+    Target : HTarget
+    {
+      get
+      {
+        transition.Target
+      }
+    }
+
+    mutable target_config : ActiveStateConfig;
+
+    Local : bool
+    {
+      get
+      {
+        transition.Local
+      }
+    }
+
+    IsCompletion : bool
+    {
+      get
+      {
+        transition.IsCompletion
+      }
+    }
+
+    get_source_configs(st : HState) : list[ActiveStateConfig]
+    {
+      match (st.hierarchy)
+      {
+              // simple state
+        | []           => Solve(Config.Simple(st), _.states)
+        | head :: []   => // sequential composite state
+            if (!Local && IsCompletion) // completion
+            {
+              def final = head.accept_state.Value;
+              Solve(Config.Simple(final), _.states)
+            } else
+            {
+              Solve(Config.Composite(st), _.states)
+            }
+        | _           => Solve(Config.Composite(st), _.states) // concurrent state
+      }
+    }
+
+    [Memoized]
+    source_configs : list[ActiveStateConfig]
+    {
+      get
+      {
+        match (transition.Source)
+        {
+          | HTarget.State(st) => get_source_configs(st)
+          | HTarget.PseudoState(p) =>
+              match (p)
+              {
+                | HPseudoState.Join => []
+                | _                 => []
+              }
+          | _ => []
+        }
+      }
+    }
+
+    InitialConfiguration(st : HState) : ActiveStateConfig
+    {
+      def conf = Solve(Config.Unknown(st), x => x.init_state :: []);
+      conf.Head
+    }
+
+    InitialConfiguration(st : list[HState]) : ActiveStateConfig
+    {
+      def conf = Solve(Config.Concurrent(st), x => x.init_state :: []);
+      conf.Head
+    }
+
+    Solve(conf : Config, selector : HFsm -> list[HState]) : list[ActiveStateConfig]
+    {
+      solver.Init(conf, selector);
+      def conf = solver.Solve();
+      traverser.CreateConfig(conf)
+    }
+
+    CreateTransitionPath(src_conf : ActiveStateConfig, target : ActiveStateConfig) : Transition
+    {
+      def trav = TraversePath(src_conf, if (target != null) TargetDeterminator.State(target) else TargetDeterminator.NoStateChange(), this);
+      trav.CreatePath()
+    }
+    
+    TraversePseudo(source : ActiveStateConfig, pseudo : HPseudoState) : Transition
+    {
+      match (pseudo)
+      {
+        | HPseudoState.History as p => def trav = TraversePath(source, TargetDeterminator.History(p), this);
+                                       trav.CreatePath()
+        | _                         => null
+        
+      }
+      
+      
+    }
+    
+    public Traverse() : list[Transition]
+    {
+      match (Target)
+      {
+        | HTarget.State(st)       => def target = InitialConfiguration(st);
+                                     source_configs.Map(CreateTransitionPath(_, target))
+        | HTarget.PseudoState(st) => source_configs.Map(TraversePseudo(_, st))
+        | HTarget.Nowhere         => source_configs.Map(CreateTransitionPath(_, null))
+      }
+    }
+  }
+}
