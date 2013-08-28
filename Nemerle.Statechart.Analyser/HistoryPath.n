@@ -9,20 +9,57 @@ using System.Linq;
 
 namespace Nemerle.Statechart
 {
+  [Record]
+  public class HistoryPath : IEquatable[HistoryPath]
+  {
+    public transition : Transition {get;set;}
+    
+    public History : PseudoState.History;
+    
+    public From : HState;
+    
+    public Name : string
+    {
+      get
+      {
+        def name = $"HistoryPathFrom$(From)To$(transition.Target)";
+        //if (IsDefault) $"$transition" else 
+        if (History.state.history.IsTwo) $"$(History.type)$name" else name
+      }
+    }
+
+    public Equals(b : HistoryPath) : bool
+    {
+      Name == b.Name
+    }
+    
+    public To : ActiveStateConfig
+    {
+      get
+      {
+        (transition.Target :> TargetDeterminator.State).state
+      }
+    }
+    
+    public override ToString() : string
+    {
+      Name
+    }
+  }
+  
   /// <summary>
   /// Description of HistoryPath.
   /// </summary>
-  [Record]
-  public class HistoryPath
+  class HistoryPathBuilder
   {
 
-    public transition : Transition {get;set;}
+    
 
     trav : ConfigTraverser;
     
-    public this(traverser : ConfigTraverser, from : HState, to : ActiveStateConfig, hist : PseudoState.History)
+    public this(trav : ConfigTraverser, from : HState, to : ActiveStateConfig, hist : PseudoState.History)
     {
-      trav = traverser;
+      this.trav = trav;
       From = from;  
       To   = to;
       History = hist;
@@ -77,29 +114,17 @@ namespace Nemerle.Statechart
     //  }
     //}
 
-    public Name : string
-    {
-      get
-      {
-        //if (IsDefault) $"$transition" else 
-        if (History.state.history.IsTwo) $"$(History.type)$transition" else $"$transition"
-      }
-    }
-
-    public override ToString() : string
-    {
-      Name
-    }
-
-    public CreatePath() : void
+    public CreatePath() : HistoryPath
     {
       def to = To.simple_states.First();
       def tran = HTransition(HTarget.State(From), StateEvent.Completion, GuardNode.Empty(), [], HTarget.State(to), true);
-      def tran = trav.TraverseTran(tran).Head;
+      def tran_path = TransitionPath(tran, trav.Solver, trav.ActiveProc);
+      def tran = tran_path.TraverseInitial();
       //def tran = StateTransition(FromSource, ToSource, TransitionKind.Local);
       //tran.CreateSimpleDecisionTree();
       //tran.internal_kind = TransitionRunKind.History;
-      transition = tran;
+      //transition = tran;
+      HistoryPath(tran, History, From)
     }
 
   }
