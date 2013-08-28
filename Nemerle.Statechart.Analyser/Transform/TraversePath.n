@@ -1,0 +1,320 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  [Record]
+  class TraversePath
+  {
+    public Source : ActiveStateConfig;
+    public Target : ActiveStateConfig;
+    public tran_path   : TransitionPath;
+    
+    Local : bool
+    {
+      get
+      {
+        transition.Local
+      }
+    }
+    
+    [Memoized]
+    SourceConfig : list[HState]
+    {
+      get
+      {
+        match (tran_source)
+        {
+          | HTarget.PseudoState(p) => p.state.active_config
+          | State                  => Source.states
+          | _                      => []
+        }
+      }
+    }
+
+    [Memoized]
+    TargetConfig : list[HState]
+    {
+      get
+      {
+        match (tran_target)
+        {
+          | HTarget.PseudoState(p) => p.state.active_config
+          | State                  => Target.states
+          | _                      => []
+        }
+      }
+    }
+    
+    [Memoized]
+    MainSource : HState
+    {
+      get
+      {
+        match (tran_source)
+        {
+          | HTarget.PseudoState(p) => p.state
+          | State(st)              => st
+          | _                      => null
+        }
+      }
+    }
+    
+    [Memoized]
+    MainTarget : HState
+    {
+      get
+      {
+        match (tran_target)
+        {
+          | HTarget.PseudoState(p) => p.state
+          | State(st)              => st
+          | _                      => null
+        }
+      }
+    }
+    
+    [RecordIgnore]
+    path : PathSequence = PathSequence();
+    
+    transition : HTransition
+    {
+      get
+      {
+        tran_path.transition
+      }
+    }
+    
+    tran_source : HTarget
+    {
+      get
+      {
+        transition.Source
+      }
+    }
+    
+    tran_target : HTarget
+    {
+      get
+      {
+        transition.Target
+      }
+    }
+    
+    [Memoized]
+    lca : HState
+    {
+      get
+      {
+        if (Local) MainSource.active_config.DupLast(MainTarget.active_config, (x, y) => x == y : object) else
+        MainSource.active_super.DupLast(MainTarget.active_super, (x, y) => x == y : object)// TranTargetState
+      }
+    }
+    
+    public static FindPath(src_st : list[HState],
+                           dest_st : list[HState],
+                           exit : list[HState] = null,
+                           entry : list[HState] = null) : list[HState] * list[HState]
+    {
+      def src = src_st ?? [];
+      def dest = dest_st ?? [];
+      def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x == y : object);
+      def exit  = exit ?? [];
+      def entry = entry ?? [];
+      (exit.Rev() + ex.Rev(), en + entry)
+    }
+
+    static GetEntryNode(st : HState) : IEnumerable[PathNode]
+    {
+      | HState(do_activity = do_act, entry = en) =>
+              def act = en.Map(_.action);
+              def en = act.Map(PathNode.Entry(st.name, _));
+              def do_act = do_act.Select(PathNode.RunDoActivity(st.name, _));
+              en.Concat(do_act)
+    }
+
+    static GetEntryPath(nodes : IEnumerable[HState]) : list[TranPath]
+    {
+      $[TranPath(st.name, GetEntryNode(st).NToList(), PathKind.Entry), st in nodes]
+    }
+
+    static GetActionPath(act : IEnumerable[FsmAction]) : list[TranPath]
+    {
+      $[TranPath(null, PathNode.Action(null, a) :: [], PathKind.Action), a in act]
+    }
+
+    static GetExitNode(st : HState) : IEnumerable[PathNode]
+    {
+      def do_act = st.do_activity.Map(x => PathNode.StopDoActivity(st.name, x));
+      def nodes = if (st.history.HasValue) PathNode.SaveHistory(st.name, st.history.Value) :: do_act; else do_act;
+      def act = st.exit.Map(_.action);
+      def exit = act.Select(PathNode.Exit(st.name, _));
+      nodes.Concat(exit)
+    }
+
+    public static GetExitPath(nodes : IEnumerable[HState]) : list[TranPath]
+    {
+      $[TranPath(st.name, GetExitNode(st).NToList(), PathKind.Exit), st in nodes]
+    }
+
+    //CreatePath(source : HState, target : HState) : PathSequence
+    //{
+    //  CreatePath(source.active_config, target.active_config)
+    //}
+
+    //CreatePath() : void
+    //{
+    //  match (tran_target)
+    //  {
+    //    | HTarget.State(st)                => CreatePath(Source.states, st.states)
+    //    | HTarget.Nowhere                  => CreatePath([], [])
+    //    | HTarget.PseudoState              => TraversePseudo()
+    //    | _                                => null
+    //  }
+    //}
+
+    //CreatePath(exit : IEnumerable[HState], act : IEnumerable[FsmAction], entry : IEnumerable[HState]) : PathSequence
+    //{
+    //  def exit = GetExitPath(exit); // create nodes for exit exit actions
+    //  def act = GetActionPath(act); // add transition action
+    //  def entry = GetEntryPath(entry); // create nodes for entry exit actions
+    //  def path = PathSequence();
+    //  path.AddExit(exit);
+    //  path.AddAction(act);
+    //  path.AddEntry(entry);
+    //  path
+    //}
+
+    static GetPath(source : list[HState], target : list[HState], local : bool) : list[HState] * list[HState]
+    {
+      if (local) FindPath(source, target) else
+      {
+        def (source_last, source) = source.SplitLast();
+        def (target_last, target) = target.SplitLast();
+        FindPath(source, target, [source_last], [target_last])
+      }
+    }
+
+    //CreatePath(source : list[HState], target : list[HState]) : void
+    //{
+
+    //  def (exit, entry) = if (source.IsEmpty() && target.IsEmpty()) ([], []) else 
+    //                       {
+    //                         def st = (Transition.Source :> HTarget.State).state;
+    //                         def targ = st.active_config;
+    //                         def path = FindPath(source, targ)[0]; // exit to source transition vertex, but no include
+    //                         def (exit, entry) = GetPath(targ, target, tran.Local); // exit according local or external transition rule from source and enter the target
+    //                         (path + exit, entry) // exit to source vertex + source exit node and entry nodes to target
+    //                       }
+    //  CreatePath(exit, Transition.Actions, entry) // create path for transition
+    //}
+
+    CheckCompletion(act : ActiveStateConfig) : TargetDeterminator
+    {
+      def simple = act.simple_states;
+      def w_completion = simple.Filter(x => x.transitions.Exists(_.IsCompletion));
+      def w_do = w_completion.Filter(x => !x.do_activity.IsEmpty());
+      foreach (st in w_do)
+      {
+        st.do_activity.Iter(x => x.need_completion = true);
+      }
+      if (w_completion.IsEmpty()) TargetDeterminator.State(act) else TargetDeterminator.Completion(act)
+    }
+
+    ExitPath(src : list[HState], dest : list[HState]) : void
+    {
+      def exit_path = GetPath(src, dest, true)[0];
+      def nodes = GetExitPath(exit_path);
+      path.AddExit(nodes)
+    }
+    
+    AddExit(st : HState) : void
+    {
+      def nodes = GetExitPath(st :: []);
+      path.AddExit(nodes)
+    }
+    
+    AddEntry(st : HState) : void
+    {
+      def nodes = GetEntryPath(st :: []);
+      path.AddEntry(nodes)
+    }
+    
+    EntryPath(src : list[HState], dest : list[HState]) : void
+    {
+      def entry_path = GetPath(src, dest, true)[1];
+      def nodes = GetEntryPath(entry_path);
+      path.AddEntry(nodes)
+    }
+    
+    ExitSource() : void
+    {
+      ExitPath(SourceConfig, lca.active_config); // exit from source config to transition source
+      //AddExit(MainSource);
+      //def target = MainSource.active_config.ChopLast().NToList();
+      //ExitPath(target, lca.active_config); // exit from transition source to lca
+    }
+    
+    Action() : void
+    {
+      def tran_path = GetActionPath(transition.Actions);
+      path.AddAction(tran_path);
+    }
+    
+    EntryTarget() : void
+    {
+      EntryPath(lca.active_config, TargetConfig);
+      //def target = MainTarget.active_config.ChopLast().NToList();
+      //EntryPath(lca.active_config, target);
+      //AddEntry(MainTarget);
+      //EntryPath(MainTarget.active_config, TargetConfig)
+    }
+    
+    public CreateEntryPath() : Transition
+    {
+      Action();
+      when (MainTarget != null) EntryTarget();
+      def target = match (tran_target)
+      {
+        | HTarget.State                                  => CheckCompletion(Target)
+        | HTarget.PseudoState(HPseudoState.History as h) => TargetDeterminator.History(h)
+        | _                                              => TargetDeterminator.NoStateChange()
+      }
+      Transition(Source, transition.Trigger, transition.Guard, path, target)
+    }
+    
+    public CreatePath() : Transition
+    {
+      
+      when (MainTarget != null) ExitSource();
+      Action();
+      when (MainTarget != null) EntryTarget();
+      def target = match (tran_target)
+      {
+        | HTarget.State                                  => CheckCompletion(Target)
+        | HTarget.PseudoState(HPseudoState.History as h) => TargetDeterminator.History(h)
+        | _                                              => TargetDeterminator.NoStateChange()
+      }
+      Transition(Source, transition.Trigger, transition.Guard, path, target)
+    }
+    
+    //TraversePseudo() : Transition
+    //{
+    //  match (pseudo)
+    //  {
+    //    | HPseudoState.History as h  => def st = pseudo.state;
+    //                                    def path = CreatePath(tran, source.states, st.active_config);
+    //                                    Transition(source, tran.Trigger, tran.Guard, path, TargetDeterminator.History(h))
+                                        
+    //    | _                          => null
+    //  }
+    //}
+    
+  }
+}

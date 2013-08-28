@@ -16,26 +16,27 @@ namespace Nemerle.Statechart
   class ConfigTraverser
   {
 
+    [Accessor]
     solver : ConfigSolver = ConfigSolver();
 
     public transitions : list[HTransition];
-    active_configs : List[ActiveStateConfig] = List();
+    
+    [Accessor]
+    active_proc : ActiveConfigProcessor;
 
     res_trans : List[Transition] = List();
 
     //[Memoized]
     public InitialTransition(init : HTransition) : Transition
     {
-      def source = (init.Source :> HTarget.State).state.active_config;
-      def source = ActiveStateConfig(null, [], source, [], [], null);
-      def target = InitialConfiguration((init.Target :> HTarget.State).state);
-      CreateTransitionPath(init, source, target) // create nodes for entry exit actions
-        //Transition(null, StateEvent.Completion, GuardNode.Empty(), path, TargetDeterminator.State(InitialConfig))
+      def path = TransitionPath(init, solver, active_proc);
+      path.TraverseInitial()
     }
 
-    public this(tran : list[HTransition])
+    public this(tran : list[HTransition], act : ActiveConfigProcessor)
     {
       transitions = tran;
+      active_proc = act;
     }
 
     public Transitions : IEnumerable[Transition]
@@ -50,29 +51,10 @@ namespace Nemerle.Statechart
     {
       get
       {
-        active_configs.NToList()
+        active_proc.ActiveConfigs.NToList()
       }
     }
 
-    public CreateConfig(seq : list[Configuration]) : list[ActiveStateConfig]
-    {
-      seq.Map(x => CreateConfig(x.States))
-    }
-
-    public CreateConfig(seq : IEnumerable[HState]) : ActiveStateConfig
-    {
-      match (active_configs.Find(x => x.states.Equals(seq)))
-      {
-        | null => def nseq = seq.Where(_.IsSimple);
-                  def name = $<#..$(nseq;"")#>;
-                  //def trans = seq.SelectMany(x => x.transitions).NToList();
-                  def conf = ActiveStateConfig(name, [], seq.NToList(), [], [], null);
-                  active_configs.Add(conf);
-                  conf
-        | c  => c
-      }
-
-    }
 
     public static GetInitialConfiguration(st : HState) : list[HState]
     {
@@ -121,7 +103,7 @@ namespace Nemerle.Statechart
 
     public TraverseTran(tr : HTransition) : list[Transition]
     {
-      def path = TransitionPath(tr, solver, this);
+      def path = TransitionPath(tr, solver, active_proc);
       path.Traverse();
       //def src_conf = SourceConfigs(tr);
       //match (tr.Target)

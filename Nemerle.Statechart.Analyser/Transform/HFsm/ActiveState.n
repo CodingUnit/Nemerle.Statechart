@@ -38,9 +38,9 @@ namespace Nemerle.Statechart
     }
 
     public HistoryPath : list[HistoryPath] {get;set;default []}
-    
+
     public History : list[PseudoState.History] {get;set;default []}
-    
+
     public Id : IdType {get;set;}
 
     [Memoized]
@@ -56,7 +56,7 @@ namespace Nemerle.Statechart
   }
 
   [Record]
-  public class Transition
+  public class Transition : IEquatable[Transition]
   {
     public Source  : ActiveStateConfig;
     public Trigger : StateEvent;
@@ -86,10 +86,20 @@ namespace Nemerle.Statechart
       }
     }
 
+    public Equals(b : Transition) : bool
+    {
+      Name == b.Name
+    }
+    
+    public override GetHashCode() : int
+    {
+      Name.GetHashCode()
+    }
+    
     public override ToString() : string { Name }
 
   }
-  
+
   [Record]
   public variant PseudoState
   {
@@ -98,26 +108,26 @@ namespace Nemerle.Statechart
         default : option[Transition];
         type    : HistoryType;
         state   : HState;
-        
+
         [Memoized]
         Name : string
         {
           get
           {
-              def type = match (type)
-                          {
-                            | HistoryType.Deep     => "Deep"
-                            | Shallow              => "Shallow"
-                            | None                 => ""
-                          }
+            def type = match (type)
+                        {
+                          | HistoryType.Deep     => "Deep"
+                          | Shallow              => "Shallow"
+                          | None                 => ""
+                        }
 
-              if (state != null)
-              {
-                if (state.history.IsOne) $"$(state)History" else $"$(state)$(type)History"
-              } else "History";
-            }
+            if (state != null)
+            {
+              if (state.history.IsOne) $"$(state)History" else $"$(state)$(type)History"
+            } else "History";
+          }
         }
-        
+
         public override ToString() : string
         {
           Name
@@ -158,4 +168,39 @@ namespace Nemerle.Statechart
   //  public end : TransitionEnd;
 
   //}
+
+  class ActiveConfigProcessor
+  {
+    
+    active_configs : List[ActiveStateConfig] = List();
+
+    public ActiveConfigs : IEnumerable[ActiveStateConfig]
+    {
+      get
+      {
+        active_configs
+      }
+    }
+    
+    public CreateConfig(seq : list[Configuration]) : list[ActiveStateConfig]
+    {
+      seq.Map(x => CreateConfig(x.States))
+    }
+
+    public CreateConfig(seq : IEnumerable[HState]) : ActiveStateConfig
+    {
+      match (active_configs.Find(x => x.states.Equals(seq)))
+      {
+        | null => def nseq = seq.Where(_.IsSimple);
+                  def name = $<#..$(nseq;"")#>;
+                  //def trans = seq.SelectMany(x => x.transitions).NToList();
+                  def conf = ActiveStateConfig(name, [], seq.NToList(), [], [], null);
+                  active_configs.Add(conf);
+                  conf
+        | c  => c
+      }
+
+    }
+
+  }
 }
