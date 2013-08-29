@@ -16,6 +16,13 @@ namespace Nemerle.Statechart
     public Target : ActiveStateConfig;
     public tran_path   : TransitionPath;
     
+    public this(source : ActiveStateConfig, target : ActiveStateConfig, tran_path : TransitionPath)
+    {
+      Source = source;
+      Target = target;
+      this.tran_path = tran_path;
+    }
+    
     Local : bool
     {
       get
@@ -80,7 +87,6 @@ namespace Nemerle.Statechart
       }
     }
     
-    [RecordIgnore]
     path : PathSequence = PathSequence();
     
     transition : HTransition
@@ -201,6 +207,30 @@ namespace Nemerle.Statechart
       }
     }
 
+    static GetPath(source : list[HState], target : list[HState], local : bool, act : list[FsmAction]) : PathSequence
+    {
+      def (ex, en) = GetPath(source, target, local);
+      def exit = GetExitPath(ex);
+      def entry = GetEntryPath(en);
+      def act = GetActionPath(act);
+      def path = PathSequence();
+      path.AddEntry(entry);
+      path.AddExit(exit);
+      path.AddAction(act);
+      path
+    }
+    
+    AddPath(source : list[HState], target : list[HState], local : bool, act : list[FsmAction]) : void
+    {
+      def (ex, en) = GetPath(source, target, local);
+      def exit = GetExitPath(ex);
+      def entry = GetEntryPath(en);
+      def act = GetActionPath(act);
+      path.AddEntry(entry);
+      path.AddExit(exit);
+      path.AddAction(act);
+    }
+        
     //CreatePath(source : list[HState], target : list[HState]) : void
     //{
 
@@ -276,17 +306,104 @@ namespace Nemerle.Statechart
       //EntryPath(MainTarget.active_config, TargetConfig)
     }
     
-    public CreateEntryPath() : Transition
+    TraverseJunction(j : HPseudoState.Junction) : TargetDeterminator
     {
-      Action();
-      when (MainTarget != null) EntryTarget();
-      def target = match (tran_target)
+      def tree = j.decision_tree;
+      def tree = TraverseDecisionTree(tree);
+      j.decision_tree = tree;
+      TargetDeterminator.Junction(tree)
+    }
+    
+    Clone() : TraversePath
+    {
+      TraversePath(Source, Target, tran_path, path)
+    }
+    
+    TraverseDecisionTree(tree : DecisionNode) : DecisionNode
+    {
+      def tree = tree.Clone();
+      foreach (j in tree.GetBreadthFirstEnumerable())
+      {
+        | DecisionNode.Target(target = tar) as t => 
+             def p = Clone();
+             match (tar)
+             {
+               | HTarget.PseudoState(HPseudoState(state = st))
+               | State(st)                                    => p.AddPath(t.state.active_config, st.active_config, true, j.actions)
+               | _                                            => ()
+             }
+             t.path = p.path;
+            //def p = TransitionPath(tran, recursive); // create path new path 
+            //p.path = this.path.Clone(); // copy from this
+            //def dest = tar.ToState; // if we know the target
+            //p.DefPath(t.state, dest, true, j.actions); // create nodes to
+            //def dest = p.TraverseTargetReg(tar, tran); // traversing target
+            //t.path = p.path; // set node path to calculated
+            //t.destination = dest; // destination set to dest
+            def tar = ProcessTarget(tar);
+            t.destination = tar;
+        | _ => 
+        
+            def src = j.state;
+            j.path = path.Clone(); // foreach nodes path from parent to childs
+            foreach (n in j.ChildNodes)
+            {
+              def dest = n.state;
+              def path = GetPath(src.active_config, dest.active_config, true, j.actions);
+              n.path = path;
+            }
+      }
+      tree
+    }
+    
+    ProcessTarget(tar : HTarget) : TargetDeterminator
+    {
+      match (tar)
       {
         | HTarget.State                                  => CheckCompletion(Target)
         | HTarget.PseudoState(HPseudoState.History as h) => TargetDeterminator.History(h)
         | _                                              => TargetDeterminator.NoStateChange()
       }
-      Transition(Source, transition.Trigger, transition.Guard, path, target)
+    }
+    
+    EmptyDecisionTarget(target : TargetDeterminator) : DecisionNode
+    {
+      DecisionNode.Target(transition.Actions, path, (transition.Source :> HTarget.State).state, transition.Target, target)
+    }
+    
+    CreateDecisionTree(target : TargetDeterminator) : DecisionNode
+    {
+      match (target)
+      {
+        | TargetDeterminator.Junction(tree)  => tree
+        | _                                  => match (transition.Guard)
+                                                {
+                                                  | GuardNode.Empty      => EmptyDecisionTarget(target);
+                                                  | GuardNode.Expr as g  => def target = EmptyDecisionTarget(target);
+                                                                            DecisionNode.Condition(transition.Actions, path, (transition.Source :> HTarget.State).state, g, target, None())
+                                                  | _                    => throw InvalidOperationException("GuardNode.Else is not permitted on this stage")
+                                                }
+      }
+    }
+
+    //public InitSimpleDecisionTree(path : PathSequence) : void
+    //{
+    //  when (SimpleDecisionTree)
+    //    foreach (n in DecisionTree.GetBreadthFirstEnumerable())
+    //      {
+    //        | DecisionNode.Target as t => t.destination = Destination;
+    //                                  n.path = path;
+    //        | _                        => n.path = path;
+    //      }
+    //}
+    
+    public CreateEntryPath() : Transition
+    {
+      Action();
+      when (MainTarget != null) EntryTarget();
+      def target = ProcessTarget(tran_target);
+      def tree = CreateDecisionTree(target);
+      Transition(Source, transition.Trigger, transition.Guard, path, target, tree)
     }
     
     public CreatePath() : Transition
@@ -297,11 +414,13 @@ namespace Nemerle.Statechart
       when (MainTarget != null) EntryTarget();
       def target = match (tran_target)
       {
-        | HTarget.State                                  => CheckCompletion(Target)
-        | HTarget.PseudoState(HPseudoState.History as h) => TargetDeterminator.History(h)
-        | _                                              => TargetDeterminator.NoStateChange()
+        | HTarget.State                                   => CheckCompletion(Target)
+        | HTarget.PseudoState(HPseudoState.History as h)  => TargetDeterminator.History(h)
+        | HTarget.PseudoState(HPseudoState.Junction as j) => TraverseJunction(j)
+        | _                                               => TargetDeterminator.NoStateChange()
       }
-      Transition(Source, transition.Trigger, transition.Guard, path, target)
+      def tree = CreateDecisionTree(target);
+      Transition(Source, transition.Trigger, transition.Guard, path, target, tree)
     }
     
     //TraversePseudo() : Transition

@@ -34,7 +34,6 @@ namespace Nemerle.Statechart
     }
     
     public Parent : FsmJunctionNode {get;set;}
-    public path   : PathSequence {get;set;}
 
     [Memoized]
     public Targets : IEnumerable[TransitionTarget]
@@ -86,8 +85,8 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | Node as n   => HJunctionNode.Node(n.nodes.Map(_.ToHJunctionNode))
-          | Target as n => HJunctionNode.Target(n.target.ToHTarget, null)
+          | Node as n   => HJunctionNode.Node(n.guard, n.actions, n.state.ToHState, n.nodes.Map(_.ToHJunctionNode))
+          | Target as n => HJunctionNode.Target(n.guard, n.actions, n.state.ToHState, n.target.ToHTarget)
         }
       }
     }
@@ -98,8 +97,8 @@ namespace Nemerle.Statechart
       {
         def node = match (x, x.ChildNodes.NToList())
                     {
-                      | (JunctionNode(_, g, a, t), [])  => FsmJunctionNode.Target(g, a.GetActions(), st, null, null, TransitionTarget.Create(st.state, t), null)
-                      | (JunctionNode(_, g, a, _), _)   => FsmJunctionNode.Node(g, a.GetActions(), st, null, null, acc.NToList())
+                      | (JunctionNode(_, g, a, t), [])  => FsmJunctionNode.Target(g, a.GetActions(), st, null, TransitionTarget.Create(st.state, t), null)
+                      | (JunctionNode(_, g, a, _), _)   => FsmJunctionNode.Node(g, a.GetActions(), st, null, acc.NToList())
                     }
 
         acc.Iter(x => x.Parent = node);
@@ -108,7 +107,7 @@ namespace Nemerle.Statechart
 
       // TODO: различающиеся гуарды должны быть на ветках junction и на переходах (объединить гуард перехода и nodes)
       def nodes = node.Map(x => x.FoldTree(null, create));
-      FsmJunctionNode.Node(GuardNode.Empty(-1), [], st, null, null, nodes)
+      FsmJunctionNode.Node(GuardNode.Empty(-1), [], st, null, nodes)
     }
 
     public Iter(func : FsmJunctionNode -> void) : void

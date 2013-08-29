@@ -19,42 +19,42 @@ namespace Nemerle.Statechart
   public partial variant DecisionNode
   {
 
-    public static create_decision_tree(target : PseudoStateNode.Junction, tr : StateTransition) : void
+    public static create_decision_tree(target : HPseudoState.Junction, tr : HTransition) : void
     {
       
       def create_tree(node, a)
       {
         match (node)
         {
-          | FsmJunctionNode.Node(actions = act, guard = g, nodes = n, state = st) => 
+          | HJunctionNode.Node(actions = act, guard = g, nodes = n, state = st) => 
               Some(DecisionNode.Condition(act, null, st, g, n.FoldBack(None(), create_tree).WithDefault(null), a))
-          | Target(actions = act, path = seq, target = t, dest = d, state = st) => Some(DecisionNode.Target(act, seq, st, t, d))
+          | Target(actions = act, target = t, state = st) => Some(DecisionNode.Target(act, null, st, t, null))
         }
       } 
 
       def check_prepare(n)
       {
-        | FsmJunctionNode.Target(guard = GuardNode.Else) as n => n.guard = GuardNode.Empty();
-                                                                n
-        | FsmJunctionNode.Target(guard = GuardNode.Expr as g) as n => 
+        | HJunctionNode.Target(guard = GuardNode.Else) as n => n.guard = GuardNode.Empty();
+                                                               n
+        | HJunctionNode.Target(guard = GuardNode.Expr as g) as n => 
             n.guard = GuardNode.Empty();
-            FsmJunctionNode.Node(g, [], n.ParentNode, n.Parent, n.path, [n])
+            HJunctionNode.Node(g, [], n.state, [n])
         | _ => n
       }
 
       def tree = target.tree;
       // check tree nodes and prepare
-      foreach (FsmJunctionNode.Node(nodes = n) as node in tree.GetBreadthFirstEnumerable())
+      foreach (HJunctionNode.Node(nodes = n) as node in tree.GetBreadthFirstEnumerable())
       {
         def n = n.Map(check_prepare);
         node.nodes = n;
       }
 
       // if junction not in super of transition, or cross state, need run actions not at end, but in each segment
-      when (tr.From.Super != target.state || tree.GetBreadthFirstEnumerable().Exists(x => x.state != target.state))
+      when ((tr.Source :> HTarget.State).state.automaton.super : object != target.state || tree.GetBreadthFirstEnumerable().Exists(x => x.state : object != target.state))
       {
         // move guards to targets
-        foreach (FsmJunctionNode.Node(guard = g) as n in tree.GetBreadthFirstEnumerable())
+        foreach (HJunctionNode.Node(guard = g) as n in tree.GetBreadthFirstEnumerable())
         {
           foreach (sub in n.nodes)
           {
@@ -65,7 +65,7 @@ namespace Nemerle.Statechart
       }
 
       // move actions to targets
-      foreach (FsmJunctionNode.Node(actions = a) as n in tree.GetBreadthFirstEnumerable())
+      foreach (HJunctionNode.Node(actions = a) as n in tree.GetBreadthFirstEnumerable())
       {
         foreach (sub in n.nodes)
         {
@@ -76,8 +76,7 @@ namespace Nemerle.Statechart
 
       def tree = create_tree(target.tree, None()).WithDefault(null);
       def tree = if (tree is DecisionNode.Condition(condition = GuardNode.Empty, actions = [], else_node = None, body = b)) b else tree;
-
-      target.decision_tree = tree;
+      target.decision_tree = tree
     }
 
   }
