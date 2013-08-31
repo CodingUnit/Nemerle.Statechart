@@ -52,20 +52,20 @@ namespace Nemerle.Statechart
         {
           | []  => a
           | sub =>
-             match (st.InitialState)
-             {
-               | Some(s) => 
                   def group = connected_transitions(sub, st.initial_tran);
                   def states = group.Map(convert_FsmStateToHState);
-                  def init = convert_FsmStateToHState(s);
+                  
+                  def init = st.InitialState.Map(convert_FsmStateToHState);
                   def accept = sub.Find(_.IsFinal).Map(convert_FsmStateToHState);
                   def name = $"A$finite_number";
                   finite_number++;
                   def fsm = HFsm(name, states, init, accept, super);
-                  states.Iter(x => x.automaton = fsm);
+                  foreach (st in states)
+                  {
+                    st.automaton = fsm;
+                    //st.super = super;
+                  }
                   fsm :: a
-               | _        => a
-             }
         }
       }
 
@@ -77,11 +77,11 @@ namespace Nemerle.Statechart
           if (st.IsConcurrent)
           {
             def sreg = st.sub_states;
-            def fsms = sreg.Map(x => convert_FsmStateToHState(x.sub_states.Head).automaton);
+            def fsms = sreg.Map(x => x.sub_states.First(x => x.ToHState.automaton != null).ToHState.automaton);
             st.ToHState.hierarchy = fsms;
           } else
           {
-            def fsm = convert_FsmStateToHState(st.sub_states.Head).automaton;
+            def fsm = st.sub_states.First(x => x.ToHState.automaton != null).ToHState.automaton;
             st.ToHState.hierarchy = [fsm];
           }
         } else
