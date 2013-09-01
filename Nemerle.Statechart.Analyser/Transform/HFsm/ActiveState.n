@@ -15,9 +15,17 @@ namespace Nemerle.Statechart
   /// Description of ActiveState.
   /// </summary>
   [Record]
-  public class ActiveStateConfig
+  public class ActiveStateConfig : IEquatable[ActiveStateConfig]
   {
-    public name : string;
+    [Memoized]
+    public name : string
+    {
+      get
+      {
+        $<#..$(simple_states;"")#>
+      }
+    }
+    
     public transitions : list[Transition] {get;set;default []}
 
     public states : list[HState]; // states in it resides
@@ -52,6 +60,17 @@ namespace Nemerle.Statechart
       }
     }
 
+    public Equals(b : ActiveStateConfig) : bool
+    {
+      IsThis(b.simple_states)
+    }
+    
+    
+    public override GetHashCode() : int
+    {
+      name.GetHashCode()
+    }
+    
     public override ToString() : string { name }
   }
 
@@ -59,6 +78,13 @@ namespace Nemerle.Statechart
   public class Transition : IEquatable[Transition]
   {
     public Source  : ActiveStateConfig;
+    
+    /// <summary>
+    /// source of transition arrow
+    /// </summary>
+    public OriginateFrom : HState;
+    
+    
     public Trigger : StateEvent;
     public Guard   : GuardNode;
     //public Actions : list[FsmAction];
@@ -67,6 +93,9 @@ namespace Nemerle.Statechart
 
     public DecisionTree : DecisionNode;
     
+    public Priority : int {get;set;default 0}
+    
+    [Memoized]
     public Name : string
     {
       get
@@ -193,12 +222,9 @@ namespace Nemerle.Statechart
 
     public CreateConfig(seq : IEnumerable[HState]) : ActiveStateConfig
     {
-      match (active_configs.Find(x => x.states.Equals(seq)))
+      match (active_configs.Find(x => x.IsThis(seq)))
       {
-        | null => def nseq = seq.Where(_.IsSimple);
-                  def name = $<#..$(nseq;"")#>;
-                  //def trans = seq.SelectMany(x => x.transitions).NToList();
-                  def conf = ActiveStateConfig(name, [], seq.NToList(), [], [], null);
+        | null => def conf = ActiveStateConfig([], seq.NToList(), [], [], null);
                   active_configs.Add(conf);
                   conf
         | c  => c

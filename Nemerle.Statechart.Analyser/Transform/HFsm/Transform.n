@@ -110,7 +110,49 @@ namespace Nemerle.Statechart
     {
       CreateFiniteAutomata();
       CreateActiveConfigurations();
+      ResolveConflicts();
     }
     
+    ResolveConflicts() : void
+    {
+      def is_sub_state_of(x, y)
+      {
+        y.all_sub_states.Contains(x)
+      }
+      
+      def compare(x, y)
+      {
+        def x = x.OriginateFrom;
+        def y = y.OriginateFrom;
+        if (is_sub_state_of(x, y)) 1 else
+          if (is_sub_state_of(y, x)) -1 else 0
+      }
+      
+      //def by_states = Transitions.GroupBy(_.Source);
+      foreach (conf in ActiveStates)
+      {
+        def by_trigger = conf.transitions.GroupBy(_.Trigger);
+        foreach (ctrig when ctrig.IsMoreThanOne() in by_trigger)
+        {
+          //def sort_by_priority = ctrig.NToList().Sort(compare);
+          def grouped_equal_prio = ctrig.NToList().Group(compare);
+          grouped_equal_prio.IterI((i, x) => x.Iter(x => x.Priority = i));
+          def (conflict, other) = grouped_equal_prio.Partition(x => x.IsMoreThanOne());
+          
+          foreach (conf in conflict)
+          {
+            def dups = conf.Duplicates((x, y) => x.Guard.CompareTo(y.Guard));
+            when (!dups.IsEmpty()) AddError(FsmError.DuplicateTransition(dups.Map(_ : object)));
+          }
+          
+          def conflict = conflict.Map(x => x.RemoveDuplicatesSort((x, y) => x.Guard.CompareTo(y.Guard)));
+          def trans = conflict + other;
+          def trans = trans.Flatten();
+          def trans = trans.OrderBy(_.Priority).NToList();
+          def (_, other) = trans.SplitFind(x => x.Guard.IsEmpty);
+          when (!other.IsEmpty()) conf.transitions = conf.transitions.Except(other).NToList();
+        }
+      }
+    }
   }
 }

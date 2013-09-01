@@ -25,6 +25,11 @@ namespace Nemerle.Statechart
       $"Transition$(from)By$trigger"
     }
     
+    GetTransitionFunction(tran : Transition) : ClassMember
+    {
+      <[ decl: $(tran.Name : usesite)() : State { $(GetTransitionBody(tran :: [])) } ]>
+    }
+    
     GetTransitionFunction(tran : list[string * Transition]) : list[ClassMember]
     {
       def get_body(n, x)
@@ -36,8 +41,9 @@ namespace Nemerle.Statechart
       tran.Map(get_body)
     }
     
-    GetTransitionFunction(st : ActiveStateConfig, tran : list[Transition]) : list[ClassMember]
+    GetTransitionFunction(st : ActiveStateConfig) : list[ClassMember]
     {
+      def tran = st.transitions;
       def group = tran.GroupBy(_.Trigger);
       //def group = by_states.GroupBy(x => x.Trigger);
       def get_body(x)
@@ -290,6 +296,7 @@ namespace Nemerle.Statechart
     {
       //
       
+      def tran = tran.OrderBy(_.Priority); // order transitions by priority
       
       def def_tran(t, a)
       {
@@ -395,10 +402,11 @@ namespace Nemerle.Statechart
 
     DefineTransitionActions() : void
     {
-      def by_states = transitions.GroupBy(x => x.Source);
-      foreach (st in by_states)
+      //def by_states = transitions.GroupBy(x => x.Source);
+      Define(GetTransitionFunction(analyser.InitialTransition));
+      foreach (st in ActiveStates)
       {
-        def body = GetTransitionFunction(st.Key, st.NToList());
+        def body = GetTransitionFunction(st);
       // history paths
         
         Define(body);
