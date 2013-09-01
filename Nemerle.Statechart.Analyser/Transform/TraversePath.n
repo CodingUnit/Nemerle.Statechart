@@ -80,9 +80,10 @@ namespace Nemerle.Statechart
       {
         match (tran_target)
         {
-          | HTarget.PseudoState(p) => p.state
-          | State(st)              => st
-          | _                      => null
+          | HTarget.PseudoState(null) => null
+          | HTarget.PseudoState(p)    => p.state
+          | State(st)                 => st
+          | _                         => null
         }
       }
     }
@@ -148,14 +149,14 @@ namespace Nemerle.Statechart
     {
       | HState(do_activity = do_act, entry = en) =>
               def act = en.Map(_.action);
-              def en = act.Map(PathNode.Entry(st.name, _));
-              def do_act = do_act.Select(PathNode.RunDoActivity(st.name, _));
+              def en = act.Map(PathNode.Entry(st, _));
+              def do_act = do_act.Select(PathNode.RunDoActivity(st, _));
               en.Concat(do_act)
     }
 
     static GetEntryPath(nodes : IEnumerable[HState]) : list[TranPath]
     {
-      $[TranPath(st.name, GetEntryNode(st).NToList(), PathKind.Entry), st in nodes]
+      $[TranPath(st, GetEntryNode(st).NToList(), PathKind.Entry), st in nodes]
     }
 
     static GetActionPath(act : IEnumerable[FsmAction]) : list[TranPath]
@@ -165,16 +166,16 @@ namespace Nemerle.Statechart
 
     static GetExitNode(st : HState) : IEnumerable[PathNode]
     {
-      def do_act = st.do_activity.Map(x => PathNode.StopDoActivity(st.name, x));
-      def nodes = if (st.history.HasValue) PathNode.SaveHistory(st.name, st.history.Value) :: do_act; else do_act;
+      def do_act = st.do_activity.Map(x => PathNode.StopDoActivity(st, x));
+      def nodes = if (st.history.HasValue) PathNode.SaveHistory(st, st.history.Value) :: do_act; else do_act;
       def act = st.exit.Map(_.action);
-      def exit = act.Select(PathNode.Exit(st.name, _));
+      def exit = act.Select(PathNode.Exit(st, _));
       nodes.Concat(exit)
     }
 
     public static GetExitPath(nodes : IEnumerable[HState]) : list[TranPath]
     {
-      $[TranPath(st.name, GetExitNode(st).NToList(), PathKind.Exit), st in nodes]
+      $[TranPath(st, GetExitNode(st).NToList(), PathKind.Exit), st in nodes]
     }
 
     //CreatePath(source : HState, target : HState) : PathSequence
@@ -420,7 +421,7 @@ namespace Nemerle.Statechart
       when (!IsInternal) EntryTarget();
       def target = ProcessTarget(tran_target);
       def tree = CreateDecisionTree(target);
-      Transition(Source, transition.Trigger, transition.Guard, path, target, tree)
+      Transition(Source, null, transition.Trigger, transition.Guard, path, target, tree, 0)
     }
     
     public CreatePath() : Transition
@@ -430,13 +431,17 @@ namespace Nemerle.Statechart
         Action()
       } else
       {
-        ExitSource();
-        Action();
-        EntryTarget();
+        when (MainTarget != null)
+        {
+          ExitSource();
+          Action();
+          EntryTarget();
+        }
       }
       def target = ProcessTarget(tran_target);
       def tree = CreateDecisionTree(target);
-      Transition(Source, transition.Trigger, transition.Guard, path, target, tree)
+      def originate = if (tran_source is HTarget.State(st)) st else null;
+      Transition(Source, originate, transition.Trigger, transition.Guard, path, target, tree, 0)
     }
     
     //TraversePseudo() : Transition
