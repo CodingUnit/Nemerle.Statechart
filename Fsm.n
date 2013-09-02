@@ -29,6 +29,7 @@ namespace Nemerle.Statechart
     Parse(env : GlobalEnv, body : string, attr_loc : Location, loc : Location) : StateNode.StateMachine
     {
       def parser = FsmParser();
+      parser.flags_map = Hashtable(FsmAnalyser.Flags);
       parser.env = env;
       def macro_col = attr_loc.Column;
 
@@ -164,11 +165,13 @@ namespace Nemerle.Statechart
 
         if (fsm != null)
         {
+          when (fsm.flags.Logging) Console.WriteLine($"Starting analyse fsm $(ty.Name)...");
           when (fsm.flags.Debug) assert2(false);
           def mach = ty.Manager.UserData[key] :> data_type;
           def analyser = FsmAnalyser(fsm, ty.Name, mach);
           analyser.Analyse();
           def warn = analyser.Warnings;
+          when (fsm.flags.Logging) Console.WriteLine($"Finish analyse with $(analyser.Errors.Count()) errors and $(warn.Count()) warnings");
           def warn_file = $"$(ty.Name)Warnings.log";
           if (!warn.IsEmpty()) 
           {
@@ -189,8 +192,10 @@ namespace Nemerle.Statechart
             {
               if (analyser.Complete)
               {
+                when (fsm.flags.Logging) Console.WriteLine($"Starting generate fsm $(ty.Name)...");
                 def gen = StaticGenerator(analyser, ty);
                 gen.Generate();
+                when (fsm.flags.Logging) Console.WriteLine("Finish generating");
                 ty.UserData[key] = true;
               } else Message.Warning("No Statechart to generate")
             }
