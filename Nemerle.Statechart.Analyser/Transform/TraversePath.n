@@ -123,26 +123,29 @@ namespace Nemerle.Statechart
     }
     
     [Memoized]
-    lca : HState
+    LcaConfig : list[HState]
+    {
+      get
+      {
+        if (Lca != null) Lca.active_config else []
+      }
+    }
+    
+    [Memoized]
+    Lca : HState
     {
       get
       {
         if (Local) MainSource.active_config.DupLast(MainTarget.active_config, (x, y) => x == y : object) else
-        MainSource.active_super.DupLast(MainTarget.active_super, (x, y) => x == y : object)// TranTargetState
+          MainSource.active_super.DupLast(MainTarget.active_super, (x, y) => x == y : object)// TranTargetState
       }
     }
     
-    public static FindPath(src_st : list[HState],
-                           dest_st : list[HState],
-                           exit : list[HState] = null,
-                           entry : list[HState] = null) : list[HState] * list[HState]
+    public static FindPath(src : list[HState],
+                           dest : list[HState]) : list[HState] * list[HState]
     {
-      def src = src_st ?? [];
-      def dest = dest_st ?? [];
       def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x == y : object);
-      def exit  = exit ?? [];
-      def entry = entry ?? [];
-      (exit.Rev() + ex.Rev(), en + entry)
+      (ex.Rev(), en)
     }
 
     static GetEntryNode(st : HState) : IEnumerable[PathNode]
@@ -178,47 +181,14 @@ namespace Nemerle.Statechart
       $[TranPath(st, GetExitNode(st).NToList(), PathKind.Exit), st in nodes]
     }
 
-    //CreatePath(source : HState, target : HState) : PathSequence
-    //{
-    //  CreatePath(source.active_config, target.active_config)
-    //}
-
-    //CreatePath() : void
-    //{
-    //  match (tran_target)
-    //  {
-    //    | HTarget.State(st)                => CreatePath(Source.states, st.states)
-    //    | HTarget.Nowhere                  => CreatePath([], [])
-    //    | HTarget.PseudoState              => TraversePseudo()
-    //    | _                                => null
-    //  }
-    //}
-
-    //CreatePath(exit : IEnumerable[HState], act : IEnumerable[FsmAction], entry : IEnumerable[HState]) : PathSequence
-    //{
-    //  def exit = GetExitPath(exit); // create nodes for exit exit actions
-    //  def act = GetActionPath(act); // add transition action
-    //  def entry = GetEntryPath(entry); // create nodes for entry exit actions
-    //  def path = PathSequence();
-    //  path.AddExit(exit);
-    //  path.AddAction(act);
-    //  path.AddEntry(entry);
-    //  path
-    //}
-
-    static GetPath(source : list[HState], target : list[HState], local : bool) : list[HState] * list[HState]
+    static GetPath(source : list[HState], target : list[HState]) : list[HState] * list[HState]
     {
-      if (local) FindPath(source, target) else
-      {
-        def (source_last, source) = source.SplitLast();
-        def (target_last, target) = target.SplitLast();
-        FindPath(source, target, [source_last], [target_last])
-      }
+      FindPath(source, target)
     }
 
-    static GetPath(source : list[HState], target : list[HState], local : bool, act : list[FsmAction]) : PathSequence
+    static GetPath(source : list[HState], target : list[HState], act : list[FsmAction]) : PathSequence
     {
-      def (ex, en) = GetPath(source, target, local);
+      def (ex, en) = GetPath(source, target);
       def exit = GetExitPath(ex);
       def entry = GetEntryPath(en);
       def act = GetActionPath(act);
@@ -229,9 +199,9 @@ namespace Nemerle.Statechart
       path
     }
     
-    AddPath(source : list[HState], target : list[HState], local : bool, act : list[FsmAction]) : void
+    AddPath(source : list[HState], target : list[HState], act : list[FsmAction]) : void
     {
-      def (ex, en) = GetPath(source, target, local);
+      def (ex, en) = GetPath(source, target);
       def exit = GetExitPath(ex);
       def entry = GetEntryPath(en);
       def act = GetActionPath(act);
@@ -240,20 +210,6 @@ namespace Nemerle.Statechart
       path.AddAction(act);
     }
         
-    //CreatePath(source : list[HState], target : list[HState]) : void
-    //{
-
-    //  def (exit, entry) = if (source.IsEmpty() && target.IsEmpty()) ([], []) else 
-    //                       {
-    //                         def st = (Transition.Source :> HTarget.State).state;
-    //                         def targ = st.active_config;
-    //                         def path = FindPath(source, targ)[0]; // exit to source transition vertex, but no include
-    //                         def (exit, entry) = GetPath(targ, target, tran.Local); // exit according local or external transition rule from source and enter the target
-    //                         (path + exit, entry) // exit to source vertex + source exit node and entry nodes to target
-    //                       }
-    //  CreatePath(exit, Transition.Actions, entry) // create path for transition
-    //}
-
     CheckCompletion(act : ActiveStateConfig) : TargetDeterminator
     {
       def simple = act.simple_states;
@@ -275,10 +231,9 @@ namespace Nemerle.Statechart
       }
     }
 
-    ExitPath(src : list[HState], dest : list[HState]) : void
+    AddExitPath(src : list[HState]) : void
     {
-      def exit_path = GetPath(src, dest, true)[0];
-      def nodes = GetExitPath(exit_path);
+      def nodes = GetExitPath(src);
       path.AddExit(nodes)
     }
     
@@ -294,19 +249,33 @@ namespace Nemerle.Statechart
       path.AddEntry(nodes)
     }
     
-    EntryPath(src : list[HState], dest : list[HState]) : void
+    AddEntryPath(src : list[HState]) : void
     {
-      def entry_path = GetPath(src, dest, true)[1];
-      def nodes = GetEntryPath(entry_path);
+      def nodes = GetEntryPath(src);
       path.AddEntry(nodes)
+    }
+    
+    [Memoized]
+    ExitPath : list[HState]
+    {
+      get
+      {
+        SourceConfig.LastElems(Lca).Reverse()
+      }
+    }
+    
+    [Memoized]
+    EntryPath : list[HState]
+    {
+      get
+      {
+        TargetConfig.LastElems(Lca)
+      }
     }
     
     ExitSource() : void
     {
-      ExitPath(SourceConfig, lca.active_config); // exit from source config to transition source
-      //AddExit(MainSource);
-      //def target = MainSource.active_config.ChopLast().NToList();
-      //ExitPath(target, lca.active_config); // exit from transition source to lca
+      AddExitPath(ExitPath)
     }
     
     Action() : void
@@ -317,11 +286,7 @@ namespace Nemerle.Statechart
     
     EntryTarget() : void
     {
-      EntryPath(lca.active_config, TargetConfig);
-      //def target = MainTarget.active_config.ChopLast().NToList();
-      //EntryPath(lca.active_config, target);
-      //AddEntry(MainTarget);
-      //EntryPath(MainTarget.active_config, TargetConfig)
+      AddEntryPath(EntryPath);
     }
     
     TraverseJunction(j : HPseudoState.Junction) : TargetDeterminator
@@ -331,11 +296,6 @@ namespace Nemerle.Statechart
       j.decision_tree = tree;
       TargetDeterminator.Junction(tree, j.name)
     }
-    
-    //Clone() : TraversePath
-    //{
-    //  TraversePath(Source, Target, tran_path, path)
-    //}
     
     TraverseDecisionTree(tree : DecisionNode) : DecisionNode
     {
@@ -348,19 +308,12 @@ namespace Nemerle.Statechart
              match (tar)
              {
                | HTarget.PseudoState(HPseudoState(state = st))
-               | State(st)                                    => p.AddPath(t.state.active_config, st.active_config, true, j.actions)
+               | State(st)                                    => p.AddPath(t.state.active_config, st.active_config, j.actions)
                | _                                            => ()
              }
              t.path = p.path;
-            //def p = TransitionPath(tran, recursive); // create path new path 
-            //p.path = this.path.Clone(); // copy from this
-            //def dest = tar.ToState; // if we know the target
-            //p.DefPath(t.state, dest, true, j.actions); // create nodes to
-            //def dest = p.TraverseTargetReg(tar, tran); // traversing target
-            //t.path = p.path; // set node path to calculated
-            //t.destination = dest; // destination set to dest
-            def tar = p.ProcessTarget(tar);
-            t.destination = tar;
+             def tar = p.ProcessTarget(tar);
+             t.destination = tar;
         | _ => 
         
             def src = j.state;
@@ -368,7 +321,7 @@ namespace Nemerle.Statechart
             foreach (n in j.ChildNodes)
             {
               def dest = n.state;
-              def path = GetPath(src.active_config, dest.active_config, true, j.actions);
+              def path = GetPath(src.active_config, dest.active_config, j.actions);
               n.path = path;
             }
       }
@@ -404,17 +357,6 @@ namespace Nemerle.Statechart
                                                 }
     }
 
-    //public InitSimpleDecisionTree(path : PathSequence) : void
-    //{
-    //  when (SimpleDecisionTree)
-    //    foreach (n in DecisionTree.GetBreadthFirstEnumerable())
-    //      {
-    //        | DecisionNode.Target as t => t.destination = Destination;
-    //                                  n.path = path;
-    //        | _                        => n.path = path;
-    //      }
-    //}
-    
     public CreateEntryPath() : Transition
     {
       Action();
@@ -443,18 +385,6 @@ namespace Nemerle.Statechart
       def originate = if (tran_source is HTarget.State(st)) st else null;
       Transition(Source, originate, transition.Trigger, transition.Guard, path, target, tree, 0)
     }
-    
-    //TraversePseudo() : Transition
-    //{
-    //  match (pseudo)
-    //  {
-    //    | HPseudoState.History as h  => def st = pseudo.state;
-    //                                    def path = CreatePath(tran, source.states, st.active_config);
-    //                                    Transition(source, tran.Trigger, tran.Guard, path, TargetDeterminator.History(h))
-                                        
-    //    | _                          => null
-    //  }
-    //}
     
   }
 }
