@@ -4,9 +4,6 @@ using Nemerle.Text;
 using Nemerle.Utility;
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Console;
 using Nemerle.Statechart;
 
   /// <summary>
@@ -14,232 +11,70 @@ using Nemerle.Statechart;
   /// </summary>
   [statechart(<#
 
-  flags : auto_initial
-          transition_completed
-          auto_entry_exit
-          testing;
-
-  //flags : debug;
-          
+  flags testing;
+  
+  a => B;
+  
   state A
   {
-      (H*)
-      g => H;
+    a [a1] => C;
   }
 
-  state B : A
+  state B
   {
-      (H*)
-
-      d => D;
-      f => @;
-      k => A;
-      c => E;
   }
 
-  state C : B
+  state C
   {
-      a / ();
-      b => E;
-      m => @;
+    b => A;
   }
-
-  state E : B
-  {
-      i => D;
-      j => A;
-  }
-
-  state D : A
-  {
-      e => B;
-      n => B.H;
-  }
-
   #>
   )]
-  public class PathCoverFsm
+  public class TestFsm
   {
-
+    public a1 : bool {get;set;default true}
   }
 
-  using PathCoverFsm.Event;
-  /// <summary>
-  /// Description of PathCoverFsmTest.
-  /// </summary>
-  module Test
-  {
 
-    public Main() : void
-    {
-      def fsm = PathCoverFsm();
-      def tester = fsm.GetTester();
-      tester.ConsoleTestInit();
+module Test
+{
+  Main() : void
+  {
+    def fsm = TestFsm();
+    def tester = fsm.GetTester();
+    tester.ConsoleTestInit();
 
       // "Starting state machine"
-      tester.Initiate(["A", "B", "C"]);
-
-      // "Testing Internal transition"
-      tester.Test(A.New(), null);
-
-      // "Testing simple-to-simple transition"
-      tester.Test(B.New(), ["C"], ["E"]);
-
-      // "Testing simple-to-composite transition"
-      tester.Test(J.New(), ["E", "B", "A"], ["A", "B", "C"]);
-
-      // "Testing simple-to-simple, via composite"
-      tester.Test(D.New(), ["C", "B"], ["D"]);
-
-      // "Testing for no match"
-      tester.Test(A.New(), null);
-
-      // "Testing simple to (non-ancestor) composite"
-      tester.Test(E.New(), ["D"], ["B", "C"]);
-
-      // "Testing simple-to-simple transition again"
-      tester.Test(B.New(), ["C"], ["E"]);
-
-      // "Testing simple-to-simple, across ancestor"
-      tester.Test(I.New(), ["E", "B"], ["D"]);
-
-      // "Testing simple-to-composite with history"
-      tester.Test(G.New(), ["D", "A"], ["A", "D"]);
-
-      // "Get back to state C"
-      tester.Test(E.New(), ["D"], ["B", "C"]);
-
-      // "Testing composite-to-composite transition"
-      tester.Test(F.New(), ["C", "B"], ["B", "C"]);
-
-      // "Testing simple to sibling simple via composite transition"
-      tester.Test(C.New(), ["C", "B"], ["B", "E"]);
-
-      // "Testing composite-to-composite transition"
-      tester.Test(K.New(), ["E", "B", "A"], ["A", "B", "C"]);
-
-      // "Testing transition to self, but leaving the state"
-      tester.Test(M.New(), ["C"], ["C"]);
-
-      // "Get to state D"
-      tester.Test(D.New(), ["C", "B"], ["D"]);
-
-      // "Test going to non-ancestor composite with history (and returning to the same state)"
-      tester.Test(N.New(), ["D"], ["B", "C"]);
-
-      // "Get us to state E, then D"
-      tester.Test(B.New(), ["C"], ["E"]);
-
-      // "Go to state D"
-      tester.Test(I.New(), ["E", "B"], ["D"]);
-
-      // "Now, test returning with history to a non-default state"
-      tester.Test(N.New(), ["D"], ["B", "E"]);
-
-      fsm.Terminate();
-    }
-
+    tester.Initiate(["A"]);
+     // testing transition with guard
+    tester.Test("a", "C", "ExitA");
+     // back again
+    tester.Test("b", "A", "ExitC");
+     // set guard to false
+    fsm.a1 = false;
+     // testing runtime conflict resolve with guard
+    tester.Test("a", "B", ["A", "Top"], ["Top"]);
+    fsm.Terminate()
   }
+}
 
 /*
 BEGIN-OUTPUT
 EntryA
-EntryB
-EntryC
 Ok
-Processing a 'A' 
-Ok
-Processing a 'B' 
-ExitC
-EntryE
-Ok
-Processing a 'J' 
-ExitE
-ExitB
+Processing a 'a' 
 ExitA
+EntryC
+Ok
+Processing a 'b' 
+ExitC
 EntryA
-EntryB
-EntryC
 Ok
-Processing a 'D' 
-ExitC
-ExitB
-EntryD
-Ok
-Processing a 'A' 
-Ok
-Processing a 'E' 
-ExitD
-EntryB
-EntryC
-Ok
-Processing a 'B' 
-ExitC
-EntryE
-Ok
-Processing a 'I' 
-ExitE
-ExitB
-EntryD
-Ok
-Processing a 'G' 
-ExitD
+Processing a 'a' 
 ExitA
-EntryA
-EntryD
-Ok
-Processing a 'E' 
-ExitD
+ExitTop
+EntryTop
 EntryB
-EntryC
-Ok
-Processing a 'F' 
-ExitC
-ExitB
-EntryB
-EntryC
-Ok
-Processing a 'C' 
-ExitC
-ExitB
-EntryB
-EntryE
-Ok
-Processing a 'K' 
-ExitE
-ExitB
-ExitA
-EntryA
-EntryB
-EntryC
-Ok
-Processing a 'M' 
-ExitC
-EntryC
-Ok
-Processing a 'D' 
-ExitC
-ExitB
-EntryD
-Ok
-Processing a 'N' 
-ExitD
-EntryB
-EntryC
-Ok
-Processing a 'B' 
-ExitC
-EntryE
-Ok
-Processing a 'I' 
-ExitE
-ExitB
-EntryD
-Ok
-Processing a 'N' 
-ExitD
-EntryB
-EntryE
 Ok
 END-OUTPUT
 */
