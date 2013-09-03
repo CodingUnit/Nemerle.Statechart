@@ -43,7 +43,7 @@ namespace Nemerle.Statechart
     CreateConcurrentRegion() : void
     {
       def warn = not_used_regions.Map(FsmWarning.RegionNotUsed);
-      AddWarnings(warn)
+      AddWarning(warn)
     }
 
     CheckActivities() : void 
@@ -70,6 +70,27 @@ namespace Nemerle.Statechart
       }
     }
     
+    CheckUsedElements() : void
+    {
+      def get_states(x, a)
+      {
+        match (x)
+        {
+          | TargetDeterminator.State(st) 
+          | Completion(st)               => st :: a
+          | TargetDeterminator.Junction(tree, _) => tree.Targets.FoldLeft(a, get_states)
+          | _                            => a
+        }
+      }
+      
+      def states = AllTransitions.FoldLeft([], (x, a) => get_states(x.Target, a));
+      def states = states.SelectMany(_.states).Distinct().NToList();
+      def (not_used_states, _) = States.NToList().Partition(x => !states.ContainsRef(x.ToHState));
+      def not_used_states = not_used_states.Filter(x => !x.generated);
+      def warn = not_used_states.Select(FsmWarning.StateNotUsed);
+      AddWarning(warn)
+    }
+    
     public Analyse() : void
     {
       try
@@ -85,6 +106,7 @@ namespace Nemerle.Statechart
         BreakIfError();
         //CreateTransitionPaths();
         TransformFsm();
+        CheckUsedElements();
         CheckActivities();
         CreateHistoryPaths(); // create history paths
         CreateConcurrentRegion();

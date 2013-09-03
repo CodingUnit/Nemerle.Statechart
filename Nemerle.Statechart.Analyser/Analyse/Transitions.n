@@ -40,8 +40,8 @@ namespace Nemerle.Statechart
               {
                 | PseudoState(PseudoStateNode.History(state = st)) 
                 | PseudoState(PseudoStateNode.EntryPoint(state = st))
-                | TransitionTarget.State(st) when (t.AllSubStates.Contains(st)) => ()
-                | _                                                             => AddError(FsmError.InitialTransitionMustGoToState(i))
+                | TransitionTarget.State(st) when (t.AllSubStates.ContainsRef(st)) => ()
+                | _                                                                => AddError(FsmError.InitialTransitionMustGoToState(i))
               }
               match (tran.To)
               {
@@ -84,45 +84,6 @@ namespace Nemerle.Statechart
       
     }
     
-#if 0
-
-    CheckConflictTransitions(st : FsmState, trans : IEnumerable[StateTransition]) : void
-    {
-      def conflict = trans.OrderByDescending(x => x.From.hierarchy_pos).NToList();
-      def by_hierarchy = conflict.GroupBy(x => x.From.hierarchy_pos);
-      
-      // check for duplicates
-      foreach (tr in by_hierarchy)
-      {
-        def dups = tr.NToList().Duplicates(FsmState.Compare(StateTransition.GuardComparer)); // find duplicates with same guards and same triggers
-        when (!dups.IsEmpty())
-        {
-          AddError(FsmError.DuplicateTransition(dups))
-        }
-      }
-      
-      def search_for_no_guard(g)
-      {
-        if (!g.IsMoreThanOne()) g else
-          match (g.Find(x => x.guard.IsEmpty))
-          {
-            | Some(t) => def tr   = g.Except(t); // without guard already enabled and have more priority
-                         def warn = tr.Map(FsmWarning.TransitionOverriden(_, t)); // signal this, not needed declaration, design error
-                         AddWarnings(warn);
-                         ListUtils.SingleElement(t)
-
-            | _       => g
-          }
-      }
-
-
-      def resolve_on_levels = by_hierarchy.SelectMany(search_for_no_guard).NToList();
-      //def del = trans.Except(resolve_on_levels);
-      def (left, _) = resolve_on_levels.SplitFind(x => x.guard.IsEmpty);
-      def del = trans.Except(left);
-      st.DeleteTransitions(del);// conflicted deleted from set of enabled without signal, normal situation
-    }
-    
     
     //FlattenTransitions(st : IEnumerable[FsmState] = null) : void
     //{
@@ -139,22 +100,6 @@ namespace Nemerle.Statechart
     //  }
     //}
     
-    CreateAndCheckConflictTransitions() : void
-    {
-      //FlattenTransitions();
-      //def simple = States.Where(_.IsSimple);
-
-      foreach (st in States)
-      {
-        foreach (group in st.ConflictTransitions)
-        {
-          //CheckConflictTransitions(st, group);
-        }
-      }
-    }
-    
-#endif
-
     CheckDeferedEvents() : void
     {
       def check_override(tr, st, defer)
@@ -165,7 +110,7 @@ namespace Nemerle.Statechart
         def (left_tr, removed) = tr.PartitionLazy(x => x.From.hierarchy_pos >= st.hierarchy_pos);
         // left_tr transitions that overrides defered events in current state
         def left_events = left_tr.Map(_.trigger); // left events that override other defered
-        def left_defer = defer.Except(left_events).NToList(); // remove from defer that events
+        def left_defer = defer.Exclude(left_events); // remove from defer that events
         //def tr = tr.Except(removed); // remove from transition list removed events
         (removed, left_defer)
       }

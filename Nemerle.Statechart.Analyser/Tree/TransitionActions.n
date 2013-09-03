@@ -46,6 +46,7 @@ namespace Nemerle.Statechart
         action = tran.action.MapDefault(_.actions, []);
       }
       To = if (tran.to != null) TransitionTarget.Create(st, tran.to) else TransitionTarget.Nowhere();
+      pos = tran.pos;
     }
 
     public this(st : FsmState, to : FsmState, kind : TransitionKind)
@@ -85,9 +86,9 @@ namespace Nemerle.Statechart
       NeedGuardedName = tran.NeedGuardedName;
       trigger = tran.trigger;
       FromPseudo = tran.FromPseudo;
-      internal_kind = tran.internal_kind;
       DecisionTree = if (tran.DecisionTree != null) tran.DecisionTree.Clone() else null;
       RelocateFrom = tran.RelocateFrom;
+      pos = tran.pos;
     }
 
     public node : StateNode.Transition;
@@ -106,8 +107,7 @@ namespace Nemerle.Statechart
     public To : TransitionTarget {get;set;}
     public FromPseudo : option[PseudoStateNode] {get;set; default None()}
 
-    public internal_kind : TransitionRunKind {get;set;}
-
+    public pos : int;
     public ActualTo : FsmState {get;set;}
 
     public Path : list[PathSequence] 
@@ -173,7 +173,6 @@ namespace Nemerle.Statechart
         match (kind, FromPseudo)
         {
           | (Internal, None)                         => $"InternalTransition$(From)By$FriendlyTriggerName"
-          | (Local, _) when (internal_kind == TransitionRunKind.History) => $"HistoryFrom$(From)To$ToState"
           | (_, None)                                => $"Transition$(Source)To$(To)By$FriendlyTriggerName"
           | (_, Some(PseudoStateNode.Initial))       => $"InitialTransitionFrom$(From)To$To"
           | (_, Some(PseudoStateNode.History as h))  => 
@@ -480,7 +479,8 @@ namespace Nemerle.Statechart
       {
         def source = HTarget.State(From.ToHState);
         def target = To.ToHTarget;
-        HTransition(source, trigger, guard, action, target, Local)
+        def kind = if (IsInitial) TransitionKind.Initial else kind;
+        HTransition(source, trigger, guard, action, target, kind, pos)
       }
     }
   }

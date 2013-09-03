@@ -28,18 +28,7 @@ namespace Nemerle.Statechart
       def flags = Fsm.flags.errors.Select(x => ParseError.UnknownMachineFlag(x));// |> ParseError.UnknownMachineFlag(_);
       def err = Fsm.GetErrors().Select(check_err);
       def errs = err.Concat(flags);
-      AddErrors(errs)
-    }
-
-    public AddParseError(err : ParseError) : string
-    {
-      "Parse Error:" + match (err)
-      {
-        | DuplicateActivity(act) => $<#Duplicate do activity $act, state may have only one do activity node#>
-        | UnknownElement(node)   => $<#Unknown parse node $node #>
-        | UnknownMachineFlag(f)  => $<#Unknown state machine flag "$f" #>
-      }
-      //Errors ::= str;
+      AddError(errs)
     }
 
     public BreakIfError() : void
@@ -47,124 +36,30 @@ namespace Nemerle.Statechart
       when (!Errors.IsEmpty()) throw FsmErrorException()
     }
 
-    public GetError(err : FsmError) : string
-    {
-      | StateNotFound(s)                                         => $<#State "$s" Not Found#>
-      //| SubMachineStateNotFound(m, s)                          => $<#Sub machine "$m" does not contain referenced sub state "$s"#>
-      | UnknownTarget(tran, t)                                   => $<#Transition "$tran" has unknown target "$t"#>
-      | DuplicateTransition(tran)                                => $<#Duplicate transitions "$tran"#>;
-      | DuplicateHistory(h)                                      => $<#Duplicate history "$h"#>
-      | RegionMustContainInitial(reg, tran)                      => $<#Transition "$tran" requires region "$reg" to contain initial transition in each of it sub regions#>
-      | SubRegionsMustContainInitial(sreg)                       => $<#Sub regions "..$sreg" must contain initial pseudo states to default state#>
-      | UnknownTerminateTransition(tran)                         => $<#Unknown terminate transition target of "$tran", there is several terminate pseudo states, specify full name#>                  
-      | ForkMustGoToRegion(f)                                    => $<#Fork "$f" must go to concurrent sub regions#>
-      | ForkMustGoToSeparateRegion(f)                            => $<#Fork "$f" must go to different concurrent sub regions of one region#>
-      | UnknownNode(tran, n)                                     => $<#Unknown node "$n" used in target of "$tran" transition #>
-      | JoinTransitionMustHaveSameTrigger(j, tran)               => $<#Transitions "$tran" to join "$j" must have same event trigger#>
-      | JoinTransitionMustLeaveRegion(j, tran)                   => $<#Transitions "$tran" to join "$j" must leave sub state of same orthogonal region#>
-      | TransitionCrossOrthogonalBoundaryOfSameRegion(tran)      => $<#Transition "$tran" is cross orthogonal boundary of same region, this is not allowed#>
-      | DefaultTransitionMustGoToState(tran, hist)               => $<#Default history transition "$tran" of history "$hist" must go to state#>
-      | RegionMustContainSubRegions(reg)                         => $<#Region "$reg" must contain sub region states#>
-      //| JunctionElseMustBeLast(j)                                => $<#Else node in junction "$(j.state).$j" must be the last alternative node#>
-      //| JunctionActionMaybeLast(j, a)                            => $<#Junction action "$a" in "$(j.state).$j" maybe single in node or last#>
-      //| JunctionElseMustAfterAnotherGuard(j)                     => $<#Junction else node in "$(j.state).$j" must have preceded another GuardNode#>
-      //| EmptyJunction(j)                                         => $<#There is a empty node in junction "$(j.state).$j"#>
-      //| ChoiceElseMustBeLast(j)                                  => $<#Else node in choice "$(j.state).$j" must be the last alternative node#>
-      //| ChoiceActionMaybeLast(j, a)                              => $<#Choice action "$a" in "$(j.state).$j" maybe single in node or last#>
-      //| ChoiceElseMustAfterAnotherGuard(j)                       => $<#Choice else node in "$(j.state).$j" must have preceded another GuardNode#>
-      | EmptyChoice(j)                                           => $<#There is a empty node in choice "$(j.state).$j"#>
-      | SeveralState(st)                                         => $<#There is several duplicate states of name $st #>
-      | ParentStateNotFound(s, p)                                => $<#Parent state "$p" for state "$s" not found#>
-      | InitialPseudoStateAtMostOne(i)                           => $<#There can be only one initial pseudo state in region, error defined in "$i" #>
-      | InitialTransitionMustGoToState(i)                        => $<#Transition from initial pseudo state "$i", must go to default sub state or history of a composite state, not other targets#>
-      | InitialTransitionCannotHaveGuards(i)                     => $<#Transition from initial pseudo state cannon have guards: "$i"#>
-      | InitialTransitionToHistoryMustHaveDefaultTran(i)         => $<#Transition from initial pseudo state "$i" to history must have default transition from history pseudo state#>
-      | StateHasNotHistory(s)                                    => $<#State "$s" does'nt have history #>
-      | ElseMustHaveOtherTransition(t)                           => $<#Single else guard in "$t" but no other transitions with same event and guards#>
-      | SeveralElseGuards(t)                                     => $<#Several else guards is not permitted: ..$t#>
-      | PseudoStateNotFound(n)                                   => $<#Pseudo state with name "$n" not found#>
-      | SeveralPseudoStates(lst)                                 => $<#Several pseudo states with same name found [..$lst]#>
-      | RelocatePseudoNotFound(t)                                => $<#Pseudo state source of transition "$t" not found#>
-      | RelocateSourceNotSupported(p)                            => $<#Source "$p" of relocate element not supported#>
-      | RelocatePseudoAlreadyHaveTarget(t, p)                    => $<#Relocate element "$p" from transition $t already have target#>
-      | LocalTransitionTargetMustBeWithin(tran)                  => $<#Local transition target must be inside of source state: "$tran"#>
-      | StateMachineNotFound(StateNode.Using(n, f))              => $<#Class "$f" declared statemachine "$n" not found#>
-      | CompositeStateWithIncomingTransitionsMustHaveInitial(st) => $<#Composite state $st have incoming transitions and must have initial pseudo state targeting default state#>
-      //| ThereMustBeOnlyOneInitial(s, t)                             => $<#In state "$s" may be only one unguarded initial transition, these transitions erroneus: "..$t"#>
-      //| Sequence(e)                                            => $<#..$(e;"\n";GetError)#>
-      //| n                                                        => throw InvalidOperationException($"unnkown error $n")
-    }
-
-    public GetWarning(err : FsmWarning) : string
-    {
-      match (err)
-      {
-        | HistoryNotUsed(hist = PseudoStateNode.History(state = st, type = t))  => $<#"$t History in "$st" is not used in fsm life history#>
-        | StateNotUsed(state = st)                                                                  => $<#State "$st" is not used in fsm life history#>
-        | TransitionNotUsed(tran)                                                                   => $<#Transition "$tran" is not used in fsm life history#>
-        | RegionNotUsed(reg)                                                                        => $<#Concurrent region "$reg" is not used in fsm life history#>
-        | NoConcurrentActivity(act)                                                                 => $<#There is no other activities in do activity node $act. Flag is no meaning, concurrent activity means that several activities may run concurently in do activity region of state.#>
-        | TransitionOverriden(tran,by)                                                              => $<#Transition $(tran.GuardedName) is overriden by $(by.GuardedName), due to execute priority rules, because this transition is always enabled#>
-        | x                                                                                         => $"Unknown Warning $x"
-      }
-    }
-
     public AddWarning(err : FsmWarning) : void
     {
-      def err = GetWarning(err);
       Warnings.Add(err);
     }
 
-    public AddWarnings(err : IEnumerable[FsmWarning]) : void
-    {
-      def err = GetWarnings(err);
-      Warnings.AddRange(err);
-    }
-
-    public AddErrors(err : IEnumerable[FsmError]) : void
-    {
-      def err = GetErrors(err);
-      AddErrors(err)
-    }
-
-    public AddWarnings(err : IEnumerable[string]) : void
+    public AddWarning(err : IEnumerable[FsmWarning]) : void
     {
       Warnings.AddRange(err);
     }
 
-    public AddErrors(err : string) : void
+    public AddError(err : IEnumerable[FsmError]) : void
     {
-      Errors.Add(err)
-    }
-
-    public AddErrors(err : IEnumerable[string]) : void
-    {
-      Errors.AddRange(err)
+      Errors.AddRange(err)//AddErrors(err)
     }
 
     public AddError(err : FsmError) : void
     {
-      AddErrors(GetError(err))
+      Errors.Add(err)
     }
 
-    public AddErrors(err : IEnumerable[ParseError]) : void
+    public AddError(err : IEnumerable[ParseError]) : void
     {
-      AddErrors(GetErrors(err))
+      AddError(err.Map(x => FsmError.ParsingError(x)))
     }
 
-    public GetErrors(err : IEnumerable[FsmError]) : IEnumerable[string]
-    {
-      err.Select(GetError)
-    }
-
-    public GetErrors(err : IEnumerable[ParseError]) : IEnumerable[string]
-    {
-      err.Select(AddParseError)
-    }
-
-    public GetWarnings(err : IEnumerable[FsmWarning]) : IEnumerable[string]
-    {
-      err.Select(GetWarning)
-    }
   }
 }
