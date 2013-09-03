@@ -47,6 +47,7 @@ namespace Nemerle.Statechart
           | []  => ()
           | lst => def st = FsmState(this, StateType.State()); // create simple state
                    st.name = $"$(state)Initial";
+                   st.generated = true;
                    def ntran = StateTransition(st, tran.To, TransitionKind.External);// :: [];
                    ntran.trigger = StateEvent.Completion;
                    st.transitions = ntran :: []; // create completion transition to target of initial
@@ -114,47 +115,11 @@ namespace Nemerle.Statechart
       def dups = tran.DuplicatesGroup(x => x.Name);
       dups.Iter(x => x.Iter(x => Used[x] = false));
       def err = dups.Map(x => FsmError.DuplicateTransition(x.NToList()));
-      AddErrors(err);
+      AddError(err);
     }
 
-#if 0    
-    ResolveConflictTransitions(st : FsmState, trans : IEnumerable[StateTransition]) : void
-    {
-      def conflict = trans.OrderByDescending(x => x.From.hierarchy_pos).NToList();
-      def by_hierarchy = conflict.GroupBy(x => x.From.hierarchy_pos);
-      
-      // check for duplicates
-      foreach (tr in by_hierarchy)
-      {
-        def dups = tr.NToList().Duplicates(FsmState.Compare(StateTransition.GuardComparer)); // find duplicates with same guards and same triggers
-        when (!dups.IsEmpty())
-        {
-          AddError(FsmError.DuplicateTransition(dups))
-        }
-      }
-      
-      def search_for_no_guard(g)
-      {
-        if (!g.IsMoreThanOne()) g else
-          match (g.Find(x => x.guard.IsEmpty))
-          {
-            | Some(t) => def tr   = g.Except(t); // without guard already enabled and have more priority
-                         def warn = tr.Map(FsmWarning.TransitionOverriden(_, t)); // signal this, not needed declaration, design error
-                         AddWarnings(warn);
-                         ListUtils.SingleElement(t)
+#if 0
 
-            | _       => g
-          }
-      }
-
-
-      def resolve_on_levels = by_hierarchy.SelectMany(search_for_no_guard).NToList();
-      //def del = trans.Except(resolve_on_levels);
-      def (left, _) = resolve_on_levels.SplitFind(x => x.guard.IsEmpty);
-      def del = trans.Except(left);
-      st.DeleteTransitions(del);// conflicted deleted from set of enabled without signal, normal situation
-    }
-    
     CreateTransitionPaths() : void
     {
       //def traverse()

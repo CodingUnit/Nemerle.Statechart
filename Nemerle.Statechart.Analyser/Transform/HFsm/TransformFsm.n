@@ -117,7 +117,7 @@ namespace Nemerle.Statechart
     {
       def is_sub_state_of(x, y)
       {
-        y.all_sub_states.Contains(x)
+        y.all_sub_states.ContainsRef(x)
       }
       
       def compare(x, y)
@@ -126,6 +126,28 @@ namespace Nemerle.Statechart
         def y = y.OriginateFrom;
         if (is_sub_state_of(x, y)) -1 else
           if (is_sub_state_of(y, x)) 1 else 0
+      }
+      
+      def guard_compare(x, y)
+      {
+        match (x.Guard, y.Guard)
+        {
+          | (GuardNode.Empty, GuardNode.Empty) => 0
+          | (GuardNode.Empty, _)               => -1
+          | (_, GuardNode.Empty)               => 1
+          | _                                  => 0
+        }
+      }
+      
+      def not_originate_from_other_configs(last, tr)
+      {
+        def source_configs = TransitionPath.GetSourceConfigs(tr, ActiveConfigProc);
+        def last = last.Source;
+        match (source_configs)
+        {
+          | [one] => one : object == last
+          | _     => false
+        }
       }
       
       //def by_states = Transitions.GroupBy(_.Source);
@@ -147,10 +169,13 @@ namespace Nemerle.Statechart
           
           def conflict = conflict.Map(x => x.RemoveDuplicatesSort((x, y) => x.Guard.CompareTo(y.Guard)));
           def trans = conflict + other;
+          def trans = trans.Map(x => x.Sort(guard_compare));
           def trans = trans.Flatten();
-          def trans = trans.OrderBy(_.Priority).NToList();
-          def (_, other) = trans.SplitFind(x => x.Guard.IsEmpty);
-          when (!other.IsEmpty()) conf.transitions = conf.transitions.Except(other).NToList();
+          def (last, other) = trans.SplitFind(x => x.Guard.IsEmpty);
+          def last = last.Last();
+          def not_used = other.Filter(x => not_originate_from_other_configs(last, x));
+          not_used.Iter(x => AddWarning(FsmWarning.TransitionOverriden(x, last)));
+          when (!other.IsEmpty()) conf.transitions = conf.transitions.Exclude(other);
         }
       }
     }

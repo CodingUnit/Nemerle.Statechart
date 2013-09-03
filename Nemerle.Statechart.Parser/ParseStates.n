@@ -66,11 +66,11 @@ namespace Nemerle.Statechart
       StateNode.StateMachine(pos, flags, name, state, usings.NToList())
     }
 
-    state(attr : option[List[StateAttribute]], _ : NToken, name : NToken, parent : option[NameIdentifier], _ : NToken, nodes : List[StateNode], _ : NToken) : StateNode.State
+    state(attr : option[List[StateAttribute]], tok : NToken, name : NToken, parent : option[NameIdentifier], _ : NToken, nodes : List[StateNode], _ : NToken) : StateNode.State
     {
       def name_text = GetText(name);
       def attr = attr.WithDefault(Enumerable.Empty());
-      CreateState(name.StartPos, name_text, attr, nodes, StateType.State(), parent)
+      CreateState(tok.StartPos, name_text, attr, nodes, StateType.State(), parent)
     }
 
     CreateState(pos : int, name : string, attr : IEnumerable[StateAttribute], decls : IEnumerable[StateNode], type : StateType, parent : option[NameIdentifier]) : StateNode.State
@@ -112,7 +112,8 @@ namespace Nemerle.Statechart
       def (states, other) = decls.PartitionType();
       def (pseudo, other) = other.PartitionType();
       def init            = pseudo.Filter(_ is StateNode.PseudoState(PseudoStateModelNode.Initial));
-      def other = other + pseudo.Except(init).NToList();
+      def exc_init        = pseudo.Exclude(init);
+      def other           = other + exc_init.Map(_ : StateNode);
       State(tok.StartPos, null, null, [], [], [], [], [], [], states, init, StateType.SubRegion(), other.Map(x => Error(x.pos, x)));
     }
     
@@ -133,7 +134,7 @@ namespace Nemerle.Statechart
       def (do_act, decls)   = decls.PartitionType();
       def (pseudo, decls)   = decls.PartitionType();
       def init              = pseudo.Filter(_ is StateNode.PseudoState(PseudoStateModelNode.Initial));
-      def pseudo            = pseudo.Except(init).NToList();
+      def pseudo            = pseudo.Exclude(init);
       def parent = parent.Map(_.FullName);
       def name   = GetText(name);
       def st = State(tok.StartPos, null, null, [], [], [], [], [], [], states, init, StateType.SubRegion(), decls.Map(x => Error(x.pos, x)));

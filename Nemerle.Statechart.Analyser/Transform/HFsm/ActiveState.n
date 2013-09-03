@@ -22,7 +22,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        $<#..$(simple_states;"")#>
+        def states = if (simple_states.IsEmpty()) states else simple_states;
+        $<#..$(states;"")#>
       }
     }
     
@@ -42,7 +43,7 @@ namespace Nemerle.Statechart
 
     public IsThis(st : IEnumerable[HState]) : bool
     {
-      simple_states.All(st.Contains)
+      simple_states.All(st.ContainsRef)
     }
 
     public HistoryPath : list[HistoryPath] {get;set;default []}
@@ -62,7 +63,7 @@ namespace Nemerle.Statechart
 
     public Equals(b : ActiveStateConfig) : bool
     {
-      IsThis(b.simple_states)
+      this : object == b
     }
     
     
@@ -95,25 +96,22 @@ namespace Nemerle.Statechart
     
     public Priority : int {get;set;default 0}
     
+    public Kind : TransitionKind;
+    
+    public pos : int;
+    
     [Memoized]
     public Name : string
     {
       get
       {
-          //| (Internal, None)                         => $"InternalTransition$(From)By$FriendlyTriggerName"
-          //| (Local, _) when (internal_kind == TransitionRunKind.History) => $"HistoryFrom$(From)To$ToState"
-        def tar = Target.ToString();
-        if (tar.IsEmpty()) $"Transition$(Source)By$Trigger" else $"Transition$(Source)To$(Target)By$Trigger"
-          //| (_, Some(PseudoStateNode.Initial))       => $"InitialTransitionFrom$(From)To$To"
-          //| (_, Some(PseudoStateNode.History as h))  => 
-          //    match (Destination)
-          //    {
-          //      | History(state = st) => $"DefaultTransition$(h)To$st"
-          //      | _                   => $"DefaultTransition$(h)To$ActualTo"
-          //    }
-          //| (_, Some(PseudoStateNode.ExitPoint as e))     
-          //| (_, Some(PseudoStateNode.EntryPoint as e))    => $"TransitionFrom$(e)To$(To)"
-          //| _                                                         => throw InvalidOperationException("invalid transition name")
+        match (Kind)
+        {
+          | Internal => $"InternalTransition$(Source)By$Trigger"
+          | Initial  => $"InitialTransitionFrom$(Source)To$Target"
+          | _        => def tar = Target.ToString();
+                        if (tar.IsEmpty()) $"Transition$(Source)By$Trigger" else $"Transition$(Source)To$(Target)By$Trigger"
+        }
       }
     }
 
