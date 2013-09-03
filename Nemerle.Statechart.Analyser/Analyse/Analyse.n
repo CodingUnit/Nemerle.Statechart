@@ -84,9 +84,14 @@ namespace Nemerle.Statechart
       }
       
       def states = AllTransitions.FoldLeft([], (x, a) => get_states(x.Target, a));
-      def states = states.SelectMany(_.states).Distinct().NToList();
+      def active = states.Distinct();
+      def states = active.SelectMany(_.states).Distinct().NToList();
       def (not_used_states, _) = States.NToList().Partition(x => !states.ContainsRef(x.ToHState));
       def not_used_states = not_used_states.Filter(x => !x.generated);
+      def not_used_hstate = not_used_states.Map(x => x.ToHState);
+      def not_used = ActiveStates.Where(x => x.simple_states.All(x => not_used_hstate.ContainsRef(x)));
+      def used = ActiveStates.Exclude(not_used.NToList());
+      used.Iter(x => x.Used = true);
       def warn = not_used_states.Select(FsmWarning.StateNotUsed);
       AddWarning(warn)
     }
