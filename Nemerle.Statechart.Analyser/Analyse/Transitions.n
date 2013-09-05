@@ -21,12 +21,16 @@ namespace Nemerle.Statechart
 
     CheckInitialTransitions() : void
     {
-      def check_auto_initial(st)
+      def check_auto_initial(st, rec)
       {
-        | FsmState(type = StateType.Final) 
-        | FsmState(type = StateType.Region) => ()
-        | FsmState(initial = None, sub_states = head :: _) when (!head.IsFinal) => st.DefineInitial(head);
-        | _ => ()
+        match (st)
+        {
+          | FsmState(type = StateType.Final) 
+          | FsmState(type = StateType.Region) => ()
+          | FsmState(initial = None, sub_states = head :: _) when (!head.IsFinal) => st.DefineInitial(head);
+                                                                                     when (rec) check_auto_initial(head, rec);
+          | _ => ()
+        }
       }
 
       def check_init_tran_correct(t)
@@ -62,10 +66,10 @@ namespace Nemerle.Statechart
         {
           st.Super.DefineInitial(st)
         }
-        when (FsmFlags.AutoInitial) check_auto_initial(st);
+        when (FsmFlags.AutoInitial) check_auto_initial(st, false)
       }
       
-      check_auto_initial(TopState);
+      check_auto_initial(TopState, true);
       foreach (st when st.IsComposite in States)
       {
         when (!st.IncomingTransitions.IsEmpty())
