@@ -27,7 +27,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        tran_path.transition.Local
+        tran_path.transition.Local || tran_target is HTarget.PseudoState(HPseudoState.Junction)
       }
     }
     
@@ -136,8 +136,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (Local) MainSource.active_config.DupLast(MainTarget.active_config, (x, y) => x == y : object) else
-          MainSource.active_super.DupLast(MainTarget.active_super, (x, y) => x == y : object)// TranTargetState
+        if (Local) MainSource.active_config.DupLast(MainTarget.active_config) else
+          MainSource.active_super.DupLast(MainTarget.active_super)// TranTargetState
       }
     }
     
@@ -347,7 +347,8 @@ namespace Nemerle.Statechart
     
     CreateDecisionTree(target : TargetDeterminator) : DecisionNode
     {
-      | TargetDeterminator.Junction(tree, _)  => tree
+      | TargetDeterminator.Junction(tree, _)  => tree.path = path + tree.path;
+                                                 tree
       | _                                     => match (transition.Guard)
                                                 {
                                                   | GuardNode.Empty      => EmptyDecisionTarget(target);
@@ -363,7 +364,7 @@ namespace Nemerle.Statechart
       when (!IsInternal) EntryTarget();
       def target = ProcessTarget(tran_target);
       def tree = CreateDecisionTree(target);
-      Transition(Source, null, transition.Trigger, transition.Guard, path, target, tree, 0, transition.Kind, transition.pos)
+      Transition(Source, null, transition.Trigger, transition.Guard, path, target, tree, 0, transition.Kind, false)
     }
     
     public CreatePath() : Transition
@@ -383,7 +384,7 @@ namespace Nemerle.Statechart
       def target = ProcessTarget(tran_target);
       def tree = CreateDecisionTree(target);
       def originate = if (tran_source is HTarget.State(st)) st else null;
-      Transition(Source, originate, transition.Trigger, transition.Guard, path, target, tree, 0, transition.Kind, transition.pos)
+      Transition(transition.Location, Source, originate, transition.Trigger, transition.Guard, path, target, tree, 0, transition.Kind, false)
     }
     
   }

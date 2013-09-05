@@ -14,20 +14,25 @@ namespace Nemerle.Statechart
 {
   class FsmBuilder
   {
-    parser : FsmParser = FsmParser();
+    parser : FsmParser;
     ty : TypeBuilder;
     top : TopDeclaration;
-
+    locator : Locator;
+    
     public this(ty : TypeBuilder, top : TopDeclaration, fsm : StateNode.StateMachine)
     {
       this(ty, top);
       this.fsm = fsm;
+      parser = FsmParser();
+      locator = Locator(parser, loc);
     }
 
     public this(ty : TypeBuilder, top : TopDeclaration)
     {
       this.ty = ty;
       this.top = top;
+      parser = FsmParser();
+      locator = Locator(parser, loc);
     }
 
     [Accessor]
@@ -58,7 +63,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        attribute.Location
+        if (attribute != null) attribute.Location else top.Location;
       }
     }
 
@@ -83,20 +88,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    GetLoc(pos : int) : Location
-    {
-      if (pos == -1)
-      {
-        loc
-      } else
-      {
-        def line = parser.ParsingSource.GetSourceLine(pos);
-        def (lin, _) = line.StartLineColumn;
-        def col = pos - line.StartPos + 1;
-        def line = loc.Line + lin - 1;
-        Location(loc, line, col);
-      }
-    }
+
 
     attr_loc : Location
     {
@@ -106,11 +98,11 @@ namespace Nemerle.Statechart
       }
     }
 
+    
     Parse() : void
     {
       parser.flags_map = Hashtable(FsmAnalyser.Flags);
       parser.env = env;
-
       def body = body ?? "";
       def text = body.Trim();
       fsm = if (!text.IsEmpty()) 
@@ -121,7 +113,7 @@ namespace Nemerle.Statechart
                  def len = body.Length;
                  when (pos < len)
                  {
-                   def loc = GetLoc(pos);
+                   def loc = locator.GetLoc(pos);
                    Message.Error(loc, $"Not full text is parsed, parsing stopped at $(loc.Line):$(loc.Column).");
                  }
                  ast
@@ -129,11 +121,12 @@ namespace Nemerle.Statechart
                else
                {
                  def (pos,  ids)  =  parser.GetMaxRollbackPosAndNames();
-                 def loc = GetLoc(pos);
+                 def loc = locator.GetLoc(pos);
                  Message.Error(loc, $"Error in input at $(loc.Line):$(loc.Column). Expected: ..$(ids;\r\n    )");
                  null
                }
-             } else null
+             } else null;
+       when (fsm != null) locator.Locate(fsm);
     }
 
     public static GetParsedResult(ty : TypeBuilder) : FsmBuilder
@@ -179,7 +172,7 @@ namespace Nemerle.Statechart
       if (!warn.IsEmpty()) 
       {
         def text = warn.Map(_.Text);
-        warn.Iter(x => Message.Warning(GetLoc(x.Loc), x.Text));
+        warn.Iter(x => Message.Warning(x.Loc, x.Text));
         when (fsm.flags.Debug) File.WriteAllLines(warn_file, text);
       } else when (fsm.flags.Debug) File.Delete(warn_file);
       def err_file = $"$(ty.Name)errors.log";
