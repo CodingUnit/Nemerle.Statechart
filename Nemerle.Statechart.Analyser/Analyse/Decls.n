@@ -131,14 +131,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    public not_used_history : IEnumerable[PseudoStateNode.History]
-    {
-      get
-      {
-        HistoryStates.Where(x => !Used[x])
-      }
-    }
-
     HistoryStates : IEnumerable[PseudoStateNode.History]
     {
       get
@@ -163,7 +155,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    public Used : NC.Hashtable[object, bool] = NC.Hashtable();
+    //public Used : NC.Hashtable[object, bool] = NC.Hashtable();
 
     [Memoized(States, PseudoStates)]
     InitialTran : IEnumerable[StateTransition]
@@ -179,24 +171,6 @@ namespace Nemerle.Statechart
       get
       {
         States.SelectMany(x => x.do_activity).RemoveDuplicatesSort(_.Name)
-      }
-    }
-
-    public Regions : IEnumerable[FsmState]
-    {
-      get
-      {
-        def regs = States.Where(x => x.type is StateType.Region);
-        regs.Where(x => x.LivedNested);
-      }
-    }
-
-    public not_used_regions : IEnumerable[FsmState]
-    {
-      get
-      {
-        def regs = States.Where(x => x.type is StateType.Region);
-        regs.Where(x => !x.LivedNested)
       }
     }
 
@@ -251,36 +225,6 @@ namespace Nemerle.Statechart
       get
       {
         States.Where(x => x.type is StateType.Region)
-      }
-    }
-
-    [Memoized]
-    public empty_states : IEnumerable[FsmState]
-    {
-      get
-      {
-        def filter_used(st)
-        {
-          match (st.type)
-          {
-            | StateType.SubRegion
-            | Region
-            | Final         => false
-            | _             => true
-          }
-        }
-
-        def empty = States.Exclude(x => x.LivedNested); // determine lived states
-        def empty = empty.Exclude(x => x.LivedNestedInStateMachine);
-        empty.Where(filter_used)
-      }
-    }
-
-    public LivedNestedStates : IEnumerable[FsmState]
-    {
-      get
-      {
-        States.Where(x => x.LivedNested) // determine lived states
       }
     }
 
@@ -372,63 +316,12 @@ namespace Nemerle.Statechart
       }
     }
 
-    public used_transitions : IEnumerable[StateTransition]
-    {
-      get
-      {
-        StateTransitions.Where(x => Used[x])
-      }
-    }
-
-    //public Clones : NC.Hashtable[FsmState, list[FsmState]] = NC.Hashtable();
-    public LivedStates : IEnumerable[FsmState]
-    {
-      get
-      {
-        States.Where(_.Lived)
-      }
-    }
-
-
-    [Memoized]
-    public not_used_transitions : IEnumerable[StateTransition]
-    {
-      get
-      {
-        def initial_fsm(i) : bool
-        {
-          if (i.IsInitial)
-          {
-           if (i.FromPseudo.Value.state.PartOfStateMachine is Some(m))
-           {
-             m.AllPseudo.Exists(_ is PseudoStateNode.EntryPoint)
-           } else false
-          } else false
-        }
-
-        def tran = StateTransitions + InitialTran;
-        def not_used = tran.Where(x => !Used[x]);
-        def not_used = not_used.Exclude(initial_fsm);
-        not_used.Where(x => x.From.Lived);
-      }
-    }
-
     [Memoized(StateTransitions, InitialTran)]
     public all_transitions_with_spec : IEnumerable[StateTransition]
     {
       get
       {
         StateTransitions + history_default_transitions + InitialTran; // special_transitions +
-      }
-    }
-
-    [Memoized]
-    public all_used_transitions : IEnumerable[StateTransition]
-    {
-      get
-      {
-        def trans = all_transitions_with_spec;
-        trans.Where(_.Used)
       }
     }
 

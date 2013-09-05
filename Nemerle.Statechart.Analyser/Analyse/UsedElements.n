@@ -1,0 +1,59 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  public partial class FsmAnalyser
+  {
+    CheckUsedElements() : void
+    {
+      def get_states(x, a)
+      {
+        match (x)
+        {
+          | TargetDeterminator.State(st) 
+          | Completion(st)               => st :: a
+          | TargetDeterminator.Junction(tree, _) => tree.Targets.FoldLeft(a, get_states)
+          | _                            => a
+        }
+      }
+
+      def loop(tran)
+      {
+        tran.Iter(x => x.Used = true);
+        def states = tran.FoldLeft([], (x, a) => get_states(x.Target, a));
+        def states = states.Where(x => !x.Used).Distinct().NToList();
+        def tran = states.SelectMany(x => x.transitions).NToList();
+        states.Iter(x => x.Used = true);
+        if (tran.IsEmpty()) () else loop(tran)
+      }
+      
+      loop(InitialTransition :: []);
+      
+      
+      def active_used = ActiveStates.Where(_.Used);
+      def used_states = active_used.SelectMany(_.states).Distinct().NToList();
+      def not_used_states = States.NToList().Exclude(x => used_states.ContainsRef(x.ToHState));
+      def not_used_states = not_used_states.Exclude(x => x.generated);
+      def not_used_states = not_used_states.Exclude(x => x.InstancesOfSameStateMachine.Exists(x => !not_used_states.ContainsRef(x)));
+      //def not_used_hstate = not_used_states.Map(x => x.ToHState);
+      //def not_used = ActiveStates.Where(x => x.simple_states.All(x => not_used_hstate.ContainsRef(x)));
+      //def used = ActiveStates.Exclude(not_used.NToList());
+      //used.Iter(x => x.Used = true);
+      def trans = not_used_states.SelectMany(x => x.transitions);
+      //def not_used_tran = AllTransitions.Where(x => !x.Used).NToList();
+      //def tran = StateTransitions.Where(x => not_used_tran.Exists(y => x.pos == y.pos));
+      def warn = trans.Map(FsmWarning.TransitionNotUsed);
+      AddWarning(warn);
+      def warn = not_used_states.Map(FsmWarning.StateNotUsed);
+      AddWarning(warn);
+    }
+
+  }
+}
