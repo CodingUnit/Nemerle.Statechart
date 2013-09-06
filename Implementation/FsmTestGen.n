@@ -6,9 +6,23 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 
 namespace Nemerle.Statechart
 {
+
+  using System.Console;
+  
+  variant ActionType
+  {
+    | Initiate
+    | SendEvent {evt : string;}
+    | SetProperty { prop : string; value : string; }
+    | Terminate
+    | UnknownEvent { text : string }
+    | Error {text : string;}
+  }
+
   /// <summary>
   /// Description of FsmTestGen.
   /// </summary>
@@ -18,6 +32,144 @@ namespace Nemerle.Statechart
     {
       def lines = data.SplitToList('\n');
       def _lines = lines.Filter(x => x != "Ok");
+
+    }
+
+    public exit_string : string {get;set;default "exit"}
+
+    mutable canceled : bool;
+
+    mutable history : list[ActionType * list[string]];
+
+    public GenerateTest(code_file : string, out_file : string) : void
+    {
+      def gen_test(e, act)
+      {
+        def act = act.Map(x => $<#"$x"#>);
+        match (e)
+        {
+          | ActionType.Initiate => $<#tester.Initiate(..$(act;", "));#>
+          | SendEvent(e)        => def e = e.ToUpperFirst();
+                                   def res = act.Last().TrimStart("Entry");
+                                   def act = act.ChopLast();
+                                   $<#tester.Test("$e", $res, ..$(act;", "));#>
+          | SetProperty(n, v)   => $"fsm.$n = $v;"
+          | Terminate           => "fsm.Terminate();"
+          | _                   => ""
+        }
+      }
+
+      def gen_out((e, act), a)
+      {
+        match (e)
+        {
+          | ActionType.Initiate  => def res = "Ok" :: a;
+                                    def res = act + res;
+                                    //"Initiate state machine" :: 
+                                    res
+          | SendEvent(e)         => def res = "Ok" :: a;
+                                    def res = act + res;
+                                    $"Processing a '$e' " :: res
+          | _                    => a
+        }
+      }
+
+      def history = history.Reverse();
+      def str = history.Map(gen_test);
+      def out_str = history.FoldBack([], gen_out);
+      def str =  $"def fsm = $type_name();" :: "def tester = fsm.GetTester();" :: "tester.ConsoleTestInit();" :: str;
+      File.WriteAllLines(code_file, str);
+      def out_str = "/*" :: "BEGIN-OUTPUT" :: out_str + ["END-OUTPUT"] + ["*/"];
+      File.WriteAllLines(out_file, out_str);
+    }
+
+    type_name : string
+    {
+      get
+      {
+        fsm.GetType().ToString()
+      }
+    }
+    
+    SetProperty(name : string, val : object) : void
+    {
+      def type = fsm.GetType();
+      def prop = type.GetProperty(name);
+      prop.SetValue(fsm, val, null);
+    }
+
+    GetPropertyValue(name : string) : object
+    {
+      def type = fsm.GetType();
+      def prop = type.GetProperty(name);
+      prop.GetValue(fsm, null)
+    }
+    
+    AddHistory(act : ActionType) : void
+    {
+      history = (act, queue.NToList()) :: history;
+    }
+
+    PrintStatus() : void
+    {
+      WriteLine();
+      WriteLine($"[$fsm]");
+    }
+    
+    public StartConsole() : void
+    {
+      canceled = false;
+      Console.WriteLine($"Initiate state machine $type_name");
+      prepare();
+      history = [];
+      ConsoleTestInit();
+      fsm.Initiate();
+      PrintStatus();
+      AddHistory(ActionType.Initiate());
+
+      def loop()
+      {
+        def text = Console.ReadLine();
+        prepare();
+        def action = regexp match (text)
+                        {
+                          | @"terminate"                                => canceled = true;
+                                                                           fsm.Terminate();
+                                                                           ActionType.Terminate()
+                                                                           
+                          | @"(?<param>\w+)\s*=\s*(?<value : int>-?\d+)"  => def name = param;
+                                                                           def val = value;
+                                                                           SetProperty(name, val);
+                                                                           ActionType.SetProperty(name, val.ToString())
+                                                                           
+                          | @"(?<param>\w+)\s*=\s*(?<value>\w+)"        => def name = param;
+                                                                           def val = value;
+                                                                           SetProperty(name, val);
+                                                                           ActionType.SetProperty(name, val.ToString())
+                                                                           
+                          | @"\s*(?<name>\w+)\s*"                       => if (fsm.Events.Exists(x => x.Name == name))
+                                                                           { 
+                                                                            SendEvent(name);
+                                                                            ActionType.SendEvent(name)
+                                                                           } else ActionType.UnknownEvent(name);
+                                                                          
+                          | _                                           => ActionType.Error(text)
+                        }
+        match (action)
+        {
+          | ActionType.Error(str) => WriteLine($"Invalid action $str")
+          | SendEvent             => PrintStatus();
+                                     AddHistory(action);
+          | SetProperty(n, v)     => WriteLine($"Property '$n' setted to '$v'");
+                                     WriteLine($"[$n = $(GetPropertyValue(n))]");
+                                     AddHistory(action);
+          | UnknownEvent(name)    => WriteLine($"Unknown event for this machine $name")
+          | _                     => AddHistory(action);
+        }
+        if (canceled) () else loop()
+      }
+
+      loop();
       
     }
   }

@@ -9,7 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.ComponentModel;
 using System.Threading;
-using System.IO;
+
 
 namespace Nemerle.Statechart
 {
@@ -21,6 +21,8 @@ namespace Nemerle.Statechart
     IsInState(st : string)    : bool;
     event ActionExecuted      : Action[string];
     event TransitionCompleted : EventHandler;
+    Terminate()               : void;
+    Events                    : IEnumerable[HsmEvent] {get;}
   }
 
   public partial class FsmTester
@@ -263,76 +265,7 @@ namespace Nemerle.Statechart
       InitiateName(null, res, acts.ToArray())
     }
 
-    public exit_string : string {get;set;default "exit"}
 
-    mutable canceled : bool;
-
-    mutable history : list[string * list[string]];
-    
-    public GenerateTest(name : string, code_file : string, out_file : string) : void
-    {
-      def gen_test(e, act)
-      {
-        def act = act.Map(x => $<#"$x"#>);
-        match (e)
-        {
-          | null => $<#$name.Initiate(..$(act;", "))#>
-          | e    => def e = e.ToUpperFirst();
-                    def res = act.Last();
-                    def act = act.ChopLast();
-                    $<#$name.Test(Event.$e.New(), $res, ..$(act;", "))#>
-        }
-      }
-      
-      def gen_out((e, act), a)
-      {
-        match (e)
-        {
-          | null => def res = "OK" :: a;
-                    def res = act + res;
-                    "Initiate state machine" :: res
-          | e    => def res = "OK" :: a;
-                    def res = act + res;
-                    $"Processing a '$e' " :: res
-        }
-      }
-      
-      def history = history.Reverse();
-      def str = history.Map(gen_test);
-      def out_str = history.FoldBack([], gen_out);
-      File.WriteAllLines(code_file, str);
-      File.WriteAllLines(out_file, out_str);
-    }
-    
-    public StartConsole() : void
-    {
-      canceled = false;
-      Console.WriteLine("Initiate state machine");
-      prepare();
-      fsm.Initiate();
-      history = (null, queue.NToList()) :: [];
-      
-      def loop()
-      {
-        def text = Console.ReadLine();
-        prepare();
-        try
-        {
-          if (text == exit_string) canceled = true else 
-          {
-            SendEvent(text);
-            history = (text, queue.NToList()) :: history;
-          }
-        }
-        catch
-        {
-          | _ is InvalidOperationException => Console.WriteLine("unknown event")
-        }
-        if (canceled) () else loop()
-      }
-      
-      loop()
-    }
   }
 
 }

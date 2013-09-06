@@ -7,7 +7,7 @@ using Nemerle.Collections;
 using Nemerle.Utility;
 
 using Nemerle.Statechart;
-
+using System.Reflection;
 
 namespace Nemerle.Statechart.Tests {
 
@@ -17,18 +17,6 @@ namespace Nemerle.Statechart.Tests {
     
     public Run() : void
     { 
-      try
-      {
-        //FileFsmTest();
-        //WriteLine("File fsm test passed!!!");
-        //PathCoverTest();
-        WriteLine("Path cover fsm test passed!!!");
-        WriteLine("All tests passed");
-      }
-      catch
-      {
-        | _ is InvalidOperationException => WriteLine("Test failed :(");
-      }
       
     }
   }
@@ -36,11 +24,20 @@ namespace Nemerle.Statechart.Tests {
   module Program
   {
             
-    Main() : void
+    public Main(pars : array[string]) : void
     {
-      def test = Test();
-      test.Run();
-      _ = ReadLine();
+      match (pars.NToList())
+      {
+        | name :: fsm :: test :: [] => assert2(false);
+                                       def assembly = Assembly.LoadFrom(name);
+                                       def type = assembly.GetType(fsm);
+                                       def obj = Activator.CreateInstance(type);
+                                       def machine = obj :> ITestStateMachine;
+                                       def tester = machine.GetTester();
+                                       tester.StartConsole();
+                                       tester.GenerateTest($"$test.n", $"$test.log");
+       | _                        => Console.WriteLine("Usage: fsmtest.exe [assembly] [fsm_type] [out_file_name]");
+      }
     }
   }
 }
