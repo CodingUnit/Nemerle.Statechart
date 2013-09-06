@@ -120,24 +120,6 @@ namespace Nemerle.Statechart
       AddError(err);
     }
 
-    CreateTransitionPaths() : void
-    {
-      //def traverse()
-      //{
-      //  traverser = TransitionTraverser(this);
-      //  traverser.Add(TopState.initial_tran.Value);
-      //  traverser.Traverse(); // model the fsm traversing states and transition from top recursively through initial transition and pseudo states
-      //  traverser = null;
-      //}
-
-      //all_transitions_with_spec.dup
-      def obj = States.Select(_ : object).Concat(all_transitions_with_spec).Concat(PseudoStates); // all_transitions_with_spec
-      obj.Iter(Used.Add(_, false)); // init used properties
-
-      //traverse(); // traverse paths
-      CreateTransitionsWithPaths()
-    }
-
 #endif
 
     SubStatesParticipateIn(hist : HPseudoState.History) : IEnumerable[ActiveStateConfig]
@@ -204,6 +186,8 @@ namespace Nemerle.Statechart
         {
           | (GuardNode.Empty, GuardNode.Empty) => 0
           | (GuardNode.Empty, _)               => -1
+          | (GuardNode.Else, GuardNode.Empty)  => 1
+          | (GuardNode.Else, _)                => -1
           | (_, GuardNode.Empty)               => 1
           | _                                  => 0
         }
@@ -222,29 +206,75 @@ namespace Nemerle.Statechart
       
       foreach (conf in ActiveStates)
       {
-        def by_trigger = conf.transitions.GroupBy(_.Trigger);
-        foreach (ctrig when ctrig.IsMoreThanOne() in by_trigger)
+        def by_trigger = conf.transitions.GroupBy(_.Trigger); // with equal trigger
+        foreach (ctrig when ctrig.IsMoreThanOne() in by_trigger) // if transitions in group is more than one
         {
-          //def sort_by_priority = ctrig.NToList().Sort(compare);
-          def grouped_equal_prio = ctrig.NToList().Group(compare);
-          grouped_equal_prio.IterI((i, x) => x.Iter(x => x.Priority = i));
-          def (conflict, other) = grouped_equal_prio.Partition(x => x.IsMoreThanOne());
+          def grouped_equal_prio = ctrig.NToList().Group(compare); // group by priority of states relations
+          grouped_equal_prio.IterI((i, x) => x.Iter(x => x.Priority = i)); // set prio for each group of transition with equal prio
+          def (conflict, other) = grouped_equal_prio.Partition(x => x.IsMoreThanOne()); // get conflicting transitions with equal prio
           
           foreach (conf in conflict)
           {
-            def dups = conf.Duplicates((x, y) => x.Guard.CompareTo(y.Guard));
-            when (!dups.IsEmpty()) AddError(FsmError.DuplicateTransition(dups.Map(_ : object)));
+            def dups = conf.Duplicates((x, y) => x.Guard.CompareTo(y.Guard)); // duplicates is several conflicting transitions with equal guard
+            dups.Iter(x => AddError(FsmError.DuplicateTransition(x))); // add to error list
           }
           
-          def conflict = conflict.Map(x => x.RemoveDuplicatesSort((x, y) => x.Guard.CompareTo(y.Guard)));
-          def trans = conflict + other;
-          def trans = trans.Map(x => x.Sort(guard_compare));
-          def trans = trans.Flatten();
-          def (last, other) = trans.SplitFind(x => x.Guard.IsEmpty);
-          def last = last.Last();
-          def not_used = other.Filter(x => not_originate_from_other_configs(last, x));
-          not_used.Iter(x => AddWarning(FsmWarning.TransitionOverriden(x, last)));
-          when (!other.IsEmpty()) conf.transitions = conf.transitions.Exclude(other);
+          def conflict = conflict.Map(x => x.RemoveDuplicatesSort((x, y) => x.Guard.CompareTo(y.Guard))); // remove duplicates from each group
+          def trans = conflict + other; // merge again transitions in set
+          def trans = trans.Map(x => x.Sort(guard_compare)); // sort each group by guard
+          def trans = trans.Flatten(); // remove grouping
+          CheckGuards(trans);
+          def (last, other) = trans.SplitFind(x => x.Guard.IsEmpty || x.Guard is GuardNode.Else); // find last with no guard or else guard
+          def last = last.Last(); // get the last
+          def not_used = other.Filter(x => not_originate_from_other_configs(last, x)); // get other that not touch other state configurations
+          not_used.Iter(x => AddWarning(FsmWarning.TransitionOverriden(x, last))); // it is always overriden
+          when (!other.IsEmpty()) conf.transitions = conf.transitions.Exclude(other); // exclude it from the set
+        }
+      }
+    }
+    
+    CheckGuards(tran : list[Transition]) : void
+    {
+      match (tran.Partition(x => x.Guard is GuardNode.Else))
+      {
+        | ([], _)  => ()
+        | ([e], g) => def guards_tr = g.Filter(x => x.Guard.NotEmpty);
+                      when (guards_tr.IsEmpty()) AddError(FsmError.ElseMustHaveOtherTransition(e));
+        | (e, _)   => AddError(FsmError.SeveralElseGuards(e))
+      }
+    }
+    
+    MergeTransitions() : void
+    {
+      
+      def set_to_else(t, n)
+      {
+        foreach (node in t.GetBreadthFirstEnumerable())
+        {
+          | DecisionNode.Condition(else_node = None) as node => node.else_node = Some(n)
+          | _                                                => ()
+        }  
+      }
+      
+      def merge_trans(tr, a)
+      {
+        set_to_else(a, tr);
+        a
+      }
+      
+      foreach (conf in ActiveStates)
+      {
+        def by_trigger = conf.transitions.GroupBy(_.Trigger);
+        foreach (ctrig when ctrig.IsMoreThanOne() in by_trigger)
+        {
+          def by_priority = ctrig.OrderBy(x => x.Priority)   ;
+          def trees = by_priority.Map(x => x.DecisionTree);
+          def tree = trees.Reduce(merge_trans);
+          def tran = by_priority.First();
+          tran.Grouped = by_priority.Count();
+          def delete = by_priority.Except(tran);
+          conf.transitions = conf.transitions.Exclude(delete.NToList());
+          tran.DecisionTree = tree
         }
       }
     }

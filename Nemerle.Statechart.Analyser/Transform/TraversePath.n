@@ -9,18 +9,33 @@ using System.Linq;
 
 namespace Nemerle.Statechart
 {
-  [Record]
-  class TraversePath
+  partial class TraversePath
   {
     public Source : ActiveStateConfig;
     public Target : ActiveStateConfig;
+    tran_target   : HTarget;
+    
     public tran_path   : TransitionPath;
+    
+    path : PathCalc = PathCalc();
+    
+    tree_trav : TraverseDecisionTree;
+    
+    public this(trav : TraversePath, source : ActiveStateConfig, target : ActiveStateConfig, tar : HTarget)
+    {
+      this.tree_trav = trav.tree_trav;
+      Source = source;
+      Target = target;
+      tran_target = tar;
+    }
     
     public this(source : ActiveStateConfig, target : ActiveStateConfig, tran_path : TransitionPath)
     {
       Source = source;
       Target = target;
       this.tran_path = tran_path;
+      tran_target = tran_path.transition.Target;
+      tree_trav = TraverseDecisionTree(transition, path, this);
     }
     
     Local : bool
@@ -74,7 +89,7 @@ namespace Nemerle.Statechart
     }
     
     [Memoized]
-    MainTarget : HState
+    public MainTarget : HState
     {
       get
       {
@@ -87,8 +102,6 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
-    path : PathSequence = PathSequence();
     
     IsInternal : bool
     {
@@ -114,13 +127,7 @@ namespace Nemerle.Statechart
       }
     }
     
-    tran_target : HTarget
-    {
-      get
-      {
-        transition.Target
-      }
-    }
+    
     
     [Memoized]
     LcaConfig : list[HState]
@@ -140,77 +147,8 @@ namespace Nemerle.Statechart
           MainSource.active_super.DupLast(MainTarget.active_super)// TranTargetState
       }
     }
-    
-    public static FindPath(src : list[HState],
-                           dest : list[HState]) : list[HState] * list[HState]
-    {
-      def (ex, en) = src.RemoveDupFirst(dest, (x, y) => x == y : object);
-      (ex.Rev(), en)
-    }
-
-    static GetEntryNode(st : HState) : IEnumerable[PathNode]
-    {
-      | HState(do_activity = do_act, entry = en) =>
-              def act = en.Map(_.action);
-              def en = act.Map(PathNode.Entry(st, _));
-              def do_act = do_act.Select(PathNode.RunDoActivity(st, _));
-              en.Concat(do_act)
-    }
-
-    static GetEntryPath(nodes : IEnumerable[HState]) : list[TranPath]
-    {
-      $[TranPath(st, GetEntryNode(st).NToList(), PathKind.Entry), st in nodes]
-    }
-
-    static GetActionPath(act : IEnumerable[FsmAction]) : list[TranPath]
-    {
-      $[TranPath(null, PathNode.Action(null, a) :: [], PathKind.Action), a in act]
-    }
-
-    static GetExitNode(st : HState) : IEnumerable[PathNode]
-    {
-      def do_act = st.do_activity.Map(x => PathNode.StopDoActivity(st, x));
-      def nodes = if (st.history.HasValue) PathNode.SaveHistory(st, st.history.Value) :: do_act; else do_act;
-      def act = st.exit.Map(_.action);
-      def exit = act.Select(PathNode.Exit(st, _));
-      nodes.Concat(exit)
-    }
-
-    public static GetExitPath(nodes : IEnumerable[HState]) : list[TranPath]
-    {
-      $[TranPath(st, GetExitNode(st).NToList(), PathKind.Exit), st in nodes]
-    }
-
-    static GetPath(source : list[HState], target : list[HState]) : list[HState] * list[HState]
-    {
-      FindPath(source, target)
-    }
-
-    static GetPath(source : list[HState], target : list[HState], act : list[FsmAction]) : PathSequence
-    {
-      def (ex, en) = GetPath(source, target);
-      def exit = GetExitPath(ex);
-      def entry = GetEntryPath(en);
-      def act = GetActionPath(act);
-      def path = PathSequence();
-      path.AddEntry(entry);
-      path.AddExit(exit);
-      path.AddAction(act);
-      path
-    }
-    
-    AddPath(source : list[HState], target : list[HState], act : list[FsmAction]) : void
-    {
-      def (ex, en) = GetPath(source, target);
-      def exit = GetExitPath(ex);
-      def entry = GetEntryPath(en);
-      def act = GetActionPath(act);
-      path.AddEntry(entry);
-      path.AddExit(exit);
-      path.AddAction(act);
-    }
         
-    CheckCompletion(act : ActiveStateConfig) : TargetDeterminator
+    static CheckCompletion(act : ActiveStateConfig) : TargetDeterminator
     {
       def simple = act.simple_states;
       // TODO: final states in each region
@@ -231,30 +169,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    AddExitPath(src : list[HState]) : void
-    {
-      def nodes = GetExitPath(src);
-      path.AddExit(nodes)
-    }
-    
-    //AddExit(st : HState) : void
-    //{
-    //  def nodes = GetExitPath(st :: []);
-    //  path.AddExit(nodes)
-    //}
-    
-    //AddEntry(st : HState) : void
-    //{
-    //  def nodes = GetEntryPath(st :: []);
-    //  path.AddEntry(nodes)
-    //}
-    
-    AddEntryPath(src : list[HState]) : void
-    {
-      def nodes = GetEntryPath(src);
-      path.AddEntry(nodes)
-    }
-    
     [Memoized]
     ExitPath : list[HState]
     {
@@ -275,62 +189,36 @@ namespace Nemerle.Statechart
     
     ExitSource() : void
     {
-      AddExitPath(ExitPath)
+      path.AddExit(ExitPath)
     }
     
     Action() : void
     {
-      def tran_path = GetActionPath(transition.Actions);
-      path.AddAction(tran_path);
+      path.AddAction(transition.Actions)
     }
     
     EntryTarget() : void
     {
-      AddEntryPath(EntryPath);
+      path.AddEntry(EntryPath)
     }
     
     TraverseJunction(j : HPseudoState.Junction) : TargetDeterminator
     {
-      def tree = j.decision_tree;
-      def tree = TraverseDecisionTree(tree);
-      j.decision_tree = tree;
+      tree_trav.Traverse();
+      def tree = tree_trav.ResultTree;
+      //j.decision_tree = tree;
       TargetDeterminator.Junction(tree, j.name)
     }
     
-    TraverseDecisionTree(tree : DecisionNode) : DecisionNode
+    public NewTarget(tar : HTarget) : TraversePath
     {
-      def tree = tree.Clone();
-      foreach (j in tree.GetBreadthFirstEnumerable())
-      {
-        | DecisionNode.Target(target = tar) as t => 
-             def target_conf = if (tar is HTarget.State(st)) tran_path.InitialConfiguration(st) else null;
-             def p = TraversePath(Source, target_conf, tran_path);
-             match (tar)
-             {
-               | HTarget.PseudoState(HPseudoState(state = st))
-               | State(st)                                    => p.AddPath(t.state.active_config, st.active_config, j.actions)
-               | _                                            => ()
-             }
-             t.path = p.path;
-             def tar = p.ProcessTarget(tar);
-             t.destination = tar;
-        | _ => 
-        
-            def src = j.state;
-            j.path = path.Clone(); // foreach nodes path from parent to childs
-            foreach (n in j.ChildNodes)
-            {
-              def dest = n.state;
-              def path = GetPath(src.active_config, dest.active_config, j.actions);
-              n.path = path;
-            }
-      }
-      tree
+      | HTarget.State(st) => TraversePath(this, Source, tran_path.InitialConfiguration(st), tar)
+      | _                 => TraversePath(this, Source, null, tar)
     }
     
-    ProcessTarget(tar : HTarget) : TargetDeterminator
+    public ProcessTarget() : TargetDeterminator
     {
-      match (tar)
+      match (tran_target)
       {
         | HTarget.State                                   => CheckCompletion(Target)
         | HTarget.PseudoState(HPseudoState.Terminate)     => TargetDeterminator.Terminate()
@@ -339,32 +227,14 @@ namespace Nemerle.Statechart
         | _                                               => TargetDeterminator.NoStateChange()
       }
     }
-    
-    EmptyDecisionTarget(target : TargetDeterminator) : DecisionNode
-    {
-      DecisionNode.Target(transition.Actions, path, (transition.Source :> HTarget.State).state, transition.Target, target)
-    }
-    
-    CreateDecisionTree(target : TargetDeterminator) : DecisionNode
-    {
-      | TargetDeterminator.Junction(tree, _)  => tree.path = path + tree.path;
-                                                 tree
-      | _                                     => match (transition.Guard)
-                                                {
-                                                  | GuardNode.Empty      => EmptyDecisionTarget(target);
-                                                  | GuardNode.Expr as g  => def target = EmptyDecisionTarget(target);
-                                                                            DecisionNode.Condition(transition.Actions, path, (transition.Source :> HTarget.State).state, g, target, None())
-                                                  | _                    => throw InvalidOperationException("GuardNode.Else is not permitted on this stage")
-                                                }
-    }
 
     public CreateEntryPath() : Transition
     {
       Action();
       when (!IsInternal) EntryTarget();
-      def target = ProcessTarget(tran_target);
-      def tree = CreateDecisionTree(target);
-      Transition(Source, null, transition.Trigger, transition.Guard, path, target, tree, 0, transition.Kind, false)
+      def target = ProcessTarget();
+      def tree = tree_trav.Create(target);
+      Transition(Source, null, transition.Trigger, transition.Guard, path.Path, target, tree, 0, 0, transition.Kind, false)
     }
     
     public CreatePath() : Transition
@@ -381,10 +251,10 @@ namespace Nemerle.Statechart
           EntryTarget();
         }
       }
-      def target = ProcessTarget(tran_target);
-      def tree = CreateDecisionTree(target);
+      def target = ProcessTarget();
+      def tree = tree_trav.Create(target);
       def originate = if (tran_source is HTarget.State(st)) st else null;
-      Transition(transition.Location, Source, originate, transition.Trigger, transition.Guard, path, target, tree, 0, transition.Kind, false)
+      Transition(transition.Location, Source, originate, transition.Trigger, transition.Guard, path.Path, target, tree, 0, 0, transition.Kind, false)
     }
     
   }
