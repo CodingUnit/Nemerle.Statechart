@@ -23,6 +23,13 @@ namespace Nemerle.Statechart
     | Error {text : string;}
   }
 
+  [Record]
+  class Result
+  {
+    public state : string;
+    public act   : list[string];
+  }
+  
   /// <summary>
   /// Description of FsmTestGen.
   /// </summary>
@@ -39,36 +46,84 @@ namespace Nemerle.Statechart
 
     mutable canceled : bool;
 
-    mutable history : list[ActionType * list[string]];
+    mutable history : list[ActionType * Result];
 
     public GenerateTest(code_file : string, out_file : string) : void
     {
-      def gen_test(e, act)
+      def create_param(st, act)
       {
-        def act = act.Map(x => $<#"$x"#>);
+        def (entry : list[string], other) = act.Partition(x => x.StartsWith("Entry"));
+        def (exit : list[string], other)  = other.Partition(x : string => x.StartsWith("Exit"));
+        def act : list[string] = other;
+        def entry = entry.Map(x => x.TrimStart("Entry"));
+        def exit  = exit.Map(x => x.TrimStart("Exit"));
+        def entry = entry.Map(x => $<#"$x"#>);
+        def act   = act.Map(x => $<#"$x"#>);
+        def exit  = exit.Map(x => $<#"$x"#>);
+        def st_equal = st == entry.Last();
+        def ex_act_empty = exit.IsEmpty() && act.IsEmpty();
+        def act = if (act.IsEmpty()) "" else $<#, ..$(act;", ")#>;
+        if (st_equal) 
+        {
+          def entry = $<#[..$(entry;", ")]#>;
+          if (ex_act_empty) $<#[..$(entry;", ")]#> else $<#[..$(exit;", ")]$act, $entry#>
+        } else 
+        {
+          def exit = $<#, [..$(exit;", ")]#>;
+          def entry = $<#, [..$(entry;", ")]#>;
+          if (ex_act_empty) $<#"$st"$entry#> else $<#"$st"$exit$entry#>
+        }
+      }
+      
+      def get_event_variant2(e, st, act)
+      {
         match (e)
         {
-          | ActionType.Initiate => $<#tester.Initiate(..$(act;", "));#>
-          | SendEvent(e)        => def e = e.ToUpperFirst();
-                                   def res = act.Last().TrimStart("Entry");
-                                   def act = act.ChopLast();
-                                   $<#tester.Test("$e", $res, ..$(act;", "));#>
+          | ActionType.Initiate => def str = create_param(st, act);
+                                   $<#tester.Initiate($str);#>
+                                   
+          | SendEvent(e)        => def str = create_param(st, act);
+                                   $<#tester.Test("$e", $str);#>
+          | _                   => ""
+        }
+      }
+      
+      def gen_test(e, act)
+      {
+        def state = act.state;
+        def act = act.act;
+        match (e)
+        {
+          | ActionType.Initiate => def gen2 = get_event_variant2(e, state, act);
+                                   def gen1 = {
+                                                def act = act.Map(x => $<#"$x"#>);
+                                                $<#tester.Initiate("$state", ..$(act;", "));#>
+                                              };
+                                   if (gen2.Length <= gen1.Length) gen2 else gen1
+                                   
+          | SendEvent(ev)       => def gen2 = get_event_variant2(e, state, act);
+                                   def gen1 = {
+                                               def act = act.Map(x => $<#"$x"#>);
+                                               $<#tester.Test("$ev", "$state", ..$(act;", "));#>
+                                              };
+                                   if (gen2.Length <= gen1.Length) gen2 else gen1;
           | SetProperty(n, v)   => $"fsm.$n = $v;"
           | Terminate           => "fsm.Terminate();"
           | _                   => ""
         }
       }
 
-      def gen_out((e, act), a)
+      def gen_out(e, res : Result, a)
       {
+        def act = res.act;
+        def st = res.state;
+        def res = $"[$st]" :: "Ok" :: a;
         match (e)
         {
-          | ActionType.Initiate  => def res = "Ok" :: a;
-                                    def res = act + res;
+          | ActionType.Initiate  => def res = act + res;
                                     //"Initiate state machine" :: 
                                     res
-          | SendEvent(e)         => def res = "Ok" :: a;
-                                    def res = act + res;
+          | SendEvent(e)         => def res = act + res;
                                     $"Processing a '$e' " :: res
           | _                    => a
         }
@@ -76,7 +131,7 @@ namespace Nemerle.Statechart
 
       def history = history.Reverse();
       def str = history.Map(gen_test);
-      def out_str = history.FoldBack([], gen_out);
+      def out_str = history.FoldBack([], ((act, r), a) => gen_out(act, r, a));
       def str =  $"def fsm = $type_name();" :: "def tester = fsm.GetTester();" :: "tester.ConsoleTestInit();" :: str;
       File.WriteAllLines(code_file, str);
       def out_str = "/*" :: "BEGIN-OUTPUT" :: out_str + ["END-OUTPUT"] + ["*/"];
@@ -107,7 +162,9 @@ namespace Nemerle.Statechart
     
     AddHistory(act : ActionType) : void
     {
-      history = (act, queue.NToList()) :: history;
+      def state = fsm.ToString();
+      def result = Result(state, queue.NToList());
+      history = (act, result) :: history;
     }
 
     PrintStatus() : void

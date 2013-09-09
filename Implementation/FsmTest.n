@@ -115,13 +115,14 @@ namespace Nemerle.Statechart
       queue.Clear()
     }
 
-    Test(func : void -> void, res : string, params acts : array[string]) : bool
+    Test(func : void -> void, state : string, params acts : array[string]) : bool
     {
       prepare();
       func();
-      def acts = if (res != null) acts.Append(Entry(res)) else Actions(acts);
+      def acts = if (state != null) acts else Actions(acts);
       def acts = if (acts.Length == queue.Count()) acts.ZipLazy(queue).All(_ == _) else false;
-      def state = res == null || fsm.IsInState(res);
+      Console.WriteLine($"[$fsm]");
+      def state = state == null || fsm.IsInState(state);
       state && acts
     }
 
@@ -207,6 +208,11 @@ namespace Nemerle.Statechart
       if (TestCond(evt, res, ex, act, en)) OnOkTest() else OnFailed()
     }
 
+    public Test(evt : string, ex : list[string], en : list[string]) : void
+    {
+      Test(evt, en.Last(), ex, en)
+    }
+    
     public Test(evt : string, res : string, ex : list[string], en : list[string]) : void
     {
       if (TestCond(evt, res, ex, [], en)) OnOkTest() else OnFailed()
@@ -240,7 +246,7 @@ namespace Nemerle.Statechart
     public TestName(name : string, evt : HsmEvent, ex : list[string], act : list[string], en : list[string]) : void
     {
       def res = en.Last();
-      TestName(name, evt, res, ex, act, en.ChopLast().NToList());
+      TestName(name, evt, res, ex, act, en);
     }
 
     InitiateCond(res : string, acts : array[string]) : bool
@@ -251,15 +257,20 @@ namespace Nemerle.Statechart
     public InitiateName(name : string, en : list[string]) : void
     {
       def res = en.Last();
-      InitiateName(name, res, EntryImpl(en.ChopLast()).ToArray())
+      InitiateName(name, res, EntryImpl(en).ToArray())
     }
 
     public Initiate(en : list[string]) : void
     {
       def res = en.Last();
-      InitiateName(null, res, EntryImpl(en.ChopLast()).ToArray())
+      InitiateName(null, res, EntryImpl(en).ToArray())
     }
 
+    public Initiate(res : string, en : list[string]) : void
+    {
+      InitiateName(null, res, EntryImpl(en).ToArray())
+    }
+    
     public Initiate(res : string, params acts : array[string]) : void
     {
       InitiateName(null, res, acts.ToArray())
