@@ -46,48 +46,47 @@ namespace Nemerle.Statechart
       {
         //st.ToHState.hierarchy = ;
         def sub = st.sub_states;
-        def super = convert_FsmStateToHState(st);
-        if (st.IsConcurrent) a else
-        match (sub)
+        match (st.type)
         {
-          | []  => a
-          | sub =>
-                  def group = sub;//connected_transitions(sub, st.initial_tran);
-                  def states = group.Map(convert_FsmStateToHState);
+          | StateType.Region    => a 
+          | StateType.SubRegion with super = convert_FsmStateToHState(st.Super)
+          | _ with super = convert_FsmStateToHState(st) => 
+            match (sub)
+            {
+              | []  => a
+              | sub =>
+                      def group = sub;//connected_transitions(sub, st.initial_tran);
+                      def states = group.Map(convert_FsmStateToHState);
                   
-                  def init = st.InitialState.Map(convert_FsmStateToHState);
-                  def accept = sub.Find(_.IsFinal).Map(convert_FsmStateToHState);
-                  def name = $"A$finite_number";
-                  finite_number++;
-                  def fsm = HFsm(name, states, init, accept, super);
-                  foreach (st in states)
-                  {
-                    st.automaton = fsm;
-                    //st.super = super;
-                  }
-                  fsm :: a
-        }
+                      def init = st.InitialState.Map(convert_FsmStateToHState);
+                      def accept = sub.Find(_.IsFinal).Map(convert_FsmStateToHState);
+                      def name = $"A$finite_number";
+                      finite_number++;
+                      def fsm = HFsm(name, states, init, accept, super);
+                      foreach (st in states)
+                      {
+                        st.automaton = fsm;
+                        st.super = super;
+                      }
+                      fsm :: a
+                    }
+            }
       }
 
       
       def fsms = States.FoldBack([], create_automata);
       foreach (st in States)
       {
-        if (st.IsComposite)
+        match (st.type)
         {
-          if (st.IsConcurrent)
-          {
-            def sreg = st.sub_states;
-            def fsms = sreg.Map(x => x.sub_states.First(x => x.ToHState.automaton != null).ToHState.automaton);
-            st.ToHState.hierarchy = fsms;
-          } else
-          {
-            def fsm = st.sub_states.First(x => x.ToHState.automaton != null).ToHState.automaton;
-            st.ToHState.hierarchy = [fsm];
-          }
-        } else
-        {
-          st.ToHState.hierarchy = [];
+          | StateType.Region      => def sreg = st.sub_states;
+                                     def fsms = sreg.Map(x => x.sub_states.First(x => x.ToHState.automaton != null).ToHState.automaton);
+                                     st.ToHState.hierarchy = fsms;
+          | StateType.SubRegion   => ()
+          | _ when st.IsComposite => 
+                                     def fsm = st.sub_states.First(x => x.ToHState.automaton != null).ToHState.automaton;
+                                     st.ToHState.hierarchy = [fsm];
+          | _                     => st.ToHState.hierarchy = [];
         }
       }
       finite_automatas = fsms;

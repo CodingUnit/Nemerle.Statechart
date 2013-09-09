@@ -17,14 +17,11 @@ namespace Nemerle.Statechart
   {
     public transition : HTransition;
 
-    solver : ConfigSolver;
-
     active_proc : ActiveConfigProcessor;
 
-    public this(tr : HTransition, solver : ConfigSolver, act_proc : ActiveConfigProcessor)
+    public this(tr : HTransition, act_proc : ActiveConfigProcessor)
     {
       transition = tr;
-      this.solver = solver;
       this.active_proc = act_proc;
     }
 
@@ -78,23 +75,23 @@ namespace Nemerle.Statechart
 
     public static GetSourceConfigs(tran : Transition, active_proc : ActiveConfigProcessor) : list[ActiveStateConfig]
     {
-      def solver = ConfigSolver();
+      
       def st = tran.OriginateFrom;
       match (st.hierarchy)
       {
               // simple state
-        | []           => Solve(solver, active_proc, Config.Simple(st), _.states)
+        | []           => Solve(active_proc, Config.Simple(st), _.states)
         | head :: []   => // sequential composite state
             def local = tran.Kind == TransitionKind.Local || tran.Kind == TransitionKind.Initial;
             if (!local && tran.Trigger.IsCompletion) // completion
             {
               def final = head.accept_state.Value;
-              Solve(solver, active_proc, Config.Simple(final), _.states)
+              Solve(active_proc, Config.Simple(final), _.states)
             } else
             {
-              Solve(solver, active_proc, Config.Composite(st), _.states)
+              Solve(active_proc, Config.Composite(st), _.states)
             }
-        | _           => Solve(solver, active_proc, Config.Composite(st), _.states) // concurrent state
+        | _           => Solve(active_proc, Config.Composite(st), _.states) // concurrent state
       }
     }
     
@@ -113,7 +110,7 @@ namespace Nemerle.Statechart
             {
               Solve(Config.Composite(st), _.states)
             }
-        | _           => Solve(solver, active_proc, Config.Composite(st), _.states) // concurrent state
+        | _           => Solve(Config.Composite(st), _.states) // concurrent state
       }
     }
 
@@ -147,16 +144,16 @@ namespace Nemerle.Statechart
     //  def conf = Solve(Config.Concurrent(st), x => x.init_state.Value :: []);
     //  conf.Head
     //}
-    static Solve(solver : ConfigSolver, proc : ActiveConfigProcessor, conf : Config, selector : HFsm -> list[HState]) : list[ActiveStateConfig]
+    public static Solve(this proc : ActiveConfigProcessor, conf : Config, selector : HFsm -> list[HState]) : list[ActiveStateConfig]
     {
-      solver.Init(conf, selector);
+      def solver = ConfigSolver(conf, selector);
       def conf = solver.Solve();
       proc.CreateConfig(conf)
     }
 
     Solve(conf : Config, selector : HFsm -> list[HState]) : list[ActiveStateConfig]
     {
-      solver.Init(conf, selector);
+      def solver = ConfigSolver(conf, selector);
       def conf = solver.Solve();
       active_proc.CreateConfig(conf)
     }
