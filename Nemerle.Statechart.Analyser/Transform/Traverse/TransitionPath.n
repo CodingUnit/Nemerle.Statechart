@@ -1,0 +1,232 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+
+  /// <summary>
+  /// Description of Config.
+  /// </summary>
+  class TransitionPath
+  {
+    public transition : HTransition;
+
+    active_proc : ActiveConfigProcessor;
+
+    public this(tr : HTransition, act_proc : ActiveConfigProcessor)
+    {
+      transition = tr;
+      this.active_proc = act_proc;
+    }
+
+    Source : HTarget
+    {
+      get
+      {
+        transition.Source
+      }
+    }
+
+    Target : HTarget
+    {
+      get
+      {
+        transition.Target
+      }
+    }
+
+    SourceState : HState
+    {
+      get
+      {
+        match (Source)
+        {
+          | HTarget.State(st) => st
+          | _                 => null
+        }
+      }
+    }
+    
+    TargetState : HState
+    {
+      get
+      {
+        match (Target)
+        {
+          | HTarget.State(st) => st
+          | _                 => null
+        }
+      }
+    }
+    
+    Local : bool
+    {
+      get
+      {
+        transition.Local
+      }
+    }
+
+    IsCompletion : bool
+    {
+      get
+      {
+        transition.IsCompletion
+      }
+    }
+
+    /// <summary>
+    /// Indicates that transition is withing one subregion of concurrent region
+    /// </summary>
+    //public WithinRegion : bool
+    //{
+    //  get
+    //  {
+    //    match (SourceState, TargetState)
+    //    {
+    //      | (_, null)
+    //      | (null, _)  => false
+    //      | (src, tar) => match (src.region, tar.region)
+    //                      {
+    //                        | (Some(r1), Some(r2)) => r1.region_pos == r2.region_pos
+    //                        | _                    => false
+    //                      }
+    //    }
+    //  }
+    //}
+    
+    public static GetSourceConfigs(tran : Transition, active_proc : ActiveConfigProcessor) : list[ActiveStateConfig]
+    {
+      
+      def st = tran.OriginateFrom;
+      match (st.hierarchy)
+      {
+              // simple state
+        | []           => Solve(active_proc, Config.Simple(st), _.states)
+        | head :: []   => // sequential composite state
+            def local = tran.Kind == TransitionKind.Local || tran.Kind == TransitionKind.Initial;
+            if (!local && tran.Trigger.IsCompletion) // completion
+            {
+              def final = head.accept_state.Value;
+              Solve(active_proc, Config.Simple(final), _.states)
+            } else
+            {
+              Solve(active_proc, Config.Composite(st), _.states)
+            }
+        | _           => Solve(active_proc, Config.Composite(st), _.states) // concurrent state
+      }
+    }
+    
+    get_source_configs(st : HState) : list[ActiveStateConfig]
+    {
+      match (st.hierarchy)
+      {
+              // simple state
+        | []           => Solve(Config.Simple(st), _.states)
+        | head :: []   => // sequential composite state
+            if (!Local && IsCompletion) // completion
+            {
+              def final = head.accept_state.Value;
+              Solve(Config.Simple(final), _.states)
+            } else
+            {
+              Solve(Config.Composite(st), _.states)
+            }
+        | _           => Solve(Config.Composite(st), _.states) // concurrent state
+      }
+    }
+
+    
+    [Memoized]
+    source_configs : list[ActiveStateConfig]
+    {
+      get
+      {
+        match (transition.Source)
+        {
+          | HTarget.State(st) => get_source_configs(st)
+          | HTarget.PseudoState(p) =>
+              match (p)
+              {
+                | HPseudoState.Join => []
+                | _                 => []
+              }
+          | _ => []
+        }
+      }
+    }
+
+    
+    public InitialConfiguration(st : HState) : ActiveStateConfig
+    {
+      def conf = Solve(Config.Unknown(st), x => x.init_state.Value :: []);
+      conf.Head
+    }
+
+    public InitialConfiguration(st : list[HState]) : ActiveStateConfig
+    {
+      def conf = Solve(Config.Concurrent(st), x => x.init_state.Value :: []);
+      conf.Head
+    }
+    
+    public static Solve(this proc : ActiveConfigProcessor, conf : Config, selector : HFsm -> list[HState]) : list[ActiveStateConfig]
+    {
+      def solver = ConfigSolver(conf, selector);
+      def conf = solver.Solve();
+      proc.CreateConfig(conf)
+    }
+
+    Solve(conf : Config, selector : HFsm -> list[HState]) : list[ActiveStateConfig]
+    {
+      def solver = ConfigSolver(conf, selector);
+      def conf = solver.Solve();
+      active_proc.CreateConfig(conf)
+    }
+
+    CreateTransitionPath(src_conf : ActiveStateConfig, target : HState) : Transition
+    {
+      //def target = if (target != null) GetTargetConfig(src_conf, target) else null;
+      def trav = TraversePath(src_conf, target, this);
+      trav.CreatePath()
+    }
+    
+    TraversePseudo(source : ActiveStateConfig, _pseudo : HPseudoState) : Transition
+    {
+      def trav = TraversePath(source, null, this);
+      trav.CreatePath()
+    }
+    
+    //TargetInRegion(source : ActiveStateConfig, target : HState) : ActiveStateConfig
+    //{
+    //  def st = source.simple_states;
+    //  def targets = st.Map(x => if (x.SameRegion(target)) target else x); // convert to another config
+    //  InitialConfiguration(targets) // initial configuration of this target with constant states in other regions
+    //}
+    
+    public TraverseInitial() : Transition
+    {
+      def source = SourceState.active_config;
+      def source = ActiveStateConfig([], source, [], [], null, false);
+      //def target = InitialConfiguration(TargetState);
+      //CreateTransitionPath(init, source, target) // create nodes for entry exit actions
+      def trav = TraversePath(source, TargetState, this);
+      trav.CreateEntryPath()
+    }
+    
+    public Traverse() : list[Transition]
+    {
+      match (Target)
+      {
+        | HTarget.State(st)         => source_configs.Map(CreateTransitionPath(_, st)) 
+        | HTarget.PseudoState(st)   => source_configs.Map(TraversePseudo(_, st))
+        | HTarget.Nowhere           => source_configs.Map(CreateTransitionPath(_, null))
+      }
+    }
+  }
+}
