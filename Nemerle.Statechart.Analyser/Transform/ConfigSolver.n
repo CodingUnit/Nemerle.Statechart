@@ -99,6 +99,17 @@ namespace Nemerle.Statechart
     
     mutable conf_states : list[HState];
     
+    mutable reside : list[HState];
+    
+    [Memoized]
+    active_config : list[HState]
+    {
+      get
+      {
+        reside.SelectMany(x => x.active_config).Distinct().NToList()
+      }
+    }
+    
     current_state : HState
     {
       get
@@ -117,15 +128,30 @@ namespace Nemerle.Statechart
     
     conf_queue : SCG.Queue[Configuration] = SCG.Queue();
     
-    GetConcurrentConfigs(super : HState, lst : list[list[Configuration]]) : list[Configuration]
+    current_conf : list[HState] = [];
+    
+    GetConcurrentConfigs(lst : list[list[Configuration]]) : list[Configuration]
     {
       def combinations = NList.Product(lst).Rev();
       def merge = combinations.Map(x => x.Reduce((x, a) => a + x));
+      merge
+    }
+    
+    MergeConcurrentConfigs(super : HState, lst : list[list[Configuration]]) : list[Configuration]
+    {
+      def merge = GetConcurrentConfigs(lst);
       def add_super = merge.Map(x => Configuration.Sequential(super :: x.States));
       add_super
     }
     
     result : List[Configuration] = List();
+    
+    GetConfigs(conf : list[HState], st : HState) : list[Configuration]
+    {
+      def configs = conf.Map(x => if (x : object == current_state) current :: [] else GetStateConfigs(x));
+      def configs = MergeConcurrentConfigs(st, configs);
+      configs
+    }
     
     ExpandToParents(cur : Configuration) : Configuration
     {
@@ -141,15 +167,11 @@ namespace Nemerle.Statechart
                               | [_]  => conf_states ::= st;loop()//loop(super :: st, super :: acc)
                               | regs => def sregs = RegionConstant(regs, conf_states, sub_selector); // list of list of sub states of each region
                                         def comb = NList.Product(sregs).Rev(); // calculate product of concurrent combination
-                                        foreach (conf in comb)
-                                        {
-                                          def configs = conf.Map(x => if (x : object == current_state) current :: [] else GetStateConfigs(x));
-                                          def configs = GetConcurrentConfigs(st, configs);
-                                          current = configs.First(x => x.States.ContainsList(conf_states));
-                                          conf_states = current.States;
-                                          def add_super = configs.Except(current);
-                                          conf_queue.Append(add_super)
-                                        }
+                                        def confs = comb.SelectMany(x => GetConfigs(x, st)).NToList();
+                                        current = confs.Find(x => x.States.ContainsList(conf_states)).Value;
+                                        conf_states = current.States;
+                                        def add_super = confs.Exclude(x => x.States.Equals(current.States));
+                                        conf_queue.Append(add_super);
                                         loop()
                             }
         }
@@ -175,17 +197,28 @@ namespace Nemerle.Statechart
       st.Map(map)
     }
 
+    GetRegionConfig(reg : HFsm) : list[Configuration]
+    {
+      def sub = reg.states;//sub_selector(reg);
+      match (active_config.Find(x => sub.ContainsRef(x)))
+      {
+        | Some(st) => GetStateConfigs(st)
+        | _        => def sub = sub_selector(reg);
+                      sub.SelectMany(x => GetStateConfigs(x)).NToList();
+      }
+    }
+    
     GetStateConfigs(st : HState) : list[Configuration]
     {
       match (st.hierarchy)
       {
         | []     => Configuration.Simple(st) :: []
-        | [reg]  => def sub = sub_selector(reg);
-                    sub.SelectMany(x => GetStateConfigs(x)).NToList();
-        | regs   => def sregs = regs.Map(x => x.states);
-                    def comb = NList.Product(sregs).Rev();
-                    def comb = comb.Map(x => x.Map(x => GetStateConfigs(x)));
-                    def comb = comb.SelectMany(x => GetConcurrentConfigs(st, x)).NToList();
+        | [reg]  => GetRegionConfig(reg)//def sub = sub_selector(reg);
+                    //sub.SelectMany(x => GetStateConfigs(x)).NToList();
+        | regs   => def sregs = regs.Map(GetRegionConfig);
+                    def comb = sregs.Product().Rev();
+                    def comb = comb.Map(x => x.Reduce((x, a) => a + x));
+                    //def comb = comb.SelectMany(x => MergeConcurrentConfigs(st, x)).NToList();
                     comb
       }
     }
@@ -195,24 +228,49 @@ namespace Nemerle.Statechart
       match (solved_unknown)
       {
         | Simple(st)
-        | Composite(st)  => def confs = GetStateConfigs(st);
-                            conf_queue.Append(confs);
+        | Composite(st)  => reside = st :: [];//def confs = GetStateConfigs(st);
+                            //conf_queue.Append(confs);
+        | Concurrent(st) => reside = st.OrderBy(x => x.hierarchy_pos).NToList();//def confs = st.Map(GetStateConfigs);
+                            //def confs = GetConcurrentConfigs(confs);//.Reduce((x, a) => a + x);
+                            //conf_queue.Append(confs);
         | _              => ()
       }
                 
-       def loop()
+       //def loop()
        {
-         if (conf_queue.IsEmpty()) () else
-         {
-          def conf = conf_queue.Dequeue();
-          def res = ExpandToParents(conf);
-          result.Add(res);
-          loop()
-         }
+         //if (conf_queue.IsEmpty()) () else
+         //{
+         // def conf = conf_queue.Dequeue();
+         // def res = ExpandToParents(conf);
+         // result.Add(res);
+         // loop()
+         //}
        }
        
-      loop();
-      result.NToList()
+      //loop();
+       //def result = def loop(conf)
+       //{
+       //  | head :: tail => match (head.hierarchy)
+       //                    {
+       //                      | []    => GetStateConfigs(head)
+       //                      | [reg] => def sub = sub_selector(reg);
+       //                                 if (tail.IsEmpty)
+       //                                 {
+       //                                   sub
+       //                                 } else
+       //                                 {
+       //                                 }
+       //                                 def sub_conf = sub.Select(x => loop([x]));
+       //                                 []
+       //                    }
+       //}
+       
+      //def conf = active_config;
+      //loop(conf);
+      //result.NToList()
+       def result = GetStateConfigs(active_config.Head);
+       
+       result
     }
 
   }

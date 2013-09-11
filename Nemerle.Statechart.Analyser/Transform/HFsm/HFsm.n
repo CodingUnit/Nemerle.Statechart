@@ -54,7 +54,7 @@ namespace Nemerle.Statechart
   }
 
   [Record]
-  public class HState
+  public class HState : IEquatable[HState]
   {
     public name : string;
     public transitions : list[HTransition] {get;set;default []}
@@ -73,6 +73,11 @@ namespace Nemerle.Statechart
     public override GetHashCode() : int
     {
       name.GetHashCode()
+    }
+    
+    public Equals(b : HState) : bool
+    {
+      this : object == b
     }
     
     //public entry : list[];
@@ -156,14 +161,19 @@ namespace Nemerle.Statechart
       }
     }
     
-    [Memoized]
-    public region_pos : int
-    {
-      get
-      {
-        if (automaton != null && automaton.states != null) automaton.states.IndexOf(this) else 0
-      }
-    }
+    //[Memoized]
+    //public region_pos : int
+    //{
+    //  get
+    //  {
+    //    match (region)
+    //    {
+    //      | Some(r) => def sreg = r.hierarchy.First(x => x.all_states.ContainsRef(this));
+    //                   r.hierarchy.IndexOf(sreg)
+    //      | _       => 0
+    //    }
+    //  }
+    //}
     
     [Memoized]
     public hierarchy_pos : int
@@ -173,6 +183,27 @@ namespace Nemerle.Statechart
         if (automaton == null || automaton.super == null) 0 else
           automaton.super.hierarchy_pos + 1
       }
+    }
+    
+    [Memoized]
+    public regions : list[HState]
+    {
+      get
+      {
+        active_super.Rev().Filter(_.IsConcurrent)
+      }
+    }
+    
+    public region_pos(r : HState) : int
+    {
+      def sreg = r.hierarchy.First(x => x.all_states.ContainsRef(this));
+      r.hierarchy.IndexOf(sreg)
+    }
+    
+    public SameRegion(st : HState) : bool
+    {
+      def have = regions.Intersect(st.regions);
+      have.Exists(x => region_pos(x) == st.region_pos(x))
     }
     
     public override ToString() : string { if (name != null && !name.IsEmpty()) name else "Top" }
