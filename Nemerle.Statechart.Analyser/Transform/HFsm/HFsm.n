@@ -202,8 +202,13 @@ namespace Nemerle.Statechart
     
     public SameRegion(st : HState) : bool
     {
-      def have = regions.Intersect(st.regions);
-      have.Exists(x => region_pos(x) == st.region_pos(x))
+      def have = GetSameRegion(st);
+      have.All(x => region_pos(x) == st.region_pos(x))
+    }
+    
+    public GetSameRegion(st : HState) : IEnumerable[HState]
+    {
+      regions.Intersect(st.regions)
     }
     
     public override ToString() : string { if (name != null && !name.IsEmpty()) name else "Top" }
@@ -232,6 +237,24 @@ namespace Nemerle.Statechart
       }
     }
     
+    [Memoized]
+    public SourceState : HState
+    {
+      get
+      {
+        if (Source is HTarget.State(st)) st else null
+      }
+    }
+    
+    [Memoized]
+    public TargetState : HState
+    {
+      get
+      {
+        if (Target is HTarget.State(st)) st else null
+      }
+    }
+    
     public IsCompletion : bool
     {
       get
@@ -247,7 +270,7 @@ namespace Nemerle.Statechart
   }
 
   [Record]
-  public variant HTarget
+  public variant HTarget : IEquatable[HTarget]
   {
     | Nowhere
     | PseudoState { node : HPseudoState; }
@@ -260,6 +283,22 @@ namespace Nemerle.Statechart
         | Nowhere           => ""
         | PseudoState(node) => node.ToString()
         | State(st)         => st.ToString()
+      }
+    }
+    
+    public override GetHashCode() : int
+    {
+      ToString().GetHashCode()
+    }
+    
+    public Equals(b : HTarget) : bool
+    {
+      match (this, b)
+      {
+        | (Nowhere, Nowhere)                          => true
+        | (PseudoState(n), PseudoState(n2))           => n : object == n2
+        | (State(st), State(st2))                     => st : object == st2
+        | _                                           => false
       }
     }
   }

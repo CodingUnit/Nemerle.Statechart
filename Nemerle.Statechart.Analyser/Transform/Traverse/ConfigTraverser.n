@@ -16,13 +16,27 @@ namespace Nemerle.Statechart
   class ConfigTraverser
   {
 
-    public transitions : list[HTransition];
+    transitions : list[HTransition];
     
     [Accessor]
     active_proc : ActiveConfigProcessor;
 
     res_trans : List[Transition] = List();
 
+    public Result : IEnumerable[Transition]
+    {
+      get
+      {
+        res_trans
+      }
+    }
+    
+    public static GetInitialConfiguration(this proc : ActiveConfigProcessor, st : HState) : list[HState]
+    {
+      def conf = TransitionPath.Solve(proc, Config.Unknown(st), x => x.init_state.Value :: []);
+      conf.Head.states
+    }
+    
     //[Memoized]
     public InitialTransition(init : HTransition) : Transition
     {
@@ -52,59 +66,10 @@ namespace Nemerle.Statechart
       }
     }
 
-
-    public static GetInitialConfiguration(this proc : ActiveConfigProcessor, st : HState) : list[HState]
-    {
-      def conf = TransitionPath.Solve(proc, Config.Unknown(st), x => x.init_state.Value :: []);
-      conf.Head.states
-    }
-
-
-
-
-    //CreateTran(tr : HTransition, source : ActiveStateConfig, target : ActiveStateConfig) : void
-    //{
-    //  def tran = CreateTransitionPath(tr, source, if (target != null) TargetDeterminator.State(target) else TargetDeterminator.NoStateChange());
-    //  res_trans.Add(tran);
-    //}
-
-    //CreateTran(tr : HTransition, source : IEnumerable[ActiveStateConfig], target : ActiveStateConfig) : void
-    //{
-    //  source.Iter(x => CreateTran(tr, x, target))
-    //}
-
-    //TraverseGroupTran(evt : StateEvent, conf : ActiveStateConfig) : Transition
-    //{
-    //  def states = conf.states;
-    //  def source_states = states.Map(x => (x, x.transitions.First(x => x.Trigger == evt)));
-    //  def (targets, _other) = source_states.Partition((_, t) => t.Target is HTarget.State);
-    //  def targets = targets.Map((x, t) => (x, t, (t.Target :> HTarget.State).state));
-    //  def target = targets.Map((_, _, x) => x);
-    //  def target = InitialConfiguration(target);
-
-    //  def paths = targets.Map((x, t, _) => GetPath(x.active_config, target.states, t.Local));
-    //  def exit = paths.SelectMany((x, _) => x).Distinct();
-    //  def entry = paths.SelectMany((_, x) => x).Distinct();
-    //  def actions = targets.SelectMany((_, t, _) => t.Actions);
-    //  def path = CreatePath(exit, actions, entry);
-
-    //  // TODO: групповые переходы с гуардами
-    //  def tran = Transition(conf, evt, GuardNode.Empty(), tran.Path, TargetDeterminator.State(target));
-    //}
-
     public TraverseTran(tr : HTransition) : list[Transition]
     {
       def path = TransitionPath(tr, active_proc);
       path.Traverse();
-      //def src_conf = SourceConfigs(tr);
-      //match (tr.Target)
-      //{
-      //  | HTarget.State(st)       => def target = InitialConfiguration(st);
-      //                               src_conf.Map(CreateTransitionPath(tr, _, target))
-      //  | HTarget.PseudoState(st) => src_conf.Map(TraversePseudo(tr, _, st))
-      //  | HTarget.Nowhere         => src_conf.Map(CreateTransitionPath(tr, _, null))
-      //}
-
     }
 
     Traverse(tr : HTransition) : void
@@ -116,11 +81,6 @@ namespace Nemerle.Statechart
     public Start() : void
     {
       foreach (tr in transitions) Traverse(tr);
-      def groups = res_trans.GroupBy(x => x.Source);
-      foreach (gr in groups)
-      {
-        gr.Key.transitions = gr.NToList()
-      }
     }
   }
 }
