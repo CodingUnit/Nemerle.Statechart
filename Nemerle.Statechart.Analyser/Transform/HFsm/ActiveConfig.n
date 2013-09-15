@@ -37,6 +37,7 @@ namespace Nemerle.Statechart
 
     ActiveConfigProc : ActiveConfigProcessor = ActiveConfigProcessor();
 
+
     CreateActiveConfigurations() : void
     {
       def init = TopState.initial_tran.Value.ToHTransition;
@@ -50,46 +51,73 @@ namespace Nemerle.Statechart
       {
         gr.Key.transitions = gr.NToList()
       }
-      
+
     }
 
+    find_concurrent(tran : list[Transition]) : list[list[Transition]]
+    {
+      def arr = array(tran.Length);
+      tran.IterI((i, x) => arr[i] = x :: []);
+      foreach (t in tran)
+        foreach (gr in arr with i)
+        {
+          when (gr.All(x => distinct_regions(x, t)))
+          {
+            arr[i] = t :: gr;
+          }
+        }
+       def arr = arr.Exclude(x => x.Length == 1).ToArray();
+       foreach (elem when elem : object != null in arr with i)
+       {
+         foreach (el2 when el2 : object != elem in arr)
+         {
+           when (el2 != null && elem.All(x => el2.ContainsRef(x)))
+           {
+             arr[i] = null;
+           }
+         }
+       }
+       def arr = arr.Map(x => x : list[Transition]).Filter(x => x : object != null);
+       arr
+    }    
+
+    distinct_regions(x : Transition, y : Transition) : bool
+    {
+      def st1 = x.OriginateFrom;
+      def st2 = y.OriginateFrom;
+      def regs1 = st1.regions;
+      def regs2 = st2.regions;
+      def tst1 = x.TargetState;
+      def tst2 = y.TargetState;
+      def intersect = regs1.Intersect(regs2);
+      def intersect2 = tst1.regions.Intersect(tst2.regions);
+      def intersect = intersect.Intersect(intersect2);
+      if (intersect.IsEmpty()) false else
+      {
+        def distinct_regs = intersect.Exists(x => st1.region_pos(x) != st2.region_pos(x) && 
+                                                  tst1.region_pos(x) != tst2.region_pos(x) && 
+                                                  st1.region_pos(x) == tst1.region_pos(x) &&
+                                                  st2.region_pos(x) == tst2.region_pos(x));
+        distinct_regs
+      }
+    }
+    
+    SelectConcurrentTransitions(tr : list[list[Transition]]) : list[Transition]
+    {
+      def priority(x, y)
+      {
+        if (x.Exists(x => y.Exists(y => x.OriginateFrom.IsSubStateOf(y.OriginateFrom)))) -1 else
+          if (x.Exists(x => y.Exists(y => y.OriginateFrom.IsSubStateOf(x.OriginateFrom)))) 1 else 0
+      }
+      
+      def tr = tr.Exclude(x => x.Count() <= 1); // removing empty groups and not start concurrent
+      def sorted = tr.Sort(priority); // sorting by priority
+      if (!sorted.IsEmpty()) sorted.First() else []
+    }
+    
     MergeConcurrentTransitions(tr : list[Transition]) : list[Transition]
     {
       mutable transitions = tr;
-      
-      def distinct_regions(x, y)
-      {
-        def st1 = x.OriginateFrom;
-        def st2 = y.OriginateFrom;
-        def regs1 = st1.regions;
-        def regs2 = st2.regions;
-        def tst1 = x.TargetState;
-        def tst2 = y.TargetState;
-        def intersect = regs1.Intersect(regs2);
-        def intersect2 = tst1.regions.Intersect(tst2.regions);
-        def intersect = intersect.Intersect(intersect2);
-        if (intersect.IsEmpty()) -1 else
-        {
-          //def within_region1 = st1.SameRegion(tst1);
-          //def within_region2 = st2.SameRegion(tst2);
-          def distinct_regs = intersect.Exists(x => st1.region_pos(x) != st2.region_pos(x) && 
-                                                    tst1.region_pos(x) != tst2.region_pos(x) && 
-                                                    st1.region_pos(x) == tst1.region_pos(x) &&
-                                                    st2.region_pos(x) == tst2.region_pos(x));//intersect.All(x => st1.region_pos(x) != st2.region_pos(x) && tregs1.region_pos(x) != tregs2.region_pos(x));
-          if (distinct_regs)
-          {
-            0
-          } else -1
-        }
-      }
-
-      //def tran_region(x)
-      //{
-      //  def src = x.OriginateFrom;
-      //  def tar = x.TargetState;
-      //  def regs = src.GetSameRegion(tar);
-      //  regs.Filter(x => src.region_pos(x) == tar.region_pos(x))
-      //}
 
       def merge_decision_tree(x, y, tar)
       {
@@ -97,7 +125,7 @@ namespace Nemerle.Statechart
         {
           DecisionNode.Target(a.actions + b.actions, PathSequence.CombineParallel(a.path, b.path), null, null, null, tar)
         }
-        
+
         match (x, y)
         {
           | (DecisionNode.Target as a, DecisionNode.Target as b)                                 => combine_target(a, b)
@@ -108,12 +136,9 @@ namespace Nemerle.Statechart
           | _ => throw InvalidOperationException("junction not supported in group transitions yet")
         }
       }
-      
+
       def merge(x, y)
       {
-        //def t1reg = tran_region(x);
-        //def t2reg = tran_region(y);
-        //def intersect = t1reg.Intersect(t2reg);
         def st1 = match (x.Target)
                    {
                      | TargetDeterminator.Completion(st)
@@ -127,19 +152,19 @@ namespace Nemerle.Statechart
                      | _                                 => null
                    }
         // states from target of first transition
-        def t1st = st1.states.Exclude(x.Source.states);//st1.states.Filter(y => y.regions.Intersect(t1reg).All(z => y.region_pos(z) == x.TargetState.region_pos(z)));
-        def t2st = st2.states.Exclude(y.Source.states);//Filter(a => a.regions.Intersect(t2reg).All(z => a.region_pos(z) == y.TargetState.region_pos(z)));
+        def t1st = st1.states.Exclude(x.Source.states);
+        def t2st = st2.states.Exclude(y.Source.states);
         def fixed = st1.states.Intersect(st2.states).NToList();
-        def tar = t1st + t2st + fixed;
+        def tar = fixed + t1st + t2st;
         def tar = ActiveConfigProc.CreateConfig(tar);
         def tar = if (x.Target is TargetDeterminator.Completion || y.Target is TargetDeterminator.Completion) TargetDeterminator.Completion(tar) else TargetDeterminator.State(tar);
         def grouped = 0;
         def kind = match (x.Kind, y.Kind)
-                  {
-                    | (TransitionKind.External, _)
-                    | (_, TransitionKind.External) => TransitionKind.External
-                    | _                            => TransitionKind.Internal
-                  }
+                    {
+                      | (TransitionKind.External, _)
+                      | (_, TransitionKind.External) => TransitionKind.External
+                      | _                            => TransitionKind.Internal
+                    }
         def tree = merge_decision_tree(x.DecisionTree, y.DecisionTree, tar);
         def tran = Transition(x.Location, x.Source, x.OriginateFrom, x.Trigger, GuardNode.Combine(x.Guard, y.Guard), PathSequence.CombineParallel(x.Path, y.Path), tar, tree, 0, grouped, kind, false, x.TargetState);
         tran
@@ -153,11 +178,14 @@ namespace Nemerle.Statechart
         def by_trigger = within_region.GroupBy(_.Trigger);
         foreach (ctrig when ctrig.IsMoreThanOne() in by_trigger)
         {
-          def dups = ctrig.NToList().DuplicatesGroup(distinct_regions);
-          def trans = dups.Flatten();
-          transitions = transitions.Exclude(trans);
-          def trans = trans.Reduce(merge);
-          transitions ::= trans;
+          def groups = find_concurrent(ctrig.NToList());
+          def trans = SelectConcurrentTransitions(groups);
+          when (!trans.IsEmpty())
+          {
+            transitions = transitions.Exclude(trans);
+            def trans = trans.Reduce(merge);
+            transitions ::= trans;
+          }
         }
       }
       transitions

@@ -233,10 +233,27 @@ namespace Nemerle.Statechart
       seq.Map(x => CreateConfig(x.States))
     }
 
+    public static Sort[T](this lst : IEnumerable[T], func : T -> HState, desc : bool = false) : list[T]
+    {
+      def sort(x, y)
+      {
+        def st1 = func(x);
+        match (st1.regions)
+        {
+          | [] => 0
+          | r :: _ => st1.region_pos(r) - func(y).region_pos(r)
+        }
+      }
+      
+      def by_reg = lst.NToList().Sort(sort);
+      def by_hierarchy = if (desc) by_reg.OrderByDescending(x => func(x).hierarchy_pos) else by_reg.OrderBy(x => func(x).hierarchy_pos);
+      by_hierarchy.ThenBy(x => func(x).Location).NToList();
+    }
+    
     public CreateConfig(seq : IEnumerable[HState]) : ActiveStateConfig
     {
-      def result = seq.SelectMany(_.active_config).Distinct();
-      def sort = result.OrderBy(x => x.hierarchy_pos).NToList();
+      def result = seq.SelectMany(_.active_config).Distinct().NToList();
+      def sort = result.Sort(x => x);
       match (active_configs.Find(x => x.IsThis(sort)))
       {
         | null => def conf = ActiveStateConfig([], sort, [], [], null, false);
