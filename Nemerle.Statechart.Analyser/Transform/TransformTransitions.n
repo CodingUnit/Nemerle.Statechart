@@ -193,21 +193,15 @@ namespace Nemerle.Statechart
         }
       }
       
-      def not_originate_from_other_configs(last, tr)
-      {
-        def source_configs = ActiveConfigProc.GetSourceConfigs(tr);
-        def last = last.Source;
-        match (source_configs)
-        {
-          | [one] => one : object == last
-          | _     => false
-        }
-      }
-      
       foreach (conf in ActiveStates)
       {
         def by_trigger = conf.transitions.GroupBy(_.Trigger); // with equal trigger
-        foreach (ctrig when ctrig.IsMoreThanOne() in by_trigger) // if transitions in group is more than one
+        def (conflict, other) = by_trigger.NToList().Partition(x => x.IsMoreThanOne());
+        foreach (tr in other)
+        {
+          foreach (tr in tr) tr.MayRun = true;
+        }
+        foreach (ctrig in conflict) // if transitions in group is more than one
         {
           def grouped_equal_prio = ctrig.NToList().Group(compare); // group by priority of states relations
           grouped_equal_prio.IterI((i, x) => x.Iter(x => x.Priority = i)); // set prio for each group of transition with equal prio
@@ -224,11 +218,19 @@ namespace Nemerle.Statechart
           def trans = trans.Map(x => x.Sort(guard_compare)); // sort each group by guard
           def trans = trans.Flatten(); // remove grouping
           CheckGuards(trans);
-          def (last, other) = trans.SplitFind(x => x.Guard.IsEmpty || x.Guard is GuardNode.Else); // find last with no guard or else guard
-          def last = last.Last(); // get the last
-          def not_used = other.Filter(x => not_originate_from_other_configs(last, x)); // get other that not touch other state configurations
-          not_used.Iter(x => AddWarning(FsmWarning.TransitionOverriden(x, last))); // it is always overriden
-          when (!other.IsEmpty()) conf.transitions = conf.transitions.Exclude(other); // exclude it from the set
+          def (run, other) = trans.SplitFind(x => x.Guard.IsEmpty || x.Guard is GuardNode.Else); // find last with no guard or else guard
+          def (not_guarded, guarded) = run.Partition(x => x.Guard.IsEmpty);
+          def (run, overriden) = match (not_guarded)
+          {
+            | []           
+            | [_]          => (run, [])
+            // if several run get head, tail is overriden
+            | head :: tail => (head :: guarded, tail)
+          }
+          def overriden = other + overriden;
+          foreach (tr in run) tr.MayRun = true;
+          overriden.Iter(x => x.OverridenBy += run);
+          when (!overriden.IsEmpty()) conf.transitions = conf.transitions.Exclude(overriden); // exclude it from the set
         }
       }
     }
