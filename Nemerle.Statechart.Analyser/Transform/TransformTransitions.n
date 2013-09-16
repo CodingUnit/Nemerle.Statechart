@@ -12,7 +12,7 @@ namespace Nemerle.Statechart
   /// <summary>
   /// Description of Transitions.
   /// </summary>
-  public partial class FsmAnalyser
+  partial class FsmAnalyser
   {
     ConvertEntryExitPoints() : void
     {
@@ -192,7 +192,7 @@ namespace Nemerle.Statechart
           | _                                  => 0
         }
       }
-      
+          
       foreach (conf in ActiveStates)
       {
         def by_trigger = conf.transitions.GroupBy(_.Trigger); // with equal trigger
@@ -207,10 +207,12 @@ namespace Nemerle.Statechart
           grouped_equal_prio.IterI((i, x) => x.Iter(x => x.Priority = i)); // set prio for each group of transition with equal prio
           def (conflict, other) = grouped_equal_prio.Partition(x => x.IsMoreThanOne()); // get conflicting transitions with equal prio
           
-          foreach (conf in conflict)
+          foreach (tr in conflict)
           {
-            def dups = conf.Duplicates((x, y) => x.Guard.CompareTo(y.Guard)); // duplicates is several conflicting transitions with equal guard
-            dups.Iter(x => AddError(FsmError.DuplicateTransition(x))); // add to error list
+            def dups = tr.Duplicates((x, y) => x.Guard.CompareTo(y.Guard)); // duplicates is several conflicting transitions with equal guard
+            Transitions = Transitions.Exclude(dups);
+            conf.transitions = conf.transitions.Exclude(dups);
+            dups.Iter(x => messager.AddError(FsmError.DuplicateTransition(x))); // add to error list
           }
           
           def conflict = conflict.Map(x => x.RemoveDuplicatesSort((x, y) => x.Guard.CompareTo(y.Guard))); // remove duplicates from each group
@@ -241,8 +243,8 @@ namespace Nemerle.Statechart
       {
         | ([], _)  => ()
         | ([e], g) => def guards_tr = g.Filter(x => x.Guard.NotEmpty);
-                      when (guards_tr.IsEmpty()) AddError(FsmError.ElseMustHaveOtherTransition(e));
-        | (e, _)   => AddError(FsmError.SeveralElseGuards(e))
+                      when (guards_tr.IsEmpty()) messager.AddError(FsmError.ElseMustHaveOtherTransition(e));
+        | (e, _)   => messager.AddError(FsmError.SeveralElseGuards(e))
       }
     }
     
