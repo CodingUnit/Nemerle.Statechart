@@ -88,25 +88,44 @@ namespace Nemerle.Statechart
         }
       }
       
+      def is_exit_act_entry_pattern(act)
+      {
+        mutable entry = false;
+        res :
+          {
+            foreach (act in act)
+            {
+              if (act.StartsWith("Entry")) entry = true; else
+               when (act.StartsWith("Exit"))
+               {
+                 when (entry) res(false)
+               }
+            }
+          true
+          }
+      }
+      
       def gen_test(e, act)
       {
         def state = act.state;
         def act = act.act;
         match (e)
         {
-          | ActionType.Initiate => def gen2 = get_event_variant2(e, state, act);
+          | ActionType.Initiate => def is_normal_pattern = is_exit_act_entry_pattern(act);
+                                   def gen2 = get_event_variant2(e, state, act);
                                    def gen1 = {
                                                 def act = act.Map(x => $<#"$x"#>);
                                                 $<#tester.Initiate("$state", ..$(act;", "));#>
                                               };
-                                   if (gen2.Length <= gen1.Length) gen2 else gen1
+                                   if (gen2.Length <= gen1.Length && is_normal_pattern) gen2 else gen1
                                    
-          | SendEvent(ev)       => def gen2 = get_event_variant2(e, state, act);
+          | SendEvent(ev)       => def is_normal_pattern = is_exit_act_entry_pattern(act);
+                                   def gen2 = get_event_variant2(e, state, act);
                                    def gen1 = {
                                                def act = act.Map(x => $<#"$x"#>);
                                                $<#tester.Test("$ev", "$state", ..$(act;", "));#>
                                               };
-                                   if (gen2.Length <= gen1.Length) gen2 else gen1;
+                                   if (gen2.Length <= gen1.Length && is_normal_pattern) gen2 else gen1;
           | SetProperty(n, v)   => $"fsm.$n = $v;"
           | Terminate           => "fsm.Terminate();"
           | _                   => ""
@@ -134,6 +153,7 @@ namespace Nemerle.Statechart
       def out_str = history.FoldBack([], ((act, r), a) => gen_out(act, r, a));
       def str =  $"def fsm = $type_name();" :: "def tester = fsm.GetTester();" :: "tester.ConsoleTestInit();" :: str;
       File.WriteAllLines(code_file, str);
+
       def out_str = "/*" :: "BEGIN-OUTPUT" :: out_str + ["END-OUTPUT"] + ["*/"];
       File.WriteAllLines(out_file, out_str);
     }
