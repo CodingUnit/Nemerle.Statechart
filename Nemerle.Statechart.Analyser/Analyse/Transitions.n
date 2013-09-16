@@ -16,7 +16,7 @@ namespace Nemerle.Statechart
 /// <summary>
 /// Description of AnalyseTransitions.
 /// </summary>
-  public partial class FsmAnalyser
+  partial class FsmAnalyser
   {
 
     CheckInitialTransitions() : void
@@ -38,21 +38,21 @@ namespace Nemerle.Statechart
         match (t.pseudo_states.FilterType())
         {
           | []           => ()
-          | t1 :: _ :: _ => AddError(FsmError.InitialPseudoStateAtMostOne(t1))
+          | t1 :: _ :: _ => messager.AddError(FsmError.InitialPseudoStateAtMostOne(t1))
           | PseudoStateNode.Initial(tran = tran) as i :: [] => 
               match (tran.To)
               {
                 | PseudoState(PseudoStateNode.History(state = st)) 
                 | PseudoState(PseudoStateNode.EntryPoint(state = st))
                 | TransitionTarget.State(st) when (t.AllSubStates.ContainsRef(st)) => ()
-                | _                                                                => AddError(FsmError.InitialTransitionMustGoToState(i))
+                | _                                                                => messager.AddError(FsmError.InitialTransitionMustGoToState(i))
               }
               match (tran.To)
               {
-                | PseudoState(PseudoStateNode.History(default = None)) => AddError(FsmError.InitialTransitionToHistoryMustHaveDefaultTran(i))
+                | PseudoState(PseudoStateNode.History(default = None)) => messager.AddError(FsmError.InitialTransitionToHistoryMustHaveDefaultTran(i))
                 | _                                                    => ()
               }
-              when (tran.guard.NotEmpty) AddError(FsmError.InitialTransitionCannotHaveGuards(i));
+              when (tran.guard.NotEmpty) messager.AddError(FsmError.InitialTransitionCannotHaveGuards(i));
         }
         
       }
@@ -78,11 +78,11 @@ namespace Nemerle.Statechart
           def sreg = st.sub_states.Where(x => x.initial.IsNone);
           when (!sreg.IsEmpty())
           {
-            AddError(FsmError.SubRegionsMustContainInitial(sreg.NToList()))
+            messager.AddError(FsmError.SubRegionsMustContainInitial(sreg.NToList()))
           }
         } else
         {
-          when (st.initial.IsNone) AddError(FsmError.CompositeStateWithIncomingTransitionsMustHaveInitial(st))
+          when (st.initial.IsNone) messager.AddError(FsmError.CompositeStateWithIncomingTransitionsMustHaveInitial(st))
         }
       }
       
@@ -233,7 +233,7 @@ namespace Nemerle.Statechart
         def dest = tr.AtLeastStaticTo;
         if (dest.IsSubstateOf(src) || src == dest : object) () else
         {
-          AddError(FsmError.LocalTransitionTargetMustBeWithin(tr))
+          messager.AddError(FsmError.LocalTransitionTargetMustBeWithin(tr))
         }
       }
     }

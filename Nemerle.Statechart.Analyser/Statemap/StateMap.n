@@ -19,13 +19,21 @@ namespace Nemerle.Statechart
 
   //[Record]
   [NotifyPropertyChange]
-  public partial class StateMap : INotifyPropertyChanged
+  partial class StateMap : INotifyPropertyChanged
   {
-    public Analyser : FsmAnalyser;
+    public messager : Messager
+    {
+      get
+      {
+        analyser.messager
+      }
+    }
 
     [Accessor]
     mutable state_tree : FsmState;
 
+    public analyser : FsmAnalyser;
+    
     [NotifyPropertyChange]
     [Memoized(state_tree)]
     public States : array[FsmState] 
@@ -58,9 +66,17 @@ namespace Nemerle.Statechart
 
     public this(an : FsmAnalyser) 
     { 
-      Analyser = an; 
-    }    
+      analyser = an;
+    }
 
+    StateMachinesInProj : list[string * StateNode.StateMachine]
+    {
+      get
+      {
+        analyser.StateMachinesInProj
+      }
+    }
+    
     /// <summary>
     /// create super states setted with " : parent" syntax
     /// </summary>
@@ -73,7 +89,7 @@ namespace Nemerle.Statechart
           | "top" => st.MoveToNewSuper(state_tree)
           | n     => match (Get(st, n))
                      {
-                       | null => Analyser.AddError(FsmError.ParentStateNotFound(st, p));
+                       | null => messager.AddError(FsmError.ParentStateNotFound(st, p));
                        | s    => st.MoveToNewSuper(s)
                      }
         }
@@ -99,7 +115,7 @@ namespace Nemerle.Statechart
     
     public CreateStateMachine(state : StateNode.StateMachine) : void
     {
-      state_tree = TreeUtils.FoldTree(state.state, null, _.sub_states, (x, sb) => FsmState(x, sb, Analyser) |> Bind)
+      state_tree = TreeUtils.FoldTree(state.state, null, _.sub_states, (x, sb) => FsmState(analyser, x, sb) |> Bind)
     }
 
     /// <summary>

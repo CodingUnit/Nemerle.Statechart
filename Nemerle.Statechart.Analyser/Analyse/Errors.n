@@ -6,14 +6,82 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nemerle.Compiler;
 
 namespace Nemerle.Statechart
 {
+  internal class Messager
+  {
+    Errors   : List[FsmError] = List();
+    Warnings : List[FsmWarning] = List();
+
+    
+    public AddWarning(err : FsmWarning) : void
+    {
+      Warnings.Add(err);
+    }
+
+    public AddWarning(err : IEnumerable[FsmWarning]) : void
+    {
+      Warnings.AddRange(err);
+    }
+
+    public AddError(err : IEnumerable[FsmError]) : void
+    {
+      Errors.AddRange(err)
+    }
+
+    public AddError(err : FsmError) : void
+    {
+      Errors.Add(err)
+    }
+
+    public AddError(err : IEnumerable[ParseError]) : void
+    {
+      AddError(err.Map(x => FsmError.ParsingError(x)))
+    }
+
+    public ErrorMessages : list[Location * string]
+    {
+      get
+      {
+        Errors.Map(x => (x.Loc, x.Text))
+      }
+    }
+
+    public WarningMessages : list[Location * string]
+    {
+      get
+      {
+        Warnings.Map(x => (x.Loc, x.Text))
+      }
+    }
+  
+  }
+
   /// <summary>
   /// Description of Errors.
   /// </summary>
-  partial class FsmAnalyser
+  public partial class FsmAnalyser
   {
+    internal messager : Messager = Messager();
+    
+    public ErrorMessages : list[Location * string]
+    {
+      get
+      {
+        messager.ErrorMessages
+      }
+    }
+    
+    public WarningMessages : list[Location * string]
+    {
+      get
+      {
+        messager.WarningMessages
+      }
+    }
+    
     CheckParseErrors() : void
     { 
       def check_err(err)
@@ -28,38 +96,14 @@ namespace Nemerle.Statechart
       def flags = Fsm.flags.errors.Select(x => ParseError.UnknownMachineFlag(x));// |> ParseError.UnknownMachineFlag(_);
       def err = Fsm.GetErrors().Select(check_err);
       def errs = err.Concat(flags);
-      AddError(errs)
+      messager.AddError(errs)
     }
 
     public BreakIfError() : void
     {
-      when (!Errors.IsEmpty()) throw FsmErrorException()
+      when (!messager.ErrorMessages.IsEmpty()) throw FsmErrorException()
     }
 
-    public AddWarning(err : FsmWarning) : void
-    {
-      Warnings.Add(err);
-    }
-
-    public AddWarning(err : IEnumerable[FsmWarning]) : void
-    {
-      Warnings.AddRange(err);
-    }
-
-    public AddError(err : IEnumerable[FsmError]) : void
-    {
-      Errors.AddRange(err)//AddErrors(err)
-    }
-
-    public AddError(err : FsmError) : void
-    {
-      Errors.Add(err)
-    }
-
-    public AddError(err : IEnumerable[ParseError]) : void
-    {
-      AddError(err.Map(x => FsmError.ParsingError(x)))
-    }
 
   }
 }
