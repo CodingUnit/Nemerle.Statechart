@@ -232,21 +232,23 @@ namespace Nemerle.Statechart
     static CheckCompletion(act : ActiveStateConfig) : TargetDeterminator
     {
       def simple = act.simple_states;
-      // TODO: final states in each region
-      match (simple.Find(_.IsFinal))
+      if (simple.All(_.IsFinal))
       {
-        | Some(final)  => match (final.active_super.SelectMany(x => x.transitions.Filter(x => x.IsCompletion)))
-                          {
-                            | []     => TargetDeterminator.State(act)
-                            | _      => TargetDeterminator.Completion(act)
-                          }
-        | _            => def w_completion = simple.Filter(x => x.transitions.Exists(_.IsCompletion));
-                          def w_do = w_completion.Filter(x => !x.do_activity.IsEmpty());
-                          foreach (st in w_do)
-                          {
-                            st.do_activity.Iter(x => x.need_completion = true);
-                          }
-                          if (w_completion.IsEmpty()) TargetDeterminator.State(act) else TargetDeterminator.Completion(act)
+        TargetDeterminator.Completion(act)
+      } else
+      {
+        def w_completion = simple.Filter(x => x.transitions.Exists(_.IsCompletion));
+        def w_do = w_completion.Filter(x => !x.do_activity.IsEmpty());
+        foreach (st in w_do)
+        {
+          st.do_activity.Iter(x => x.need_completion = true);
+        }
+        match (w_completion, w_do)
+        {
+          | (_ :: _, []) => TargetDeterminator.Completion(act)
+          | _            => TargetDeterminator.State(act)
+          
+        }
       }
     }
 

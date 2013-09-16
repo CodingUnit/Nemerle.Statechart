@@ -81,65 +81,29 @@ namespace Nemerle.Statechart
       }
     }
 
-    /// <summary>
-    /// Indicates that transition is withing one subregion of concurrent region
-    /// </summary>
-    //public WithinRegion : bool
-    //{
-    //  get
-    //  {
-    //    match (SourceState, TargetState)
-    //    {
-    //      | (_, null)
-    //      | (null, _)  => false
-    //      | (src, tar) => match (src.region, tar.region)
-    //                      {
-    //                        | (Some(r1), Some(r2)) => r1.region_pos == r2.region_pos
-    //                        | _                    => false
-    //                      }
-    //    }
-    //  }
-    //}
-    
-    //public static GetSourceConfigs(this active_proc : ActiveConfigProcessor, tran : Transition) : list[ActiveStateConfig]
-    //{
-      
-    //  def st = tran.OriginateFrom;
-    //  match (st.hierarchy)
-    //  {
-    //          // simple state
-    //    | []           => Solve(active_proc, Config.Simple(st), _.states)
-    //    | head :: []   => // sequential composite state
-    //        def local = tran.Kind == TransitionKind.Local || tran.Kind == TransitionKind.Initial;
-    //        if (!local && tran.Trigger.IsCompletion) // completion
-    //        {
-    //          def final = head.accept_state.Value;
-    //          Solve(active_proc, Config.Simple(final), _.states)
-    //        } else
-    //        {
-    //          Solve(active_proc, Config.Composite(st), _.states)
-    //        }
-    //    | _           => Solve(active_proc, Config.Composite(st), _.states) // concurrent state
-    //  }
-    //}
-    
     get_source_configs(st : HState) : list[ActiveStateConfig]
     {
-      match (st.hierarchy)
+      def st = match (st.hierarchy)
       {
-              // simple state
-        | []           => Solve(Config.Simple(st), _.states)
+        // simple state
+        | []           => Config.Simple(st)
         | head :: []   => // sequential composite state
             if (!Local && IsCompletion) // completion
             {
               def final = head.accept_state.Value;
-              Solve(Config.Simple(final), _.states)
+              Config.Simple(final)
             } else
             {
-              Solve(Config.Composite(st), _.states)
+              Config.Composite(st)
             }
-        | _           => Solve(Config.Composite(st), _.states) // concurrent state
+          // concurrent region
+        | regs           => if (IsCompletion) 
+                            {
+                              def final = regs.Map(x => x.accept_state.Value);
+                              Config.Concurrent(final)
+                            } else Config.Composite(st)
       }
+      Solve(st, _.states)
     }
 
     
@@ -191,7 +155,6 @@ namespace Nemerle.Statechart
 
     CreateTransitionPath(src_conf : ActiveStateConfig, target : HState) : Transition
     {
-      //def target = if (target != null) GetTargetConfig(src_conf, target) else null;
       def trav = TraversePath(src_conf, target, this);
       trav.CreatePath()
     }
@@ -201,13 +164,6 @@ namespace Nemerle.Statechart
       def trav = TraversePath(source, null, this);
       trav.CreatePath()
     }
-    
-    //TargetInRegion(source : ActiveStateConfig, target : HState) : ActiveStateConfig
-    //{
-    //  def st = source.simple_states;
-    //  def targets = st.Map(x => if (x.SameRegion(target)) target else x); // convert to another config
-    //  InitialConfiguration(targets) // initial configuration of this target with constant states in other regions
-    //}
     
     public TraverseInitial() : Transition
     {
