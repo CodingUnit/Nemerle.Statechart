@@ -22,7 +22,7 @@ namespace Nemerle.Statechart
 
     public FsmFlags : MachineFlags {get;set;}
 
-    public EventCtx : EventContext = EventContext();
+    
 
     public LoadedMachines : Hashtable[string, StateNode.StateMachine]
     {
@@ -32,19 +32,21 @@ namespace Nemerle.Statechart
       }
     }
 
-    public DeferedEvents : IEnumerable[string]
+    [Memoized]
+    DeferedEvents : IEnumerable[StateEvent]
     {
       get
       {
-        States.SelectMany(_.deferred_events).Where(x => x.Name != null).Select(_.Name)
+        States.SelectMany(_.deferred_events).Where(x => x.Name != null).NToList()
       }
     }
-
-    public Events : IEnumerable[StateEvent]
+    
+    [Memoized]
+    Events : list[StateEvent]
     {
       get
       {
-        def defered = ActiveStates.SelectMany(x => x.states.SelectMany(x => x.deferred_events));
+        def defered = DeferedEvents;
         def evts = Transitions.Select(x => x.Trigger).Concat(defered);
         def evts = evts.Where(x => x.Name != null);
         evts.RemoveDuplicatesSort(x => x.Name)
@@ -87,51 +89,18 @@ namespace Nemerle.Statechart
       }
     }
 
-    [Memoized]
-    public actions : list[FsmAction]
-    {
-      get
-      {
-        def act = AllTransitions.SelectMany(x => x.DecisionTree.PathActions);
-        //def st_act = States.SelectMany(_.actions);
-        //def act = all_used_transitions.SelectMany(_.action).Concat(st_act);
-        def act = act.Exclude(_ is FsmAction.Normal(name = null));
-        act.RemoveDuplicatesSort(_.ToString())
-      }
-    }
+    
 
-    [Memoized]
-    public all_actions : list[PathNode]
-    {
-      get
-      {
-        def tran_act = tran_paths.SelectMany(_.Path);
-        tran_act.RemoveDuplicatesSort(_.ToString())
-      }
-    }
+    //[Memoized]
+    //public all_actions : list[PathNode]
+    //{
+    //  get
+    //  {
+    //    def tran_act = tran_paths.SelectMany(_.Path);
+    //    tran_act.RemoveDuplicatesSort(_.ToString())
+    //  }
+    //}
 
-    [Memoized]
-    public tran_paths : list[PathSequence]
-    {
-      get
-      {
-        AllTransitions.SelectMany(x => x.DecisionTree.Path).NToList()
-        //all_used_transitions
-      }
-    }
-
-    [Memoized]
-    public tran_path_nodes : list[TranPath]
-    {
-      get
-      {
-        def ex = tran_paths.SelectMany(x => x.exit_tran_path);
-        def en = tran_paths.SelectMany(x => x.entry_tran_path);
-        def ex = ex.RemoveDuplicatesSort(x => x.state.name);
-        def en = en.RemoveDuplicatesSort(x => x.state.name);
-        ex + en
-      }
-    }
 
     HistoryStates : IEnumerable[PseudoStateNode.History]
     {
@@ -165,14 +134,6 @@ namespace Nemerle.Statechart
       get
       {
         States.FilterValues(_.initial_tran)
-      }
-    }
-
-    public DoActivities : IEnumerable[StateAction.Do]
-    {
-      get
-      {
-        States.SelectMany(x => x.do_activity).RemoveDuplicatesSort(_.Name)
       }
     }
 

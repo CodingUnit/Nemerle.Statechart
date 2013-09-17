@@ -21,19 +21,16 @@ namespace Nemerle.Statechart
   {
     DefineMain() : void
     {
-      def initial = DefineTransBody(analyser.InitialTransition); // define initial transition
-      def events = events.Map(x => x.CreateExpr());
-      //def events_expr = <[ {..$events} ]>;
-      //def states = analyser.LivedNestedStates.Exclude(_.IsTopState).Map(x => <[ $(x.Name : string) ]>);
+      def initial = DefineTransBody(Initial); // define initial transition
+      def events = Events.Map(x => x.CreateExpr());
       def state_names = $[(st.name, $"State$(st)"), st in ActiveStates]; // создаем имена состояний
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
-      def prop_st_change_expr = if (analyser.FsmFlags.PropertyStateChanged) <[ OnPropertyChanged("CurState") ]> else <[ () ]>;
-      //def actions = actions.Exclude(x => x.IsDeclared);
+      def prop_st_change_expr = if (FsmFlags.PropertyStateChanged) <[ OnPropertyChanged("CurState") ]> else <[ () ]>;
       def defer_check = if (HasDeferedEvents)
                          {
                           <[ CheckDefered() ]>
                          } else <[ () ]>;
-      when (HasDeferedEvents || analyser.FsmFlags.PropertyStateChanged)
+      when (HasDeferedEvents || FsmFlags.PropertyStateChanged)
       {
         def expr = <[decl: 
                       // define method for changing state
@@ -83,7 +80,7 @@ namespace Nemerle.Statechart
 
                   ]>;
       ty.AddImplementedInterface(<[ ActiveStateMachine[State] ]>);
-      when (analyser.FsmFlags.TestingFeatures) ty.AddImplementedInterface(<[ Nemerle.Statechart.ITestStateMachine ]>);
+      when (FsmFlags.TestingFeatures) ty.AddImplementedInterface(<[ Nemerle.Statechart.ITestStateMachine ]>);
       Define(state_names.Map((x, y) =>  <[decl: $(y : usesite) : State.$(x : usesite) = State.$(x : usesite)(); ]>)); // create state variables for fast using 
       Define(dummy.td.GetMembers());
     }
@@ -102,7 +99,7 @@ namespace Nemerle.Statechart
 
     DefineTerminate() : void
     {
-      def stop_body = analyser.DoActivities.Map(GenActivity.StopCode);
+      def stop_body = DoActivities.Map(GenActivity.StopCode);
       def terminate = <[ decl: protected override DoActivityStop() : void
                         {
                           ..$stop_body
