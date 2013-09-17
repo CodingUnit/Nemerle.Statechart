@@ -49,16 +49,16 @@ namespace Nemerle.Statechart
         def tran = Transitions.Filter(x => x.Source : object == st);
         tran.Iter(x => x.MayRun = false);
       }
-      //def not_used_hstate = not_used_states.Map(x => x.ToHState);
-      //def not_used = ActiveStates.Where(x => x.simple_states.All(x => not_used_hstate.ContainsRef(x)));
-      //def used = ActiveStates.Exclude(not_used.NToList());
-      //used.Iter(x => x.Used = true);
+      
+      def trans = not_used_states.SelectMany(_.transitions);
       def not_runned = Transitions.GroupBy(x => x.Location);
       foreach (tr in not_runned)
       {
-        when (tr.All(x => !x.MayRun))
+        def loc = tr.Key;
+        def tr = tr.Filter(x => x.Source.Used);
+        when (!tr.IsEmpty() && tr.All(x => !x.MayRun && !x.OverridenBy.IsEmpty()))
         {
-          def tr_this = StateTransitions.First(x => x.Location == tr.Key);
+          def tr_this = StateTransitions.First(x => x.Location == loc);
           def by_tr = tr.SelectMany(x => x.OverridenBy.SelectMany(x => if (x.ConcurrentGroup.IsEmpty()) x :: [] else x.ConcurrentGroup)).Distinct().NToList();
           def by_tr = by_tr.Map(k => StateTransitions.First(x => x.Location == k.Location));
           def distinct = by_tr.Distinct().NToList();
@@ -66,9 +66,7 @@ namespace Nemerle.Statechart
         }
       }
       
-      def trans = not_used_states.SelectMany(_.transitions);
-      //def not_used_tran = AllTransitions.Where(x => !x.Used).NToList();
-      //def tran = StateTransitions.Where(x => not_used_tran.Exists(y => x.pos == y.pos));
+      
       def warn = trans.Map(FsmWarning.TransitionNotUsed);
       messager.AddWarning(warn);
       def warn = not_used_states.Map(FsmWarning.StateNotUsed);
