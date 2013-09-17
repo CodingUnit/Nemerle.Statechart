@@ -122,24 +122,29 @@ namespace Nemerle.Statechart
 
 #endif
 
-    SubStatesParticipateIn(hist : HPseudoState.History) : IEnumerable[ActiveStateConfig]
+    SubConfigs(st : HState) : list[HState * ActiveStateConfig]
+    {
+      def confs = st.all_simple_states.Select(x => (x, x.active_config));
+      def confs = confs.Map((z, x) => (z, ActiveStates.First(y => y.IsThis(x))));
+      confs
+    }
+                                
+    SubStatesParticipateIn(hist : HPseudoState.History) : list[HState * ActiveStateConfig]
     {
       def state = hist.state;
       match (hist.type)
       {
-        | HistoryType.Deep     => def confs = state.all_simple_states.Select(x => x.active_config);
-                                  def confs = confs.Select(x => ActiveStates.First(y => y.IsThis(x)));
-                                  confs
+        | HistoryType.Deep     => SubConfigs(state)
         | HistoryType.Shallow  => match (state.hierarchy)
                                   {
                                     | [reg] => def states = reg.states;
-                                               def conf = states.Select(x => ActiveConfigProc.GetInitialConfiguration(x));
+                                               def conf = states.Select(x => (x, ActiveConfigProc.GetInitialConfiguration(x)));
                                                //def sort = conf.Map(ConfigSolver.CreateConfig);
-                                               def participate = conf.Select(x => ActiveStates.First(y => y.IsThis(x)));
+                                               def participate = conf.Map((z, x) => (z, ActiveStates.First(y => y.IsThis(x))));
                                                participate
-                                    | _     => Enumerable.Empty()
+                                    | _     => []
                                   }
-        | _                    => Enumerable.Empty()
+        | _                    => []
       }
     }
 
@@ -154,12 +159,24 @@ namespace Nemerle.Statechart
         def parent = hist.state;
         def tran = hist.default.Map(x => trav.TraverseTran(x).First());
         def res = PseudoState.History(tran, hist.type, hist.state);
-        def paths = sub.Map(x => HistoryPathBuilder(trav, parent, x, res).CreatePath());
-        foreach (p in paths)
+        foreach ((st, conf) in sub)
         {
-          def active = p.To;
-          active.HistoryPath ::= p;
-          active.History ::= res;
+          def builder = HistoryPathBuilder(trav, parent, conf, res);
+          def path = builder.CreatePath();
+          if (hist.type == HistoryType.Shallow) 
+          {
+            def sub = SubConfigs(st);
+            foreach ((_, st) in sub)
+            {
+              st.HistoryPath ::= path;
+              st.History ::= res;
+            }
+          } else
+          {
+            def active = path.To;
+            active.HistoryPath ::= path;
+            active.History ::= res;
+          }
         }
       }
       
