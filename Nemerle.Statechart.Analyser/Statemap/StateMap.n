@@ -33,7 +33,7 @@ namespace Nemerle.Statechart
     mutable state_tree : FsmState;
 
     public analyser : FsmAnalyser;
-    
+
     [NotifyPropertyChange]
     [Memoized(state_tree)]
     public States : array[FsmState] 
@@ -76,7 +76,7 @@ namespace Nemerle.Statechart
         analyser.StateMachinesInProj
       }
     }
-    
+
     /// <summary>
     /// create super states setted with " : parent" syntax
     /// </summary>
@@ -87,11 +87,28 @@ namespace Nemerle.Statechart
         match (p)
         {
           | "top" => st.MoveToNewSuper(state_tree)
+          | n when n.Contains("[") => def sub = n.GetSub('[', ']');
+                                      def name = n.GetSub('[');
+                                      match (Get(st, name))
+                                      {
+                                        | null => messager.AddError(FsmError.ParentStateNotFound(st, name));
+                                        | s    => mutable res;
+                                                  if (int.TryParse(sub, out res))
+                                                  {
+                                                      while (s.sub_states.Length <= res)
+                                                      {
+                                                        def st = FsmState(analyser, StateType.SubRegion());
+                                                        s.Add(st)
+                                                      }
+                                                    def s = s.sub_states.Nth(res);
+                                                    st.MoveToNewSuper(s);
+                                                  } else messager.AddError(FsmError.ParentStateNotFound(st, n));
+                                      }
           | n     => match (Get(st, n))
-                     {
-                       | null => messager.AddError(FsmError.ParentStateNotFound(st, p));
-                       | s    => st.MoveToNewSuper(s)
-                     }
+                      {
+                        | null => messager.AddError(FsmError.ParentStateNotFound(st, p));
+                        | s    => st.MoveToNewSuper(s)
+                      }
         }
       }
     }
@@ -103,7 +120,7 @@ namespace Nemerle.Statechart
       PseudoStates_memoized.Bind(st, "pseudo_states");
       st
     }
-    
+
     public static CreateSub(an : FsmAnalyser, state : StateNode.StateMachine) : StateMap
     {
       def map = StateMap(an);
@@ -112,7 +129,7 @@ namespace Nemerle.Statechart
       map.CreatePreDecls(true); // create and resolve pre declarations
       map
     }
-    
+
     public CreateStateMachine(state : StateNode.StateMachine) : void
     {
       state_tree = TreeUtils.FoldTree(state.state, null, _.sub_states, (x, sb) => FsmState(analyser, x, sb) |> Bind)
@@ -128,7 +145,7 @@ namespace Nemerle.Statechart
       CreateSuperStates(); // check create super states setted with : parent syntax
       CreateSubMachines(state);
       CreatePreDecls(); // create and resolve pre declarations
-      
+
       UpdateReferences(); // resolve references
     }
 
