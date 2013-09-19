@@ -29,7 +29,6 @@ namespace Nemerle.Statechart
       def type = DefineNested(ty, type);// else this.ty.GlobalEnv.Define(type);
       //DefineActions(type, st);
       DefineTransitions(type, st); // define transitions in state
-      DefineHistoryPaths(type, st); // define history paths
       //match (st)
       //{
       //  | _ when st.IsTopState      => DefineRegions(type);
@@ -38,7 +37,7 @@ namespace Nemerle.Statechart
       type
     }
 
-    DefineState(builders : list[TypeBuilder], ty : TypeBuilder, st : ActiveStateConfig) : list[TypeBuilder]
+    DefineState(ty : TypeBuilder, st : ActiveStateConfig) : TypeBuilder
     {
       //match (st)
       //{
@@ -63,19 +62,9 @@ namespace Nemerle.Statechart
                      ]>;
         
             def type = DefineState(ty, type, st);
-            type :: builders
-      //  | _ => builders
-      //}
+            type
     }
 
-    //TopState : FsmState
-    //{
-    //  get
-    //  {
-    //    analyser.TopState
-    //  }
-    //}
-    
     DefineStates() : void
     {
       //def st = TopState;
@@ -97,10 +86,14 @@ namespace Nemerle.Statechart
       state_builder = ty;
       Define(ty, <[decl: public virtual IsDefer(_ : Event) : bool { false } ]>);
       def defs = Events.Map(x => <[ decl: public virtual $(x.Name : usesite)(_ : $(ChartName : usesite)) : State { null } ]>);
-      DefineHistoryPaths(ty, null);
       Define(ty, defs);
-      def builders = ActiveStates.Fold(ty :: compile_list, (s, a) => DefineState(a, ty, s));
-      compile_list = builders;
+      compile_list ::= state_builder;
+      foreach (st in ActiveStates)
+      {
+        def ty = DefineState(ty, st);
+        compile_list ::= ty;
+        StateBuilders ::= (st, ty);
+      }
     }
 
     DefineEvents() : void

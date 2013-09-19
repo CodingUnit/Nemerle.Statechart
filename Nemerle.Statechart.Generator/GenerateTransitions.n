@@ -23,23 +23,22 @@ namespace Nemerle.Statechart
     {
       $"Transition$(from)By$trigger"
     }
-    
-    GetTransitionFunction(tran : Transition) : ClassMember
+
+    internal GetTransitionFunction(tran : Transition) : ClassMember
     {
       <[ decl: $(tran.Name : usesite)() : State { $(GetTransitionBody(tran)) } ]>
     }
-    
-    GetTransitionFunction(tran : list[string * Transition]) : list[ClassMember]
+
+    internal  GetTransitionFunction(name : string, tran : Transition) : ClassMember
     {
-      def get_body(n, x)
-      {
-        def name = n;
-        <[ decl: $(name : usesite)() : State { $(GetTransitionBody(x)) } ]>
-      }
-      
-      tran.Map(get_body)
+      <[ decl: $(name : usesite)() : State { $(GetTransitionBody(tran)) } ]>
     }
     
+    internal  GetTransitionFunction(tran : list[string * Transition]) : list[ClassMember]
+    {
+      tran.Map(GetTransitionFunction)
+    }
+
     GetTransitionName(tran : Transition) : string
     {
       if (tran.Grouped > 1)
@@ -47,35 +46,18 @@ namespace Nemerle.Statechart
         GetGroupTransitionName(tran.Source, tran.Trigger);
       } else tran.Name
     }
-    
+
     GetTransitionFunction(st : ActiveStateConfig) : list[ClassMember]
     {
       def tran = st.transitions;
-      //def group = tran.GroupBy(_.Trigger);
-      //def group = by_states.GroupBy(x => x.Trigger);
       def get_body(x)
       {
         def name = GetTransitionName(x);
         <[ decl: $(name : usesite)() : State { $(GetTransitionBody(x)) } ]>
       }
-      
+
       tran.Map(get_body);
     }
-
-    //GetTransitionFunction(tran : list[string * Transition]) : list[ClassMember]
-    //{
-    //  tran.Map((x, y) => <[ decl: $(x : usesite)() : State {$(GetTransitionBody(y))} ]>);
-    //}
-
-    //GetActions(act : PathNode, inline_suppress : bool = true) : PExpr
-    //{
-    //  GetActions(act, action_for, inline_suppress)
-    //}
-
-    //GetActions(act : IEnumerable[PathNode], inline_suppress : bool = true) : PExpr
-    //{
-    //  GetActions(act, action_for, inline_suppress)
-    //}
 
     public GetDestination(tran : TargetDeterminator) : PExpr
     {
@@ -84,27 +66,26 @@ namespace Nemerle.Statechart
             def body = GetExecStateName(st);
             body
 
-        | NoStateChange => <[ cur_state ]>
+      | NoStateChange => <[ cur_state ]>
 
-        | Terminate => <[ Terminate();null ]>
+      | Terminate => <[ Terminate();null ]>
 
-        | History(HPseudoState.History(default = Some()) as h) => def name = $"$(h.Name)Run";
-            <[ $(name : usesite)();]>
+      | History(HPseudoState.History(default = Some()) as h) => def name = $"$(h.Name)Restore";
+                                                                <[ $(name : usesite)();]>
 
-        | History(HPseudoState.History(type = t) as h) =>
+      | History(HPseudoState.History(type = t) as h) =>
             //Name = n, state = p
             def p = h.state;
             def n = h.Name;
             def t = if (p.history.IsTwo) $"$t" else "";
             def name = $"$(t)HistoryFrom$(p)"; // call function of run history
-            //if (ctx.IsInEventHandler) <[ fsm.$(n : usesite).$(name : usesite)(fsm) ]> else 
             <[ $(n : usesite).$(name : usesite)(this) ]>;
-        | Completion(st) => match (st.transitions.Find(x => x.Trigger.IsCompletion))
-                            {
-                              | Some(tran) => <[ $(tran.Name : usesite)() ]>
-                              | _          => <[ Terminate();null ]>
-                            }
-        | _                     => throw InvalidOperationException("unknown destination")
+      | Completion(st) => match (st.transitions.Find(x => x.Trigger.IsCompletion))
+          {
+            | Some(tran) => <[ $(tran.Name : usesite)() ]>
+            | _          => <[ Terminate();null ]>
+          }
+      | _                     => throw InvalidOperationException("unknown destination")
     }
 
     EvalGuardExpr(expr : PExpr) : PExpr
@@ -112,14 +93,14 @@ namespace Nemerle.Statechart
       def check_eval(_, after, e)
       {
         if (after)
-        match (e)
-        {
-          | <[ in_state($st) ]>
-          | <[ InState($st) ]>   => def st = st.ToString();
+          match (e)
+          {
+            | <[ in_state($st) ]>
+            | <[ InState($st) ]>   => def st = st.ToString();
                                     def st = GetExecStateName(st);
                                     <[ fsm.IsInState($st) ]>
-          | t => t
-        } else e
+            | t => t
+          } else e
       }
 
       Macros.TraverseExpr(None(), expr, false, check_eval)
@@ -140,49 +121,15 @@ namespace Nemerle.Statechart
       GetGuardCondExpr(g);//(_, ctx));
     }
 
-    //GetGuardedBody(tran : StateTransition, body : PExpr, ctx : GenCtx) : PExpr
-    //{
-    //  match (tran)
-    //  {
-    //    | StateTransition(executeCheck = check, guard = g) =>
-
-    //        def check = GetCheck(check, ctx);
-    //        def check = match (g)
-    //                    {
-    //                      | Empty => [check]
-    //                      | _     => [GetGuardCondExpr(g, ctx), check]
-    //                    }
-    //        match (check)
-    //        {
-    //          | [<[ () ]>] => body
-    //          | _ => 
-    //              def check = MergeExprAnd(check);
-    //              <[
-    //              {
-    //                res:
-    //                {
-    //                  unless ($check) res(null);
-    //                  $body
-    //                }
-    //              }
-    //              ]>
-    //        }
-    //  }
-    //}
-
     GetPath(path : PathSequence) : PExpr
     {
       def path = GenTranPath(path, action_for, util, FsmFlags);
       path.TranBody
     }
-    
+
     GetTransitionBody(tran : Transition) : PExpr
     {
-      //def tran = tran.OrderBy(_.Priority); // order transitions by priority
-      
-      get_junction_body(tran.DecisionTree);//GetBody(t.Path, t.Target);
-      
-      //tran.FoldBack(<[ null ]>, def_tran)
+      get_junction_body(tran.DecisionTree);
     }
 
     DefineTransBody(tr : Transition) : PExpr
@@ -190,22 +137,12 @@ namespace Nemerle.Statechart
       def name = tr.Name;
       <[ $(name : usesite)();]>
     }
-    
+
     DefineHandlerTransBody(tr : Transition) : PExpr
     {
       def name = GetTransitionName(tr);
       <[ fsm.$(name : usesite)();]>
     }
-    
-    //DefineHandlerTransBody(tr : list[Transition]) : PExpr
-    //{
-    //  | []          => <[ null ]>
-    //  | [tran]      => DefineHandlerTransBody(tran)
-    //  | (head :: _) => def from = head.Source;
-    //                   def trigger = head.Trigger;
-    //                   def name = GetGroupTransitionName(from, trigger);
-    //                   <[ fsm.$(name : usesite)();]>
-    //}
 
     DefineDeferedEvents() : void
     {
@@ -213,25 +150,25 @@ namespace Nemerle.Statechart
       {
         ty.Define(<[decl: mutable defered : List[Event] = List();]>);
         ty.Define(<[decl: CheckDefered() : void
-                   {
-                     for (mutable i = 0; i < defered.Count; ++i)
-                     {
-                       def e = defered[i];
-                       unless (cur_state.IsDefer(e)) 
-                       {
-                         Dispatch(e);
-                         defered.RemoveAt(i);
-                         i--;
-                       }
-                     }
-                   }]>);
+                  {
+                    for (mutable i = 0; i < defered.Count; ++i)
+                    {
+                      def e = defered[i];
+                      unless (cur_state.IsDefer(e)) 
+                      {
+                        Dispatch(e);
+                        defered.RemoveAt(i);
+                        i--;
+                      }
+                    }
+                  }]>);
         ty.Define(<[decl: Defer(evt : Event) : void
                     {
                       defered.Add(evt)
                     }]>)
       }
     }
-    
+
     DefineDeferedEvents(ty : TypeBuilder, st : ActiveStateConfig) : void
     {
       def evt = st.deffered_events;
@@ -247,27 +184,25 @@ namespace Nemerle.Statechart
         Define(ty, decls)
       }
     }
-    
+
     DefineTransitions(ty : TypeBuilder, st : ActiveStateConfig) : void
     {
       def defs =  {
-                      def group = st.transitions;//.GroupBy(_.Trigger).Select(x => (x.Key, x.NToList()));
-                      DefineDeferedEvents(ty, st);
-                      group.MapToList(x => <[decl: 
-                            public override $(x.Trigger.Name : usesite)(fsm : $(ChartName : usesite)) : State { $(DefineHandlerTransBody(x)) }]>)
-                    }
+                  def group = st.transitions;//.GroupBy(_.Trigger).Select(x => (x.Key, x.NToList()));
+                  DefineDeferedEvents(ty, st);
+                  group.MapToList(x => <[decl: public override $(x.Trigger.Name : usesite)(fsm : $(ChartName : usesite)) : State { $(DefineHandlerTransBody(x)) }]>)
+                  }
       Define(ty, defs)
     }
 
     DefineTransitionActions() : void
     {
-      //def by_states = transitions.GroupBy(x => x.Source);
       Define(GetTransitionFunction(Initial));
       foreach (st in ActiveStates)
       {
         def body = GetTransitionFunction(st);
       // history paths
-        
+
         Define(body);
       }
     }
