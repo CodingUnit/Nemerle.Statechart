@@ -31,11 +31,26 @@ namespace Nemerle.Statechart
 
     ActiveConfigProc : ActiveConfigProcessor = ActiveConfigProcessor();
 
-
+    PseudoCreate(p : HPseudoState, trav : ConfigTraverser) : void
+    {
+      match (p)
+      {
+        | HPseudoState.History(d, t) as h => 
+            def tran = d.Map(x => trav.InitialTransition(x));
+            def res = PseudoState.History(tran, t, h.state);
+            p.PseudoState = res; 
+        | _ => ()
+      }
+    }
+    
     CreateActiveConfigurations() : void
     {
       def init = TopState.initial_tran.Value.ToHTransition;
       def trav = ConfigTraverser(transitions, ActiveConfigProc);
+      foreach (st in finite_automatas)
+      {
+        foreach (st in st.history.Value) PseudoCreate(st, trav);
+      }
       trav.Start();
       InitialTransition = trav.InitialTransition(init);
       def trans = trav.Result.NToList();

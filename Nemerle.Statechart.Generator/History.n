@@ -86,10 +86,15 @@ namespace Nemerle.Statechart
     {
       get
       {
-        $"$(name)Restore"
+        get_restore_name(history)
       }
     }
   
+    static get_restore_name(h : PseudoState.History) : string
+    {
+      $"$(h.Name)Restore"
+    }
+    
     [Memoized]
     restore_func : option[ClassMember]
     {
@@ -153,12 +158,14 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (history)
-        {
-          | PseudoState.History(type = t) when (state.history.IsTwo) => $"$(t)HistoryFrom$state"
-          | _                                                          => $"HistoryFrom$state"
-        }
+        get_history_restore_name_at_state(history)
       }
+    }
+    
+    static get_history_restore_name_at_state(h : PseudoState.History) : string
+    {
+      | PseudoState.History(type = t) when (h.state.history.IsTwo) => $"$(t)HistoryFrom$(h.state)"
+      | _                                                          => $"HistoryFrom$(h.state)"
     }
     
     [Memoized]
@@ -175,16 +182,19 @@ namespace Nemerle.Statechart
       <[decl: public override $(history_restore_name_at_state : usesite)(fsm : $(gen.ChartName : usesite)) : State { fsm.$(path.Name : usesite)() }]>
     }
     
-    
-    //public RestoryHistoryAtStateHandler(ty : TypeBuilder, st : ActiveStateConfig) : void
-    //{
-    //  //<[ fsm.$(hist.Name : usesite)(); ]>;
-      
-    //  def paths  =  st.HistoryPath;
-    //  def name  =  paths.Map(x => (x, get_history_restore_name_at_state(x.History))); // create transition names
-    //  def decl  =  name.MapToList((x, y) => );
-    //  gen.Define(ty, decl)
-    //}
+    public static HistoryRestoreCode(hist : PseudoState.History) : PExpr
+    {
+      if (hist.default.IsSome)
+      {
+        def name = get_restore_name(hist);
+        <[ $(name : usesite)();]>
+      } else
+      {
+        def n    = hist.Name;
+        def name = get_history_restore_name_at_state(hist);
+        <[ $(n : usesite).$(name : usesite)(this) ]>;
+      }
+    }
     
     public Emit() : void
     {

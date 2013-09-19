@@ -62,24 +62,11 @@ namespace Nemerle.Statechart
     public GetDestination(tran : TargetDeterminator) : PExpr
     {
       //def ctx = ctx ?? GenCtx.Normal();
-      | State(st) =>
-            def body = GetExecStateName(st);
-            body
-
+      | State(st)     => GetExecStateName(st);
       | NoStateChange => <[ cur_state ]>
+      | Terminate     => <[ Terminate();null ]>
+      | History(h) => HistoryEmitter.HistoryRestoreCode(h)
 
-      | Terminate => <[ Terminate();null ]>
-
-      | History(HPseudoState.History(default = Some()) as h) => def name = $"$(h.Name)Restore";
-                                                                <[ $(name : usesite)();]>
-
-      | History(HPseudoState.History(type = t) as h) =>
-            //Name = n, state = p
-            def p = h.state;
-            def n = h.Name;
-            def t = if (p.history.IsTwo) $"$t" else "";
-            def name = $"$(t)HistoryFrom$(p)"; // call function of run history
-            <[ $(n : usesite).$(name : usesite)(this) ]>;
       | Completion(st) => match (st.transitions.Find(x => x.Trigger.IsCompletion))
           {
             | Some(tran) => <[ $(tran.Name : usesite)() ]>
