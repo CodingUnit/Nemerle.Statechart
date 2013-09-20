@@ -13,74 +13,34 @@ namespace Nemerle.Statechart
 {
 
   [Record]
-  class HistoryEmitter
+  class SingleHistoryEmit
   {
+    gen     : StaticGenerator;
+    [Accessor]
     history : PseudoState.History;
-    gen : StaticGenerator;
     
     [Memoized]
-    name_at_state : string
+    public name_at_state : string
     {
       get
       {
-        $"$(history.state)History"
+        NameAtState(history)
       }
     }
 
-    name : string
+    public static NameAtState(h : PseudoState.History) : string
+    {
+      $"$(h.state)History"
+    }
+    
+    public name : string
     {
       get
       {
         history.Name
       }
     }
-    
-    [Memoized]
-    save_func_name : string
-    {
-      get
-      {
-        $"$(name_at_state)Save"
-      }
-    }
 
-    [Memoized]
-    save_func : ClassMember
-    {
-      get
-      {
-        <[
-          decl: $(save_func_name : usesite)() : void 
-          { 
-            $(history.Name : usesite) = cur_state;
-          }
-        ]>
-      }
-    }
-
-    [Memoized]
-    clear_func_name : string
-    {
-      get
-      {
-        $"$(name_at_state)Clear"
-      }
-    }
-    
-    [Memoized]
-    clear_func : ClassMember
-    {
-      get
-      {
-        <[
-          decl: $(clear_func_name : usesite)() : void 
-          {
-              $(name : usesite) = null
-          }
-        ]>
-      }
-    }
-    
     [Memoized]
     restore_name : string
     {
@@ -104,6 +64,7 @@ namespace Nemerle.Statechart
       }
     }
     
+    
     [Memoized]
     default_tran_name : option[string]
     {
@@ -113,60 +74,7 @@ namespace Nemerle.Statechart
       }
     }
     
-    [Memoized]
-    restore_body : option[PExpr]
-    {
-      get
-      {
-        if (default_tran_name is Some(n))
-        {
-          def body = <[ if ($(name : usesite) != null) // check if
-                            $(name : usesite).$(history_restore_name_at_state : usesite)(this); else $(n : usesite)(); ]>;
-          Some(body)
-        } else None()
-      }
-    }
-    
-    [Memoized]
-    default_transition : option[ClassMember]
-    {
-      get
-      {
-        history.default.Map(x => gen.GetTransitionFunction(default_tran_name.Value, x))
-      }
-    }
-    
-    [Memoized]
-    history_field : ClassMember
-    {
-      get
-      {
-        <[ decl: mutable $(name : usesite) : State ]>
-      }
-    }
-    
-    state : HState
-    {
-      get
-      {
-        history.state
-      }
-    }
-    
-    [Memoized]
-    history_restore_name_at_state : string
-    {
-      get
-      {
-        get_history_restore_name_at_state(history)
-      }
-    }
-    
-    static get_history_restore_name_at_state(h : PseudoState.History) : string
-    {
-      | PseudoState.History(type = t) when (h.state.history.IsTwo) => $"$(t)HistoryFrom$(h.state)"
-      | _                                                          => $"HistoryFrom$(h.state)"
-    }
+
     
     [Memoized]
     restore_func_at_state : ClassMember
@@ -180,6 +88,44 @@ namespace Nemerle.Statechart
     get_history_restore_handler(path : HistoryPath) : ClassMember
     {
       <[decl: public override $(history_restore_name_at_state : usesite)(fsm : $(gen.ChartName : usesite)) : State { fsm.$(path.Name : usesite)() }]>
+    }
+    
+    [Memoized]
+    restore_body : option[PExpr]
+    {
+      get
+      {
+        if (default_tran_name is Some(n))
+        {
+          def body = <[ if ($(name_at_state : usesite) != null) // check if
+                            $(name_at_state : usesite).$(history_restore_name_at_state : usesite)(this); else $(n : usesite)(); ]>;
+          Some(body)
+        } else None()
+      }
+    }
+    
+    [Memoized]
+    default_transition : option[ClassMember]
+    {
+      get
+      {
+        history.default.Map(x => gen.GetTransitionFunction(default_tran_name.Value, x))
+      }
+    }
+
+    [Memoized]
+    history_restore_name_at_state : string
+    {
+      get
+      {
+        get_history_restore_name_at_state(history)
+      }
+    }
+    
+    static get_history_restore_name_at_state(h : PseudoState.History) : string
+    {
+      | PseudoState.History(type = t) when (h.state.history.IsTwo) => $"$(t)HistoryFrom$(h.state)"
+      | _                                                          => $"HistoryFrom$(h.state)"
     }
     
     public static HistoryRestoreCode(hist : PseudoState.History) : PExpr
@@ -200,7 +146,6 @@ namespace Nemerle.Statechart
     {
       gen.state_builder.Define(restore_func_at_state); // history restore definitions in top state
       def defs = if (restore_func is Some(f)) f :: default_transition.Value :: [] else [];
-      def defs = history_field :: clear_func :: save_func :: defs;
       gen.Define(defs); // add definition to state class
 
       // history restore definitions in state
@@ -214,6 +159,106 @@ namespace Nemerle.Statechart
         }
            
       }
+    }
+    
+  }
+  
+  [Record]
+  class HistoryEmitter
+  {
+    history : list[SingleHistoryEmit];
+    
+    gen     : StaticGenerator;
+    
+    name_at_state : string
+    {
+      get
+      {
+        history.Head.name_at_state
+      }
+    }
+
+    public static SaveActionName(state : HState) : string
+    {
+      $"$(state)HistorySave"
+    }
+    
+    [Memoized]
+    save_func_name : string
+    {
+      get
+      {
+        SaveActionName(state)
+      }
+    }
+
+    [Memoized]
+    save_func : ClassMember
+    {
+      get
+      {
+        <[
+          decl: $(save_func_name : usesite)() : void 
+          { 
+            $(name_at_state : usesite) = cur_state;
+          }
+        ]>
+      }
+    }
+
+    public static ClearActionName(state : HState) : string
+    {
+      $"$(state)HistoryClear"
+    }
+    
+    [Memoized]
+    clear_func_name : string
+    {
+      get
+      {
+        ClearActionName(state)
+      }
+    }
+    
+    [Memoized]
+    clear_func : ClassMember
+    {
+      get
+      {
+        <[
+          decl: $(clear_func_name : usesite)() : void 
+          {
+              $(name_at_state : usesite) = null
+          }
+        ]>
+      }
+    }
+    
+    
+    [Memoized]
+    history_field : ClassMember
+    {
+      get
+      {
+        <[ decl: mutable $(name_at_state : usesite) : State ]>
+      }
+    }
+    
+    state : HState
+    {
+      get
+      {
+        history.Head.History.state
+      }
+    }
+    
+    
+    public Emit() : void
+    {
+      def defs = history_field :: clear_func :: save_func :: [];
+      gen.Define(defs); // add definition to state class
+      foreach (h in history)
+        h.Emit()
     }
   }
 
@@ -229,9 +274,10 @@ namespace Nemerle.Statechart
 
     public Define() : void
     {
-      foreach (hist in history)
+      def group = history.GroupBy(x => x.state);
+      foreach (hist in group)
       {
-        def emit = HistoryEmitter(hist, gen);
+        def emit = HistoryEmitter(hist.Map(SingleHistoryEmit(gen, _)), gen);
         emit.Emit()
       }
 
