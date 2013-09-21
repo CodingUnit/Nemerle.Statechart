@@ -19,13 +19,19 @@ namespace Nemerle.Statechart
 
     transitions : list[HTransition] {get;set;default []}
 
+    create_transition_from_deferred(st : HState, evt : StateEvent) : HTransition
+    {
+      HTransition(evt.Location, HTarget.State(st), evt, GuardNode.Empty(), FsmAction.Expr(<[ Defer ]>) :: [], HTarget.Nowhere(), TransitionKind.Internal)
+    }
+    
     convert_FsmStateToHState(st : FsmState) : HState
     {
       def tran = st.transitions;//.Filter(x => x.To.TargetStates.All(y => y.Super == x.From.Super));
       def tran = tran.Map(x => x.ToHTransition);
       def newst = st.ToHState;
-      
-      newst.transitions = tran;
+      def evt = st.deferred_events;
+      def defer_tran = evt.Map(create_transition_from_deferred(newst, _));
+      newst.transitions = tran + defer_tran;
       newst
     }
 
@@ -91,7 +97,10 @@ namespace Nemerle.Statechart
         }
       }
       finite_automatas = fsms;
-      transitions = StateTransitions.MapToList(_.ToHTransition);
+      def tran = StateTransitions.MapToList(_.ToHTransition);
+      def other = fsms.SelectMany(x => x.states.SelectMany(x => x.transitions)).NToList();
+      def tran = tran + other;
+      transitions = tran.Distinct().NToList();
       CreateDecisionTree();
     }
 

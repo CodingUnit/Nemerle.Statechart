@@ -29,8 +29,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def defered = DeferedEvents;
-        def evts = transitions.Select(x => x.Trigger).Concat(defered);
+        //def defered = DeferedEvents;
+        def evts = transitions.Select(x => x.Trigger);//.Concat(defered);
         def evts = evts.Where(x => x != null && x.Name != null);
         evts.RemoveDuplicatesSort(x => x.Name)
       }
@@ -47,15 +47,6 @@ namespace Nemerle.Statechart
     }
 
     [Memoized]
-    DeferedEvents : list[StateEvent]
-    {
-      get
-      {
-        States.SelectMany(x => x.deferred_events).NToList();
-      }
-    }
-
-    [Memoized]
     States : list[HState]
     {
       get
@@ -64,15 +55,14 @@ namespace Nemerle.Statechart
       }
     }
     
+    [Memoized]
     internal HasDeferedEvents : bool
     {
       get
       {
-        !DeferedEvents.IsEmpty()
+        transitions.Exists(x => x.Path.action_nodes.Exists(x => if (x.PathAction is Some(FsmAction.Expr(<[ Defer ]>))) true else false))
       }
     }
-
-    deferred : DeferredEvents;
     
     [Memoized]
     actions      : list[GenAction]
@@ -131,12 +121,6 @@ namespace Nemerle.Statechart
     Initial : Transition;
 
     ActiveStates : IEnumerable[ActiveStateConfig];
-    //{
-    //  get
-    //  {
-    //    analyser.ActiveStates.Where(x => x.Used)
-    //  }
-    //}
 
     mutable decls : Map[string, ClassMember];
     mutable action_for : Map[string, string]; // source_name * dest_name
@@ -214,7 +198,6 @@ namespace Nemerle.Statechart
       this.ty = ty;
       ChartName = ty.Name;
       WithSources = true;
-      deferred = DeferredEvents(this);
       util = GenUtil(ty, WithSources);
     }
 
