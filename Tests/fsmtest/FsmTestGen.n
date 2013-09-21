@@ -4,6 +4,7 @@ using Nemerle.Text;
 using Nemerle.Utility;
 
 using System;
+using System.Text;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
@@ -193,6 +194,38 @@ namespace Nemerle.Statechart
       WriteLine($"[$fsm]");
     }
     
+    Interact(text : string) : ActionType
+    {
+      regexp match (text)
+      {
+        | @"terminate"                                => canceled = true;
+                                                          fsm.Terminate();
+                                                          ActionType.Terminate()
+                                                                           
+        | @"(?<param>\w+)\s*=\s*(?<value : int>-?\d+)"  => def name = param;
+                                                          def val = value;
+                                                          SetProperty(name, val);
+                                                          ActionType.SetProperty(name, val.ToString())
+                                                                           
+        | @"(?<param>\w+)\s*=\s*(?<value>\w+)"        => def name = param;
+                                                          def val = value;
+                                                          SetProperty(name, val);
+                                                          ActionType.SetProperty(name, val.ToString())
+                                                                           
+        | _ => def name = text.SpacesToUnderline();
+               regexp match (name)
+               {
+                 | @"\s*(?<name>\w+)\s*" => if (fsm.Events.Exists(x => x.Name == name))
+                                              { 
+                                                SendEvent(name);
+                                                ActionType.SendEvent(name)
+                                              } else ActionType.UnknownEvent(name);
+                 | _                         => ActionType.Error(text)                                                         
+               }
+        
+      }
+    }
+    
     public StartConsole() : void
     {
       canceled = false;
@@ -208,30 +241,7 @@ namespace Nemerle.Statechart
       {
         def text = Console.ReadLine();
         prepare();
-        def action = regexp match (text)
-                        {
-                          | @"terminate"                                => canceled = true;
-                                                                           fsm.Terminate();
-                                                                           ActionType.Terminate()
-                                                                           
-                          | @"(?<param>\w+)\s*=\s*(?<value : int>-?\d+)"  => def name = param;
-                                                                           def val = value;
-                                                                           SetProperty(name, val);
-                                                                           ActionType.SetProperty(name, val.ToString())
-                                                                           
-                          | @"(?<param>\w+)\s*=\s*(?<value>\w+)"        => def name = param;
-                                                                           def val = value;
-                                                                           SetProperty(name, val);
-                                                                           ActionType.SetProperty(name, val.ToString())
-                                                                           
-                          | @"\s*(?<name>\w+)\s*"                       => if (fsm.Events.Exists(x => x.Name == name))
-                                                                           { 
-                                                                            SendEvent(name);
-                                                                            ActionType.SendEvent(name)
-                                                                           } else ActionType.UnknownEvent(name);
-                                                                          
-                          | _                                           => ActionType.Error(text)
-                        }
+        def action = Interact(text);
         match (action)
         {
           | ActionType.Error(str) => WriteLine($"Invalid action $str")
