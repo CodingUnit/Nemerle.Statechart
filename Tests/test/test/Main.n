@@ -4,76 +4,92 @@ using Nemerle.Text;
 using Nemerle.Utility;
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Console;
 using Nemerle.Statechart;
 
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
   /// <summary>
-  /// Description of Hypothetical.
+  /// Description of junction_example.
   /// </summary>
-  [statechart(<#
-  
+  [statechart(
+  <#
   flags testing;
+
+  // flags debug;
+
+  name "do activity and completion transitions";
   
-  name "invalid local transitions";
-  
-  state A
-  {
-    b (=> D; // E: Local transition target must be inside of source state or in super state of source: "TransitionAToDByb"
-  }
-  
-  state B
-  {
-    state C
-    {
-      a (=> A; // E: Local transition target must be inside of source state or in super state of source: "TransitionCToABya"
-    }
-    
-    state D
-    {
-      a => C;
-    }
-  }
-  
+   state A
+   {
+     do / act1;
+     _ => B;
+   }
+   
+   state B
+   {
+     a => A;
+   }
   #>)]
   public class example
   {
-    foo : bool {get;set;}
+    act1(_ : CancellationToken) : void
+    {
+      foreach (elem in NList.Range(10))
+      {
+        Console.WriteLine(elem)
+      }
+    }
   }
+
+
+
+module Test
+{
+  Main() : void
+  {
+    def fsm = example();
+    def tester = fsm.GetTester();
+    tester.ConsoleTestInit();
+    tester.Initiate("B", "EntryA", "ExitA", "EntryB");
+    tester.TestWait("a", 500, "B", "ExitB", "EntryA", "ExitA", "EntryB");
+    fsm.Terminate();
+  }
+}
 
 /*
 BEGIN-OUTPUT
 EntryA
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+ExitA
 EntryB
-EntryC
-[C]
+[B]
 Ok
 Processing a 'a' 
-ExitC
 ExitB
+EntryA
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+ExitA
 EntryB
-EntryC
-[C]
-Ok
-Processing a 'b' 
-ExitC
-ExitB
-EntryB
-EntryD
-[D]
-Ok
-Processing a 'a' 
-ExitD
-EntryC
-[C]
-Ok
-Processing a 'b' 
-ExitC
-ExitB
-EntryB
-EntryD
-[D]
+[B]
 Ok
 END-OUTPUT
 */

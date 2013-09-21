@@ -14,8 +14,8 @@ using System.Threading;
 
 namespace Nemerle.Statechart
 {
-  
-  
+
+
   //using GuardNode;
   // TODO: Action events with flag
   /// <summary>
@@ -26,26 +26,17 @@ namespace Nemerle.Statechart
 
     DefineState(ty : TypeBuilder, type : ClassMember.TypeDeclaration, st : ActiveStateConfig) : TypeBuilder
     {
-      def type = DefineNested(ty, type);// else this.ty.GlobalEnv.Define(type);
-      //DefineActions(type, st);
+      def type = DefineNested(ty, type);
       DefineTransitions(type, st); // define transitions in state
-      //match (st)
-      //{
-      //  | _ when st.IsTopState      => DefineRegions(type);
-      //  | _                         => ()
-      //}
       type
     }
 
     DefineState(ty : TypeBuilder, st : ActiveStateConfig) : TypeBuilder
     {
-      //match (st)
-      //{
-      //  | _ when (!st.IsTopState && st.UsedInGenerate) => 
-          def id_type = StateIdType;
-          def (expr, _) = GetId(st.Id);
+      def id_type = StateIdType;
+      def (expr, _) = GetId(st.Id);
 
-          def type = <[ variant_option: |  $(st.name : usesite)
+      def type = <[ variant_option: |  $(st.name : usesite)
                             {
                                 public override get_id() : $id_type {$expr}
 
@@ -59,22 +50,20 @@ namespace Nemerle.Statechart
                                     $(st.name)
                                 }
                             } 
-                     ]>;
-        
-            def type = DefineState(ty, type, st);
-            type
+                    ]>;
+
+      def type = DefineState(ty, type, st);
+      type
     }
 
     DefineStates() : void
     {
-      //def st = TopState;
       def id_type = StateIdType;
       def default = StateIdDefaultValue;
       def top = <[decl:
-                  public variant State : HsmState//$(name : usesite)
+                  public variant State : HsmState
                   {
 
-                      //public virtual GetCopy(_ : int) : State {this}
                       public virtual get_id() : $id_type { $default }
 
                       public override ToString() : string
@@ -84,7 +73,8 @@ namespace Nemerle.Statechart
                   } ]>;
       def ty = DefineNested(ty, top);
       state_builder = ty;
-      Define(ty, <[decl: public virtual IsDefer(_ : Event) : bool { false } ]>);
+
+      //Define(ty, <[decl: public virtual IsDefer(_ : Event) : bool { false } ]>);
       def defs = Events.Map(x => <[ decl: public virtual $(x.Name : usesite)(_ : $(ChartName : usesite)) : State { null } ]>);
       Define(ty, defs);
       compile_list ::= state_builder;
@@ -112,7 +102,7 @@ namespace Nemerle.Statechart
       {
         DefineActionEvent(act)
       }
-      
+
       def gen_paths = GenTranPath(path_state_actions, action_for, util, FsmFlags);
       gen_paths.DefineHandlers()
     }
@@ -123,7 +113,7 @@ namespace Nemerle.Statechart
       {
         | ClassMember.Function(name = n) as f => ClassMember.Function(f.Location, n, f.modifiers, f.header, f.implemented, f.body)
       }
-      
+
       def top = ty.Manager.Hierarchy.TopTypeBuilders();
       def this_mems = ty.AstParts.SelectMany(x => x.GetMembers()).Select(_.Name);
       foreach (st in LoadedMachines)
@@ -131,22 +121,22 @@ namespace Nemerle.Statechart
         match (top.Find(x => x.Name == st.Key))
         {
           | Some(t) => def mems = t.GetParsedMembers();
-                       foreach (m in mems)
-                       {
-                         when (!this_mems.Exists(x => x == m.Name))
-                         {
-                           def m = match (m)
-                           {
-                             | ClassMember.Property(name = n, modifiers = mod, parameters = pp, getter = g, setter = s, initializer = i) as p =>
-                                 ClassMember.Property(p.Location, n, mod, p.returnType, pp, g.Map(clone), s.Map(clone), i)
-                             | _                      => m
-                           }
-                           ty.Define(m)
-                         }
-                       }
+                      foreach (m in mems)
+                      {
+                        when (!this_mems.Exists(x => x == m.Name))
+                        {
+                          def m = match (m)
+                          {
+                            | ClassMember.Property(name = n, modifiers = mod, parameters = pp, getter = g, setter = s, initializer = i) as p =>
+                                ClassMember.Property(p.Location, n, mod, p.returnType, pp, g.Map(clone), s.Map(clone), i)
+                            | _                      => m
+                          }
+                          ty.Define(m)
+                        }
+                      }
           | _       => ()
         }
-        
+
       }
     }
   }

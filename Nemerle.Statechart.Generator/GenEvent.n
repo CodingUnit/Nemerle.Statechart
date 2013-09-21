@@ -22,6 +22,24 @@ namespace Nemerle.Statechart
     gen : StaticGenerator;
     events : list[StateEvent];
    
+    [Memoized]
+    have_completion : bool
+    {
+      get
+      {
+        events.Exists(x => x.IsCompletion)
+      }
+    }
+    
+    [Memoized]
+    events_wo_completion : list[StateEvent]
+    {
+      get
+      {
+        events.Exclude(_.IsCompletion)
+      }
+    }
+    
     NeedEvtContextName : bool
     {
       get
@@ -43,8 +61,13 @@ namespace Nemerle.Statechart
     {
       get
       {
-        events.Map(x => <[case: | Event.$(x.TargetName : usesite) => cur_state.$(x.Name : usesite)(this) ]>);
+        events_wo_completion.Map(x => <[case: | Event.$(x.TargetName : usesite) => $(RunEvent(x)) ]>);
       }
+    }
+    
+    RunEvent(evt : StateEvent) : PExpr
+    {
+      <[ cur_state.$(evt.Name : usesite)(this) ]>
     }
     
     [Memoized]
@@ -59,11 +82,10 @@ namespace Nemerle.Statechart
     EventDecl(n : StateEvent) : ClassMember.TypeDeclaration
     {
       def name = n.TargetName;
-      def full = $"$(gen.Ty.FullName).$name";
+      def full = $"$(gen.ty.FullName).$name";
       def hash = full.GetHashCode();
       <[ variant_option: | $(name : usesite)
       {
-        static mutable instance : HsmEvent;
         
         public override ToString() : string
         {
@@ -91,17 +113,27 @@ namespace Nemerle.Statechart
           $hash
         }
         
-        public static New() : HsmEvent
+        mutable static instance : HsmEvent;
+        
+        public static New : HsmEvent
         {
-          when (instance == null) 
+          get
           {
-            instance = $(name : usesite)()
+            when (instance == null) 
+            {
+              instance = $(name : usesite)()
+            }
+            instance
           }
-          instance
         }
         
       } 
       ]>
+    }
+    
+    public static SendEventCode(evt : string) : PExpr
+    {
+      <[ PostEvent(Event.$(evt.ToUpperFirst() : usesite).New) ]>
     }
     
     GenEventCtx() : void
@@ -125,7 +157,33 @@ namespace Nemerle.Statechart
     
     public static CreateExpr(this evt : StateEvent) : PExpr
     {
-      <[ Event.$(evt.TargetName : usesite).New() ]>
+      if (evt.IsCompletion) <[ CompletionEvent.New ]> else
+        <[ Event.$(evt.TargetName : usesite).New ]>
+        
+    }
+    
+    dispatch_body : list[MatchCase]
+    {
+      get
+      {
+        def evt = <[case:
+                    
+                    | e is Event =>
+                  
+                    $EventCtxBody;
+                    match (e)
+                    {
+                      ..$RunEventInState
+                    } ]>;
+        def completion = <[ case:
+                              _ is CompletionEvent => 
+                                             $EventCtxBody;
+                                             $(RunEvent(StateEvent.Completion))
+                          ]>;
+        def last = <[case: | _ => null ]>;
+        def cases = evt :: last :: [];
+        if (have_completion) completion :: cases else cases;
+      }
     }
     
     GenBaseStruct() : void
@@ -136,16 +194,8 @@ namespace Nemerle.Statechart
             {
                 match (evt)
                 {
-                  | e is Event =>
-                  
-                    $EventCtxBody;
-                    match (e)
-                    {
-                      ..$RunEventInState
-                    }
-                    
-                  | _ => null
-              }
+                  ..$dispatch_body
+                }
             }
             ]>);
        when (gen.FsmFlags.TransitionCompleted)
@@ -168,20 +218,14 @@ namespace Nemerle.Statechart
         evt.Map(x => <[decl: public $(x.Name : usesite)() : void { PostEvent($(x.CreateExpr())) } ]>);
       }
       
-      def lst = match (events.Partition(_.IsCompletion))
-      {
-        | (head :: _, other) => def comp = <[decl: public $(head.Name : usesite)() : void { PostEventMostPriority($(head.CreateExpr())) }]>;
-                                def evt = get_events(other);
-                                comp :: evt
-        | (_, evt)           => get_events(evt)
-      }
+      def evt = events.Exclude(_.IsCompletion);
+      def lst = get_events(evt);
       gen.Define(lst);
       
-      def decl_events = events.Map(EventDecl);
+      def decl_events = evt.Map(EventDecl);
       def ty = gen.DefineNested(<[ decl:
             public variant Event : HsmEvent
             {
-              
             }]>);
       //..$decl_events
       decl_events.Iter(x => gen.DefineNested(ty, x).Compile());
@@ -194,19 +238,27 @@ namespace Nemerle.Statechart
       get
       {
         events.FoldRight([<[case: | _ => throw InvalidOperationException("Unknown event") ]>], 
-                                  (x, a) => <[case: | $(x.Name : string) => $(x.CreateExpr()); ]> :: a);
+                         (x, a) => <[case: | $(x.Name : string) => $(x.CreateExpr()); ]> :: a);
       }
     }
     
     GenPost() : void
     {
+      
+      gen.Define(<[ decl:
+            GetEventFromStr(evt : string) : HsmEvent
+            {
+              match (evt)
+              {
+                ..$StringToEvent
+              }
+            }
+            ]>);
+            
       gen.Define(<[ decl:
             public override PostEvent(evt : string) : void
             {
-                def res = match (evt)
-                {
-                  ..$StringToEvent
-                }
+                def res = GetEventFromStr(evt);
                 PostEvent(res)
             }
             ]>);

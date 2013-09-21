@@ -131,50 +131,14 @@ namespace Nemerle.Statechart
 
     DefineDeferedEvents() : void
     {
-      when (HasDeferedEvents)
-      {
-        ty.Define(<[decl: mutable defered : List[Event] = List();]>);
-        ty.Define(<[decl: CheckDefered() : void
-                  {
-                    for (mutable i = 0; i < defered.Count; ++i)
-                    {
-                      def e = defered[i];
-                      unless (cur_state.IsDefer(e)) 
-                      {
-                        Dispatch(e);
-                        defered.RemoveAt(i);
-                        i--;
-                      }
-                    }
-                  }]>);
-        ty.Define(<[decl: Defer(evt : Event) : void
-                    {
-                      defered.Add(evt)
-                    }]>)
-      }
+      deferred.Emit()
     }
-
-    DefineDeferedEvents(ty : TypeBuilder, st : ActiveStateConfig) : void
-    {
-      def evt = st.deffered_events;
-      when (!evt.IsEmpty()) 
-      {
-        def cases = evt.FoldBack([<[case: _ => false ]>], (x, a) => <[case: | Event.$(x.Name : usesite) => true ]> :: a);
-        when (HasDeferedEvents)
-        {
-          def is_defer = <[decl: public override IsDefer(evt : Event) : bool { match (evt) { ..$cases } } ]>;
-          Define(ty, is_defer);
-        }
-        def decls = evt.Map(x => <[ decl: public override $(x.Name : usesite)(fsm : $(ChartName : usesite)) : State { fsm.Defer(Event.$(x.Name : usesite)); null }]>);
-        Define(ty, decls)
-      }
-    }
-
+    
     DefineTransitions(ty : TypeBuilder, st : ActiveStateConfig) : void
     {
       def defs =  {
                   def group = st.transitions;//.GroupBy(_.Trigger).Select(x => (x.Key, x.NToList()));
-                  DefineDeferedEvents(ty, st);
+                  deferred.Emit(ty, st);
                   group.MapToList(x => <[decl: public override $(x.Trigger.Name : usesite)(fsm : $(ChartName : usesite)) : State { $(DefineHandlerTransBody(x)) }]>)
                   }
       Define(ty, defs)
@@ -186,8 +150,6 @@ namespace Nemerle.Statechart
       foreach (st in ActiveStates)
       {
         def body = GetTransitionFunction(st);
-      // history paths
-
         Define(body);
       }
     }
