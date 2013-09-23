@@ -21,35 +21,6 @@ namespace Nemerle.Statechart
     Utils.CreateSingleFunc(block)
   }
 
-  macro wildcard()
-  syntax ("__")
-  {
-    <[ ]>
-  }
-
-
-  macro @=.(first, second)
-  syntax (first, "=.", second)
-  {
-    def (assign, end) = Utils.GetRetExpr(first, second);
-    <[ 
-    $assign;
-      $end
-    ]>
-  }
-
-  macro @%??(first, second)
-  syntax (first, "%??", second)
-  {
-      <[ $first.WithDefault($second)]>
-  }
-
-  macro @obj_assign(obj, expr)
-  syntax ("obj_assign", "(", obj, ")", expr)
-  {
-    Utils.CreateAssign(obj, expr)
-  }
-
   [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Method)]
   macro FormSync(type : TypeBuilder, meth : ClassMember.Function, params expr : array[PExpr])
   {
@@ -115,29 +86,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    //public attr_func(this f : TypeBuilder, func : list[PExpr] -> bool) : bool
-    //{
-    //    def attr = f.GetModifiers().GetMacroAttributes();
-    //    func(attr)
-    //}
-
-    //public attr_func(this f : ClassMember.Field, func : list[PExpr] -> bool) : bool
-    //{
-    //    def attr = f.ParsedAttributsAndModifiers.GetMacroAttributes();
-    //    func(attr)
-    //}
-
-    public CreateAssign(obj : PExpr, expr : PExpr) : PExpr
-    {
-
-      match (expr)
-      {
-        | <[ {..$expr} ]> => <[ {..$(expr.Map(CreateAssign(obj, _)))} ]>
-        | <[ $(_ : name) ]> as f => <[ $f = $obj.$f ]>
-        | _ => Message.Error("element must be PExpr.Ref"); <[ () ]>
-      }
-    }
-
     public CreateSingleFunc(block : PExpr) : PExpr
     {
       def create_res(x)
@@ -161,21 +109,7 @@ namespace Nemerle.Statechart
       Macros.TraverseExpr(None(), block, false, process)
     }
 
-    public GetRetExpr(first : PExpr, second : PExpr) : PExpr * PExpr
-    {
-      def assign = <[ $first = $second ]>;
-      match (first, second)
-      {
-        | (_, <[ $(_ : name) ]>) => (assign, second)
-        | (<[ $(_ : name) ]>, _) => (assign, first)
-        | _ => def assign = <[
-                              def res = $second;
-                              $first = res;
-                            ]>;
-            (assign, <[ res ]>)
-      }
-    }
-
+ 
   }
 
   partial module NeedChangeImpl
