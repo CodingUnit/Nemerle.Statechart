@@ -170,7 +170,11 @@ namespace Nemerle.Statechart
       {
         match (kind, FromPseudo)
         {
-          | (Internal, None)                         => $"InternalTransition$(From)By$FriendlyTriggerName"
+          | (Internal, None)                         => match (To)
+                                                        {
+                                                          | TransitionTarget.Defer => $"DeferrableEvent$(trigger)At$From"
+                                                          | _                      => $"InternalTransition$(From)By$FriendlyTriggerName"
+                                                        }
           | (_, None)                                => $"Transition$(Source)To$(To)By$FriendlyTriggerName"
           | (_, Some(PseudoStateNode.Initial))       => $"InitialTransitionFrom$(From)To$To"
           | (_, Some(PseudoStateNode.History as h))  => $"DefaultTransition$(h)To$ActualTo"
@@ -230,39 +234,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    /// <summary>
-    /// local flag with decision on path through pseudo states
-    /// </summary>
-    public RunLocal : bool
-    {
-      get
-      {
-        if (FromPseudo.HasValue) true else
-          match (ToPseudo)
-          {
-            | PseudoStateNode.EntryPoint
-            | ExitPoint
-            | Junction  => true
-            | _         => Local
-          }
-      }
-    }
-
-    public ToJunction : PseudoStateNode.Junction
-    {
-      get
-      {
-        match (ToPseudo)
-        {
-          | null => null
-          | PseudoStateNode.Junction as j => j
-          | _    => null
-        }
-      }
-    }
-
-    
-
     public StateObtainPseudoState(st : FsmState) : FsmState
     {
       if (Local) st else st.Super;
@@ -318,12 +289,6 @@ namespace Nemerle.Statechart
 
     public static NameComparer : StateTransition * StateTransition -> bool = (x, y) => x.Name == y.Name;
 
-    //public TraversePath(recursive : bool = false) : void
-    //{
-    //  def path = TransitionPath(this, recursive);
-    //  path.Traverse();
-    //}
-
     public FromRegion : option[FsmState]
     {
       get
@@ -331,26 +296,6 @@ namespace Nemerle.Statechart
         Source.PartOfSubRegion
       }
     }
-
-
-    //public static GetPseudo[T](this tran : IEnumerable[StateTransition]) : IEnumerable[T] where T : PseudoStateNode
-    //{
-    //  def get_pseudo(t, lst)
-    //  {
-    //    match (t)
-    //    {
-    //      | StateTransition(To = TransitionTarget.PseudoState(p)) when (p is T) => p :> T :: lst
-    //      | _                                                                   => lst
-    //    }
-    //  }
-
-    //  tran.FoldLeft([], get_pseudo).Distinct()
-    //}
-
-    //public static Compare(comparer : StateTransition * StateTransition -> int) :  StateTransition *  StateTransition -> int
-    //{
-    //  (x, y) => comparer(x, y)
-    //}
 
     public AddAction(act : list[FsmAction]) : void
     {

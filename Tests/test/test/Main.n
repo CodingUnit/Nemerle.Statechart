@@ -9,51 +9,28 @@ using System.Linq;
 using System.Console;
 using Nemerle.Statechart;
 using System.Threading;
-  /// <summary>
-  /// Description of Hypothetical.
-  /// </summary>
+
   [statechart(<#
-  
+
   flags testing;
-  //flags debug;
-  
-  name "coffee grinding with deferable events";
-  
-  state MachineIdle
+
+  name "deferable event overriden by ordinary transition event";
+
+  state B
   {
-    turn_on => Preparing;
+    a => C;
+    a / defer; // W: Deferrable event "DeferrableEventaAtB" is always overriden by \[TransitionBToCBya\]
   }
-  
-  state Preparing
+
+  state C
   {
-    machine_ready / defer;
-    do / grind_coffee;
-    _ => Waiting;
+    a => B;
   }
-  
-  state Waiting
-  {
-    machine_ready => Brewing;
-  }
-  
-  state Brewing
-  {
-    do / brew_coffee;
-    _ => MachineIdle;
-  }
-  
+
   #>)]
   public class example
   {
-    brew_coffee(_ : CancellationToken) : void
-    {
-      Thread.Sleep(100)
-    }
-    
-    grind_coffee(_ : CancellationToken) : void
-    {
-      Thread.Sleep(100)
-    }
+    public a1 : bool {get;set;}
   }
 
   module Test
@@ -63,46 +40,27 @@ using System.Threading;
       def fsm = example();
       def tester = fsm.GetTester();
       tester.ConsoleTestInit();
-      tester.Initiate("MachineIdle", "EntryMachineIdle");
-      tester.Test("turn_on", ["MachineIdle"], ["Preparing"]);
-      tester.TestWait("machine_ready", 1000, "MachineIdle", "ExitPreparing", "EntryWaiting", "ExitWaiting", "EntryBrewing", "ExitBrewing", "EntryMachineIdle");
-      tester.TestWait("turn_on", 1000, "Waiting", "ExitMachineIdle", "EntryPreparing", "ExitPreparing", "EntryWaiting");
-      tester.TestWait("machine_ready", 1000, "MachineIdle", "ExitWaiting", "EntryBrewing", "ExitBrewing", "EntryMachineIdle");
+      tester.Initiate("B", "EntryB");
+      tester.Test("a", ["B"], ["C"]);
+      tester.Test("a", ["C"], ["B"]);
       fsm.Terminate();
     }
   }
+  
 /*
 BEGIN-OUTPUT
-EntryMachineIdle
-[MachineIdle]
+EntryB
+[B]
 Ok
-Processing a 'turn_on' 
-ExitMachineIdle
-EntryPreparing
-[Preparing]
+Processing a 'a' 
+ExitB
+EntryC
+[C]
 Ok
-Processing a 'machine_ready' 
-ExitPreparing
-EntryWaiting
-ExitWaiting
-EntryBrewing
-ExitBrewing
-EntryMachineIdle
-[MachineIdle]
-Ok
-Processing a 'turn_on' 
-ExitMachineIdle
-EntryPreparing
-ExitPreparing
-EntryWaiting
-[Waiting]
-Ok
-Processing a 'machine_ready' 
-ExitWaiting
-EntryBrewing
-ExitBrewing
-EntryMachineIdle
-[MachineIdle]
+Processing a 'a' 
+ExitC
+EntryB
+[B]
 Ok
 END-OUTPUT
 */

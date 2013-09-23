@@ -1,0 +1,56 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+
+using SCG = System.Collections.Generic;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of DeferredEvents.
+  /// </summary>
+  [Record]
+  class DeferrableEvents
+  {
+    gen : StaticGenerator;
+    
+    public static CheckCode() : PExpr
+    {
+      <[ CheckDeferrable() ]>
+    }
+    
+    public static GetRunCode() : PExpr
+    {
+      <[ Defer() ]>
+    }
+    
+    public Emit() : void
+    {
+      when (gen.HasDeferedEvents)
+      {
+        gen.ty.Define(<[decl: Defer() : void
+                      {
+                        def evt = Evt.evt;
+                        deffered.Enqueue(evt)
+                      }]>);
+       gen.ty.Define(<[decl: CheckDeferrable() : void
+                      {
+                        unless (deffered.IsEmpty())
+                        {
+                          def evt = deffered.Dequeue();
+                          PostEvent(evt)
+                        }
+                      }]>);
+       gen.ty.Define(<[decl: deffered : SCG.Queue[HsmEvent] = SCG.Queue(); ]>);
+      }
+                    
+    }
+  }
+}

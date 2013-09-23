@@ -59,6 +59,7 @@ namespace Nemerle.Statechart
     | LocalTransitionTargetMustBeWithinOrSuper {tran : StateTransition;}
     | StateMachineNotFound { usings : StateNode.Using; }
     | RegionMustContainSubRegions { reg : FsmState; }
+    
     //| ThereMustBeOnlyOneInitial {st : FsmState; tr : list[StateTransition.Initial]; }
 
     public Loc : Location
@@ -145,16 +146,18 @@ namespace Nemerle.Statechart
     | TransitionOverriden {tran : StateTransition;by : list[StateTransition];}
     | RegionNotUsed {regions : FsmState;}
     | NoConcurrentActivity {act : StateAction.Do;}
-
+    | DeferIsAlwaysOverriden { defer : Transition; other : list[Transition]; }
+    
     public Loc : Location
     {
       get
       {
         match (this)
         {
-          | TransitionOverriden(tr, _)
-          | TransitionNotUsed(tr)        => tr.Location
-          | StateNotUsed(st)             => st.Location
+          | TransitionOverriden(l, _)
+          | DeferIsAlwaysOverriden(l, _)
+          | TransitionNotUsed(l)        
+          | StateNotUsed(l)              => l.Location
           | _                            => Location.Default
         }
       }
@@ -172,6 +175,7 @@ namespace Nemerle.Statechart
           | RegionNotUsed(reg)                                                    => $<#Concurrent region "$reg" is not used in fsm life history#>
           | NoConcurrentActivity(act)                                             => $<#There is no other activities in do activity node $act. Flag is no meaning, concurrent activity means that several activities may run concurently in do activity region of state.#>
           | TransitionOverriden(tran, by)                                         => $<#Transition $(tran) is overriden by $(by), due to execute priority rules, because this transitions is always enabled#>
+          | DeferIsAlwaysOverriden(defer, tr)                                     => $<#Deferrable event "$defer" is always overriden by $tr#>
           | x                                                                     => $"Unknown Warning $x"
         }
       }

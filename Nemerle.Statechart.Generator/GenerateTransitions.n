@@ -49,7 +49,7 @@ namespace Nemerle.Statechart
 
     GetTransitionFunction(st : ActiveStateConfig) : list[ClassMember]
     {
-      def tran = st.transitions;
+      def tran = st.transitions.Exclude(_.IsDefer);
       def get_body(x)
       {
         def name = GetTransitionName(x);
@@ -61,16 +61,17 @@ namespace Nemerle.Statechart
 
     public GetDestination(tran : TargetDeterminator) : PExpr
     {
-      | State(st)     => GetExecStateName(st);
-      | NoStateChange => <[ cur_state ]>
-      | Terminate     => <[ Terminate();null ]>
-      | History(h) => SingleHistoryEmit.HistoryRestoreCode(h)
+      | State(st)      => GetExecStateName(st);
+      | NoStateChange  => <[ cur_state ]>
+      | Terminate      => <[ Terminate();null ]>
+      | History(h)     => SingleHistoryEmit.HistoryRestoreCode(h)
+      | Defer          => def body = DeferrableEvents.GetRunCode();<[ $body; null ]>
       | Completion(st) => match (st.transitions.Find(x => x.Trigger.IsCompletion))
           {
             | Some(tran) => <[ $(tran.Name : usesite)() ]>
             | _          => <[ Terminate();null ]>
           }
-      | _                     => throw InvalidOperationException("unknown destination")
+      | _              => throw InvalidOperationException("unknown destination")
     }
 
     EvalGuardExpr(expr : PExpr) : PExpr
@@ -125,13 +126,18 @@ namespace Nemerle.Statechart
 
     DefineHandlerTransBody(tr : Transition) : PExpr
     {
-      def name = GetTransitionName(tr);
-      <[ fsm.$(name : usesite)();]>
+      match (tr.Target)
+      {
+        | TargetDeterminator.Defer => <[ fsm.Defer(); null ]>
+        | _                        => def name = GetTransitionName(tr);
+                                      <[ fsm.$(name : usesite)();]>
+      }
+      
     }
 
     DefineDeferedEvents() : void
     {
-      def deferred = DeferredEvents(this);
+      def deferred = DeferrableEvents(this);
       deferred.Emit()
     }
     

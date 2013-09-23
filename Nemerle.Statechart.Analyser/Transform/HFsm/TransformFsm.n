@@ -19,19 +19,12 @@ namespace Nemerle.Statechart
 
     transitions : list[HTransition] {get;set;default []}
 
-    create_transition_from_deferred(st : HState, evt : StateEvent) : HTransition
-    {
-      HTransition(evt.Location, HTarget.State(st), evt, GuardNode.Empty(), FsmAction.Expr(<[ Defer ]>) :: [], HTarget.Nowhere(), TransitionKind.Internal)
-    }
-    
     convert_FsmStateToHState(st : FsmState) : HState
     {
       def tran = st.transitions;//.Filter(x => x.To.TargetStates.All(y => y.Super == x.From.Super));
       def tran = tran.Map(x => x.ToHTransition);
       def newst = st.ToHState;
-      def evt = st.deferred_events;
-      def defer_tran = evt.Map(create_transition_from_deferred(newst, _));
-      newst.transitions = tran + defer_tran;
+      newst.transitions = tran;
       newst
     }
 
@@ -39,18 +32,8 @@ namespace Nemerle.Statechart
     
     CreateFiniteAutomata() : void
     {
-
-      //def connected_transitions(gr, initial)
-      //{
-      //  def tr = gr.SelectMany(_.transitions).Append(initial); // transitions in group
-      //  def to = tr.Select(x => x.To); // to target
-      //  def targets = to.SelectMany(_.TargetStates); // target states
-      //  gr//.Filter(targets.Contains) // only those states transition targets connects at this level
-      //}
-
       def create_automata(st, a)
       {
-        //st.ToHState.hierarchy = ;
         def sub = st.sub_states;
         match (st.type)
         {
@@ -61,7 +44,7 @@ namespace Nemerle.Statechart
             {
               | []  => a
               | sub =>
-                      def group = sub;//connected_transitions(sub, st.initial_tran);
+                      def group = sub;
                       def states = group.Map(convert_FsmStateToHState);
                   
                       def init = st.InitialState.Map(convert_FsmStateToHState);

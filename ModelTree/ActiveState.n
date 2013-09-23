@@ -127,6 +127,14 @@ namespace Nemerle.Statechart
     
     public TargetState : HState;
     
+    public IsDefer : bool
+    {
+      get
+      {
+        Target is TargetDeterminator.Defer
+      }
+    }
+    
     [Memoized]
     public Name : string
     {
@@ -134,7 +142,11 @@ namespace Nemerle.Statechart
       {
         match (Kind)
         {
-          | Internal => $"InternalTransition$(Source)By$Trigger"
+          | Internal => match (Target)
+                        {
+                          | Defer => $"DeferrableEvent$(Trigger)At$Source"
+                          | _     => $"InternalTransition$(Source)By$Trigger"
+                        }
           | Initial  => $"InitialTransitionFrom$(Source)To$Target"
           | _        => def tar = Target.ToString();
                         if (tar.IsEmpty()) $"Transition$(Source)By$Trigger" else $"Transition$(Source)To$(Target)By$Trigger"
@@ -199,7 +211,8 @@ namespace Nemerle.Statechart
     | Terminate// { node : HPseudoState.Terminate; }
     | Completion { state : ActiveStateConfig; }
     | Junction { node : DecisionNode; name : string;}
-
+    | Defer
+    
     public override ToString() : string
     {
       match (this)
@@ -209,6 +222,7 @@ namespace Nemerle.Statechart
         | Terminate       => "Terminate"
         | Junction(_, n)  => $"Junction$n"
         | Completion(st)  => $"$(st)Completion"
+        | Defer           => "Defer"
         | _               => ""
       }
     }
