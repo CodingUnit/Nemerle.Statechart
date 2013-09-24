@@ -2,7 +2,9 @@
 
 
 
+
 @copy "..\..\Lib\bin\debug\Nemerle.Statechart.Lib.dll" tests\ 
+
 
 
 
@@ -13,7 +15,11 @@
 
 
 
+
 @copy "..\..\bin\debug\Nemerle.Statechart.dll" tests\ 
+
+@copy "..\..\Nemerle.Statechart.Runtime\bin\debug\Nemerle.Statechart.Runtime.dll" tests\ 
+
 
 
 
@@ -22,6 +28,8 @@
 
 
 
-"c:\Program Files\Nemerle\Net-4.0\Nemerle.Compiler.Test.exe" -ref:"..\..\bin\debug\Nemerle.Statechart.dll" -ref:"..\..\Lib\bin\Debug\Nemerle.Statechart.Lib.dll" -ref:"..\fsmtest\bin\debug\fsmtest.exe" -output:tests\ *.n
+
+"c:\Program Files\Nemerle\Net-4.0\Nemerle.Compiler.Test.exe" -ref:"tests\Nemerle.Statechart.dll" -ref:"tests\Nemerle.Statechart.Lib.dll" -ref:"tests\fsmtest.exe" -ref:"tests\Nemerle.Statechart.Runtime.dll" -output:tests\ *.n
 pause
+
 

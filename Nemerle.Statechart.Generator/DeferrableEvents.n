@@ -31,6 +31,38 @@ namespace Nemerle.Statechart
       <[ Defer() ]>
     }
     
+    static IsDeferDecl : ClassMember
+    {
+      get
+      {
+        <[decl: public virtual IsDefer(_ : HsmEvent) : bool { false } ]>
+      }
+    }
+    
+    public static EmitIsDeferDeclaration(ty : TypeBuilder) : void
+    {
+      ty.Define(IsDeferDecl);
+    }
+    
+    public static EmitInState(conf : ActiveStateConfig, ty : TypeBuilder) : void
+    {
+      match (conf.transitions.Filter(_.IsDefer))
+      {
+        | []  => ()
+        | lst => 
+            def cases = lst.FoldBack(<[case: | _ => false]> :: [], (x, a) => <[case: | Event.$(x.Trigger.TargetName : usesite) => true ]> :: a);
+            def body = <[ match (evt)
+                          {
+                            ..$cases
+                          }]>;
+                          
+            ty.Define(<[decl: public override IsDefer(evt : HsmEvent) : bool
+                        {
+                          $body
+                        }]>);
+      }
+    }
+    
     public Emit() : void
     {
       when (gen.HasDeferedEvents)
@@ -38,17 +70,22 @@ namespace Nemerle.Statechart
         gen.ty.Define(<[decl: Defer() : void
                       {
                         def evt = Evt.evt;
-                        deffered.Enqueue(evt)
+                        deferred.Enqueue(evt)
                       }]>);
+                      
        gen.ty.Define(<[decl: CheckDeferrable() : void
                       {
-                        unless (deffered.IsEmpty())
+                        unless (deferred.IsEmpty())
                         {
-                          def evt = deffered.Dequeue();
-                          PostEvent(evt)
+                          def evt = deferred.Peek();
+                          unless (cur_state.IsDefer(evt))
+                          {
+                            def evt = deferred.Dequeue();
+                            PostEvent(evt)
+                          }
                         }
                       }]>);
-       gen.ty.Define(<[decl: deffered : SCG.Queue[HsmEvent] = SCG.Queue(); ]>);
+       gen.ty.Define(<[decl: deferred : SCG.Queue[HsmEvent] = SCG.Queue(); ]>);
       }
                     
     }
