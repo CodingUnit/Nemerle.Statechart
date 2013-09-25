@@ -26,8 +26,7 @@ namespace Nemerle.Statechart
     | RegionMustContainInitial {reg : FsmState;tran : StateTransition;}
     | SubRegionsMustContainInitial {reg : list[FsmState];}
     | UnknownTerminateTransition {node : StateTransition;}
-    | ForkMustGoToRegion {fork : PseudoStateNode;}
-    | ForkMustGoToSeparateRegion {fork : PseudoStateNode;}
+    | ForkMustGoToSeparateRegion {fork : StateTransition;}
     | UnknownNode {tran : StateTransition; name : string; }
     | JoinTransitionMustHaveSameTrigger {join : PseudoStateNode;tran : list[StateTransition];}
     | JoinTransitionMustLeaveRegion {join : PseudoStateNode;tran : list[StateTransition];}
@@ -59,7 +58,7 @@ namespace Nemerle.Statechart
     | LocalTransitionTargetMustBeWithinOrSuper {tran : StateTransition;}
     | StateMachineNotFound { usings : StateNode.Using; }
     | RegionMustContainSubRegions { reg : FsmState; }
-    
+    | LocalTransitionCannotTargetSelf { tran : StateTransition; }
     //| ThereMustBeOnlyOneInitial {st : FsmState; tr : list[StateTransition.Initial]; }
 
     public Loc : Location
@@ -69,8 +68,11 @@ namespace Nemerle.Statechart
         match (this)
         {
           | DuplicateTransition(tr) 
-          | LocalTransitionTargetMustBeWithinOrSuper(tr) => tr.Location
-          | _                                            => Location.Default
+          | LocalTransitionCannotTargetSelf(tr)
+          | ForkMustGoToSeparateRegion(tr)
+          | CompositeStateWithIncomingTransitionsMustHaveInitial(tr)
+          | LocalTransitionTargetMustBeWithinOrSuper(tr)             => tr.Location
+          | _                                                        => Location.Default
         }
       }
     }
@@ -93,10 +95,9 @@ namespace Nemerle.Statechart
           | DuplicateTransition(tran)                                => $<#Duplicate transitions "$tran"#>;
           | DuplicateHistory(h)                                      => $<#Duplicate history "$h"#>
           | RegionMustContainInitial(reg, tran)                      => $<#Transition "$tran" requires region "$reg" to contain initial transition in each of it sub regions#>
-          | SubRegionsMustContainInitial(sreg)                       => $<#Sub regions "..$sreg" must contain initial pseudo states to default state#>
-          | UnknownTerminateTransition(tran)                         => $<#Unknown terminate transition target of "$tran", there is several terminate pseudo states, specify full name#>                  
-          | ForkMustGoToRegion(f)                                    => $<#Fork "$f" must go to concurrent sub regions#>
-          | ForkMustGoToSeparateRegion(f)                            => $<#Fork "$f" must go to different concurrent sub regions of one region#>
+          | SubRegionsMustContainInitial(sreg)                       => $<#Sub regions "..$sreg" must contain initial pseudostates to default state#>
+          | UnknownTerminateTransition(tran)                         => $<#Unknown terminate transition target of "$tran", there is several terminate pseudostates, specify full name#>                  
+          | ForkMustGoToSeparateRegion(f)                            => $<#Transition originated from fork pseudostate "$f" must target state in different concurrent sub regions of same region#>
           | UnknownNode(tran, n)                                     => $<#Unknown node "$n" used in target of "$tran" transition #>
           | JoinTransitionMustHaveSameTrigger(j, tran)               => $<#Transitions "$tran" to join "$j" must have same event trigger#>
           | JoinTransitionMustLeaveRegion(j, tran)                   => $<#Transitions "$tran" to join "$j" must leave sub state of same orthogonal region#>
@@ -113,21 +114,22 @@ namespace Nemerle.Statechart
           | EmptyChoice(j)                                           => $<#There is a empty node in choice "$(j.state).$j"#>
           | SeveralState(st)                                         => $<#There is several duplicate states of name $st #>
           | ParentStateNotFound(s, p)                                => $<#Parent state "$p" for state "$s" not found#>
-          | InitialPseudoStateAtMostOne(i)                           => $<#There can be only one initial pseudo state in region, error defined in "$i" #>
-          | InitialTransitionMustGoToState(i)                        => $<#Transition from initial pseudo state "$i", must go to default sub state or history of a composite state, not other targets#>
-          | InitialTransitionCannotHaveGuards(i)                     => $<#Transition from initial pseudo state cannon have guards: "$i"#>
-          | InitialTransitionToHistoryMustHaveDefaultTran(i)         => $<#Transition from initial pseudo state "$i" to history must have default transition from history pseudo state#>
+          | InitialPseudoStateAtMostOne(i)                           => $<#There can be only one initial pseudostate in region, error defined in "$i" #>
+          | InitialTransitionMustGoToState(i)                        => $<#Transition from initial pseudostate "$i", must go to default sub state or history of a composite state, not other targets#>
+          | InitialTransitionCannotHaveGuards(i)                     => $<#Transition from initial pseudostate cannon have guards: "$i"#>
+          | InitialTransitionToHistoryMustHaveDefaultTran(i)         => $<#Transition from initial pseudostate "$i" to history must have default transition from history pseudo state#>
           | StateHasNotHistory(s)                                    => $<#State "$s" does'nt have history #>
           | ElseMustHaveOtherTransition(t)                           => $<#Single else guard in "$t" but no other transitions with same event and guards#>
           | SeveralElseGuards(t)                                     => $<#Several else guards is not permitted: ..$t#>
-          | PseudoStateNotFound(n)                                   => $<#Pseudo state with name "$n" not found#>
-          | SeveralPseudoStates(lst)                                 => $<#Several pseudo states with same name found [..$lst]#>
-          | RelocatePseudoNotFound(t)                                => $<#Pseudo state source of transition "$t" not found#>
+          | PseudoStateNotFound(n)                                   => $<#Pseudostate with name "$n" not found#>
+          | SeveralPseudoStates(lst)                                 => $<#Several pseudostates with same name found [..$lst]#>
+          | RelocatePseudoNotFound(t)                                => $<#Pseudostate source of transition "$t" not found#>
           | RelocateSourceNotSupported(p)                            => $<#Source "$p" of relocate element not supported#>
           | RelocatePseudoAlreadyHaveTarget(t, p)                    => $<#Relocate element "$p" from transition $t already have target#>
           | LocalTransitionTargetMustBeWithinOrSuper(tran)           => $<#Local transition target must be inside of source state or in super state of source: "$tran"#>
           | StateMachineNotFound(StateNode.Using(n, f))              => $<#Class "$f" declared statemachine "$n" not found#>
-          | CompositeStateWithIncomingTransitionsMustHaveInitial(st) => $<#Composite state $st have incoming transitions and must have initial pseudo state targeting default state#>
+          | CompositeStateWithIncomingTransitionsMustHaveInitial(st) => $<#Composite state "$st" have incoming transitions and must have initial pseudostate targeting default state#>
+          | LocalTransitionCannotTargetSelf(tr)                      => $<#Local transition "$tr" cannot target source vertex #>
       //| ThereMustBeOnlyOneInitial(s, t)                             => $<#In state "$s" may be only one unguarded initial transition, these transitions erroneus: "..$t"#>
       //| Sequence(e)                                            => $<#..$(e;"\n";GetError)#>
       //| n                                                        => throw InvalidOperationException($"unnkown error $n")
@@ -174,7 +176,7 @@ namespace Nemerle.Statechart
           | TransitionNotUsed(tran)                                               => $<#Transition "$tran" is not used in fsm life history#>
           | RegionNotUsed(reg)                                                    => $<#Concurrent region "$reg" is not used in fsm life history#>
           | NoConcurrentActivity(act)                                             => $<#There is no other activities in do activity node $act. Flag is no meaning, concurrent activity means that several activities may run concurently in do activity region of state.#>
-          | TransitionOverriden(tran, by)                                         => $<#Transition $(tran) is overriden by $(by), due to execute priority rules, because this transitions is always enabled#>
+          | TransitionOverriden(tran, by)                                         => $<#Transition "$(tran)" is overriden by $(by), due to execute priority rules, because this transitions is always enabled#>
           | DeferIsAlwaysOverriden(defer, tr)                                     => $<#Deferrable event "$defer" is always overriden by $tr#>
           | x                                                                     => $"Unknown Warning $x"
         }

@@ -125,17 +125,15 @@ namespace Nemerle.Statechart
         }
       }
     }
-
     
-    public InitialConfiguration(st : HState) : ActiveStateConfig
-    {
-      def conf = Solve(Config.Unknown(st), x => x.init_state.Value :: []);
-      conf.Head
-    }
-
     public InitialConfiguration(st : list[HState]) : ActiveStateConfig
     {
-      def conf = Solve(Config.Concurrent(st), x => x.init_state.Value :: []);
+      def conf = match (st)
+                 {
+                   | head :: [] => Config.Unknown(head)
+                   | st         => Config.Concurrent(st)
+                 }
+      def conf = Solve(conf, x => x.init_state.Value :: []);
       conf.Head
     }
     
@@ -153,15 +151,9 @@ namespace Nemerle.Statechart
       active_proc.CreateConfig(conf)
     }
 
-    CreateTransitionPath(src_conf : ActiveStateConfig, target : HState) : Transition
+    CreateTransitionPath(src_conf : ActiveStateConfig) : Transition
     {
-      def trav = TraversePath(src_conf, target, this);
-      trav.CreatePath()
-    }
-    
-    TraversePseudo(source : ActiveStateConfig, _pseudo : HPseudoState) : Transition
-    {
-      def trav = TraversePath(source, null, this);
+      def trav = TraversePath(src_conf, this);
       trav.CreatePath()
     }
     
@@ -169,19 +161,13 @@ namespace Nemerle.Statechart
     {
       def source = SourceState.active_config;
       def source = ActiveStateConfig([], source, [], [], null, false);
-      def trav = TraversePath(source, TargetState, this);
+      def trav = TraversePath(source, this);
       trav.CreateEntryPath()
     }
     
     public Traverse() : list[Transition]
     {
-      match (Target)
-      {
-        | HTarget.State(st)         => source_configs.Map(CreateTransitionPath(_, st)) 
-        | HTarget.PseudoState(st)   => source_configs.Map(TraversePseudo(_, st))
-        | HTarget.Defer
-        | HTarget.Nowhere           => source_configs.Map(CreateTransitionPath(_, null))
-      }
+      source_configs.Map(CreateTransitionPath) 
     }
   }
 }

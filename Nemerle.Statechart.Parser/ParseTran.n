@@ -21,6 +21,15 @@ namespace Nemerle.Statechart
   public partial class FsmParser
   {
 
+    get_state_qualified_target(name : NameIdentifier) : TargetType
+    {
+      | Name(name = n)           => TargetType.Named(name.pos, n)
+      | QualifiedName(parts = n) => def (tar, lst) = n.SplitLast();
+                                    def st = $<#..$(lst;".")#>;
+                                    TargetType.Qualified(name.pos, st, TargetType.Named(name.pos, tar))
+
+    }
+
     qualified_target(name : NameIdentifier, _ : NToken) : TargetType
     {
       def pos = name.pos;
@@ -49,7 +58,8 @@ namespace Nemerle.Statechart
       match (name)
       {
         | Name(name = n) => get_target(n)
-        | QualifiedName(parts = n) => def (tar, lst) = n.SplitLast();
+        | QualifiedName(parts = n) => 
+            def (tar, lst) = n.SplitLast();
             def st = $<#..$(lst;".")#>;
             TargetType.Qualified(name.pos, st, get_target(tar))//State(st, StateType.State()), 
       }
@@ -59,6 +69,27 @@ namespace Nemerle.Statechart
     {
       def pos = id.pos;
       TargetType.PseudoState(pos, PseudoStateModelNode.ExitPoint(pos, id.name, None()))
+    }
+
+    fork_trans_target(first : NameIdentifier, second : NameIdentifier, lst : List[NameIdentifier], _ : NToken) : TargetType
+    {
+      def targets = first :: second :: lst.NToList();
+      def targets = targets.Map(get_state_qualified_target);
+      TargetType.PseudoState(first.pos, PseudoStateModelNode.Fork(first.pos, targets))
+    }
+
+    fork_alt_target(reg : NameIdentifier, _ : NToken, first : NToken, second : NToken, lst : List[NToken], _ : NToken, _ : NToken) : TargetType
+    {
+      def pos = reg.pos;
+      def targets = first :: second :: lst.NToList();
+      def targets = targets.Map(x => TargetType.Named(x.StartPos, GetText(x)));
+      def target = TargetType.PseudoState(pos, PseudoStateModelNode.Fork(pos, targets));
+      match (reg)
+      {
+        | Name(name = n)           => TargetType.Qualified(pos, n, target)
+        | QualifiedName(parts = n) => def st = $<#..$(n;".")#>;
+                                      TargetType.Qualified(pos, st, target)
+      }
     }
     
     default_transition(act : Actions, target : TargetType) : StateNode.Transition
@@ -80,7 +111,7 @@ namespace Nemerle.Statechart
       def act = if (act.Empty) None() else Some(act);
       StateNode.Transition(pos, None(), [], GuardNode.Empty(), act, to, TransitionKind.External)
     }
-    
+
     ext_transition(evt : List[TransitionEvent], guard : option[GuardNode], body : StateNode.Transition) : StateNode.Transition
     {
       def pos = evt.First().pos;
@@ -107,12 +138,12 @@ namespace Nemerle.Statechart
     {
       Defer(tok.StartPos, lst.NToList())
     }
-    
+
     deferred_evts(tok : NToken, _ : NToken, lst : List[TransitionEvent], _ : NToken) : StateNode.Defer
     {
       Defer(tok.StartPos, lst.NToList())
     }
-    
+
     relocate_tran(n : NameIdentifier, _ : NToken, id : NToken, tran : StateNode.Transition) : StateNode
     {
       def from = n.Add(GetText(id));

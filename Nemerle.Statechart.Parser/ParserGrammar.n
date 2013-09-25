@@ -27,10 +27,11 @@ namespace Nemerle.Statechart
       singleLineComment                               = "//" (!('\n' / '\r') [Any])* newLine?;
       delimitedComment                                = "/*" (!"*/" [Any])* "*/";
       comment                                         = singleLineComment / delimitedComment;
-      spaces_def                                      = (' ' / '\t' / '\u000B' / '\u000C' / newLine / comment)*;
+      space_def                                       = ' ' / '\t' / '\u000B' / '\u000C' / newLine / comment;
+      spaces_def                                      = space_def*;
       spaces : void                                   = spaces_def;
       letter                                          = [Lu,  Ll,  Lt,  Lm,  Lo,  Nl,  Nd] / '_' / '-' / '@' / '*' / '$';
-      delimiter : void                                = ',' / spaces_def;
+      delimiter : void                                = ',' / space_def+;
       s : void                                        = spaces;
       
       qualified_id                                    = (letter / '.')+;
@@ -110,13 +111,15 @@ namespace Nemerle.Statechart
       relocate_tran      : StateNode                  = fully_qualified s "::"s identifier default_transition;
 
       exit_point_target  : TargetType                 = exit_point_decl ';'s;
-
       
-      qualified_target   : TargetType                 = fully_qualified  ';'s;
+      qualified_target   : TargetType                 = fully_qualified ';'s;
       // target
       simple_target      : TargetType                 = exit_point_target / qualified_target;
-      //fork_trans_target  : TargetType                 =  simple_target s simple_target s (!end_symb simple_target s delimiter)* end_symb;
-      transition_target  : TargetType                 = choice_target / junction_target / simple_target;
+      fork_delim                                      = ','s / ' '+;
+      fork_trans_target  : TargetType                 = fully_qualified delimiter s fully_qualified (!';' fully_qualified delimiter s)* ';'s;
+      fork_alt_target    : TargetType                 = fully_qualified '('s identifier s delimiter s identifier s (!')' identifier delimiter s)* ')'s ';'s;
+      fork_target        : TargetType                 = fork_alt_target / fork_trans_target;
+      transition_target  : TargetType                 = choice_target / junction_target / fork_target / simple_target;
 
       expr_action        : Actions                    = '/'s (!(';' / any_goto) [Any])* s;
       expr_tran_action   : Actions                    = long_expr_action / expr_action;

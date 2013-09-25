@@ -103,7 +103,7 @@ namespace Nemerle.Statechart
       
     | Fork 
       {
-        target    : list[FsmState];
+        target    : list[TransitionTarget] {get;set;}
         //fork_tran : list[StateTransition] {get;set;default []}
       }
     | Join 
@@ -166,6 +166,7 @@ namespace Nemerle.Statechart
         | EntryPoint as e                            => EntryPoint(st, e)
         | ExitPoint as e                             => ExitPoint(st, e)
         | Terminate                                  => Terminate(0, st)
+        | Fork(tar)                                  => Fork(0, st, tar.Map(x => TransitionTarget.Create(st, x)))
         | _                                          => throw NotImplementedException("this TransitionTarget not implemented")
       }
     }
@@ -236,7 +237,7 @@ namespace Nemerle.Statechart
         def st = state.ToHState;
         match (this)
         {
-          | Fork(t)             => HPseudoState.Fork(st, t.Map(_.ToHState))
+          | Fork(target = t)    => HPseudoState.Fork(st, t.Map(x => x.ToState.ToHState))
           | History as p        => HPseudoState.History(st, p.default.Map(x => x.ToHTransition), p.type)
           | Join as p           => HPseudoState.Join(st, p.name, p.joined_tran.Map(x => x.ToHState), p.target.ToHTarget)
           | Junction as p       => HPseudoState.Junction(st, p.name, p.tree.ToHJunctionNode, p.type, null)

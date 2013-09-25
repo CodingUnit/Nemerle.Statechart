@@ -17,18 +17,24 @@ namespace Nemerle.Statechart
 
     CreateAndResolvePreDecl(tar : TransitionTarget, tr : StateTransition, mach : bool = false) : TransitionTarget
     {
+      def add_find_pseudo(tr, p)
+      {
+        def super = tr.StateObtainPseudoStateFromThis;
+        p.state = super;
+        def find = super.pseudo_states.FindTypeWhen(x => x.Name == p.Name);
+        find.IfDefault(p, x => {super.AddPseudo(x);x.state = super})
+      }
+      
       match (tar)
       {
         | TransitionTarget.PseudoState(p) as t => 
               def p = match (p)
               {
+                // search for terminate in automata
                 | PseudoStateNode.Terminate as p => def pseudo = PseudoStates.FindType();
                                                     pseudo.IfDefault(p, x => state_tree.AddPseudo(x));
-                        // search for terminate in automata
-                | Junction(IsUnnamed = true, name = n) as j =>  
-                                                      def super = tr.StateObtainPseudoStateFromThis;//st.Super;
-                                                      def find = super.pseudo_states.FindTypeWhen(x => x.name == n);
-                                                      find.IfDefault(j, x => {super.AddPseudo(x);x.state = super})
+                | PseudoStateNode.Fork as p       => add_find_pseudo(tr, p)
+                | Junction(IsUnnamed = true) as j => add_find_pseudo(tr, j)
                 | ExitPoint(name = n) as p => 
                     def st = tr.From;
                     st.pseudo_states.FindTypeWhen(x => x.name == n).IfDefault(p, x => st.AddPseudo(x));

@@ -99,27 +99,60 @@ namespace Nemerle.Statechart
           | _                                     => tr.From
         }
         def dest = tr.AtLeastStaticTo;
-        if (dest.IsSubstateOf(src) || src == dest : object || src.IsSubstateOf(dest)) () else
+        if (dest.IsSubstateOf(src) || src.IsSubstateOf(dest)) () else
+        if (src == dest : object) 
+        {
+          messager.AddError(FsmError.LocalTransitionCannotTargetSelf(tr))
+        } else
         {
           messager.AddError(FsmError.LocalTransitionTargetMustBeWithinOrSuper(tr))
         }
       }
     }
     
+    CheckForkTargets() : void
+    {
+      def message(tr)
+      {
+        messager.AddError(FsmError.ForkMustGoToSeparateRegion(tr))
+      }
+      
+      def distinct_regs(st, reg)
+      {
+        def pos = st.Map(x => x.RegionPos(reg));
+        def distinct = pos.Distinct();
+        distinct.Count() == st.Length
+      }
+      
+      foreach (StateTransition(To = TransitionTarget.PseudoState(PseudoStateNode.Fork as p)) as tr in StateTransitions)
+      {
+        def target = p.target;
+        if (target.All(x => x is TransitionTarget.State))
+        {
+          def states = target.Map(x => x.ToState);
+          def all_regs = states.All(x => !x.Regions.IsEmpty());
+          if (all_regs)
+          {
+            def intersect_regs = states.FoldLeft([], (x, a) => if (a.IsEmpty()) x.Regions else x.Regions.Intersect(a).NToList());
+            match (intersect_regs.Find(x => distinct_regs(states, x)))
+            {
+              | None => message(tr)
+              | _    => ()
+            }
+          } else
+          {
+            message(tr)
+          }
+        } else
+        {
+          message(tr)
+        }
+      }
+    }
+    
     CheckTransitions() : void
     {
-      // check cross regions transition
-      //foreach (StateTransition(AtLeastStaticTo = to) as tr in StateTransitions)
-      //{
-      //  match (to, tr.From)
-      //  {
-      //    | (null, _) => ()
-      //    | (FsmState(PartOfRegion = Some(r), PartOfSubRegion = Some(sr)), FsmState(PartOfRegion = Some(r2), PartOfSubRegion = Some(sr2))) => 
-      //        when (r : object == r2 && sr : object != sr2) AddError(FsmError.TransitionCrossOrthogonalBoundaryOfSameRegion(tr))
-      //    | _         => ()
-      //  }
-      //}
-      
+      CheckForkTargets();
       CheckLocalTrans();
     }
 

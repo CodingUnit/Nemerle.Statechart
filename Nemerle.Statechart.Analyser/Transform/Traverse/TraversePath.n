@@ -12,9 +12,7 @@ namespace Nemerle.Statechart
   partial class TraversePath
   {
     public Source : ActiveStateConfig;
-    
-    public TargetState : HState;
-    
+        
     tran_target   : HTarget;
     
     public tran_path   : TransitionPath;
@@ -23,22 +21,35 @@ namespace Nemerle.Statechart
     
     tree_trav : TraverseDecisionTree;
     
-    public this(trav : TraversePath, source : ActiveStateConfig, target : HState, tar : HTarget)
+    public this(trav : TraversePath, source : ActiveStateConfig, tar : HTarget)
     {
       this.tree_trav = trav.tree_trav;
       tran_path = trav.tran_path;
       Source = source;
-      TargetState = target;
+      //TargetState = target;
       tran_target = tar;
     }
     
-    public this(source : ActiveStateConfig, target : HState, tran_path : TransitionPath)
+    public this(source : ActiveStateConfig, tran_path : TransitionPath)
     {
       Source = source;
-      TargetState = target;
+      //TargetState = target;
       this.tran_path = tran_path;
       tran_target = tran_path.transition.Target;
       tree_trav = TraverseDecisionTree(transition, path, this);
+    }
+    
+    TargetStates : list[HState]
+    {
+      get
+      {
+        match (tran_target)
+        {
+          | HTarget.State(st)                          => st :: []
+          | HTarget.PseudoState(HPseudoState.Fork(st)) => st
+          | _                                          => []
+        }
+      }
     }
     
     Local : bool
@@ -75,8 +86,6 @@ namespace Nemerle.Statechart
           def intersection = fixed_src.Intersect(fixed_tar).NToList();
           intersection
         } else []
-        //def target = src.FoldLeft(tar, (x, a) => if (x.SameRegion(TargetState)) a else x :: a);
-        //Source.states.Exclude(y => !y.regions.ContainsIn(FixedRegions)) //Source.states.Exclude()
       }
     }
     
@@ -94,7 +103,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (TargetState != null) TargetState.regions else []
+        if (TargetStates != null) TargetStates.SelectMany(x => x.regions).NToList() else []
       }
     }
     
@@ -112,7 +121,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (TargetState != null) GetTargetConfig() else null
+        if (!TargetStates.IsEmpty()) GetTargetConfig() else null
       }
     }
     
@@ -120,14 +129,12 @@ namespace Nemerle.Statechart
     {
       if (FixedRegions.IsEmpty())
       {
-        tran_path.InitialConfiguration(TargetState)
+        tran_path.InitialConfiguration(TargetStates)
       } else
       {
-        def tar = TargetState.active_config;
-        //def src = Source.states.Exclude(tar);
-        //def src = src.Exclude(x => !x.regions.ContainsIn(FixedRegions));
+        def tar = TargetStates.SelectMany(x => x.active_config).NToList();
         def src = Source.states.Exclude(y => !y.regions.ContainsIn(FixedRegions));
-        def target = src.FoldLeft(tar, (x, a) => if (x.SameRegion(TargetState)) a else x :: a);
+        def target = src.FoldLeft(tar, (x, a) => if (TargetStates.Exists(y => x.SameRegion(y))) a else x :: a);
         tran_path.InitialConfiguration(target)
       }
     }
@@ -139,9 +146,10 @@ namespace Nemerle.Statechart
       {
         match (tran_target)
         {
-          | HTarget.PseudoState(p) => p.state.active_config
-          | State                  => Target.states
-          | _                      => []
+          | HTarget.PseudoState(HPseudoState.Fork)
+          | State                                  => Target.states
+          | HTarget.PseudoState(p)                 => p.state.active_config
+          | _                                      => []
         }
       }
     }
@@ -302,15 +310,15 @@ namespace Nemerle.Statechart
     
     public NewTarget(tar : HTarget) : TraversePath
     {
-      | HTarget.State(st) => TraversePath(this, Source, st, tar)
-      | _                 => TraversePath(this, Source, null, tar)
+      TraversePath(this, Source, tar)
     }
     
     public ProcessTarget() : TargetDeterminator
     {
       match (tran_target)
       {
-        | HTarget.State                                   => CheckCompletion(Target)
+        | HTarget.State                                   
+        | HTarget.PseudoState(HPseudoState.Fork)          => CheckCompletion(Target)
         | HTarget.PseudoState(HPseudoState.Terminate)     => TargetDeterminator.Terminate()
         | HTarget.PseudoState(HPseudoState.History as h)  => TargetDeterminator.History(h.PseudoState :> PseudoState.History)
         | HTarget.PseudoState(HPseudoState.Junction as j) => TraverseJunction(j)
@@ -325,7 +333,7 @@ namespace Nemerle.Statechart
       when (!IsInternal) EntryTarget();
       def target = ProcessTarget();
       def tree = tree_trav.Create(target);
-      Transition(Source, null, transition.Trigger, transition.Guard, path.Path, target, tree, 0, 0, transition.Kind, false, false, [], [], TargetState)
+      Transition(Source, null, transition.Trigger, transition.Guard, path.Path, target, tree, 0, 0, transition.Kind, false, false, [], [], TargetStates)
     }
     
     public CreatePath() : Transition
@@ -345,7 +353,7 @@ namespace Nemerle.Statechart
       def target = ProcessTarget();
       def tree = tree_trav.Create(target);
       def originate = if (tran_source is HTarget.State(st)) st else null;
-      Transition(transition.Location, Source, originate, transition.Trigger, transition.Guard, path.Path, target, tree, 0, 0, transition.Kind, false, false, [], [], TargetState)
+      Transition(transition.Location, Source, originate, transition.Trigger, transition.Guard, path.Path, target, tree, 0, 0, transition.Kind, false, false, [], [], TargetStates)
     }
     
   }
