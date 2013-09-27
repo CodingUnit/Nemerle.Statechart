@@ -42,21 +42,21 @@ namespace Nemerle.Statechart
       foreach (FsmState(initial = Some(i)) as state in States)
       {
         def tran = i.tran;
-        match (tran.action)
+        when (!tran.action.IsEmpty() || tran.To is TransitionTarget.PseudoState(PseudoStateNode.History))
         {
-          | []  => ()
-          | lst => def st = FsmState(this, StateType.State()); // create simple state
-                  st.name = $"$(state)Initial";
-                  st.generated = true;
-                  def ntran = StateTransition(st, tran.To, TransitionKind.External);// :: [];
-                  ntran.trigger = StateEvent.Completion;
-                  st.transitions = ntran :: []; // create completion transition to target of initial
-                  st.entry = lst.Map(StateAction.Entry(st.ToString(), _, ActionFlags.None)); // entry action to initial actions
-                  def sub = state.sub_states;
-                  st.Super = state;
-                  state.sub_states = sub.AddBefore(st).NToList(); // add substate before other sub states
-                  tran.To = TransitionTarget.State(st);
-                  tran.action = []; // clear action
+          def st = FsmState(this, StateType.State()); // create simple state
+          st.name = $"$(state)Initial";
+          st.generated = true;
+          def ntran = StateTransition(st, tran.To, TransitionKind.External);// :: [];
+          ntran.trigger = StateEvent.Completion;
+          st.transitions = ntran :: []; // create completion transition to target of initial
+          def act = tran.action;
+          st.entry = act.Map(StateAction.Entry(st.ToString(), _, ActionFlags.None)); // entry action to initial actions
+          def sub = state.sub_states;
+          st.Super = state;
+          state.sub_states = sub.AddBefore(st).NToList(); // add substate before other sub states
+          tran.To = TransitionTarget.State(st);
+          tran.action = []; // clear action
         }
       }
     }

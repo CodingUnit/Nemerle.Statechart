@@ -41,42 +41,48 @@ namespace Nemerle.Statechart
     
     LocateTarget(t : TargetType) : void
     {
-      | TargetType.Qualified(_, t) => LocateTarget(t)
-      | TargetType.PseudoState(n)  => LocatePseudo(n)
-      | _                          => ()
+      Locate(t);
+      match (t)
+      {
+        | TargetType.Qualified(_, t) => LocateTarget(t)
+        | TargetType.PseudoState(n)  => LocatePseudo(n)
+        | _                          => ()
+      }
     }
     
     LocatePseudo(node : PseudoStateModelNode) : void
     {
-      | PseudoStateModelNode.Initial(t)            => Locate(t)
-      | PseudoStateModelNode.History(_, Some(t))   => Locate(t)
-      | PseudoStateModelNode.Fork(t)               => Locate(t);
-                                                      t.Iter(LocateTarget)
-      | PseudoStateModelNode.Join(_, t)            => Locate(t);
-                                                      LocateTarget(t)
-      | PseudoStateModelNode.Junction(nodes = n)   => foreach (n in n)
-                                                      {
-                                                        | JunctionNode(g, a, t) => Locate(g);
-                                                                                   when (a is Some(a))
-                                                                                   {
-                                                                                     Locate(a);
-                                                                                     Locate(a.actions);
-                                                                                   }
-                                                                                   Locate(t);
-                                                                                   LocateTarget(t);
-                                                      }
-      | PseudoStateModelNode.EntryPoint(_, tr)      => Locate(tr);
-                                                       LocateTran(tr)
-      | PseudoStateModelNode.ExitPoint(_, Some(tr)) => Locate(tr);
-                                                       LocateTran(tr)
-      | _                                           => ()
-
+      Locate(node);
+      match (node)
+      {
+        | PseudoStateModelNode.Initial(p)            => LocateTran(p);
+        | PseudoStateModelNode.History(default = t)  => t.Iter(LocateTran);
+        | PseudoStateModelNode.Fork(t)               => t.Iter(LocateTarget)
+        | PseudoStateModelNode.Join(_, t)            => LocateTarget(t)
+        | PseudoStateModelNode.Junction(nodes = n)   => foreach (n in n)
+                                                        {
+                                                          | JunctionNode(g, a, t) => Locate(g);
+                                                                                     when (a is Some(a))
+                                                                                     {
+                                                                                       Locate(a);
+                                                                                       Locate(a.actions);
+                                                                                     }
+                                                                                     Locate(t);
+                                                                                     LocateTarget(t);
+                                                        }
+        | PseudoStateModelNode.EntryPoint(_, tr)      => Locate(tr);
+                                                         LocateTran(tr)
+        | PseudoStateModelNode.ExitPoint(_, Some(tr)) => Locate(tr);
+                                                         LocateTran(tr)
+        | _                                           => ()
+      }
     }
     
     LocateTran(tr : StateNode.Transition) : void
     {
       | StateNode.Transition(f, e, g, a, t, _) => 
       
+        Locate(tr);
         when (a is Some(a))
         {
           Locate(a);

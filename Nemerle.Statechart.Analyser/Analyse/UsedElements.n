@@ -11,7 +11,7 @@ namespace Nemerle.Statechart
 {
   partial class FsmAnalyser
   {
-    CheckUsedElements() : void
+    ModelTransitionsThrough(tran : list[Transition]) : void
     {
       def get_states(x, a)
       {
@@ -24,18 +24,28 @@ namespace Nemerle.Statechart
         }
       }
 
-      def loop(tran)
+      def get_trans(x, a)
       {
-        tran.Iter(x => x.Used = true);
-        def states = tran.FoldLeft([], (x, a) => x.DecisionTree.Targets.FoldLeft(a, get_states));
-        def states = states.Where(x => !x.Used).Distinct().NToList();
-        def tran = states.SelectMany(x => x.transitions).NToList();
-        states.Iter(x => x.Used = true);
-        if (tran.IsEmpty()) () else loop(tran)
+        match (x)
+        {
+          | TargetDeterminator.History(PseudoState.History(default = Some(t))) => t :: a
+          | _                                                                  => a
+        }
       }
       
-      loop(InitialTransition :: []);
+      tran.Iter(x => x.Used = true);
+      def states = tran.FoldLeft([], (x, a) => x.DecisionTree.Targets.FoldLeft(a, get_states));
+      def trans = tran.FoldLeft([], (x, a) => x.DecisionTree.Targets.FoldLeft(a, get_trans));
+      def states = states.Where(x => !x.Used).Distinct().NToList();
+      def tran = states.SelectMany(x => x.transitions).Concat(trans).NToList();
+      states.Iter(x => x.Used = true);
+      if (tran.IsEmpty()) () else ModelTransitionsThrough(tran)
+    }
+    
+    CheckUsedElements() : void
+    {
       
+      ModelTransitionsThrough(InitialTransition :: []);
       
       def (active_used, not_used) = ActiveStates.Partition(_.Used);
       def used_states = active_used.SelectMany(_.states).Distinct().NToList();
