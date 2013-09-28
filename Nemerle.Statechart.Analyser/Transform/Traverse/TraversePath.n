@@ -67,9 +67,10 @@ namespace Nemerle.Statechart
       {
         match (tran_source)
         {
-          | HTarget.PseudoState(p) => p.state.active_config
-          | State                  => Source.states
-          | _                      => []
+          | State                  
+          | HTarget.PseudoState(HPseudoState.Join) => Source.states
+          | HTarget.PseudoState(p)                 => p.state.active_config
+          | _                                      => []
         }
       }
     }
@@ -159,20 +160,21 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (MainSource != null) MainSource.active_config else []
+        if (MainSource != null) MainSource.SelectMany(x => x.active_config).Distinct().NToList() else []
       }
     }
     
     [Memoized]
-    MainSource : HState
+    MainSource : list[HState]
     {
       get
       {
         match (tran_source)
         {
-          | HTarget.PseudoState(p) => p.state
-          | State(st)              => st
-          | _                      => null
+          | State(st)                                           => st :: []
+          | HTarget.PseudoState(HPseudoState.Join(states = st)) => st
+          | HTarget.PseudoState(p)                              => p.state :: []
+          | _                                                   => []
         }
       }
     }
@@ -189,6 +191,15 @@ namespace Nemerle.Statechart
           | State(st)                 => st
           | _                         => null
         }
+      }
+    }
+    
+    [Memoized]
+    MainTargetConfig : list[HState]
+    {
+      get
+      {
+        if (MainTarget != null) MainTarget.active_config else []
       }
     }
     
@@ -235,8 +246,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (Local) MainSource.active_config.DupLast(MainTarget.active_config) else
-          MainSource.active_super.DupLast(MainTarget.active_super)// TranTargetState
+        if (Local) MainSourceConfig.DupLast(MainTargetConfig) else
+          MainSourceConfig.ChopLast().NToList().DupLast(MainTargetConfig.ChopLast().NToList())// TranTargetState
       }
     }
         
@@ -317,7 +328,7 @@ namespace Nemerle.Statechart
     {
       match (tran_target)
       {
-        | HTarget.State                                   
+        | HTarget.State
         | HTarget.PseudoState(HPseudoState.Fork)          => CheckCompletion(Target)
         | HTarget.PseudoState(HPseudoState.Terminate)     => TargetDeterminator.Terminate()
         | HTarget.PseudoState(HPseudoState.History as h)  => TargetDeterminator.History(h.PseudoState :> PseudoState.History)

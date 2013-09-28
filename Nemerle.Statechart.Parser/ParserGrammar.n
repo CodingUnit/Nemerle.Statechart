@@ -108,16 +108,19 @@ namespace Nemerle.Statechart
       choice_target      : TargetType                 = '$' junction_body;
       merge              : StateNode                  = "merge"s identifier s junc_tran_body;
 
-      relocate_tran      : StateNode                  = fully_qualified s "::"s identifier default_transition;
+      relocate_pseudo_tran : StateNode.Transition     = fully_qualified ":"s default_transition;
+      relocate_st_tran   : StateNode.Transition       = fully_qualified ":"s normal_transition;
+      join_alt_tran      : StateNode.Transition       = fully_qualified "("s identifier (!')' delimiter s identifier)* ")"s ":"s ext_transition;
+      join_relocate_tran : StateNode.Transition       = "("s fully_qualified (!')' delimiter s fully_qualified)* ")"s ":"s ext_transition;
+      join_rel_tran      : StateNode.Transition       = join_relocate_tran / join_alt_tran;
+      relocate_tran      : StateNode.Transition       = join_rel_tran / relocate_st_tran / relocate_pseudo_tran;
 
       exit_point_target  : TargetType                 = exit_point_decl ';'s;
       
       qualified_target   : TargetType                 = fully_qualified ';'s;
-      // target
       simple_target      : TargetType                 = exit_point_target / qualified_target;
-      fork_delim                                      = ','s / ' '+;
       fork_trans_target  : TargetType                 = fully_qualified delimiter s fully_qualified (!';' fully_qualified delimiter s)* ';'s;
-      fork_alt_target    : TargetType                 = fully_qualified '('s identifier s delimiter s identifier s (!')' identifier delimiter s)* ')'s ';'s;
+      fork_alt_target    : TargetType                 = fully_qualified '('s identifier s (!')' delimiter s identifier s)* ')'s ';'s;
       fork_target        : TargetType                 = fork_alt_target / fork_trans_target;
       transition_target  : TargetType                 = choice_target / junction_target / fork_target / simple_target;
 
@@ -126,14 +129,13 @@ namespace Nemerle.Statechart
       expr_ext_tran_action  : Actions                 = expr_tran_action ext_goto;
       expr_loc_tran_action  : Actions                 = expr_tran_action local_goto;
 
-
       empty_ext_act_list : Actions                    = ext_goto;
       empty_loc_act_list : Actions                    = local_goto;
       ext_trans_act_list : Actions                    = empty_ext_act_list / ext_act_list / expr_ext_tran_action;
       loc_trans_act_list : Actions                    = empty_loc_act_list / loc_act_list / expr_loc_tran_action;
       default_transition : StateNode.Transition       = ext_trans_act_list transition_target;// s end_symb?;
       ext_trans_body     : StateNode.Transition       = ext_trans_act_list transition_target;
-      internal_trans     : StateNode                  = events guard? action_list;
+      internal_trans     : StateNode.Transition       = events guard? action_list;
       deferrable_evts    : StateNode                  = events '/'s "defer"s ';'s;
       deferred_evts      : StateNode                  = "deferred"s '/'s events ';'s;
       defer              : StateNode                  = deferred_evts / deferrable_evts;
@@ -142,11 +144,13 @@ namespace Nemerle.Statechart
       loc_act_list       : Actions                    = '/'s (!local_goto action s delimiter?)+ local_goto;
 
       events             : List[TransitionEvent]      = identifier s (!('[' / '=' / '/' / ';') ','s identifier s)* s;
-      transitions        : List[StateNode]            = ext_transition*;
+      transitions        : List[StateNode.Transition] = ext_transition*;
 
-      ext_transition     : StateNode                  = events guard? ext_trans_body;
-      local_trans        : StateNode                  = events guard? loc_trans_act_list transition_target;
-      transition         : StateNode                  = relocate_tran / internal_trans / local_trans / ext_transition;
+      ext_transition_cnv : StateNode                  = ext_transition;
+      ext_transition     : StateNode.Transition       = events guard? ext_trans_body;
+      local_trans        : StateNode.Transition       = events guard? loc_trans_act_list transition_target;
+      normal_transition  : StateNode.Transition       = internal_trans / local_trans / ext_transition;
+      transition         : StateNode                  = relocate_tran / normal_transition;
 
       history_deep       : StateNode                  = "(H*)"s default_transition? (';'s)?;
       history_shallow    : StateNode                  = "(H)"s default_transition? (';'s)?;
@@ -155,7 +159,7 @@ namespace Nemerle.Statechart
       history            : StateNode                  = history_long / history_short;
 
       using_mach         : StateNode                  = "using"s identifier s fully_qualified ';'s;
-      machine_decls      : StateNode                  = machine_exit_point / ext_transition;
+      machine_decls      : StateNode                  = machine_exit_point / ext_transition_cnv;
       submachine         : StateNode                  = attributes? "submachine"s identifier s ('['s identifier s ']'s)? parent? '{'s machine_decls* '}'s;
       stateDecl          : StateNode                  = flags / name / using_mach / regions / pseudo_state / entry / exit / do_activity / defer / transition / state / submachine;// / inlined_fsm / statemachine;
       

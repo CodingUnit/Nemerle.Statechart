@@ -66,7 +66,11 @@ namespace Nemerle.Statechart
 
     CheckRelocateTran(tr : StateTransition) : void
     {
-      | StateTransition(RelocateFrom = Some(PseudoStateNode(NativeName = Some(n)))) => 
+      def relocate = tr.RelocateFrom;
+      match (relocate)
+      {
+        | [] => ()
+        | TransitionTarget.PseudoState(PseudoStateNode(NativeName = Some(n))) :: [] => 
           match (GetPseudo(tr.From, n.SplitToList('.')))
           {
             | null                                        => messager.AddError(FsmError.RelocatePseudoNotFound(tr))
@@ -79,18 +83,61 @@ namespace Nemerle.Statechart
                                                              tr.kind = TransitionKind.Local;
             | p                                           => messager.AddError(FsmError.RelocateSourceNotSupported(p))
           }
-      | _                                        => ()
+        
+        | TransitionTarget.State(st) :: [] => tr.From.DeleteTransition(tr);
+                                              st.transitions ::= tr;
+                                              tr.From = st;
+                                              tr.Source = st;
+            
+        | lst => def convert_source(t, tran)
+                 {
+                   match (t)
+                   {
+                    | TransitionTarget.State(st) => tr.From.DeleteTransition(tr);
+                                                    tran.From = st;
+                                                    tr.Source = st;
+                                                    st.transitions ::= tran;
+                                                    tran
+                    | PseudoState(st)            => tr.From.DeleteTransition(tr);
+                                                    tran.FromPseudo = Some(st);
+                                                    tran
+                    | _                          => tran
+                   }
+                 }
+                 
+                 def lst = lst.Map(x => ResolveTarget(tr.From, x, tr));
+                 def tran = lst.Map(x => convert_source(x, tr.Clone()));
+                 if (lst.All(x => x is TransitionTarget.State))
+                 {
+                   def st = tran.Map(x => x.From);
+                   def pseudo = PseudoStateNode.Join(tr.Location, 0, null, null, st, tr);
+                   st.Head.Super.AddPseudo(pseudo);
+                   def target = TransitionTarget.PseudoState(pseudo);
+                   tran.Iter(x => x.To = target);
+                 } else
+                 {
+                   messager.AddError(FsmError.JoinTransitionMustLeaveRegion(tran, null))
+                 }
+      }
     }
 
     CreatePreDecls(mach : bool = false) : void
     {
+      def resolve(to, tr)
+      {
+        match (CreateAndResolvePreDecl(to, tr, mach))
+        {
+          | null => to
+          | t    => t
+        }
+      }
+      
       foreach (tr in Transitions)
       {
-        match (CreateAndResolvePreDecl(tr.To, tr, mach))
-        {
-          | null => ()
-          | t    => tr.To = t
-        }
+        tr.To = resolve(tr.To, tr);
+        def tar = tr.RelocateFrom;
+        def tar = tar.Map(x => resolve(x, tr));
+        tr.RelocateFrom = tar;
       }
       foreach (tr in Transitions) CheckRelocateTran(tr)
     }

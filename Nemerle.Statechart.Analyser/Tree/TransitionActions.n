@@ -33,7 +33,7 @@ namespace Nemerle.Statechart
       trigger = StateEvent(evt);
       kind = tran.kind;
       node = tran;
-      RelocateFrom = tran.from.Map(x => PseudoStateNode.ExitPoint(0, st, x.FullName, Some(this)));
+      RelocateFrom = tran.from.Map(x => TransitionTarget.Named(st, x.FullName));// PseudoStateNode.ExitPoint(0, st, x.FullName, Some(this)));
       when (tran != null)
       {
         guard = tran.guard;
@@ -84,8 +84,7 @@ namespace Nemerle.Statechart
     public guard : GuardNode {get;set;default GuardNode.Empty(-1)}
     public action : list[FsmAction] {get;set;default []}
 
-    // used in exit entry points to set from another state begining of transition
-    public RelocateFrom : option[PseudoStateNode] {get;set;default None()}
+    public RelocateFrom : list[TransitionTarget] {get;set;default []}
     public To : TransitionTarget {get;set;}
     public FromPseudo : option[PseudoStateNode] {get;set; default None()}
 
@@ -227,7 +226,13 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def source = HTarget.State(From.ToHState);
+        def source = match (FromPseudo)
+        {
+          | Some(PseudoStateNode.Initial) => HTarget.State(From.ToHState)
+          | Some(p)                       => HTarget.PseudoState(p.ToHPseudo)
+          | _                             => HTarget.State(From.ToHState);
+        }
+        
         def target = To.ToHTarget;
         def kind = if (IsInitial) TransitionKind.Initial else kind;
         HTransition(Location, source, trigger, guard, action, target, kind)

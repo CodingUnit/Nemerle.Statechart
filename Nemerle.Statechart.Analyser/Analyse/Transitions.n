@@ -117,16 +117,13 @@ namespace Nemerle.Statechart
         messager.AddError(FsmError.ForkMustGoToSeparateRegion(tr))
       }
       
-      def distinct_regs(st, reg)
-      {
-        def pos = st.Map(x => x.RegionPos(reg));
-        def distinct = pos.Distinct();
-        distinct.Count() == st.Length
-      }
-      
       foreach (StateTransition(To = TransitionTarget.PseudoState(PseudoStateNode.Fork as p)) as tr in StateTransitions)
       {
         def target = p.target;
+        if (target.Length < 2) 
+        {
+          messager.AddError(FsmError.ForkMustHaveAtLeastTwoTargets(tr));
+        } else
         if (target.All(x => x is TransitionTarget.State))
         {
           def states = target.Map(x => x.ToState);
@@ -134,7 +131,7 @@ namespace Nemerle.Statechart
           if (all_regs)
           {
             def intersect_regs = states.FoldLeft([], (x, a) => if (a.IsEmpty()) x.Regions else x.Regions.Intersect(a).NToList());
-            match (intersect_regs.Find(x => distinct_regs(states, x)))
+            match (intersect_regs.Find(x => states.DistinctRegions(x)))
             {
               | None => message(tr)
               | _    => ()
@@ -150,9 +147,50 @@ namespace Nemerle.Statechart
       }
     }
     
+    CheckJoinTransitions() : void
+    {
+      def message(tr, j)
+      {
+        messager.AddError(FsmError.JoinTransitionMustLeaveRegion(tr, j))
+      }
+      
+      //StateTransition(To = TransitionTarget.PseudoState(PseudoStateNode.Join as p)) as tr in StateTransitions
+      def join = StateTransitions.Filter(x => x.To is TransitionTarget.PseudoState(PseudoStateNode.Join));
+      def group = join.GroupBy(x => ((x.To :> TransitionTarget.PseudoState).node :> PseudoStateNode.Join));
+      foreach (gr in group)
+      {
+        def join = gr.Key;
+        def source = join.joined_states;
+        if (source.Length < 2) 
+        {
+          messager.AddError(FsmError.JoinMustHaveAtLeastTwoSources(join));
+        } else
+        {
+          def all_regs = source.All(x => !x.Regions.IsEmpty());
+          if (all_regs)
+          {
+            def intersect_regs = source.FoldLeft([], (x, a) => if (a.IsEmpty()) x.Regions else x.Regions.Intersect(a).NToList());
+            match (intersect_regs.Find(x => source.DistinctRegions(x)))
+            {
+              | None => message(gr.NToList(), join)
+              | _    => ()
+            }
+          } else
+          {
+            message(gr.NToList(), join)
+          }
+          when (!gr.ElementsEqual((x, y) => x.trigger == y.trigger))
+          {
+            messager.AddError(FsmError.JoinTransitionMustHaveSameTrigger(gr.NToList(), join))
+          }
+        }
+      }
+    }
+    
     CheckTransitions() : void
     {
       CheckForkTargets();
+      CheckJoinTransitions();
       CheckLocalTrans();
     }
 

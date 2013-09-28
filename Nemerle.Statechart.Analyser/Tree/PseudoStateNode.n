@@ -15,7 +15,7 @@ namespace Nemerle.Statechart
 
 
   [Record]
-  variant PseudoStateNode : Located
+  variant PseudoStateNode : Located, IEquatable[PseudoStateNode]
   {
     | Initial 
       { 
@@ -109,10 +109,9 @@ namespace Nemerle.Statechart
     | Join 
       {
         name : string;
-        target : TransitionTarget {get;set;}
-        region : FsmState {get;set;}
+        //region : FsmState {get;set;}
 
-        joined_tran : list[FsmState] {get;set;default []}
+        joined_states : list[FsmState] {get;set;default []}
         transition : StateTransition {get;set;}
 
         //trigger : StateEvent
@@ -200,6 +199,16 @@ namespace Nemerle.Statechart
       }
     }
 
+    public Equals(b : PseudoStateNode) : bool
+    {
+      this : object == b
+    }
+    
+    public override GetHashCode() : int
+    {
+      Name.GetHashCode()
+    }
+    
     public Name : string
     {
       get
@@ -219,7 +228,8 @@ namespace Nemerle.Statechart
               {
                 if (state.history.IsOne) $"$(state)History" else $"$(state)$(type)History"
               } else "History";
-          | Join(name = n )           => $"Join$n"//$copy_name
+          | Join(name = null) as j    => $<#Join..$(j.joined_states;"_")To$(j.transition.To)#>//$copy_name
+          | Join(name = n)            => $"Join$n"//$copy_name
           | PseudoStateNode.Terminate => $"$(state)Terminate"
           | Fork(target = t)          => $<#Fork$(state)To..$(t;"_")#>
           | Initial                   => $"$(state)Initial"
@@ -236,12 +246,12 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def st = state.ToHState;
+        def st = state?.ToHState;
         match (this)
         {
           | Fork(target = t)    => HPseudoState.Fork(st, t.Map(x => x.ToState.ToHState))
           | History as p        => HPseudoState.History(st, p.default.Map(x => x.ToHTransition), p.type)
-          | Join as p           => HPseudoState.Join(st, p.name, p.joined_tran.Map(x => x.ToHState), p.target.ToHTarget)
+          | Join as p           => HPseudoState.Join(st, p.name, p.joined_states.Map(x => x.ToHState), p.transition.ToHTransition)
           | Junction as p       => HPseudoState.Junction(st, p.name, p.tree.ToHJunctionNode, p.type, null)
           | Terminate           => HPseudoState.Terminate(st)
           | _                   => null
