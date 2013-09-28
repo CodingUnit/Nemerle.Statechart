@@ -51,6 +51,27 @@ namespace Nemerle.Statechart
       }
     }
     
+    public join_transitions : list[HPseudoState.Join]
+    {
+      get
+      {
+        states.SelectMany(_.join_transitions).Distinct().NToList()
+      }
+    }
+    
+    [Memoized]
+    public completion_originated : list[HState]
+    {
+      get
+      {
+        match (join_transitions)
+        {
+          | []  => simple_states.Filter(x => x.transitions.Exists(_.IsCompletion))
+          | lst => lst.FoldLeft([], (x, a) => if (x.transition.Trigger.IsCompletion && x.states.AllContainsIn(simple_states)) x.states + a else a)
+        }
+      }
+    }
+    
     [Memoized]
     public simple_states : list[HState]
     {
