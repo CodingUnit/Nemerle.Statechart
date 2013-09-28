@@ -109,23 +109,16 @@ namespace Nemerle.Statechart
     | Join 
       {
         name : string;
-        //region : FsmState {get;set;}
-
         joined_states : list[FsmState] {get;set;default []}
         transition : StateTransition {get;set;}
 
-        //trigger : StateEvent
-        //{
-        //  get
-        //  {
-        //    match (joined_tran.NToList())
-        //    {
-        //      | []     => null
-        //      | t :: _ => t.Trigger
-        //    }
-        //  }
-        //}
-
+        this(st : FsmState, node : PseudoStateModelNode.Join)
+        {
+          base(0, st);
+          name = node.name;
+          transition = StateTransition(this, null, TransitionKind.External);
+          transition.To = TransitionTarget.Create(st, node.target);
+        }
       }
     | EntryPoint 
       { 
@@ -166,7 +159,7 @@ namespace Nemerle.Statechart
         | ExitPoint as e                             => ExitPoint(st, e)
         | Terminate                                  => Terminate(0, st)
         | Fork(tar)                                  => Fork(0, st, tar.Map(x => TransitionTarget.Create(st, x)))
-        | _                                          => throw NotImplementedException("this TransitionTarget not implemented")
+        | Join as e                                  => Join(st, e)
       }
       npseudo.Location = pseudo.Location;
       npseudo
@@ -190,6 +183,7 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
+          | Join(name = null)   => None()
           | Join(name = n)
           | Junction(name = n, IsUnnamed = false) 
           | EntryPoint(name = n)
@@ -233,7 +227,7 @@ namespace Nemerle.Statechart
           | PseudoStateNode.Terminate => $"$(state)Terminate"
           | Fork(target = t)          => $<#Fork$(state)To..$(t;"_")#>
           | Initial                   => $"$(state)Initial"
-          | Junction(name = n)        => $"$state$n"
+          | Junction(name = n)        => $"Junction$(n)At$state"
           | EntryPoint(name = n)      => $"EntryPoint$n"
           | ExitPoint(name = n)       => $"ExitPoint$n"
         }
@@ -251,7 +245,7 @@ namespace Nemerle.Statechart
         {
           | Fork(target = t)    => HPseudoState.Fork(st, t.Map(x => x.ToState.ToHState))
           | History as p        => HPseudoState.History(st, p.default.Map(x => x.ToHTransition), p.type)
-          | Join as p           => HPseudoState.Join(st, p.name, p.joined_states.Map(x => x.ToHState), p.transition.ToHTransition)
+          | Join as p           => HPseudoState.Join(st, p.name, p.joined_states.Map(x => x.ToHState))
           | Junction as p       => HPseudoState.Junction(st, p.name, p.tree.ToHJunctionNode, p.type, null)
           | Terminate           => HPseudoState.Terminate(st)
           | _                   => null

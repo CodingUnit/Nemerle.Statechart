@@ -70,7 +70,6 @@ namespace Nemerle.Statechart
       ConvertEntryExitPoints();
       ConvertInitialTransitions();
       CreateTransitionsFromDeferred();
-      ConvertJoinTransitions();
     }
 
     CheckAndCreateCompletionTransitions() : void
@@ -344,7 +343,14 @@ namespace Nemerle.Statechart
         def tr = gr.First();
         def trigger = tr.trigger;
         def join = gr.Key;
-        def tran = StateTransition(join, null, TransitionKind.External);
+        
+        when (!gr.ElementsEqual((x, y) => x.trigger == y.trigger))
+        {
+          messager.AddError(FsmError.JoinTransitionMustHaveSameTrigger(gr.NToList(), join))
+        }
+        
+        def tran = join.transition;
+        join.joined_states = gr.Map(_.From);
         tran.trigger = trigger;
         tran.Location = join.Location;
         tran.To = join.transition.To;

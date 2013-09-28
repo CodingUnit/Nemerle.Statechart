@@ -30,8 +30,9 @@ namespace Nemerle.Statechart
     | ForkMustHaveAtLeastTwoTargets { fork : StateTransition; }
     | UnknownNode {tran : StateTransition; name : string; }
     | JoinTransitionMustHaveSameTrigger {tran : list[StateTransition]; join : PseudoStateNode.Join; }
-    | JoinTransitionMustLeaveRegion { tran : list[StateTransition]; join : PseudoStateNode.Join; }
-    | JoinMustHaveAtLeastTwoSources { join : PseudoStateNode.Join; }
+    | JoinTransitionMustLeaveRegion { join : PseudoStateNode.Join; }
+    | JoinMustHaveAtLeastTwoSources { tran : StateTransition; }
+    | JoinMustHaveSourcesFromStates { tar : list[TransitionTarget]; tr : StateTransition; }
     | DefaultTransitionMustGoToState {tran : StateTransition;history : PseudoStateNode;}
     //| JunctionElseMustBeLast {junction : PseudoStateNode;}
     //| JunctionElseMustAfterAnotherGuard {junction : PseudoStateNode;}
@@ -75,9 +76,9 @@ namespace Nemerle.Statechart
           | CompositeStateWithIncomingTransitionsMustHaveInitial(tr)
           | ForkMustHaveAtLeastTwoTargets(tr)
           | JoinMustHaveAtLeastTwoSources(tr)
-          | JoinTransitionMustLeaveRegion(tr :: _, null)
-          | JoinTransitionMustLeaveRegion(_, tr)
+          | JoinTransitionMustLeaveRegion(tr)
           | JoinTransitionMustHaveSameTrigger(_, tr)
+          | JoinMustHaveSourcesFromStates(_, tr)
           | LocalTransitionTargetMustBeWithinOrSuper(tr)             => tr.Location
           | _                                                        => Location.Default
         }
@@ -106,9 +107,8 @@ namespace Nemerle.Statechart
           | UnknownTerminateTransition(tran)                         => $<#Unknown terminate transition target of "$tran", there is several terminate pseudostates, specify full name#>                  
           | ForkMustGoToSeparateRegion(f)                            => $<#Transition originated from fork pseudostate "$f" must target state in different concurrent sub regions of same region#>
           | UnknownNode(tran, n)                                     => $<#Unknown node "$n" used in target of "$tran" transition #>
-          | JoinTransitionMustHaveSameTrigger(j, tran)               => $<#Transitions "$tran" targeting join "$j" must have same event trigger#>
-          | JoinTransitionMustLeaveRegion(tran, null)                => $<#Transitions "$tran" targeting join must leave states in distinct sub regions of same orthogonal region#>
-          | JoinTransitionMustLeaveRegion(tran, j)                   => $<#Transitions "$tran" targeting join "$j" must leave states in distinct sub regions of same orthogonal region#>
+          | JoinTransitionMustHaveSameTrigger(tran, _)               => $<#Transitions targeting join $tran must have same event trigger#>
+          | JoinTransitionMustLeaveRegion(j)                         => $<#Transitions targeting join "$j" must leave states in distinct sub regions of same orthogonal region#>
           //| TransitionCrossOrthogonalBoundaryOfSameRegion(tran)      => $<#Transition "$tran" is cross orthogonal boundary of same region, this is not allowed#>
           | DefaultTransitionMustGoToState(tran, hist)               => $<#Default history transition "$tran" of history "$hist" must go to state#>
           | RegionMustContainSubRegions(reg)                         => $<#Region "$reg" must contain sub region states#>
@@ -139,7 +139,8 @@ namespace Nemerle.Statechart
           | CompositeStateWithIncomingTransitionsMustHaveInitial(st) => $<#Composite state "$st" have incoming transitions and must have initial pseudostate targeting default state#>
           | LocalTransitionCannotTargetSelf(tr)                      => $<#Local transition "$tr" cannot target source vertex #>
           | ForkMustHaveAtLeastTwoTargets(tr)                        => $<#Transitions originated from fork pseudostate "$tr" must target at least two states in different concurrent sub regions#>
-          | JoinMustHaveAtLeastTwoSources(p)                         => $<#Transitions target join "$p" pseudostate must have at least two source states#>
+          | JoinMustHaveAtLeastTwoSources(p)                         => $<#Transitions originated from join pseudostate "$p" must have at least two source states#>
+          | JoinMustHaveSourcesFromStates(tar, _)                    => $<#Join must have source from states not other sources: $tar#>
       //| ThereMustBeOnlyOneInitial(s, t)                             => $<#In state "$s" may be only one unguarded initial transition, these transitions erroneus: "..$t"#>
       //| Sequence(e)                                            => $<#..$(e;"\n";GetError)#>
       //| n                                                        => throw InvalidOperationException($"unnkown error $n")

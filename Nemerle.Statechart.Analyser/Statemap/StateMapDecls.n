@@ -89,34 +89,15 @@ namespace Nemerle.Statechart
                                               tr.From = st;
                                               tr.Source = st;
             
-        | lst => def convert_source(t, tran)
-                 {
-                   match (t)
-                   {
-                    | TransitionTarget.State(st) => tr.From.DeleteTransition(tr);
-                                                    tran.From = st;
-                                                    tr.Source = st;
-                                                    st.transitions ::= tran;
-                                                    tran
-                    | PseudoState(st)            => tr.From.DeleteTransition(tr);
-                                                    tran.FromPseudo = Some(st);
-                                                    tran
-                    | _                          => tran
-                   }
-                 }
-                 
-                 def lst = lst.Map(x => ResolveTarget(tr.From, x, tr));
-                 def tran = lst.Map(x => convert_source(x, tr.Clone()));
+        | lst => def lst = lst.Map(x => ResolveTarget(tr.From, x, tr));
                  if (lst.All(x => x is TransitionTarget.State))
                  {
-                   def st = tran.Map(x => x.From);
-                   def pseudo = PseudoStateNode.Join(tr.Location, 0, null, null, st, tr);
-                   st.Head.Super.AddPseudo(pseudo);
-                   def target = TransitionTarget.PseudoState(pseudo);
-                   tran.Iter(x => x.To = target);
+                   def st = lst.Map(x => x.ToState);
+                   def pseudo = PseudoStateNode.Join(tr.Location, 0, tr.From, null, st, tr);
+                   tr.FromPseudo = Some(pseudo);
                  } else
                  {
-                   messager.AddError(FsmError.JoinTransitionMustLeaveRegion(tran, null))
+                   messager.AddError(FsmError.JoinMustHaveSourcesFromStates(lst, tr))
                  }
       }
     }

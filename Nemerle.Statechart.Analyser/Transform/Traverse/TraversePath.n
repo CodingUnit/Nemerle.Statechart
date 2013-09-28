@@ -26,14 +26,12 @@ namespace Nemerle.Statechart
       this.tree_trav = trav.tree_trav;
       tran_path = trav.tran_path;
       Source = source;
-      //TargetState = target;
       tran_target = tar;
     }
     
     public this(source : ActiveStateConfig, tran_path : TransitionPath)
     {
       Source = source;
-      //TargetState = target;
       this.tran_path = tran_path;
       tran_target = tran_path.transition.Target;
       tree_trav = TraverseDecisionTree(transition, path, this);
@@ -67,7 +65,7 @@ namespace Nemerle.Statechart
       {
         match (tran_source)
         {
-          | State                  
+          | State
           | HTarget.PseudoState(HPseudoState.Join) => Source.states
           | HTarget.PseudoState(p)                 => p.state.active_config
           | _                                      => []
@@ -104,7 +102,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (TargetStates != null) TargetStates.SelectMany(x => x.regions).NToList() else []
+        if (TargetStates != null) TargetStates.SelectMany(_.regions).NToList() else []
       }
     }
     
@@ -149,6 +147,7 @@ namespace Nemerle.Statechart
         {
           | HTarget.PseudoState(HPseudoState.Fork)
           | State                                  => Target.states
+          | HTarget.PseudoState(null)              => []
           | HTarget.PseudoState(p)                 => p.state.active_config
           | _                                      => []
         }
@@ -160,7 +159,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (MainSource != null) MainSource.SelectMany(x => x.active_config).Distinct().NToList() else []
+        MainSource.ActiveConfig()
       }
     }
     
@@ -180,26 +179,27 @@ namespace Nemerle.Statechart
     }
     
     [Memoized]
-    public MainTarget : HState
+    public MainTarget : list[HState]
     {
       get
       {
         match (tran_target)
         {
-          | HTarget.PseudoState(null) => null
-          | HTarget.PseudoState(p)    => p.state
-          | State(st)                 => st
-          | _                         => null
+          | HTarget.PseudoState(null) => []
+          | PseudoState(HPseudoState.Fork(st)) => st
+          | State(st)                 => st :: []
+          | PseudoState(p)            => p.state :: []
+          | _                         => []
         }
       }
     }
     
     [Memoized]
-    MainTargetConfig : list[HState]
+    public MainTargetConfig : list[HState]
     {
       get
       {
-        if (MainTarget != null) MainTarget.active_config else []
+        MainTarget.ActiveConfig()
       }
     }
     
