@@ -181,8 +181,9 @@ namespace Nemerle.Statechart
                                              $(RunEvent(StateEvent.Completion))
                           ]>;
         def last = <[case: | _ => null ]>;
-        def cases = evt :: last :: [];
-        if (have_completion) completion :: cases else cases;
+        def cases = last :: [];
+        def cases = if (events_wo_completion.IsEmpty()) cases else evt :: cases;
+        if (have_completion) completion :: cases else cases
       }
     }
     
@@ -219,17 +220,19 @@ namespace Nemerle.Statechart
       }
       
       def evt = events.Exclude(_.IsCompletion);
-      def lst = get_events(evt);
-      gen.Define(lst);
       
-      def decl_events = evt.Map(EventDecl);
-      def ty = gen.DefineNested(<[ decl:
+      unless (evt.IsEmpty())
+      {
+        def lst = get_events(evt);
+        gen.Define(lst);
+        def decl_events = evt.Map(EventDecl);
+        def ty = gen.DefineNested(<[ decl:
             public variant Event : HsmEvent
             {
             }]>);
-      //..$decl_events
-      decl_events.Iter(x => gen.DefineNested(ty, x).Compile());
-      ty.Compile();
+        decl_events.Iter(x => gen.DefineNested(ty, x).Compile());
+        ty.Compile();
+      }
     }
     
     [Memoized]

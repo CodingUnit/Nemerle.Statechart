@@ -71,7 +71,7 @@ namespace Nemerle.Statechart
       TargetType.PseudoState(pos, PseudoStateModelNode.ExitPoint(pos, id.name, None()))
     }
 
-    fork_trans_target(first : NameIdentifier, second : NameIdentifier, lst : List[NameIdentifier], _ : NToken) : TargetType
+    fork_trans_target(_ : NToken, first : NameIdentifier, second : NameIdentifier, lst : List[NameIdentifier], _ : NToken, _ : NToken) : TargetType
     {
       def targets = first :: second :: lst.NToList();
       def targets = targets.Map(get_state_qualified_target);
@@ -92,23 +92,28 @@ namespace Nemerle.Statechart
       }
     }
     
-    join_alt_tran(parent : NameIdentifier, tok : NToken, id : NToken, lst : List[NToken], _ : NToken, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
+    join_alt_tran(parent : NameIdentifier, _tok : NToken, id : NToken, lst : List[NToken], _ : NToken, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
     {
       def lst = id :: lst.NToList();
       def lst = lst.Map(x => parent.Add(GetText(x)));
-      StateNode.Transition(tok.StartPos, lst, tran.evt, tran.guard, tran.action, tran.to, TransitionKind.External)
+      def pos = parent.pos;
+      def tar = TargetType.PseudoState(pos, PseudoStateModelNode.Join(pos, null, lst, tran));
+      StateNode.Transition(pos, tar, tran.evt, tran.guard, tran.action, tran.to, TransitionKind.External)
     }
     
     join_relocate_tran(tok : NToken, id : NameIdentifier, lst : List[NameIdentifier], _ : NToken, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
     {
       def lst = id :: lst.NToList();
-      StateNode.Transition(tok.StartPos, lst, tran.evt, tran.guard, tran.action, tran.to, TransitionKind.External)
+      def pos = tok.StartPos;
+      def tar = TargetType.PseudoState(pos, PseudoStateModelNode.Join(pos, null, lst, tran));
+      StateNode.Transition(pos, tar, tran.evt, tran.guard, tran.action, tran.to, TransitionKind.External)
     }
     
     default_transition(act : Actions, target : TargetType) : StateNode.Transition
     {
       def act = if (act.Empty) None() else Some(act);
-      StateNode.Transition(target.pos, [], [], GuardNode.Empty(-1), act, target, TransitionKind.Local)
+      def pos = target.pos;
+      StateNode.Transition(pos, TargetType.NoTarget(pos), [], GuardNode.Empty(-1), act, target, TransitionKind.Local)
     }
 
     events(id : NToken, evt : List[NToken * NToken]) : List[TransitionEvent]
@@ -122,14 +127,14 @@ namespace Nemerle.Statechart
     {
       def pos = act.pos;
       def act = if (act.Empty) None() else Some(act);
-      StateNode.Transition(pos, [], [], GuardNode.Empty(), act, to, TransitionKind.External)
+      StateNode.Transition(pos, TargetType.NoTarget(pos), [], GuardNode.Empty(), act, to, TransitionKind.External)
     }
 
     ext_transition(evt : List[TransitionEvent], guard : option[GuardNode], body : StateNode.Transition) : StateNode.Transition
     {
       def pos = evt.First().pos;
       def guard = guard.WithDefault(GuardNode.Empty(-1));
-      Transition(pos, [], evt.NToList(), guard, body.action, body.to, TransitionKind.External)
+      Transition(pos, TargetType.NoTarget(pos), evt.NToList(), guard, body.action, body.to, TransitionKind.External)
     }
 
     local_trans(evt : List[TransitionEvent], guard : option[GuardNode], act : Actions, to : TargetType) : StateNode.Transition
@@ -137,14 +142,14 @@ namespace Nemerle.Statechart
       def pos = evt.First().pos;
       def act = if (act.Empty) None() else Some(act);
       def guard = guard.WithDefault(GuardNode.Empty(-1));
-      Transition(pos, [], evt.NToList(), guard, act, to, TransitionKind.Local)
+      Transition(pos, TargetType.NoTarget(pos), evt.NToList(), guard, act, to, TransitionKind.Local)
     }
 
     internal_trans(evt : List[TransitionEvent], guard : option[GuardNode], acts : Actions) : StateNode.Transition
     {
       def pos = if (evt.Count() != 0) evt.First().pos else -1;
       def guard = guard.WithDefault(GuardNode.Empty(-1));
-      Transition(pos, [], evt.NToList(), guard, Some(acts), TargetType.NoTarget(pos), TransitionKind.Internal)
+      Transition(pos, TargetType.NoTarget(pos), evt.NToList(), guard, Some(acts), TargetType.NoTarget(pos), TransitionKind.Internal)
     }
 
     deferrable_evts(lst : List[TransitionEvent], tok : NToken, _ : NToken, _ : NToken) : StateNode.Defer
@@ -159,12 +164,16 @@ namespace Nemerle.Statechart
 
     relocate_pseudo_tran(n : NameIdentifier, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
     {
-      StateNode.Transition(n.pos, [n], [], GuardNode.Empty(), tran.action, tran.to, TransitionKind.External)
+      def pos = n.pos;
+      def tar = TargetType.PseudoState(pos, PseudoStateModelNode.EntryPoint(pos, n.FullName, null));
+      StateNode.Transition(pos, tar, [], GuardNode.Empty(), tran.action, tran.to, TransitionKind.External)
     }
     
     relocate_st_tran(n : NameIdentifier, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
     {
-      StateNode.Transition(n.pos, [n], tran.evt, tran.guard, tran.action, tran.to, tran.kind)
+      def pos = n.pos;
+      def tar = TargetType.Named(pos, n.FullName);
+      StateNode.Transition(n.pos, tar, tran.evt, tran.guard, tran.action, tran.to, tran.kind)
     }
     
     transition(tr : StateNode.Transition) : StateNode
