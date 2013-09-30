@@ -9,6 +9,7 @@ using System.Linq;
 using Nemerle.Compiler.Parsetree;
 using System.Collections.Concurrent;
 using System.Threading;
+using Nemerle.Compiler;
 
 namespace Nemerle.Statechart
 {
@@ -56,18 +57,32 @@ namespace Nemerle.Statechart
       }
     }
     
+    run_event_with_parms(e : StateEvent) : list[PExpr]
+    {
+      def parms = e.ParmNames;
+      parms.Map(x => <[ $(x : usesite) ]>);
+    }
+    
+    RunEventBody(e : StateEvent) : MatchCase
+    {
+      def parms = run_event_with_parms(e);
+      <[case: | Event.$(e.TargetName : usesite)(..$parms) => $(RunEvent(e)) ]>
+    }
+    
     [Memoized]
     RunEventInState : list[MatchCase]
     {
       get
       {
-        events_wo_completion.Map(x => <[case: | Event.$(x.TargetName : usesite) => $(RunEvent(x)) ]>);
+        events_wo_completion.Map(RunEventBody);
       }
     }
     
     RunEvent(evt : StateEvent) : PExpr
     {
-      <[ cur_state.$(evt.Name : usesite)(this) ]>
+      def parms = evt.ParmNames.Map(x => <[ $(x : usesite) ]>);
+      def parms = <[ this ]> :: parms;
+      <[ cur_state.$(evt.Name : usesite)(..$parms) ]>
     }
     
     [Memoized]
@@ -79,12 +94,37 @@ namespace Nemerle.Statechart
       }
     }
     
-    EventDecl(n : StateEvent) : ClassMember.TypeDeclaration
+    public static event_parms_names(this n : StateEvent) : list[PExpr]
+    {
+      n.parms.Map((x, _) => <[ $(x : usesite)]>)
+    }
+    
+    public static event_parms(this n : StateEvent) : list[string * PExpr]
+    {
+      n.parms.Map((x, y) => (x, <[ $(y : usesite)]>))
+    }
+    
+    EventDecl(n : StateEvent, ty : TypeBuilder) : void
     {
       def name = n.TargetName;
       def full = $"$(gen.ty.FullName).$name";
       def hash = full.GetHashCode();
-      <[ variant_option: | $(name : usesite)
+      def parms = n.event_parms();
+      def inst = <[decl:
+                  public static New : HsmEvent
+                  {
+                    get
+                    {
+                      when (instance == null) 
+                      {
+                        instance = $(name : usesite)()
+                      }
+                      instance
+                    }
+                  } ]>;
+      def inst2 = <[decl: mutable static instance : HsmEvent; ]>;
+      
+      def decl = <[ variant_option: | $(name : usesite)
       {
         
         public override ToString() : string
@@ -113,22 +153,21 @@ namespace Nemerle.Statechart
           $hash
         }
         
-        mutable static instance : HsmEvent;
         
-        public static New : HsmEvent
-        {
-          get
-          {
-            when (instance == null) 
-            {
-              instance = $(name : usesite)()
-            }
-            instance
-          }
-        }
         
       } 
-      ]>
+      ]>;
+      def ty = ty.DefineNestedTypeWithSource(decl);
+      if (parms.IsEmpty())
+      {
+        ty.Define(inst);
+        ty.Define(inst2);
+      } else
+      foreach ((n, t) in parms)
+      {
+        _ = ty.DefineWithSource(<[decl: public $(n : usesite) : $t; ]>);
+      }
+      ty.Compile()
     }
     
     public static SendEventCode(evt : string) : PExpr
@@ -157,9 +196,12 @@ namespace Nemerle.Statechart
     
     public static CreateExpr(this evt : StateEvent) : PExpr
     {
-      if (evt.IsCompletion) <[ CompletionEvent.New ]> else
-        <[ Event.$(evt.TargetName : usesite).New ]>
-        
+      match (evt.ParmNames)
+      {
+        | []    => if (evt.IsCompletion) <[ CompletionEvent.New ]> else <[ Event.$(evt.TargetName : usesite).New ]>
+        | parms => def parms = parms.Map(x => <[ $(x : usesite) ]>);
+                   <[ Event.$(evt.TargetName : usesite)(..$parms) ]>
+      }
     }
     
     dispatch_body : list[MatchCase]
@@ -212,11 +254,43 @@ namespace Nemerle.Statechart
       }      
     }
     
+    public static EventDeclInState(this gen : StaticGenerator, e : StateEvent, body : PExpr) : ClassMember
+    {
+      def fsm = <[parameter: fsm : $(gen.ChartName : usesite)]>;
+      def parms = fsm :: e.event_parameter_decls();
+      <[decl: public override $(e.Name : usesite)(..$parms) : State { $body }]>
+    }
+    
+    public static EventDeclInTopState(this gen : StaticGenerator, e : StateEvent) : ClassMember
+    {
+      def fsm = <[parameter: _ : $(gen.ChartName : usesite)]>;
+      def parms = event_parms(e);
+      def parms = parms.Map((_, t) => <[parameter: _ : $t]>);
+      def parms = fsm :: parms;
+       <[ decl: public virtual $(e.Name : usesite)(..$parms) : State { null } ]>
+    }
+    
+    public static event_parameter_decls(this evt : StateEvent) : list[PParameter]
+    {
+      if (evt != null)
+      {
+        def parms = event_parms(evt);
+        parms.Map((n, t) => <[parameter: $(n : dyn) : $t ]>)
+      } else []
+    }
+    
+    
+    PostEventByNameBody(evt : StateEvent) : ClassMember
+    {
+      def parms = evt.event_parameter_decls();
+      <[decl: public $(evt.Name : usesite)(..$parms) : void { PostEvent($(evt.CreateExpr())) } ]>
+    }
+    
     GenEvents() : void
     {
       def get_events(evt)
       {
-        evt.Map(x => <[decl: public $(x.Name : usesite)() : void { PostEvent($(x.CreateExpr())) } ]>);
+        evt.Map(PostEventByNameBody);
       }
       
       def evt = events.Exclude(_.IsCompletion);
@@ -225,12 +299,14 @@ namespace Nemerle.Statechart
       {
         def lst = get_events(evt);
         gen.Define(lst);
-        def decl_events = evt.Map(EventDecl);
+        
         def ty = gen.DefineNested(<[ decl:
             public variant Event : HsmEvent
             {
             }]>);
-        decl_events.Iter(x => gen.DefineNested(ty, x).Compile());
+        //def decl_events = 
+        evt.Iter(EventDecl(_, ty));
+        //decl_events.Iter(x => gen.DefineNested(ty, x).Compile());
         ty.Compile();
       }
     }
@@ -240,7 +316,8 @@ namespace Nemerle.Statechart
     {
       get
       {
-        events.FoldRight([<[case: | _ => throw InvalidOperationException("Unknown event") ]>], 
+        def events_wo_parms = events.Filter(x => x.parms.IsEmpty());
+        events_wo_parms.FoldRight([<[case: | _ => throw InvalidOperationException("Unknown event") ]>], 
                          (x, a) => <[case: | $(x.Name : string) => $(x.CreateExpr()); ]> :: a);
       }
     }

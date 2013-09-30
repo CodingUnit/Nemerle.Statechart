@@ -19,6 +19,26 @@ namespace Nemerle.Statechart
   partial class FsmAnalyser : INotifyPropertyChanged
   {
 
+    internal GetEventParms(evt : TransitionEvent) : list[string * string]
+    {
+      def parms = evt.parms;
+      
+      match (EventDecls.Find(x => x.name == evt.name))
+      {
+        | Some(e) => def types = e.parms_type;
+                     if (types.Length != parms.Length)
+                     {
+                       messager.AddError(FsmError.EventDeclarationNumberOfParamsNotEqual(e, evt));
+                       []
+                     } else
+                     {
+                       parms.Zip(types)
+                     }
+       | _ when (parms.IsEmpty()) => []
+       | _                        => messager.AddError(FsmError.EventDeclarationNotFound(evt));[]
+      }
+    }
+    
     CheckActivities() : void 
     {
       def do_act = States.SelectMany(x => x.do_activity.Select(y => (x, y)));
