@@ -16,34 +16,30 @@ using System.Threading;
   <#
   flags testing;
 
-  //flags debug;
+  // flags debug;
 
+  event a(int);
+  
   name "events with parameters";
   
    state A
    {
-     a [g1] / action() => {
-                            g2   => B;
-                            else => C;
-                          }
+     a(b) [b >= 1] / Console.WriteLine($"b=$b") => B;
    }
    
    state B
    {
-     a => A;
+     a(c) [c == 0] => C;
+     a    [else]   => A;
    }
    
    state C
    {
      a => A;
    }
-   
   #>)]
   public class example
   {
-    public g2 : bool {get;set;}
-    public g1 : bool {get;set;}
-    
   }
 
 
@@ -56,12 +52,12 @@ module Test
     def tester = fsm.GetTester();
     tester.ConsoleTestInit();
     tester.Initiate("A", "EntryA");
-    tester.Test("a", null);
-    fsm.g1 = true;
-    tester.Test("a", ["A"], ["action"], ["C"]);
-    tester.Test("a", ["C"], ["A"]);
-    fsm.g2 = true;
-    tester.Test("a", ["A"], ["action"], ["B"]);
+    tester.Test(example.Event.A(0), null);
+    tester.Test(example.Event.A(10), ["A"], ["B"]);
+    tester.Test(example.Event.A(0), ["B"], ["C"]);
+    tester.Test(example.Event.A(0), ["C"], ["A"]);
+    tester.Test(example.Event.A(3), ["A"], ["B"]);
+    tester.Test(example.Event.A(1), ["B"], ["A"]);
     fsm.Terminate();
   }
 }
@@ -76,7 +72,12 @@ Processing a 'a'
 Ok
 Processing a 'a' 
 ExitA
-action
+b=10
+EntryB
+[B]
+Ok
+Processing a 'a' 
+ExitB
 EntryC
 [C]
 Ok
@@ -87,9 +88,14 @@ EntryA
 Ok
 Processing a 'a' 
 ExitA
-action
+b=3
 EntryB
 [B]
+Ok
+Processing a 'a' 
+ExitB
+EntryA
+[A]
 Ok
 END-OUTPUT
 */
