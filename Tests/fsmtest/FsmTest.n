@@ -15,9 +15,19 @@ namespace Nemerle.Statechart
 
   public partial class FsmTester
   {
+    [Accessor]
     fsm : ITestStateMachine;
+    
     queue : List[string] = List();
 
+    public queue_result : IEnumerable[string]
+    {
+      get
+      {
+        queue
+      }
+    }
+    
     public event OkTest : Action;
     public event Failed : Action;
     public event Print  : Action[string];
@@ -38,6 +48,7 @@ namespace Nemerle.Statechart
     // пристыковывая ко всем действиям используя внутренний установщик в каждом автомате
     public ConsoleTestInit(thrw : bool = false) : void
     {
+      prepare();
       Throw = thrw;
       Print  += x => Console.WriteLine($"\n$x");
       Send   += x => Console.WriteLine($"Processing a '$x' ");
@@ -123,7 +134,7 @@ namespace Nemerle.Statechart
       ActionsImpl(act).ToArray()
     }
 
-    prepare() : void
+    public prepare() : void
     {
       queue.Clear();
       wait_state = null;
@@ -155,7 +166,7 @@ namespace Nemerle.Statechart
       CheckResult(state, acts)
     }
 
-    SendEvent(evt : HsmEvent) : void
+    public SendEvent(evt : HsmEvent) : void
     {
       Send?.Invoke(evt.Name);
       _ = wait_signal.Reset();
@@ -163,19 +174,33 @@ namespace Nemerle.Statechart
       _ = wait_signal.WaitOne(max_respond)
     }
 
-    //SendEventWait(evt : string) : void
-    //{
-    //  SendEvent(evt);
-    //  _ = wait_signal.Reset();
-    //  _ = wait_signal.WaitOne()
-    //}
-    
-    SendEvent(evt : string) : void
+    public SendEvent(evt : string) : void
     {
       def evt = evt.SpacesToUnderline();
       Send?.Invoke(evt);
       _ = wait_signal.Reset();
       fsm.PostEvent(evt);
+      _ = wait_signal.WaitOne(max_respond)
+    }
+
+    SendEventImpl(evt : string, params pars : array[object]) : void
+    {
+      match (pars.NToList())
+      {
+        | []        => fsm.PostEvent(evt)
+        | [a]       => fsm.PostEvent(evt, a);
+        | [a, b]    => fsm.PostEvent(evt, a, b);
+        | [a, b, c] => fsm.PostEvent(evt, a, b, c);
+        | _         => fsm.PostEvent(evt, pars)
+      }
+    }
+    
+    public SendEvent(evt : string, params pars : array[object]) : void
+    {
+      def evt = evt.SpacesToUnderline();
+      Send?.Invoke(evt);
+      _ = wait_signal.Reset();
+      SendEventImpl(evt, pars);
       _ = wait_signal.WaitOne(max_respond)
     }
     
@@ -332,7 +357,10 @@ namespace Nemerle.Statechart
       InitiateName(null, res, acts.ToArray())
     }
 
-
+    public Initiate(res : string, max_interval : int, params acts : array[string]) : void
+    {
+      if (TestWait(_ => fsm.Initiate(), res, max_interval, acts)) OnOkTest() else OnFailed()
+    }
   }
 
 }

@@ -16,260 +16,66 @@ namespace Nemerle.Statechart
   /// <summary>
   /// Description of GenEvent.
   /// </summary>
-  
+
   [Record]
   class GenEvent
   {
-    gen : StaticGenerator;
-    events : list[StateEvent];
-   
+    public evt : StateEvent;
+    public gen : StaticGenerator;
+
     [Memoized]
-    have_completion : bool
+    public run_event_with_parms : list[PExpr]
     {
       get
       {
-        events.Exists(x => x.IsCompletion)
+        def parms = evt.ParmNames;
+        parms.Map(x => <[ $(x : usesite) ]>);
       }
     }
-    
-    [Memoized]
-    events_wo_completion : list[StateEvent]
+
+    TargetName : string
     {
       get
       {
-        events.Exclude(_.IsCompletion)
+        evt.TargetName
       }
     }
-    
-    NeedEvtContextName : bool
+
+    public static fsm_event_declaration(this n : StateEvent) : PExpr
     {
-      get
-      {
-        gen.EventCtx.NeedName
-      }
-    }
-    
-    NeedEvtContext : bool
-    {
-      get
-      {
-        gen.EventCtx.NeedContext
-      }
-    }
-    
-    run_event_with_parms(e : StateEvent) : list[PExpr]
-    {
-      def parms = e.ParmNames;
-      parms.Map(x => <[ $(x : usesite) ]>);
-    }
-    
-    RunEventBody(e : StateEvent) : MatchCase
-    {
-      def parms = run_event_with_parms(e);
-      <[case: | Event.$(e.TargetName : usesite)(..$parms) => $(RunEvent(e)) ]>
-    }
-    
-    [Memoized]
-    RunEventInState : list[MatchCase]
-    {
-      get
-      {
-        events_wo_completion.Map(RunEventBody);
-      }
-    }
-    
-    RunEvent(evt : StateEvent) : PExpr
-    {
-      def parms = evt.ParmNames.Map(x => <[ $(x : usesite) ]>);
-      def parms = <[ this ]> :: parms;
-      <[ cur_state.$(evt.Name : usesite)(..$parms) ]>
-    }
-    
-    [Memoized]
-    EventCtxBody : PExpr
-    {
-      get
-      {
-        if (NeedEvtContext) <[ Evt.evt = evt ]> else <[]>
-      }
+      def parms = n.ParmTypes;
+      def parms = parms.Map(x => <[ $x ]>);
+      <[ EventInfo($(n.Name), [..$(parms)]) ]>
     }
     
     public static event_parms_names(this n : StateEvent) : list[PExpr]
     {
       n.parms.Map((x, _) => <[ $(x : usesite)]>)
     }
-    
+
     public static event_parms(this n : StateEvent) : list[string * PExpr]
     {
       n.parms.Map((x, y) => (x, <[ $(y : usesite)]>))
     }
-    
-    EventDecl(n : StateEvent, ty : TypeBuilder) : void
-    {
-      def name = n.TargetName;
-      def full = $"$(gen.ty.FullName).$name";
-      def hash = full.GetHashCode();
-      def parms = n.event_parms();
-      def inst = <[decl:
-                  public static New : HsmEvent
-                  {
-                    get
-                    {
-                      when (instance == null) 
-                      {
-                        instance = $(name : usesite)()
-                      }
-                      instance
-                    }
-                  } ]>;
-      def inst2 = <[decl: mutable static instance : HsmEvent; ]>;
-      
-      def decl = <[ variant_option: | $(name : usesite)
-      {
-        
-        public override ToString() : string
-        {
-          Name
-        }
-        
-        public override FullName : string
-        {
-          get
-          {
-            $full
-          }
-        }
-        
-        public override Name : string 
-        {
-          get
-          {
-            $(n.Name)
-          }
-        }
-        
-        public override GetHashCode() : int
-        {
-          $hash
-        }
-        
-        
-        
-      } 
-      ]>;
-      def ty = ty.DefineNestedTypeWithSource(decl);
-      if (parms.IsEmpty())
-      {
-        ty.Define(inst);
-        ty.Define(inst2);
-      } else
-      foreach ((n, t) in parms)
-      {
-        _ = ty.DefineWithSource(<[decl: public $(n : usesite) : $t; ]>);
-      }
-      ty.Compile()
-    }
-    
+
     public static SendEventCode(evt : string) : PExpr
     {
       <[ PostEvent(Event.$(evt.ToUpperFirst() : usesite).New) ]>
     }
     
-    GenEventCtx() : void
-    {
-      def cls = <[decl: public class EventCtx
-                        {
-                          public evt : HsmEvent {get;set;}
-                          
-                          public name : string
-                          {
-                            get
-                            {
-                              evt.ToString()
-                            }
-                          }
-                        } ]>;
-      def field = <[decl: public Evt : EventCtx = EventCtx() ]>;
-      gen.DefineNested(cls).Compile();
-      gen.Define(field);
-    }
-    
-    public static CreateExpr(this evt : StateEvent) : PExpr
-    {
-      match (evt.ParmNames)
-      {
-        | []    => if (evt.IsCompletion) <[ CompletionEvent.New ]> else <[ Event.$(evt.TargetName : usesite).New ]>
-        | parms => def parms = parms.Map(x => <[ $(x : usesite) ]>);
-                   <[ Event.$(evt.TargetName : usesite)(..$parms) ]>
-      }
-    }
-    
-    dispatch_body : list[MatchCase]
+    [Memoized]
+    public EventDeclInTopState : ClassMember
     {
       get
       {
-        def evt = <[case:
-                    
-                    | e is Event =>
-                  
-                    $EventCtxBody;
-                    match (e)
-                    {
-                      ..$RunEventInState
-                    } ]>;
-        def completion = <[ case:
-                              _ is CompletionEvent => 
-                                             $EventCtxBody;
-                                             $(RunEvent(StateEvent.Completion))
-                          ]>;
-        def last = <[case: | _ => null ]>;
-        def cases = last :: [];
-        def cases = if (events_wo_completion.IsEmpty()) cases else evt :: cases;
-        if (have_completion) completion :: cases else cases
-      }
+        def fsm = <[parameter: _ : $(gen.ChartName : usesite)]>;
+        def parms = evt.event_parms();
+        def parms = parms.Map((_, t) => <[parameter: _ : $t]>);
+        def parms = fsm :: parms;
+        <[ decl: public virtual $(evt.Name : usesite)(..$parms) : State { null } ]>
+     }
     }
-    
-    GenBaseStruct() : void
-    {
-      when (NeedEvtContext) GenEventCtx();
-      gen.Define(<[ decl:
-            protected override DispatchEvent(evt : HsmEvent) : State
-            {
-                match (evt)
-                {
-                  ..$dispatch_body
-                }
-            }
-            ]>);
-       when (gen.FsmFlags.TransitionCompleted)
-      {
-        def expr = <[decl:
-                   protected override OnEventComplete() : void
-                    {
-                      OnTransitionCompleted()
-                    }
-                   ]>;
-        gen.Define(expr);
-        gen.DefineEvent("TransitionCompleted")
-      }      
-    }
-    
-    public static EventDeclInState(this gen : StaticGenerator, e : StateEvent, body : PExpr) : ClassMember
-    {
-      def fsm = <[parameter: fsm : $(gen.ChartName : usesite)]>;
-      def parms = fsm :: e.event_parameter_decls();
-      <[decl: public override $(e.Name : usesite)(..$parms) : State { $body }]>
-    }
-    
-    public static EventDeclInTopState(this gen : StaticGenerator, e : StateEvent) : ClassMember
-    {
-      def fsm = <[parameter: _ : $(gen.ChartName : usesite)]>;
-      def parms = event_parms(e);
-      def parms = parms.Map((_, t) => <[parameter: _ : $t]>);
-      def parms = fsm :: parms;
-       <[ decl: public virtual $(e.Name : usesite)(..$parms) : State { null } ]>
-    }
-    
+
     public static event_parameter_decls(this evt : StateEvent) : list[PParameter]
     {
       if (evt != null)
@@ -278,77 +84,142 @@ namespace Nemerle.Statechart
         parms.Map((n, t) => <[parameter: $(n : dyn) : $t ]>)
       } else []
     }
-    
-    
-    PostEventByNameBody(evt : StateEvent) : ClassMember
+
+    public PostEventByNameBody : ClassMember
     {
-      def parms = evt.event_parameter_decls();
-      <[decl: public $(evt.Name : usesite)(..$parms) : void { PostEvent($(evt.CreateExpr())) } ]>
-    }
-    
-    GenEvents() : void
-    {
-      def get_events(evt)
+      get
       {
-        evt.Map(PostEventByNameBody);
-      }
-      
-      def evt = events.Exclude(_.IsCompletion);
-      
-      unless (evt.IsEmpty())
-      {
-        def lst = get_events(evt);
-        gen.Define(lst);
-        
-        def ty = gen.DefineNested(<[ decl:
-            public variant Event : HsmEvent
-            {
-            }]>);
-        //def decl_events = 
-        evt.Iter(EventDecl(_, ty));
-        //decl_events.Iter(x => gen.DefineNested(ty, x).Compile());
-        ty.Compile();
+        def parms = evt.event_parameter_decls();
+        <[decl: public $(evt.Name : usesite)(..$parms) : void { PostEvent($(evt.CreateExpr())) } ]>
       }
     }
     
     [Memoized]
-    StringToEvent : list[MatchCase]
+    public RunEventBody : MatchCase
     {
       get
       {
-        def events_wo_parms = events.Filter(x => x.parms.IsEmpty());
-        events_wo_parms.FoldRight([<[case: | _ => throw InvalidOperationException("Unknown event") ]>], 
-                         (x, a) => <[case: | $(x.Name : string) => $(x.CreateExpr()); ]> :: a);
+        def parms = run_event_with_parms;
+        <[case: | Event.$(TargetName : usesite)(..$parms) => $RunEvent ]>
+      }
+    }
+
+    public RunEvent : PExpr
+    {
+      get
+      {
+        def parms = evt.ParmNames.Map(x => <[ $(x : usesite) ]>);
+        def parms = <[ this ]> :: parms;
+        <[ cur_state.$(evt.Name : usesite)(..$parms) ]>
+      }
+    }
+
+    [Memoized]
+    InstanceWoParms : ClassMember
+    {
+      get
+      {
+        <[decl:
+                  public static New : HsmEvent
+                  {
+                    get
+                    {
+                      when (instance == null) 
+                      {
+                        instance = $(TargetName : usesite)()
+                      }
+                      instance
+                    }
+                  } ]>
+      }
+    }
+
+    [Memoized]
+    InstanceField : ClassMember
+    {
+      get
+      {
+        <[decl: mutable static instance : HsmEvent; ]>;
+      }
+    }
+
+    [Memoized]
+    full_name : string
+    {
+      get
+      {
+        $"$(gen.ty.FullName).$TargetName";
+      }
+    }
+
+    [Memoized]
+    event_decl : ClassMember.TypeDeclaration
+    {
+      get
+      {
+        <[ variant_option: | $(TargetName : usesite)
+        {
+
+          public override ToString() : string
+          {
+            Name
+          }
+
+          public override FullName : string
+          {
+            get
+            {
+              $full_name
+            }
+          }
+
+          public override Name : string 
+          {
+            get
+            {
+              $(evt.Name)
+            }
+          }
+
+          public override GetHashCode() : int
+          {
+            $(full_name.GetHashCode())
+          }
+
+        } ]>
+      }
+    }
+
+    public static CreateExpr(this evt : StateEvent) : PExpr
+    {
+      if (evt.IsCompletion) <[ CompletionEvent.New ]> else
+      match (evt.ParmNames)
+      {
+        | []    => <[ Event.$(evt.TargetName : usesite).New ]>
+        | parms => def parms = parms.Map(x => <[ $(x : usesite) ]>);
+                   <[ Event.$(evt.TargetName : usesite)(..$parms) ]>
       }
     }
     
-    GenPost() : void
+    public EventDecl(ty : TypeBuilder) : void
     {
-      
-      gen.Define(<[ decl:
-            GetEventFromStr(evt : string) : HsmEvent
-            {
-              match (evt)
-              {
-                ..$StringToEvent
-              }
-            }
-            ]>);
-            
-      gen.Define(<[ decl:
-            public override PostEvent(evt : string) : void
-            {
-                def res = GetEventFromStr(evt);
-                PostEvent(res)
-            }
-            ]>);
-    }
+      def parms = evt.event_parms();
+      def decl = event_decl;
+      def ty = ty.DefineNestedTypeWithSource(decl);
+
+      match (parms)
+      {
+        | []    => ty.Define(InstanceWoParms);
+                   ty.Define(InstanceField);
+        | parms => foreach ((n, t) in parms)
+                   {
+                    _ = ty.DefineWithSource(<[decl: public $(n : usesite) : $t; ]>);
+                   }
+      }
+      ty.Compile()
+    }    
     
-    public Generate() : void
-    {
-      GenBaseStruct();
-      GenEvents();
-      GenPost();
-    }
+    
   }
+
 }

@@ -18,12 +18,13 @@ using System.Threading;
 
   // flags debug;
 
-  name "do activity and completion transitions";
+  event a(int);
+  
+  name "events with parameters";
   
    state A
    {
-     do / act1;
-     _ => B;
+     a(b) [b >= 1] / Console.WriteLine($"b=$b") => B;
    }
    
    state B
@@ -33,13 +34,6 @@ using System.Threading;
   #>)]
   public class example
   {
-    act1(_ : CancellationToken) : void
-    {
-      foreach (elem in NList.Range(10))
-      {
-        Console.WriteLine(elem)
-      }
-    }
   }
 
 
@@ -51,8 +45,11 @@ module Test
     def fsm = example();
     def tester = fsm.GetTester();
     tester.ConsoleTestInit();
-    tester.Initiate("B", 500, "EntryA", "ExitA", "EntryB");
-    tester.TestWait("a", 500, "B", "ExitB", "EntryA", "ExitA", "EntryB");
+    tester.Initiate("A", "EntryA");
+    tester.Test(example.Event.A(0), null);
+    tester.Test(example.Event.A(1), ["A"], ["B"]);
+    tester.Test(example.Event.A(0), ["B"], ["A"]);
+    tester.Test(example.Event.A(10), ["A"], ["B"]);
     fsm.Terminate();
   }
 }
@@ -60,34 +57,25 @@ module Test
 /*
 BEGIN-OUTPUT
 EntryA
-0
-1
-2
-3
-4
-5
-6
-7
-8
-9
+[A]
+Ok
+Processing a 'a' 
+[A]
+Ok
+Processing a 'a' 
 ExitA
+b=1
 EntryB
 [B]
 Ok
 Processing a 'a' 
 ExitB
 EntryA
-0
-1
-2
-3
-4
-5
-6
-7
-8
-9
+[A]
+Ok
+Processing a 'a' 
 ExitA
+b=10
 EntryB
 [B]
 Ok
