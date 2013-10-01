@@ -239,15 +239,15 @@ namespace Nemerle.Statechart
           | (false, true) => -1
           | (true, true)  => 0
           | _             => match (x.Guard, y.Guard)
-                              {
-                                | (GuardNode.Empty, GuardNode.Empty) 
-                                | (GuardNode.Expr, GuardNode.Expr)
-                                | (GuardNode.Else, GuardNode.Else)   => 0
-                                | (GuardNode.Empty, _)               => -1
-                                | (_, GuardNode.Empty)               => 1
-                                | (GuardNode.Else, _)                => 1
-                                | (_, GuardNode.Else)                => -1
-                              }
+              {
+                | (GuardNode.Empty, GuardNode.Empty) 
+                | (GuardNode.Expr, GuardNode.Expr)
+                | (GuardNode.Else, GuardNode.Else)   => 0
+                | (GuardNode.Empty, _)               => -1
+                | (_, GuardNode.Empty)               => 1
+                | (GuardNode.Else, _)                => 1
+                | (_, GuardNode.Else)                => -1
+              }
         }
       }
 
@@ -305,16 +305,44 @@ namespace Nemerle.Statechart
       def set_to_else(t, n)
       {
         foreach (node in t.GetBreadthFirstEnumerable())
-          {
-            | DecisionNode.Condition(else_node = None) as node => node.else_node = Some(n)
-            | _                                                => ()
-          }  
+        {
+          | DecisionNode.Condition(else_node = None) as node => node.else_node = Some(n)
+          | _                                                => ()
+        }  
       }
 
-      def merge_trans(tr, a)
+      def get_aliases(names, header_parms)
       {
-        set_to_else(a, tr);
-        a
+        def merge = names.Zip(header_parms);
+        merge.FoldLeft([], ((x, y), a) => if (x.Equals(y)) a else (x, y) :: a)
+      }
+      
+      def set_aliases(tree, aliases)
+      {
+        foreach (tr in tree.GetBreadthFirstEnumerable())
+        {
+          match (tr)
+          {
+            | DecisionNode.Condition(condition = GuardNode.Expr) => tree.aliases = aliases;
+            | DecisionNode(actions = lst) => when (lst.Exists(x => x is FsmAction.Expr)) tree.aliases = aliases;
+          }
+        }
+      }
+      
+      def merge_trans(tr, a, header_parms)
+      {
+        def tree = tr.DecisionTree;
+        def names = tr.Trigger.ParmNames;
+        def aliases = if (names.Length == header_parms.Length) get_aliases(names, header_parms) else [];
+        when (!aliases.IsEmpty()) set_aliases(tree, aliases);
+        if (a == null)
+        {
+          tree
+        } else
+        {
+          set_to_else(a, tree);
+          a
+        }
       }
 
       foreach (conf in ActiveStates)
@@ -323,11 +351,12 @@ namespace Nemerle.Statechart
         foreach (ctrig when ctrig.IsMoreThanOne() in by_trigger)
         {
           def by_priority = ctrig.OrderBy(x => x.Priority);
-          def trees = by_priority.Map(x => x.DecisionTree);
-          def tree = trees.Reduce(merge_trans);
           def tran = by_priority.First();
-          tran.Trigger = by_priority.OrderByDescending(x => x.Trigger.parms.Length).First().Trigger;
+          def used_trigger_header = by_priority.OrderByDescending(x => x.Trigger.parms.Length).First().Trigger; // trigger with most parameters used in header
+          tran.Trigger = used_trigger_header;
           tran.Grouped = by_priority.Count();
+          def parm_names = used_trigger_header.ParmNames;
+          def tree = by_priority.FoldLeft(null, merge_trans(_, _, parm_names));
           def delete = by_priority.Except(tran);
           conf.transitions = conf.transitions.Exclude(delete.NToList());
           tran.DecisionTree = tree
@@ -344,18 +373,18 @@ namespace Nemerle.Statechart
         def tr = gr.First();
         def trigger = tr.trigger;
         def join = gr.Key;
-        
+
         when (!gr.ElementsEqual((x, y) => x.trigger == y.trigger))
         {
           messager.AddError(FsmError.JoinTransitionMustHaveSameTrigger(gr.NToList(), join))
         }
-        
+
         match (gr.Filter(x => x.guard.NotEmpty || !x.action.IsEmpty()))
         {
           | []  => ()
           | lst => foreach (tr in lst) messager.AddError(FsmError.JoinTransitionCannotHaveGuardsOrActions(tr))
         }
-        
+
         def tran = join.transition;
         join.joined_states = gr.Map(_.From);
         tran.trigger = trigger;
@@ -365,6 +394,6 @@ namespace Nemerle.Statechart
         tr.From.DefineTransitions(tran :: []);
       }
     }
-    
+
   }
 }
