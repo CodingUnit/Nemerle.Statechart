@@ -57,7 +57,7 @@ namespace Nemerle.Statechart
       guard_type         : GuardNode                  = else_guard / expr_guard;
       syntax_delim       : void                       = (':' / '=') s;
 
-      guard_expr         : PExpr                      = (!(']' / goto) [Any])+ s;
+      guard_expr         : PExpr                      = (!(']' / goto / '/') [Any])+ s;
       long_guard_expr    : PExpr                      = "${"s (!"$}" [Any])+ "$}"s;
       guard              : GuardNode                  = '['s guard_type ']'s;
       expr_guard         : GuardNode                  = long_guard_expr / guard_expr;
@@ -68,15 +68,17 @@ namespace Nemerle.Statechart
 
       // actions
       long_expr_action   : Actions                    = '/'s "${"s (!"}$" [Any])+ "}$"s;
-      expr_act_action    : Actions                    = (long_expr_action / expr_action) ';'s;
+      _expr_act_action   : Actions                    = '/'s (!(';' / any_goto) [Any])* s ';'s;
+      expr_act_action2   : Actions                    = '/'s '{'s (!('}' / any_goto) [Any])* '}'s;
+      expr_act_action    : Actions                    = (long_expr_action / expr_act_action2 / _expr_act_action) (';'s)?;
       delim_action_list  : Actions                    = '/'s (!';' action delimiter?)+ s ';'s;
 
       empty_act_list     : Actions                    = ';'s;
       action_list        : Actions                    = empty_act_list / delim_action_list / expr_act_action;
-      parameters         : List[string]               = (!close_round_brace identifier s (','s)?)*;
+      //parameters         : List[string]               = (!close_round_brace identifier s (','s)?)*;
       empty_action       : FsmAction                  = '('s ')'s;
       //method_action      : FsmAction                  =  identifier s s (open_round_brace parameters close_round_brace);
-      tran_action        : FsmAction                  = identifier s (open_round_brace parameters close_round_brace)?;
+      tran_action        : FsmAction                  = identifier s (open_round_brace close_round_brace)?;
       action             : FsmAction                  = empty_action / tran_action;
 
       entry              : StateNode                  = simple_attrs? ("entry" / "$>")s action_list;
@@ -124,7 +126,7 @@ namespace Nemerle.Statechart
       fork_target        : TargetType                 = fork_alt_target / fork_trans_target;
       transition_target  : TargetType                 = choice_target / junction_target / fork_target / simple_target;
 
-      expr_action        : Actions                    = '/'s (!(';' / any_goto) [Any])* s;
+      expr_action        : Actions                    = '/'s (!any_goto [Any])* s;
       expr_tran_action   : Actions                    = long_expr_action / expr_action;
       expr_ext_tran_action  : Actions                 = expr_tran_action ext_goto;
       expr_loc_tran_action  : Actions                 = expr_tran_action local_goto;
