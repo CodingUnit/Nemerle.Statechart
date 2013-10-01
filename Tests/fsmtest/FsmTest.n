@@ -147,6 +147,7 @@ namespace Nemerle.Statechart
       wait_state = state;
       this.max_respond = max_respond;
       func();
+      _ = wait_signal.WaitOne(max_respond);
       CheckResult(state, acts)
     }
     
@@ -163,6 +164,7 @@ namespace Nemerle.Statechart
     {
       prepare();
       func();
+      _ = wait_signal.WaitOne(max_respond);
       CheckResult(state, acts)
     }
 
@@ -171,7 +173,6 @@ namespace Nemerle.Statechart
       Send?.Invoke(evt.Name);
       _ = wait_signal.Reset();
       fsm.PostEvent(evt);
-      _ = wait_signal.WaitOne(max_respond)
     }
 
     public SendEvent(evt : string) : void
@@ -180,9 +181,16 @@ namespace Nemerle.Statechart
       Send?.Invoke(evt);
       _ = wait_signal.Reset();
       fsm.PostEvent(evt);
-      _ = wait_signal.WaitOne(max_respond)
     }
 
+    public SendEvent(evt : string, params pars : array[object]) : void
+    {
+      def evt = evt.SpacesToUnderline();
+      Send?.Invoke(evt);
+      _ = wait_signal.Reset();
+      SendEventImpl(evt, pars);
+    }
+    
     SendEventImpl(evt : string, params pars : array[object]) : void
     {
       match (pars.NToList())
@@ -193,15 +201,6 @@ namespace Nemerle.Statechart
         | [a, b, c] => fsm.PostEvent(evt, a, b, c);
         | _         => fsm.PostEvent(evt, pars)
       }
-    }
-    
-    public SendEvent(evt : string, params pars : array[object]) : void
-    {
-      def evt = evt.SpacesToUnderline();
-      Send?.Invoke(evt);
-      _ = wait_signal.Reset();
-      SendEventImpl(evt, pars);
-      _ = wait_signal.WaitOne(max_respond)
     }
     
     public TestCond(evt : string, res : string, params acts : array[string]) : bool
