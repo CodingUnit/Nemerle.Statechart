@@ -7,7 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Nemerle.Statechart
+namespace Nemerle.Statechart.Tests
 {
   /// <summary>
   /// Description of Calculator.
@@ -18,70 +18,101 @@ namespace Nemerle.Statechart
   //flags debug;
   
   event oper(char);
-  event digit(int);
+  event digit(char);
+
+  state off
+  {
+    $> / { init(); }
+    on, C => on;
+  }
   
   state on
   {
     off => off;
-    C => @;
+    C   => @;
+    mc / memclear();
     
     state ready
     {
-      digit(n) [n == 0] => zero1;
-      digit    [else]   => int1; // digit [else]
+      digit(n) => dig;
       point => frac1;
-      oper  => opEntered; // oper
-
+      oper(o) / operator = o => opEntered; // oper
+      CE => begin;
+      //mr => memory;
+      mplus / memplus(op1);
+      mminus / memminus(op1);
+      
       state begin
       {
+        entry / clear();
         oper(o) [o == '-'] => negated1;
       }
       
       state result
       {
-
+        entry / show(result);
+        entry / op1 = result;
       }
       
       state negated1
       {
         $> / negate();
-        oper(o) [o == '-'] / ();
-        CE => begin;
+        oper / ();
       }
       
+      //state memory
+      //{
+      //  entry / op1 = recall();
+      //  digit(n) / op1 = "" => dig;
+      //}
     }
     
+    junction dig
+    {
+      n == '0'          => zero1;
+      else / insert(n)  => int1;
+    }
     
     state operand1
     {
       CE => ready;
-      oper => opEntered;
+      oper(o) / operator = o => opEntered;
+      digit(n) / insert(n);
+      point => frac1;
+      //mr => memory;
+      //mplus / memplus(op1);
+      //mminus / memminus(op1);
       
       state zero1
       {
-        digit(i) [i == 0] / ();
-        digit    [else] => int1;
+        $> / insert('0');
+        digit(i) [i == '0'] / ();
+        digit(n) [else] / insert(n) => int1;
         point => frac1;
-        
       }
       
       state int1
       {
-        digit(n) / insert(n);
-        point => frac1;
       }
       
       state frac1
       {
-        digit(n) / insert(n);
+        entry / insert(',');
         point / ();
       }
+      
+      //state memory
+      //{
+      //  entry / op1 = recall();
+      //  digit(n) / op1 = "" => dig;
+      //}
     }
     
     state opEntered
     {
-      digit(n) [n == 0] => zero2;
-      digit    [else]   => int2;
+      $> / op2 = "";
+      digit(n) [n == '0'] => zero2;
+      digit(n) [else] / insert2(n)  => int2;
       point => frac2;
       
       state entered
@@ -93,37 +124,44 @@ namespace Nemerle.Statechart
       {
         entry / negate2();
         oper(o) [o == '-'] / ();
+        CE / show("0") => entered;
       }
       
     }
     
     state operand2
     {
-      CE   => opEntered;
-      oper => {
-                error => error;
-                else  => opEntered;
-              }
-      equal / calculate() => {
-                               error => error;
-                               else  => result;
-                             }
+      CE / show("0") => opEntered;
+      point => frac2;
+      mr / op2 = recall();
+      
+      oper(o) => {
+                   error => error;
+                   priority(operator, o) < 0 / memory(); op1 = op2; operator = o; => opEntered;
+                   else / op1 = calculate(); operator = o; => opEntered;
+                 }
+      equal / calc_all() => {
+                              error => error;
+                              else  => result;
+                            }
                 
       state zero2
       {
-        digit(n) [n == 0] / ();
-        point => frac2;
+        $> / insert2('0');
+        digit(n) [n == '0'] / ();
+        digit(n) [else] / insert2(n) => int2;
       }
       
       state int2
       {
         digit(n) / insert2(n);
-        point => frac2;
       }
       
       state frac2
       {
+        entry / insert2(',');
         digit(n) / insert2(n);
+        point / ();
       }
     }
     
@@ -134,10 +172,6 @@ namespace Nemerle.Statechart
     
   }
 
-  state off
-  {
-    
-  }
   
   #>
   )]
@@ -145,20 +179,172 @@ namespace Nemerle.Statechart
   {
     error : bool {get;set;default false}
     
+    mutable op1 : string;
+    mutable op2 : string;
+    mutable operator : char;
+    
+    mutable history : list[string * char];
+    
+    mutable mem : string;
+    
+    memplus(op : string) : void
+    {
+      mem = calc(mem, op, '+');
+    }
+
+    memminus(op : string) : void
+    {
+      mem = calc(mem, op, '-');
+    }
+    
+    memclear() : void
+    {
+      mem = "0";
+    }
+    
+    recall() : string
+    {
+      show(mem);
+      mem
+    }
+    
+    priority(op1 : char, op2 : char) : int
+    {
+      | ('-', '/')
+      | ('+', '/')
+      | ('-', '*')
+      | ('/', '*')
+      | ('+', '*') => -1
+      | ('/', '-')
+      | ('/', '+') 
+      | ('*', '+') 
+      | ('*', '/')
+      | ('*', '-') => 1
+      | _          => 0
+    }
+
+    memory() : void
+    {
+      history ::= (op1, operator)
+    }
+    
+    init() : void
+    {
+      op1 = "";
+      op2 = "";
+      memclear();
+      history = [];
+      show("");
+    }
+    
+    clear() : void
+    {
+      op1 = "";
+      op2 = "";
+      show("0");
+      history = [];
+    }
+    
     negate() : void
     {
+      op1 += '-';
+      show("-0");
     }
     
-    insert(_n : int) : void
+    negate2() : void
     {
+      op2 += '-';
+      show("-0");
     }
     
-    insert2(_n : int) : void
+    insert(n : char) : void
     {
+      op1 += n;
+      show(op1);
     }
     
-    calculate() : void
+    insert2(n : char) : void
     {
+      op2 += n;
+      show(op2);
     }
+    
+    calc_all() : void
+    {
+      //def res = calc(op1, op2, operator);
+      def hist = (op1, operator) :: history;
+      
+      def evaluate(hist, op2)
+      {
+        match (hist)
+        {
+          | (op1, oper) :: (((op3, oper2) :: _) as tail) => if (priority(oper, oper2) > 0)
+                                                            {
+                                                              def res = calc(op1, op2, oper);
+                                                              evaluate(tail, res)
+                                                            } else
+                                                            {
+                                                              def eval = evaluate(tail, op3);
+                                                              calc(eval, op2, oper)
+                                                            }
+          | (op1, oper) :: []                          => calc(op1, op2, oper)
+        }
+      }
+      
+     def res = evaluate(hist, op2);
+     result = res;
+     show(result)
+    }
+
+    calc(op1 : string, op2 : string, oper : char) : string
+    {
+      def op1 = double.Parse(op1);
+      def op2 = double.Parse(op2);
+      def res = match (oper)
+      {
+        | '+' => op1 + op2
+        | '-' => op1 - op2
+        | '*' => op1 * op2
+        | '/' => op1 / op2
+        | _   => throw InvalidOperationException("invalid operand")
+      }
+      res.ToString();
+    }
+    
+    calculate() : string
+    {
+      def res = calc(op1, op2, operator);
+      
+      def loop(hist, acc, oper1)
+      {
+        match (hist)
+        {
+          | (op1, oper) :: tail => if (priority(oper, oper1) >= 0)
+                                   {
+                                     def res = calc(op1, acc, oper);
+                                     loop(tail, res, oper)
+                                   } else
+                                   {
+                                     (hist, acc)
+                                   }
+         | []                   => ([], acc)
+        }
+      }
+      
+      def (hist, res) = loop(history, res, operator);
+      history = hist;
+      show(res);
+      res
+    }
+    
+    show(str : string) : void
+    {
+      Show?.Invoke(str)
+    }
+    
+    public event Show : Action[string];
+    
+    [Accessor]
+    mutable result : string;
   }
 }
