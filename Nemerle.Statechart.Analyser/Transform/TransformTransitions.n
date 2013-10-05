@@ -16,22 +16,36 @@ namespace Nemerle.Statechart
   {
     ConvertEntryExitPoints() : void
     {
-      def check_target(p, t)
+      def convert_target(t)
       {
-        match (p)
+        match (t.To)
         {
-          | TransitionTarget.PseudoState(PseudoStateNode.EntryPoint(_, p))          => t.AddAction(p.action);
-                                                                                      check_target(p.To, t);
-          | TransitionTarget.PseudoState(PseudoStateNode.ExitPoint(tran = Some(p))) => t.AddAction(p.action);
-                                                                                      check_target(p.To, t)
-          | _                                                                       => p
+          | TransitionTarget.PseudoState(PseudoStateNode.Junction as j) => def target = FsmJunctionNode.Node(GuardNode.Empty(), t.action, null, null, j.tree :: []);
+                                                                           target
+          | tar                                                         => def target = FsmJunctionNode.Target(GuardNode.Empty(), t.action, null, null, tar);
+                                                                           target
         }
+      }
+      
+      def check_target(p)
+      {
+        | TransitionTarget.PseudoState(PseudoStateNode.EntryPoint(_, p) as ps) as t            => def tree = convert_target(p);
+                                                                                                  def junc = PseudoStateNode.Junction(ps.Location, ps.copy, ps.state, PseudoStateNode.Junction.GetUnnamedName(this, JunctionType.Junction), tree, JunctionType.Junction, null, true);//t.AddAction(p.action);
+                                                                                                  ps.state.AddPseudo(junc);
+                                                                                                  tree.ParentNode = junc;
+                                                                                                  t.ChangeNode(junc)
+        | TransitionTarget.PseudoState(PseudoStateNode.ExitPoint(tran = Some(p)) as ps) as t   => def tree = convert_target(p);
+                                                                                                  def junc = PseudoStateNode.Junction(ps.Location, ps.copy, ps.state, PseudoStateNode.Junction.GetUnnamedName(this, JunctionType.Junction), tree, JunctionType.Junction, null, true);//t.AddAction(p.action);
+                                                                                                  ps.state.AddPseudo(junc);
+                                                                                                  tree.ParentNode = junc;
+                                                                                                  t.ChangeNode(junc)
+        | _                                                                                    => p
       }
 
       def tran = StateTransitions.Concat(InitialTran);
       foreach (StateTransition(To = p) as t in tran)
       {
-        def tar = check_target(p, t);
+        def tar = check_target(p);
         t.To = tar
       }
     }

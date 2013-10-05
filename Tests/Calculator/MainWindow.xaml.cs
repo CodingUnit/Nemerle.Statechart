@@ -153,25 +153,6 @@ namespace Calculator.Windows
             fsm.off();
         }
 
-        private void button3_Click(object sender, RoutedEventArgs e)
-        {
-            fsm.mplus();
-        }
-
-        private void button4_Click(object sender, RoutedEventArgs e)
-        {
-            fsm.mminus();
-        }
-
-        private void button6_Click(object sender, RoutedEventArgs e)
-        {
-            fsm.mr();
-        }
-
-        private void button5_Click(object sender, RoutedEventArgs e)
-        {
-            fsm.mc();
-        }
 
     }
 }
