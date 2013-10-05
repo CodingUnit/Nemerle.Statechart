@@ -18,7 +18,7 @@ namespace Nemerle.Statechart
     | ParsingError { err : ParseError; }
     //| Sequence {seq : IEnumerable[FsmError];}
     //| UnknownState {state : FsmState;name : FsmState;tran : StateTransition;}
-    | StateNotFound {state : string;}
+    | StateNotFound { tr : StateTransition; state : string;}
     | ParentStateNotFound {state : FsmState; parent : string;}
     | SeveralState {states : list[string];}
     | DuplicateTransition {tran : Transition;}
@@ -59,7 +59,8 @@ namespace Nemerle.Statechart
     | RelocateSourceNotSupported { pseudo : PseudoStateNode;}
     | RelocatePseudoAlreadyHaveTarget { tran : StateTransition; pseudo : PseudoStateNode;}
     | LocalTransitionTargetMustBeWithinOrSuper {tran : StateTransition;}
-    | StateMachineNotFound { usings : StateNode.Using; }
+    | StateMachineNotFound { fsm : string; state : FsmState; }
+    | ExtStateMachineNotFound { use : StateNode.Using; }
     | RegionMustContainSubRegions { reg : FsmState; }
     | LocalTransitionCannotTargetSelf { tran : StateTransition; }
     | EventDeclarationNumberOfParamsNotEqual { decl : StateNode.EventDecl; evt : TransitionEvent; }
@@ -72,6 +73,7 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
+          | StateNotFound(null, _)                                   => Location.Default
           | DuplicateTransition(tr) 
           | LocalTransitionCannotTargetSelf(tr)
           | ForkMustGoToSeparateRegion(tr)
@@ -85,7 +87,12 @@ namespace Nemerle.Statechart
           | UnknownNode(tr, _)
           | JoinTransitionCannotHaveGuardsOrActions(tr)
           | EventDeclarationNumberOfParamsNotEqual(_, tr)
+          | StateMachineNotFound(_, tr)
+          | ExtStateMachineNotFound(tr)
+          | UnknownTarget(tr, _)
           | EventDeclarationNotFound(tr)
+          | ParentStateNotFound(tr, _)
+          | StateNotFound(tr, _)
           | LocalTransitionTargetMustBeWithinOrSuper(tr)             => tr.Location
           | _                                                        => Location.Default
         }
@@ -104,7 +111,7 @@ namespace Nemerle.Statechart
                                                                               | UnknownElement(node)   => $<#Unknown parse node $node #>
                                                                               | UnknownMachineFlag(f)  => $<#Unknown state machine flag "$f" #>
                                                                             }
-          | StateNotFound(s)                                         => $<#State "$s" Not Found#>
+          | StateNotFound(_, s)                                      => $<#State "$s" Not Found#>
       //| SubMachineStateNotFound(m, s)                          => $<#Sub machine "$m" does not contain referenced sub state "$s"#>
           | UnknownTarget(tran, t)                                   => $<#Transition "$tran" has unknown target "$t"#>
           | DuplicateTransition(tran)                                => $<#Duplicate transitions "$tran"#>;
@@ -143,7 +150,8 @@ namespace Nemerle.Statechart
           | RelocateSourceNotSupported(p)                            => $<#Source "$p" of relocate element not supported#>
           | RelocatePseudoAlreadyHaveTarget(t, p)                    => $<#Relocate element "$p" from transition $t already have target#>
           | LocalTransitionTargetMustBeWithinOrSuper(tran)           => $<#Local transition target must be inside of source state or in super state of source: "$tran"#>
-          | StateMachineNotFound(StateNode.Using(n, f))              => $<#Class "$f" declared statemachine "$n" not found#>
+          | StateMachineNotFound(f, st)                              => $<#Statemachine "$f" not found, during instantiation "$st"#>
+          | ExtStateMachineNotFound(StateNode.Using(f))              => $<#External statemachine not found from type "$f"#>
           | CompositeStateWithIncomingTransitionsMustHaveInitial(st) => $<#Composite state "$st" have incoming transitions and must have initial pseudostate targeting default state#>
           | LocalTransitionCannotTargetSelf(tr)                      => $<#Local transition "$tr" cannot target source vertex #>
           | ForkMustHaveAtLeastTwoTargets(tr)                        => $<#Transitions originated from fork pseudostate "$tr" must target at least two states in different concurrent sub regions#>

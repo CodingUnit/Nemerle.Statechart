@@ -53,9 +53,7 @@ namespace Nemerle.Statechart
         {
           | Entry(state = st)                         => action($"Entry$st")
           | Exit(state = st)                          => action($"Exit$st")
-          | _                                         => action_name//action($"$(act.name)", act.parameters)
-        //| Sequence(lst)                               => lst.SelectMany(CreateActions(_, map))
-        //| n                                             => TraverseUtils.SingleElement(FsmAction(-1, n.ToString(), []))
+          | _                                         => action_name
         }
       }
     }
@@ -125,6 +123,7 @@ namespace Nemerle.Statechart
     util : GenUtil;
     flags : MachineFlags;
     
+    [Accessor]
     path : TranPath;
 
     kind : PathKind
@@ -253,15 +252,13 @@ namespace Nemerle.Statechart
     util : GenUtil;
     flags : MachineFlags;
     
-    public entry_tran_path : list[TranPath];
-    public exit_tran_path  : list[TranPath];
-    public actions_path    : list[TranPath];
+    tran_path : list[TranPath];
+    //public exit_tran_path  : list[TranPath];
+    //public actions_path    : list[TranPath];
 
     public this(seq : PathSequence, map : Map[string, string], util : GenUtil, flags : MachineFlags)
     {
-      entry_tran_path = seq.entry_tran_path;
-      exit_tran_path  = seq.exit_tran_path;
-      actions_path    = seq.actions_path;
+      tran_path = seq.TranPath.NToList();
       this.map = map;
       this.util = util;
       this.flags = flags;
@@ -269,24 +266,10 @@ namespace Nemerle.Statechart
 
     public this(seq : list[TranPath], map : Map[string, string], util : GenUtil, flags : MachineFlags)
     {
-      def (entry, other) = seq.Partition(x => x.kind == PathKind.Entry);
-      entry_tran_path = entry;
-      def (exit, other) = other.Partition(x => x.kind == PathKind.Exit);
-      exit_tran_path = exit;
-      def (act, _) = other.Partition(x => x.kind == PathKind.Action);
-      actions_path = act;
+      tran_path = seq;
       this.map = map;
       this.util = util;
       this.flags = flags;
-    }
-
-    [Memoized]
-    public tran_path : list[GenPathNode]
-    {
-      get
-      {
-        exit_path + action_path + entry_path
-      }
     }
 
     [Memoized]
@@ -294,45 +277,25 @@ namespace Nemerle.Statechart
     {
       get
       {
-        exit_path + entry_path
+        path.Filter(x => x.Path.kind == PathKind.Action)
       }
     }
 
     [Memoized]
-    public exit_path   : list[GenPathNode]
+    public path   : list[GenPathNode]
     {
       get
       {
-        exit_tran_path.Map(GenPathNode(map, util, flags, _))
+        tran_path.Map(GenPathNode(map, util, flags, _))
       }
     }
 
-    [Memoized]
-    public entry_path  : list[GenPathNode]
-    {
-      get
-      {
-        entry_tran_path.Map(GenPathNode(map, util, flags, _))
-      }
-    }
-
-    [Memoized]
-    public action_path : list[GenPathNode]
-    {
-      get
-      {
-        actions_path.Map(GenPathNode(map, util, flags, _))
-      }
-    }
-
-
-    
     [Memoized]
     public TranBody : PExpr
     {
       get
       {
-        def path = if (flags.AutoEntryExitActions) tran_path else tran_path.Filter(x => !x.IsEmpty);
+        def path = if (flags.AutoEntryExitActions) path else path.Filter(x => !x.IsEmpty);
         def body = path.Map(x => x.NodeExecExpr);
         <[ {..$body } ]>;
       }
@@ -340,7 +303,7 @@ namespace Nemerle.Statechart
 
     public DefineHandlers() : void
     {
-      foreach (act in tran_act_nodes)
+      foreach (act in path)
       {
         if (!flags.AutoEntryExitActions && act.IsEmpty) () else act.Define()
       }
