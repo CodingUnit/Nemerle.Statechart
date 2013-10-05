@@ -38,6 +38,7 @@ namespace Nemerle.Statechart.Tests
       def (entry : list[string], other) = act.Partition(x => x.StartsWith("Entry"));
       def (exit : list[string], other)  = other.Partition(x : string => x.StartsWith("Exit"));
       def act : list[string] = other;
+      
       def entry = entry.Map(x => x.TrimStart("Entry"));
       def exit  = exit.Map(x => x.TrimStart("Exit"));
       def st_equal = st == entry.Last();
@@ -89,6 +90,13 @@ namespace Nemerle.Statechart.Tests
           }
     }
 
+    have_actions(act : list[string]) : bool
+    {
+      def act = act.Exclude(x => x.StartsWith("Entry"));
+      def act  = act.Exclude(x : string => x.StartsWith("Exit"));
+      !act.IsEmpty()
+    }
+    
     GenerateTestMethods(act_type : ActionType, res : Result) : string
     {
 
@@ -97,12 +105,13 @@ namespace Nemerle.Statechart.Tests
       match (act_type)
       {
         | ActionType.Initiate => def is_normal_pattern = is_exit_act_entry_pattern(act);
-                                  def gen2 = get_event_variant2(act_type, state, act);
-                                  def gen1 = {
-                                                def act = act.Map(x => $<#"$x"#>);
-                                                $<#tester.Initiate("$state", ..$(act;", "));#>
-                                              };
-                                  if (gen2.Length <= gen1.Length && is_normal_pattern) gen2 else gen1
+                                 def have_act = have_actions(act);
+                                 def gen2 = get_event_variant2(act_type, state, act);
+                                 def gen1 = {
+                                              def act = act.Map(x => $<#"$x"#>);
+                                              $<#tester.Initiate("$state", ..$(act;", "));#>
+                                            }
+                                 if (!have_act && gen2.Length <= gen1.Length && is_normal_pattern) gen2 else gen1
 
         | SendEvent(ev, pars) => def is_normal_pattern = is_exit_act_entry_pattern(act);
                                   def gen2 = get_event_variant2(act_type, state, act);
