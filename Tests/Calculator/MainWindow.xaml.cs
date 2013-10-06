@@ -153,6 +153,11 @@ namespace Calculator.Windows
             fsm.off();
         }
 
+        private void button2_Click(object sender, RoutedEventArgs e)
+        {
+            fsm.oper('%');
+        }
+
 
     }
 }

@@ -23,46 +23,48 @@ namespace Nemerle.Statechart.Tests
   event digit(char);
 
   entry / insert('0');
-  
+
   state on
   {
     off => off;
     C   => @;
   }
-  
+
   state operand1 : on
   {
     oper(o) / operator = o => opEntered;
     CE => ready;
   }
-    
+
   state ready : operand1
   {
     digit(n) => enter_operand1.digit;
     point    => enter_operand1.point;
-      
+    
     state begin
     {
       entry / clear();
       oper(o) [o == '-'] => negated1;
     }
-      
+
     state result
     {
       entry / show(result);
       entry / op1 = result;
+      oper(o) [o == '%'] / result = calc(op1, "100", '/') => result;
     }
-      
+
     state negated1
     {
       $> / negate();
       oper / ();
     }
   }
-  
+
   submachine enter_operand1[enter_operand] : operand1
   {
     exit / op1 = ent_op;
+    oper(o) [o == '%'] / result = calc(op1, "100", '/') => result;
   }
 
   state operand2 : on
@@ -70,8 +72,14 @@ namespace Nemerle.Statechart.Tests
     CE / show("0") => opEntered;
     digit(n) => enter_operand2.digit;
     point    => enter_operand2.point;
+    
   }
 
+  state proc : operand2_ready
+  {
+    $> / { op2 = calc(op2, "100", '/'); show(op2) }
+  }
+  
   state opEntered : operand2
   {
     $> / op2 = "";
@@ -80,15 +88,15 @@ namespace Nemerle.Statechart.Tests
 
   state negated2 : operand2
   {
-    entry / negate2();
+    entry / negate();
     oper(o) [o == '-'] / ();
   }
 
-  submachine enter_operand2[enter_operand] : operand2
+  state operand2_ready : operand2
   {
-    exit / op2 = ent_op;
     oper(o) => {
                 error => error;
+                o == '%' => proc;
                 priority(operator, o) < 0 / memory(); op1 = op2; operator = o; => opEntered;
                 else / op1 = calculate(); operator = o; => opEntered;
                 }
@@ -97,7 +105,12 @@ namespace Nemerle.Statechart.Tests
                             else  => result;
                           }
   }
-    
+  
+  submachine enter_operand2[enter_operand] : operand2_ready
+  {
+    exit / op2 = ent_op;
+  }
+
   state error : on
   {
   }
@@ -105,6 +118,7 @@ namespace Nemerle.Statechart.Tests
   state off
   {
     on, C => on;
+    $> / show("");
   }
 
   #>
@@ -149,13 +163,7 @@ namespace Nemerle.Statechart.Tests
     
     negate() : void
     {
-      op1 += '-';
-      show("-0");
-    }
-    
-    negate2() : void
-    {
-      op2 += '-';
+      prefix = "-";
       show("-0");
     }
     
@@ -201,7 +209,7 @@ namespace Nemerle.Statechart.Tests
         | '-' => op1 - op2
         | '*' => op1 * op2
         | '/' => op1 / op2
-        | _   => throw InvalidOperationException("invalid operand")
+        | _   => throw InvalidOperationException("invalid operator")
       }
       res.ToString();
     }
