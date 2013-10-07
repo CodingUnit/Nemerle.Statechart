@@ -14,6 +14,16 @@ namespace Nemerle.Statechart.Tests {
   module Program
   {
             
+    public Run(machine : ITestStateMachine, name : string) : void
+    {
+      def tester = machine.GetTester();
+      def interpreter = FsmInterpreter(tester);
+      interpreter.StartConsole();
+      def printer = FsmTestGen(machine.GetType().Name, interpreter.History);
+      printer.GenerateTestMethods($"$name.n");
+      printer.GenerateOutput($"$name.log");
+    }
+    
     public Main(pars : array[string]) : void
     {
       match (pars.NToList())
@@ -22,13 +32,11 @@ namespace Nemerle.Statechart.Tests {
                                        def assembly = Assembly.LoadFrom(name);
                                        def type = assembly.GetType(fsm);
                                        def obj = Activator.CreateInstance(type);
-                                       def machine = obj :> ITestStateMachine;
-                                       def tester = machine.GetTester();
-                                       def interpreter = FsmInterpreter(tester);
-                                       interpreter.StartConsole();
-                                       def printer = FsmTestGen(machine.GetType().Name, interpreter.History);
-                                       printer.GenerateTestMethods($"$test.n");
-                                       printer.GenerateOutput($"$test.log");
+                                       match (obj)
+                                       {
+                                         | ITestStateMachine as m => Run(m, test)
+                                         | _                      => Console.WriteLine($<#Type $fsm must implement ITestStateMachine interface, use "testing" flag in statemachine#>);
+                                       }
        | _                        => Console.WriteLine("Usage: fsmtest.exe [assembly] [fsm_type] [out_file_name]");
       }
     }

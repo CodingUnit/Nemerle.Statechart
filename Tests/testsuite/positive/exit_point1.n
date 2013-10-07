@@ -6,26 +6,40 @@ using Nemerle.Utility;
 using System;
 using Nemerle.Statechart;
 
-  [statechart(<#
+using System.Collections.Generic;
+using System.Linq;
 
+  /// <summary>
+  /// Description of example.
+  /// </summary>
+  [statechart(
+  <#
   flags testing;
-  //flags debug;
   
-  name "relocate state transition";
+  //flags debug;
   
   state A
   {
     a => B;
   }
-
+  
+  @B.ex: => A;
+  
   state B
   {
-    @C: a => A;
-    a => C;
-  }
-  
-  state C
-  {
+    exit: ex;
+      
+    [Initial]
+    state C
+    {
+      a => D;
+    }
+    
+    state D
+    {
+      a => C;
+      b => ex;
+    }
   }
   
   #>)]
@@ -33,7 +47,6 @@ using Nemerle.Statechart;
   {
   }
 
-  
   module Test
   {
     Main() : void
@@ -42,13 +55,13 @@ using Nemerle.Statechart;
       def tester = fsm.GetTester();
       tester.ConsoleTestInit();
       tester.Initiate("A", "EntryA");
-      tester.Test("a", ["A"], ["B"]);
-      tester.Test("a", ["B"], ["C"]);
-      tester.Test("a", ["C"], ["A"]);
+      tester.Test("a", "C", "ExitA", "EntryB", "EntryC");
+      tester.Test("a", "D", "ExitC", "EntryD");
+      tester.Test("b", "A", "ExitD", "ExitB", "EntryA");
       fsm.Terminate();
     }
   }
- 
+  
 /*
 BEGIN-OUTPUT
 EntryA
@@ -57,15 +70,17 @@ Ok
 Processing a 'a' 
 ExitA
 EntryB
-[B]
-Ok
-Processing a 'a' 
-ExitB
 EntryC
 [C]
 Ok
 Processing a 'a' 
 ExitC
+EntryD
+[D]
+Ok
+Processing a 'b' 
+ExitD
+ExitB
 EntryA
 [A]
 Ok
