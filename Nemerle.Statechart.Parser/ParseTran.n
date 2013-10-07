@@ -24,9 +24,9 @@ namespace Nemerle.Statechart
     get_state_qualified_target(name : NameIdentifier) : TargetType
     {
       | Name(name = n)           => TargetType.Named(name.pos, n)
-      | QualifiedName(parts = n) => def (tar, lst) = n.SplitLast();
-                                    def st = $<#..$(lst;".")#>;
-                                    TargetType.Qualified(name.pos, st, TargetType.Named(name.pos, tar))
+      | QualifiedName(parts = p, name = n) => //def (tar, lst) = n.SplitLast();
+                                    def st = $<#..$(p;".")#>;
+                                    TargetType.Qualified(name.pos, st, TargetType.Named(name.pos, n))
 
     }
 
@@ -58,10 +58,9 @@ namespace Nemerle.Statechart
       match (name)
       {
         | Name(name = n) => get_target(n)
-        | QualifiedName(parts = n) => 
-            def (tar, lst) = n.SplitLast();
-            def st = $<#..$(lst;".")#>;
-            TargetType.Qualified(name.pos, st, get_target(tar))//State(st, StateType.State()), 
+        | QualifiedName(parts = p, name = n) => 
+            def st = $<#..$(p;".")#>;
+            TargetType.Qualified(name.pos, st, get_target(n))//State(st, StateType.State()), 
       }
     }
 
@@ -87,12 +86,12 @@ namespace Nemerle.Statechart
       match (reg)
       {
         | Name(name = n)           => TargetType.Qualified(pos, n, target)
-        | QualifiedName(parts = n) => def st = $<#..$(n;".")#>;
-                                      TargetType.Qualified(pos, st, target)
+        | QualifiedName as t => def st = t.FullName;
+                                TargetType.Qualified(pos, st, target)
       }
     }
     
-    join_alt_tran(parent : NameIdentifier, _tok : NToken, id : NToken, lst : List[NToken], _ : NToken, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
+    join_alt_tran(_ : NToken, parent : NameIdentifier, _tok : NToken, id : NToken, lst : List[NToken], _ : NToken, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
     {
       def lst = id :: lst.NToList();
       def lst = lst.Map(x => parent.Add(GetText(x)));
@@ -101,7 +100,7 @@ namespace Nemerle.Statechart
       StateNode.Transition(pos, tar, tran.evt, tran.guard, tran.action, tran.to, TransitionKind.External)
     }
     
-    join_relocate_tran(tok : NToken, id : NameIdentifier, lst : List[NameIdentifier], _ : NToken, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
+    join_relocate_tran(_ : NToken, tok : NToken, id : NameIdentifier, lst : List[NameIdentifier], _ : NToken, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
     {
       def lst = id :: lst.NToList();
       def pos = tok.StartPos;
@@ -169,14 +168,14 @@ namespace Nemerle.Statechart
       Defer(tok.StartPos, lst.NToList())
     }
 
-    relocate_pseudo_tran(n : NameIdentifier, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
+    relocate_pseudo_tran(_ : NToken, n : NameIdentifier, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
     {
       def pos = n.pos;
       def tar = TargetType.PseudoState(pos, PseudoStateModelNode.EntryPoint(pos, n.FullName, null));
       StateNode.Transition(pos, tar, [], GuardNode.Empty(), tran.action, tran.to, TransitionKind.External)
     }
     
-    relocate_st_tran(n : NameIdentifier, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
+    relocate_st_tran(_ : NToken, n : NameIdentifier, _ : NToken, tran : StateNode.Transition) : StateNode.Transition
     {
       def pos = n.pos;
       def tar = TargetType.Named(pos, n.FullName);
