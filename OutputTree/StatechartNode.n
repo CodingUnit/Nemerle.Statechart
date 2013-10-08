@@ -12,30 +12,57 @@ namespace Nemerle.Statechart
 {
 
   [Record]  
-  public class StateEvent : IEquatable[StateEvent]
+  public variant StateEvent : IEquatable[StateEvent]
   {
-    public evt : TransitionEvent;
-    //public InternalOnly : bool {get;set;}
-
-    public parms : list[string * string];
-    
-    public static Completion : StateEvent = StateEvent(TransitionEvent.Completion, []);
-    
-    [Memoized]
-    public ParmNames : list[string]
+    | Normal 
     {
-      get
+      name  : string;
+      
+      parms : list[string * string];
+      
+      [Memoized]
+      ParmNames : list[string]
       {
-        parms.Map((x, _) => x)
+        get
+        {
+          parms.Map((x, _) => x)
+        }
       }
-    }
+      
+      [Memoized]
+      ParmTypes : list[string]
+      {
+        get
+        {
+          parms.Map((_, x) => x)
+        }
+      }
     
-    [Memoized]
-    public ParmTypes : list[string]
+      [Memoized]
+      NameWithParms : string
+      {
+        get
+        {
+          $<#$(name)(..$(parms;","))#>
+        }
+      }
+      
+    }
+    | Completion
+    | Timed { time_expr : TimedExprType; }
+    
+    public evt : TransitionEvent;
+    
+    public Parms : list[string * string]
     {
       get
       {
-        parms.Map((_, x) => x)
+        match (this)
+        {
+          | Normal(parms = p) => p
+          | Timed
+          | Completion        => []
+        }
       }
     }
     
@@ -60,24 +87,34 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (evt.name != null) evt.name else "Completion"
+        match (this)
+        {
+          | Normal as n => n.name
+          | Completion  => "Completion"
+          | Timed(e)    => $"$e"
+        }
       }
     }
 
-    public NameWithParms : string
-    {
-      get
-      {
-        $<#$(Name)(..$(parms;","))#>
-      }
-    }
+     [Memoized]
+     public FullName : string
+     {
+       get
+       {
+         match (this)
+         {
+           | Normal as n => n.NameWithParms
+           | _           => Name
+         }
+       }
+     }
     
     public CompareTo(b : StateEvent) : int
     {
       Name.CompareTo(b.Name)
     }
 
-    public static @== (a : StateEvent, b : StateEvent) : bool
+    public static @==(a : StateEvent, b : StateEvent) : bool
     {
       a.Name == b.Name
     }
@@ -86,18 +123,24 @@ namespace Nemerle.Statechart
     {
       get
       {
-        evt.name == null
+        this is Completion
       }
     }
 
     public override GetHashCode() : int
     {
-      NameWithParms.GetHashCode()
+      match (this)
+      {
+        | Normal as n => n.NameWithParms.GetHashCode()
+        | Completion  => Name.GetHashCode()
+        | Timed as n  => n.time_expr.ToString().GetHashCode()
+      }
+      
     }
     
     public Equals(obj : StateEvent) : bool
     {
-      this.Name == obj.Name && parms == obj.parms
+      GetHashCode() == obj.GetHashCode()
     }
     
     public override ToString() : string

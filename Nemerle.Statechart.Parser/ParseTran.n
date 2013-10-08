@@ -122,10 +122,67 @@ namespace Nemerle.Statechart
       lst.Select(create_event(_, [])).ToList()
     }
 
+    simple_time_expr(num : NToken, unit : NToken) : TimedExprType
+    {
+      mutable time;
+      if (double.TryParse(GetText(num), out time))
+      {
+        try
+        {
+          def tim = match (GetText(unit))
+          {
+            | "sec"
+            | "s"
+            | "seconds"      => TimeSpan.FromSeconds(time)
+            | "msec"
+            | "ms"
+            | "milliseconds" => TimeSpan.FromMilliseconds(time)
+            | "min"
+            | "m"
+            | "minutes"      => TimeSpan.FromMinutes(time)
+            | "hours"
+            | "h"            => TimeSpan.FromHours(time)
+            | "ticks"
+            | "t"            => TimeSpan.FromTicks(time :> long)
+            | _              => TimeSpan(-1)
+          }
+          TimedExprType.After(tim)
+        }
+        catch
+        {
+          | OverflowException => TimedExprType.After(TimeSpan(-2))
+        }
+      } else
+      {
+        TimedExprType.After(TimeSpan.Zero)
+      }
+    }
+    
+    full_time_expr(text : NToken) : TimedExprType
+    {
+      try
+      {
+        def time = TimeSpan.Parse(GetText(text));
+        TimedExprType.After(time)
+      }
+      catch
+      {
+        | FormatException   => TimedExprType.After(TimeSpan(-1))
+        | OverflowException => TimedExprType.After(TimeSpan(-2))
+      }
+    }
+    
+    timed_after_event(tok : NToken, _ : NToken, expr : TimedExprType, _ : NToken) : List[TransitionEvent]
+    {
+      def res = List();
+      res.Add(TransitionEvent.Timed(tok.StartPos, expr));
+      res
+    }
+    
     event_with_parms(name : NToken, _ : NToken, type : NToken, parms : List[NToken], _ : NToken) : List[TransitionEvent]
     {
       def lst = List();
-      lst.Add(TransitionEvent(name.StartPos, GetText(name), GetText(type) :: parms.Map(GetText)));
+      lst.Add(TransitionEvent.Normal(name.StartPos, GetText(name), GetText(type) :: parms.Map(GetText)));
       lst
     }
     

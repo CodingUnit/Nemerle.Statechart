@@ -17,13 +17,14 @@ namespace Nemerle.Statechart
     gen : StaticGenerator;
     events : list[StateEvent];
 
+    
     [Memoized]
     events_with_most_parameters : list[StateEvent]
     {
       get
       {
         def dups = events.GroupBy(_.Name);
-        dups.Map(x => x.OrderByDescending(x => x.parms.Length).First());
+        dups.Map(x => x.OrderByDescending(x => x.Parms.Length).First())
       }
     }
 
@@ -121,7 +122,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def completion = GenEvent(StateEvent.Completion, gen);
+        def completion = GenEvent(StateEvent.Completion(null), gen);
         def evt = <[case:
 
                     | e is Event =>
@@ -203,7 +204,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        events_with_most_parameters.Filter(x => x.parms.IsEmpty()).FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.Name : string) => $(x.CreateExpr()) ]> :: a);
+        events_with_most_parameters.Filter(x => x.Parms.Length == 0).FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.Name : string) => $(x.CreateExpr()) ]> :: a);
       }
     }
 
@@ -214,18 +215,18 @@ namespace Nemerle.Statechart
       {
         def create_parms(x)
         {
-          if (x.IsCompletion) <[ CompletionEvent.New ]> else
-          {
-            def parms = x.ParmTypes.MapI((i, t) => <[ $($"p$i" : dyn) :> $(t : usesite)]>);
-            def empty_pars = NList.Range(3).FoldLeft([], (x, a) => if (parms.Length > x) a else <[ _ = $($"p$x" : dyn) ]> :: a);
-            <[
-               {..$empty_pars}
-               Event.$(x.TargetName : usesite)(..$parms) 
-             ]>
-          }
+          | StateEvent.Completion  => <[ CompletionEvent.New ]>
+          | Normal as n =>
+              def parms = n.ParmTypes.MapI((i, t) => <[ $($"p$i" : dyn) :> $(t : usesite)]>);
+              def empty_pars = NList.Range(3).FoldLeft([], (x, a) => if (parms.Length > x) a else <[ _ = $($"p$x" : dyn) ]> :: a);
+               <[
+                 {..$empty_pars}
+                 Event.$(n.TargetName : usesite)(..$parms) 
+               ]>
+          | Timed => <[ ]>
         }
         
-        def events = events_with_most_parameters.Filter(x => x.ParmNames.Length <= 3);
+        def events = events_with_most_parameters.Filter(x => x.Parms.Length <= 3);
         events.FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.Name : string) => $(create_parms(x)) ]> :: a);
       }
     }
@@ -237,9 +238,10 @@ namespace Nemerle.Statechart
       {
         def create_parms(x)
         {
-          if (x.IsCompletion) <[ CompletionEvent.New ]> else
-          {
-            def parms = x.ParmTypes.MapI((i, t) => <[ parms[$i] :> $(t : usesite)]>);
+          | StateEvent.Completion => <[ CompletionEvent.New ]>
+          | Normal as n           =>
+          
+            def parms = n.ParmTypes.MapI((i, t) => <[ parms[$i] :> $(t : usesite)]>);
             def run = <[ Event.$(x.TargetName : usesite)(..$parms) ]>;
             def body = if (parms.IsEmpty()) 
                         {
@@ -248,13 +250,13 @@ namespace Nemerle.Statechart
                           ]>
                         } else
                         {
-                          def num = x.ParmNames.Length;
-                          def s = if (x.parms.Length > 1) "s" else "";
+                          def num = n.ParmNames.Length;
+                          def s = if (n.parms.Length > 1) "s" else "";
                           def str = $"event $(x.Name) need $num parameter$s";
                           <[ if (parms.Length >= $num) $run else throw InvalidOperationException($str) ]>
                         }
              body
-          }
+          | Timed => <[ ]>
         }
         
         def events = events_with_most_parameters;
@@ -274,12 +276,16 @@ namespace Nemerle.Statechart
     public EventDeclInState(e : StateEvent, body : PExpr) : ClassMember
     {
       def evt = events.Filter(x => x.Name == e.Name);
-      def most = evt.OrderByDescending(x => x.parms.Length).First();
-      def most = if (most.parms.Length == e.parms.Length) e else most;
+      def most = evt.OrderByDescending(x => x.Parms.Length).First();
+      def most = if (most.Parms.Length == e.Parms.Length) e else most;
       def fsm = <[parameter: fsm : $(gen.ChartName : usesite) ]>;
       def parms = fsm :: most.event_parameter_decls();
-      def most_parms = most.ParmNames;
-      def ignore = if (most_parms.Length > e.parms.Length)
+      def most_parms = match (most)
+                       {
+                         | StateEvent.Normal as n => n.ParmNames
+                         | _                      => []
+                       }
+      def ignore = if (most_parms.Length > e.Parms.Length)
                    {
                      def ignores = most_parms.Map(x => <[ _ = $(x : usesite) ]>);
                      <[ { ..$ignores } ]>
@@ -289,15 +295,6 @@ namespace Nemerle.Statechart
                    }
       <[decl: public override $(e.Name : usesite)(..$parms) : State { $ignore; $body }]>
     }
-    
-    //[Memoized]
-    //public EventDeclsInState() : list[ClassMember]
-    //{
-    //  get
-    //  {
-    //    events_with_most_parameters.Map(x => GenEvent.EventDeclInState(gen, x));
-    //  }
-    //}
     
     GenPost() : void
     {

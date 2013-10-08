@@ -62,7 +62,7 @@ namespace Nemerle.Statechart
           st.name = $"$(state)Initial";
           st.generated = true;
           def ntran = StateTransition(st, tran.To, TransitionKind.External);// :: [];
-          ntran.trigger = StateEvent.Completion;
+          ntran.trigger = StateEvent.Completion(null);
           st.transitions = ntran :: []; // create completion transition to target of initial
           def act = tran.action;
           st.entry = act.Map(StateAction.Entry(st.ToString(), _, ActionFlags.None)); // entry action to initial actions
@@ -346,7 +346,7 @@ namespace Nemerle.Statechart
       def merge_trans(tr, a, header_parms)
       {
         def tree = tr.DecisionTree;
-        def names = tr.Trigger.ParmNames;
+        def names = if (tr.Trigger is StateEvent.Normal as n) n.ParmNames else [];
         def aliases = if (names.Length == header_parms.Length) get_aliases(names, header_parms) else [];
         when (!aliases.IsEmpty()) set_aliases(tree, aliases);
         if (a == null)
@@ -366,10 +366,10 @@ namespace Nemerle.Statechart
         {
           def by_priority = ctrig.OrderBy(x => x.Priority);
           def tran = by_priority.First();
-          def used_trigger_header = by_priority.OrderByDescending(x => x.Trigger.parms.Length).First().Trigger; // trigger with most parameters used in header
+          def used_trigger_header = by_priority.OrderByDescending(x => x.Trigger.Parms.Length).First().Trigger; // trigger with most parameters used in header
           tran.Trigger = used_trigger_header;
           tran.Grouped = by_priority.Count();
-          def parm_names = used_trigger_header.ParmNames;
+          def parm_names = if (used_trigger_header is StateEvent.Normal as n) n.ParmNames else [];
           def tree = by_priority.FoldLeft(null, merge_trans(_, _, parm_names));
           def delete = by_priority.Except(tran);
           conf.transitions = conf.transitions.Exclude(delete.NToList());

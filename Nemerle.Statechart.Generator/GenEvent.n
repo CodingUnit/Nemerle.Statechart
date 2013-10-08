@@ -28,8 +28,12 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def parms = evt.ParmNames;
-        parms.Map(x => <[ $(x : usesite) ]>);
+        match (evt)
+        {
+          | StateEvent.Normal as n => def parms = n.ParmNames;
+                                      parms.Map(x => <[ $(x : usesite) ]>);
+          | _                      => []
+        }
       }
     }
 
@@ -43,19 +47,25 @@ namespace Nemerle.Statechart
 
     public static fsm_event_declaration(this n : StateEvent) : PExpr
     {
-      def parms = n.ParmTypes;
-      def parms = parms.Map(x => <[ $x ]>);
+      
+      def parms = match (n)
+                  {
+                    | StateEvent.Normal as n => def parms = n.ParmTypes;
+                                                parms.Map(x => <[ $x ]>);
+                    | _                      => []
+                  }
       <[ EventInfo($(n.Name), [..$(parms)]) ]>
     }
     
     public static event_parms_names(this n : StateEvent) : list[PExpr]
     {
-      n.parms.Map((x, _) => <[ $(x : usesite)]>)
+      | StateEvent.Normal as n => n.parms.Map((x, _) => <[ $(x : usesite)]>)
+      | _                      => []
     }
 
     public static event_parms(this n : StateEvent) : list[string * PExpr]
     {
-      n.parms.Map((x, y) => (x, <[ $(y : usesite)]>))
+      n.Parms.Map((x, y) => (x, <[ $(y : usesite)]>))
     }
 
     public static SendEventCode(evt : string) : PExpr
@@ -108,7 +118,13 @@ namespace Nemerle.Statechart
     {
       get
       {
-        def parms = evt.ParmNames.Map(x => <[ $(x : usesite) ]>);
+        def parms = match (evt)
+        {
+          | StateEvent.Normal as n => def parms = n.ParmNames.Map(x => <[ $(x : usesite) ]>);
+                                      parms
+          | _                      => []
+        }
+        
         def parms = <[ this ]> :: parms;
         <[ cur_state.$(evt.Name : usesite)(..$parms) ]>
       }
@@ -192,12 +208,16 @@ namespace Nemerle.Statechart
 
     public static CreateExpr(this evt : StateEvent) : PExpr
     {
-      if (evt.IsCompletion) <[ CompletionEvent.New ]> else
-      match (evt.ParmNames)
+      match (evt)
       {
-        | []    => <[ Event.$(evt.TargetName : usesite).New ]>
-        | parms => def parms = parms.Map(x => <[ $(x : usesite) ]>);
-                   <[ Event.$(evt.TargetName : usesite)(..$parms) ]>
+        | StateEvent.Completion  => <[ CompletionEvent.New ]>
+        | Normal as n            => match (n.ParmNames)
+                                    {
+                                      | []    => <[ Event.$(evt.TargetName : usesite).New ]>
+                                      | parms => def parms = parms.Map(x => <[ $(x : usesite) ]>);
+                                                 <[ Event.$(evt.TargetName : usesite)(..$parms) ]>
+                                    }
+        | Timed                   => <[]>
       }
     }
     
