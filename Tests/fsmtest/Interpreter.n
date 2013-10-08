@@ -30,6 +30,7 @@ namespace Nemerle.Statechart
     | UnknownEvent { evt : string }
     | EventNeedParams { evt : EventInfo; }
     | InvalidParameter { info : string }
+    | UnknownProperty { name : string; }
     
     public Message : string
     {
@@ -42,6 +43,7 @@ namespace Nemerle.Statechart
           | UnknownEvent(e)     => $<#Unknown event "$e" for this statemachine#>
           | EventNeedParams(e)  => $<#Event need parameters, signature is $(e.name)(..$(e.parms; ",")) #>
           | InvalidParameter(p) => $<#Error in parameter: $p#>
+          | UnknownProperty(p)  => $<#Unknown or inaccessible property $p#>
         }
       }
     }
@@ -96,11 +98,15 @@ namespace Nemerle.Statechart
       }
     }
     
-    SetProperty(name : string, val : object) : void
+    SetProperty(name : string, val : object, tostr : string) : ActionType
     {
       def type = fsm.GetType();
       def prop = type.GetProperty(name);
-      prop.SetValue(fsm, val, null);
+      if (prop != null)
+      {
+        prop.SetValue(fsm, val, null);
+        ActionType.SetProperty(name, tostr)
+      } else ActionType.Error(ErrorType.UnknownProperty(name))
     }
 
     GetPropertyValue(name : string) : object
@@ -174,14 +180,14 @@ namespace Nemerle.Statechart
     {
       regexp match (text)
       {
-        | @"terminate"                                 => canceled = true;
+        | "exit"
+        | "terminate"                                   => canceled = true;
                                                           fsm.Terminate();
                                                           ActionType.Terminate()
                                                                            
         | @"(?<param>\w+)\s*=\s*(?<value : int>-?\d+)" => def name = param;
                                                           def val = value;
-                                                          SetProperty(name, val);
-                                                          ActionType.SetProperty(name, val.ToString())
+                                                          SetProperty(name, val, val.ToString())
                                                                            
         | @"(?<param>\w+)\s*=\s*(?<value>\w+)"         => def name = param;
                                                           def (val, tostr) = match (value)
@@ -190,8 +196,7 @@ namespace Nemerle.Statechart
                                                                       | "false" => (false, "false")
                                                                       | _       => (value, value.ToString())
                                                                     }
-                                                          SetProperty(name, val);
-                                                          ActionType.SetProperty(name, tostr)
+                                                          SetProperty(name, val, tostr)
                                                                            
         | _ => def name = text.SpacesToUnderline();
                regexp match (name)
