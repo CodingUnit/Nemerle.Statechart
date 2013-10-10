@@ -1,0 +1,157 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Timers;
+using Nemerle.Compiler.Parsetree;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of TimedEvents.
+  /// </summary>
+  [Record]
+  class TimedEvents
+  {
+    gen : StaticGenerator;
+
+    transitions : list[Transition * StateEvent.Timed]
+    {
+      [Memoize]
+      get
+      {
+        def tran = gen.transitions.FoldLeft([], (x, a) => if (x.Trigger is StateEvent.Timed as e) (x, e) :: a else a);
+        def tran = tran.GroupBy((x, _) => x.Source);  // group by source config
+        tran.Map(x => x.Distinct()).Flatten().NToList() // select only distinct
+      }
+    }
+
+    [RecordIgnore]
+    events : list[Transition * StateEvent.Timed * string] {get;set;default []}
+
+    event_gen : list[GenTimedEvent]
+    {
+      [Memoize]
+      get
+      {
+        events.Map((t, e, n) => GenTimedEvent(t, e, n, gen))
+      }
+    }
+
+    original_evt : list[GenTimedEvent]
+    {
+      [Memoize]
+      get
+      {
+        event_gen.GroupBy(x => x.name).Map(x => x.First())
+      }
+    }
+
+    event_decl : ClassMember.TypeDeclaration
+    {
+      [Memoize]
+      get
+      {
+        <[decl: variant TimEvent : TimeEvent
+                {
+
+                }]>
+      }
+    }
+
+    public GetTimedCode(st : ActiveStateConfig) : PExpr
+    {
+      def evt = event_gen.Filter(x => x.tran.Source : object == st);
+      def code = evt.Map(_.StartCode);
+      <[ { ..$code } ]>
+    }
+
+    public GetExitStateCode(tran : Transition) : PExpr
+    {
+      def evt = event_gen.Filter(x => x.tran.Source : object == tran.Source);
+      def code = evt.Map(_.StopCode);
+      <[ { ..$code } ]>
+    }
+
+    public DeclInTopState : list[ClassMember]
+    {
+      [Memoize]
+      get
+      {
+        original_evt.Map(_.DeclInTopState)
+      }
+    }
+    
+    public EventDeclInState(tr : Transition, body : PExpr) : ClassMember
+    {
+      def evt = event_gen.First(x => x.tran : object == tr);
+      evt.DeclInState(body)
+    }
+    
+    public DispatchCases : list[MatchCase]
+    {
+      [Memoize]
+      get
+      {
+        original_evt.Map(_.DispatchCode)
+      }
+    }
+
+    EmitEvents() : void
+    {
+      def ty = gen.DefineNested(event_decl);
+      foreach (evt in original_evt)
+      {
+        evt.EventDecl(ty);
+        evt.Emit();
+      }
+      ty.Compile();
+    }
+
+    Prepare() : void
+    {
+      def (after, other) = transitions.Partition((_, y) => y.time_expr is TimedExprType.After); // partition events optimized only after syntax for those that starts after state entry
+      def dup = after.GroupBy((x, _) => x.Source); // group by source config in distinct configs it may use one timer and event name
+
+      def has_other_evt(gr, i)
+      {
+        gr.Exists(x => x.Count() > i) // have this index
+      }
+
+      def create_name((tr, e), i, other)
+      {
+        def name = if (has_other_evt(other, i)) // if has events in other configurations with this index in this state
+                    {
+                      def name = if (i != 0) $"After$i" else "After"; // create index name for it
+                      name
+                    } else
+                    {
+                      e.TargetName
+                    }
+        (tr, e, name)
+      }
+
+      def other = other.Map((x, y) => (x, y, y.TargetName));
+      def res = dup.FoldLeft([], (x, a) => 
+      {
+                                 def other = dup.Except(x); // other groups in configs
+                                 def res = x.MapIndex(create_name(_, _, other)).NToList();
+                                 res + a
+      });
+      events = res + other;
+    }
+
+    public Emit() : void
+    {
+      unless (transitions.IsEmpty())
+      {
+        Prepare();
+        EmitEvents();
+      }
+    }
+  }
+}

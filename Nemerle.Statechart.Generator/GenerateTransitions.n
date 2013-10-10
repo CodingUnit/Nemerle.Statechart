@@ -59,9 +59,22 @@ namespace Nemerle.Statechart
       tran.Map(get_body);
     }
 
+    GetStateChecks(st : ActiveStateConfig) : PExpr
+    {
+      def timed_code = timed_events.GetTimedCode(st);
+      timed_code
+    }
+    
+    GetStateExitChecks(tran : Transition) : PExpr
+    {
+      timed_events.GetExitStateCode(tran)
+    }
+    
     public GetDestination(tran : TargetDeterminator) : PExpr
     {
-      | State(st)      => GetExecStateName(st);
+      | State(st)      => def checks = GetStateChecks(st);
+                          def st_code = GetExecStateName(st);
+                          <[ $checks; $st_code ]>
       | NoStateChange  => <[ cur_state ]>
       | Terminate      => <[ Terminate();null ]>
       | History(h)     => SingleHistoryEmit.HistoryRestoreCode(h)
@@ -115,7 +128,9 @@ namespace Nemerle.Statechart
 
     GetTransitionBody(tran : Transition) : PExpr
     {
-      get_junction_body(tran.DecisionTree);
+      def checks = GetStateExitChecks(tran);
+      def body = get_junction_body(tran.DecisionTree, checks);
+      body
     }
 
     DefineTransBody(tr : Transition) : PExpr
@@ -146,7 +161,7 @@ namespace Nemerle.Statechart
       DeferrableEvents.EmitInState(st, ty);
       def defs =  {
                     def group = st.transitions;//.GroupBy(_.Trigger).Select(x => (x.Key, x.NToList()));
-                    group.MapToList(x => gen_events.EventDeclInState(x.Trigger, DefineHandlerTransBody(x)))
+                    group.MapToList(x => gen_events.EventDeclInState(x, DefineHandlerTransBody(x)))
                   }
       Define(ty, defs)
     }

@@ -51,7 +51,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        events_with_most_parameters.Map(GenEvent(_, gen))
+        events_with_most_parameters.Exclude(_.IsTimed).Map(GenEvent(_, gen))
       }
     }
 
@@ -86,7 +86,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        events_generators_wo_completion.Map(_.RunEventBody);
+        events_generators_wo_completion.Exclude(x => x.evt.IsTimed).Map(_.RunEventBody);
       }
     }
 
@@ -118,8 +118,18 @@ namespace Nemerle.Statechart
       gen.Define(field);
     }
 
+    timed_events : list[MatchCase]
+    {
+      [Memoize]
+      get
+      {
+        gen.timed_events.DispatchCases
+      }
+    }
+    
     dispatch_body : list[MatchCase]
     {
+      [Memoize]
       get
       {
         def completion = GenEvent(StateEvent.Completion(null), gen);
@@ -137,10 +147,18 @@ namespace Nemerle.Statechart
                                             current_event = e;
                                             $(completion.RunEvent)
                           ]>;
+        def timed = <[case:
+                      e is TimEvent => current_event = e;
+                                       match (e)
+                                       {
+                                         ..$timed_events
+                                       }
+                    ]>;
         def last = <[case: | _ => null ]>;
         def cases = last :: [];
         def cases = if (events_wo_completion.IsEmpty()) cases else evt :: cases;
-        if (have_completion) completion :: cases else cases
+        def cases = if (have_completion) completion :: cases else cases;
+        if (timed_events.IsEmpty()) cases else timed :: cases
       }
     }
     
@@ -177,7 +195,7 @@ namespace Nemerle.Statechart
 
       unless (evt.IsEmpty())
       {
-        def evt = evt.Map(GenEvent(_, gen));
+        def evt = evt.Exclude(x => x is StateEvent.Timed).Map(GenEvent(_, gen));
         def lst = evt.Map(x => x.PostEventByNameBody);
         gen.Define(lst);
 
@@ -204,7 +222,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        events_with_most_parameters.Filter(x => x.Parms.Length == 0).FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.Name : string) => $(x.CreateExpr()) ]> :: a);
+        events_with_most_parameters.Filter(x => x.Parms.Length == 0 && !x.IsTimed).FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.Name : string) => $(x.CreateExpr()) ]> :: a);
       }
     }
 
@@ -226,7 +244,7 @@ namespace Nemerle.Statechart
           | Timed => <[ ]>
         }
         
-        def events = events_with_most_parameters.Filter(x => x.Parms.Length <= 3);
+        def events = events_with_most_parameters.Filter(x => x.Parms.Length <= 3 && !x.IsTimed);
         events.FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.Name : string) => $(create_parms(x)) ]> :: a);
       }
     }
@@ -259,7 +277,7 @@ namespace Nemerle.Statechart
           | Timed => <[ ]>
         }
         
-        def events = events_with_most_parameters;
+        def events = events_with_most_parameters.Exclude(_.IsTimed);
         events.FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.Name : string) => $(create_parms(x)) ]> :: a);
       }
     }
@@ -269,31 +287,36 @@ namespace Nemerle.Statechart
     {
       get
       {
-        events_generators.Map(_.EventDeclInTopState)
+        def timed = gen.timed_events.DeclInTopState;
+        events_generators.Map(_.EventDeclInTopState) + timed
       }
     }
     
-    public EventDeclInState(e : StateEvent, body : PExpr) : ClassMember
+    public EventDeclInState(tr : Transition, body : PExpr) : ClassMember
     {
-      def evt = events.Filter(x => x.Name == e.Name);
-      def most = evt.OrderByDescending(x => x.Parms.Length).First();
-      def most = if (most.Parms.Length == e.Parms.Length) e else most;
-      def fsm = <[parameter: fsm : $(gen.ChartName : usesite) ]>;
-      def parms = fsm :: most.event_parameter_decls();
-      def most_parms = match (most)
-                       {
-                         | StateEvent.Normal as n => n.ParmNames
-                         | _                      => []
-                       }
-      def ignore = if (most_parms.Length > e.Parms.Length)
-                   {
-                     def ignores = most_parms.Map(x => <[ _ = $(x : usesite) ]>);
-                     <[ { ..$ignores } ]>
-                   } else
-                   {
-                     <[]>
-                   }
-      <[decl: public override $(e.Name : usesite)(..$parms) : State { $ignore; $body }]>
+      def e = tr.Trigger;
+      if (e.IsTimed) gen.timed_events.EventDeclInState(tr, body) else
+      {
+        def evt = events.Filter(x => x.Name == e.Name);
+        def most = evt.OrderByDescending(x => x.Parms.Length).First();
+        def most = if (most.Parms.Length == e.Parms.Length) e else most;
+        def fsm = <[parameter: fsm : $(gen.ChartName : usesite) ]>;
+        def parms = fsm :: most.event_parameter_decls();
+        def most_parms = match (most)
+                         {
+                           | StateEvent.Normal as n => n.ParmNames
+                           | _                      => []
+                         }
+        def ignore = if (most_parms.Length > e.Parms.Length)
+                     {
+                       def ignores = most_parms.Map(x => <[ _ = $(x : usesite) ]>);
+                       <[ { ..$ignores } ]>
+                     } else
+                     {
+                       <[]>
+                     }
+        <[ decl: public override $(e.Name : usesite)(..$parms) : State { $ignore; $body } ]>
+      }
     }
     
     GenPost() : void

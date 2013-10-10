@@ -15,44 +15,47 @@ namespace Nemerle.Statechart
   public variant StateEvent : IEquatable[StateEvent]
   {
     | Normal 
-    {
-      name  : string;
-      
-      parms : list[string * string];
-      
-      [Memoized]
-      ParmNames : list[string]
       {
-        get
+        name  : string;
+
+        parms : list[string * string];
+
+        [Memoized]
+        ParmNames : list[string]
         {
-          parms.Map((x, _) => x)
+          get
+          {
+            parms.Map((x, _) => x)
+          }
         }
-      }
-      
-      [Memoized]
-      ParmTypes : list[string]
-      {
-        get
+
+        [Memoized]
+        ParmTypes : list[string]
         {
-          parms.Map((_, x) => x)
+          get
+          {
+            parms.Map((_, x) => x)
+          }
         }
-      }
-    
-      [Memoized]
-      NameWithParms : string
-      {
-        get
+
+        [Memoized]
+        NameWithParms : string
         {
-          $<#$(name)(..$(parms;","))#>
+          get
+          {
+            $<#$(name)(..$(parms;","))#>
+          }
         }
+
       }
-      
-    }
     | Completion
-    | Timed { time_expr : TimedExprType; }
-    
+    | Timed 
+      { 
+        time_expr : TimedExprType;
+      }
+
     public evt : TransitionEvent;
-    
+
     public Parms : list[string * string]
     {
       get
@@ -65,7 +68,7 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
+
     public Location : Location
     {
       get
@@ -73,16 +76,21 @@ namespace Nemerle.Statechart
         evt.Location
       }
     }
-    
-    [Memoized]
+
     public TargetName : string
     {
+      [Memoize]
       get
       {
-        Name.ToUpperFirst()
+        match (this)
+        {
+          | Normal     => Name.ToUpperFirst()
+          | Completion => Name
+          | Timed(e)   => e.TargetName
+        }
       }
     }
-    
+
     public Name : string
     {
       get
@@ -96,19 +104,19 @@ namespace Nemerle.Statechart
       }
     }
 
-     [Memoized]
-     public FullName : string
-     {
-       get
-       {
-         match (this)
-         {
-           | Normal as n => n.NameWithParms
-           | _           => Name
-         }
-       }
-     }
-    
+    [Memoized]
+    public FullName : string
+    {
+      get
+      {
+        match (this)
+        {
+          | Normal as n => n.NameWithParms
+          | _           => Name
+        }
+      }
+    }
+
     public CompareTo(b : StateEvent) : int
     {
       Name.CompareTo(b.Name)
@@ -127,6 +135,14 @@ namespace Nemerle.Statechart
       }
     }
 
+    public IsTimed : bool
+    {
+      get
+      {
+        this is Timed
+      }
+    }
+    
     public override GetHashCode() : int
     {
       match (this)
@@ -135,14 +151,14 @@ namespace Nemerle.Statechart
         | Completion  => Name.GetHashCode()
         | Timed as n  => n.time_expr.ToString().GetHashCode()
       }
-      
+
     }
-    
+
     public Equals(obj : StateEvent) : bool
     {
       GetHashCode() == obj.GetHashCode()
     }
-    
+
     public override ToString() : string
     {
       $"$Name"
@@ -156,7 +172,7 @@ namespace Nemerle.Statechart
     | Entry
       {
         action : FsmAction;
-        
+
         Name : string
         {
           get
@@ -199,9 +215,9 @@ namespace Nemerle.Statechart
         public flags : ActivityFlag; // shows that we must run each action concurrently with others
 
         action : Actions;
-        
+
         need_completion : bool {get;set;default false}
-        
+
         Name : string
         {
           get
