@@ -93,7 +93,30 @@ namespace Nemerle.Statechart
         }
       }
 
+      def get_timed_evt(x, a)
+      {
+        def evt = x.transitions.SelectMany(x => x.evt);
+        def err = evt.Filter(x => x is TransitionEvent.Timed(TimedExpr.Error));
+        err + a
+      }
+      
       def flags = Fsm.flags.errors.Select(ParseError.UnknownMachineFlag);
+      def timed_err = TreeUtils.Fold(Fsm.state, [], x => x.sub_states, get_timed_evt);
+      foreach (TransitionEvent.Timed(TimedExpr.Error(e)) as evt in timed_err)
+      {
+        def report(e)
+        {
+          messager.AddError(FsmError.ParsingError(e))
+        }
+        
+        match (e)
+        {
+          | TimedErrorType.InvalidValue => report(ParseError.TimedEventInvalidValue(evt))
+          | Overflow                    => report(ParseError.TimedEventValueOverflow(evt))
+          | UnknownUnit(u)              => report(ParseError.TimedEventUnknownUnit(evt, u))
+        }
+      }
+      
       def err = Fsm.GetErrors().Select(check_err);
       def errs = err.Concat(flags);
       messager.AddError(errs)

@@ -66,6 +66,7 @@ namespace Nemerle.Statechart
     | LocalTransitionCannotTargetSelf { tran : StateTransition; }
     | EventDeclarationNumberOfParamsNotEqual { decl : StateNode.EventDecl; evt : TransitionEvent; }
     | EventDeclarationNotFound { evt : TransitionEvent; }
+    | TimedEventNeedPositive { evt : StateEvent; }
     //| ThereMustBeOnlyOneInitial {st : FsmState; tr : list[StateTransition.Initial]; }
 
     public Loc : Location
@@ -95,7 +96,9 @@ namespace Nemerle.Statechart
           | ParentStateNotFound(tr, _)
           | StateNotFound(tr, _)
           | DuplicateStateTarget(tr, _)
+          | TimedEventNeedPositive(tr)
           | LocalTransitionTargetMustBeWithinOrSuper(tr)             => tr.Location
+          | ParsingError(e)                                          => e.Location
           | _                                                        => Location.Default
         }
       }
@@ -107,16 +110,11 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | ParsingError(e)                                          => "Parse Error:" + match (e)
-                                                                            {
-                                                                              | DuplicateActivity(act) => $<#Duplicate do activity $act, state may have only one do activity node#>
-                                                                              | UnknownElement(node)   => $<#Unknown parse node $node #>
-                                                                              | UnknownMachineFlag(f)  => $<#Unknown state machine flag "$f" #>
-                                                                            }
+          | ParsingError(e)                                          => $"Parse Error: $(e.Text)"
           | StateNotFound(_, s)                                      => $<#State "$s" Not Found#>
       //| SubMachineStateNotFound(m, s)                          => $<#Sub machine "$m" does not contain referenced sub state "$s"#>
           | UnknownTarget(tran, t)                                   => $<#Transition "$tran" has unknown target "$t"#>
-          | DuplicateTransition(tran)                                => $<#Duplicate transitions "$tran"#>;
+          | DuplicateTransition(tran)                                => $<#Duplicate transition "$tran"#>;
           | DuplicateHistory(h)                                      => $<#Duplicate history "$h"#>
           | RegionMustContainInitial(reg, tran)                      => $<#Transition "$tran" requires region "$reg" to contain initial transition in each of it sub regions#>
           | SubRegionsMustContainInitial(sreg)                       => $<#Sub regions "..$sreg" must contain initial pseudostates to default state#>
@@ -163,6 +161,7 @@ namespace Nemerle.Statechart
           | JoinTransitionCannotHaveGuardsOrActions(tr)              => $<#Transition targeting join pseudostate "$tr" cannot have guards or actions#>
           | EventDeclarationNumberOfParamsNotEqual(d, e)             => $<#Event declaration "$d" has parameters not equal to event "$e" #>
           | EventDeclarationNotFound(e)                              => $<#Event declaration for parameter types for event "$e" not found#>
+          | TimedEventNeedPositive(e)                                => $<#Timed relative event "$e" need positive value above zero#>
       //| ThereMustBeOnlyOneInitial(s, t)                             => $<#In state "$s" may be only one unguarded initial transition, these transitions erroneus: "..$t"#>
       //| Sequence(e)                                            => $<#..$(e;"\n";GetError)#>
       //| n                                                        => throw InvalidOperationException($"unnkown error $n")
@@ -222,6 +221,42 @@ namespace Nemerle.Statechart
     | DuplicateActivity {node : StateNode.DoActivity;}
     | UnknownElement {node : StateNode;}
     | UnknownMachineFlag {flag : string;}
+    
+    | TimedEventValueOverflow { evt : TransitionEvent; }
+    | TimedEventUnknownUnit { evt : TransitionEvent; unit : string; }
+    | TimedEventInvalidValue { evt : TransitionEvent; } 
+    
+    public Location : Location
+    {
+      get
+      {
+        match (this)
+        {
+          | DuplicateActivity(a)
+          | UnknownElement(a)
+          | TimedEventValueOverflow(a)
+          | TimedEventInvalidValue(a)
+          | TimedEventUnknownUnit(a, _)   => a.Location
+          | _                             => Location.Default
+        }
+      }
+    }
+    
+    public Text : string
+    {
+      get
+      {
+        match (this)
+        {
+          | DuplicateActivity(act)      => $<#Duplicate do activity $act, state may have only one do activity node#>
+          | UnknownElement(node)        => $<#Unknown parse node $node #>
+          | UnknownMachineFlag(f)       => $<#Unknown state machine flag "$f" #>
+          | TimedEventValueOverflow     => <#Overflow in value of timed event#>
+          | TimedEventUnknownUnit(_, u) => $<#Unknown unit "$u" of time used in timed event#>
+          | TimedEventInvalidValue      => <#Invalid value used in timed event#>
+        }
+      }
+    }
   }
 
   [Record]
