@@ -122,44 +122,99 @@ namespace Nemerle.Statechart
       lst.Select(create_event(_, [])).ToList()
     }
 
-    simple_time_expr(time : double, unit : NToken) : TimedExpr
+    check_err(expr : IEnumerable[double * NToken]) : string
     {
-      if (time != double.NaN)
-      {
-        try
+      mutable hours = false;
+      mutable min = false;
+      mutable sec = false;
+      mutable msec = false;
+      mutable ticks = false;
+      ret :
         {
+      foreach ((_, u) in expr)
+      {
+        def u = GetText(u);
+        match (u)
+        {
+          | "sec"
+          | "s"
+          | "secs"
+          | "seconds"      => if (sec) ret(u) else sec = true;
+          | "msec"
+          | "ms"
+          | "milliseconds" => if (msec) ret(u) else msec = true;
+          | "min"
+          | "m"
+          | "minutes"      => if (min) ret(u) else min = true;
+          | "hours"
+          | "h"            => if (hours) ret(u) else hours = true;
+          | "ticks"
+          | "t"            => if (ticks) ret(u) else ticks = true;
+          | _              => ()
+        }
+      }
+      null
+    }
+    }
+
+    simple_time_expr(expr : List[double * NToken]) : TimedExpr
+    {
+
+      match (check_err(expr)) 
+      {
+        | null => 
+          try
+          {
             def ret(t)
             {
               TimedExpr.Expr(TimedExprType.After(t))
             }
-            
-           match (GetText(unit))
+
+            def get_value(t, u)
             {
-              | "sec"
-              | "s"
-              | "secs"
-              | "seconds"      => ret(TimeSpan.FromSeconds(time))
-              | "msec"
-              | "ms"
-              | "milliseconds" => ret(TimeSpan.FromMilliseconds(time))
-              | "min"
-              | "m"
-              | "minutes"      => ret(TimeSpan.FromMinutes(time))
-              | "hours"
-              | "h"            => ret(TimeSpan.FromHours(time))
-              | "ticks"
-              | "t"            => ret(TimeSpan.FromTicks(time :> long))
-              | u              => TimedExpr.Error(TimedErrorType.UnknownUnit(u))
+              match (GetText(u))
+              {
+                | "sec"
+                | "s"
+                | "secs"
+                | "seconds"      => ret(TimeSpan.FromSeconds(t))
+                | "msec"
+                | "ms"
+                | "milliseconds" => ret(TimeSpan.FromMilliseconds(t))
+                | "min"
+                | "m"
+                | "minutes"      => ret(TimeSpan.FromMinutes(t))
+                | "hours"
+                | "h"            => ret(TimeSpan.FromHours(t))
+                | "ticks"
+                | "t"            => ret(TimeSpan.FromTicks(t :> long))
+                | u              => TimedExpr.Error(TimedErrorType.UnknownUnit(u))
+              }
+
+            }
+
+            def accumulate(x : TimedExpr, y : TimedExpr)
+            {
+              | (TimedExpr.Expr(TimedExprType.After(a)), TimedExpr.Expr(TimedExprType.After(b))) => ret(a + b)
+              | _                                                                                => TimedExpr.Error(TimedErrorType.InvalidValue())
+            }
+
+            def vals = expr.Map(get_value);
+            match (vals.Find(x => x is TimedExpr.Error))
+            {
+              | Some(e) => e
+              | _       => vals.Reduce(accumulate)
+            }
           }
-        }
-        catch
-        {
-          | OverflowException => TimedExpr.Error(TimedErrorType.Overflow())
-        }
-      } else
-      {
-        TimedExpr.Error(TimedErrorType.InvalidValue())
+          catch
+          {
+            | OverflowException => TimedExpr.Error(TimedErrorType.Overflow())
+            | ArgumentException => TimedExpr.Error(TimedErrorType.InvalidValue())
+          }
+        
+        | str  => TimedExpr.Error(TimedErrorType.DuplicateUnit(str))
       }
+
     }
 
     full_time_expr(text : NToken) : TimedExpr
