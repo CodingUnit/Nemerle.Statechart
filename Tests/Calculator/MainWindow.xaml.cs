@@ -29,6 +29,13 @@ namespace Calculator.Windows
         {
             InitializeComponent();
             fsm.Show += x => Dispatcher.Invoke(new Action<string>(fsm_Show), x);
+            fsm.TransitionCompleted += (x, y) => Dispatcher.Invoke(new Action(fsm_TransitionCompleted));
+        }
+
+        void fsm_TransitionCompleted()
+        {
+            if (statusBar.Items.Count == 2) statusBar.Items.RemoveAt(1);
+            statusBar.Items.Add(fsm.ToString());
         }
 
         protected override void OnClosed(EventArgs e)
@@ -156,6 +163,30 @@ namespace Calculator.Windows
         private void button2_Click(object sender, RoutedEventArgs e)
         {
             fsm.oper('%');
+        }
+
+        private void Window_TextInput(object sender, TextCompositionEventArgs e)
+        {
+            var evt = NST.Calculator.GetEventFromStr(e.Text);
+            if (evt.HasValue)
+            {
+                fsm.PostEvent(evt.Value);
+                e.Handled = true;
+            }
+        }
+
+        private void Window_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                fsm.CE();
+                e.Handled = true;
+            } else
+                if (e.Key == Key.Return)
+                {
+                    fsm.equal();
+                    e.Handled = true;
+                }
         }
 
 
