@@ -26,19 +26,19 @@ namespace Nemerle.Statechart
       {
         def tran = gen.transitions.FoldLeft([], (x, a) => if (x.Trigger is StateEvent.Timed as e) (x, e) :: a else a);
         def tran = tran.GroupBy((x, _) => x.Source);  // group by source config
-        tran.Map(x => x.Distinct()).Flatten().NToList() // select only distinct
+        tran.Map(_.Distinct()).Flatten().NToList() // select only distinct
       }
     }
 
     [RecordIgnore]
-    events : list[Transition * StateEvent.Timed * string] {get;set;default []}
+    events : list[Transition * StateEvent.Timed * string * bool] {get;set;default []}
 
     event_gen : list[GenTimedEvent]
     {
       [Memoize]
       get
       {
-        events.Map((t, e, n) => GenTimedEvent(t, e, n, gen))
+        events.Map(GenTimedEvent(_, _, _, gen, _))
       }
     }
 
@@ -47,7 +47,7 @@ namespace Nemerle.Statechart
       [Memoize]
       get
       {
-        event_gen.GroupBy(x => x.name).Map(x => x.First())
+        event_gen.GroupBy(_.name).Map(_.First())
       }
     }
 
@@ -124,18 +124,18 @@ namespace Nemerle.Statechart
 
       def create_name((tr, e), i, other)
       {
-        def name = if (has_other_evt(other, i)) // if has events in other configurations with this index in this state
+        def (name, reuse) = if (has_other_evt(other, i)) // if has events in other configurations with this index in this state
                     {
                       def name = if (i != 0) $"After$i" else "After"; // create index name for it
-                      name
+                      (name, true)
                     } else
                     {
-                      e.TargetName
+                      (e.TargetName, false)
                     }
-        (tr, e, name)
+        (tr, e, name, reuse)
       }
 
-      def other = other.Map((x, y) => (x, y, y.TargetName));
+      def other = other.Map((x, y) => (x, y, y.TargetName, false));
       def res = dup.FoldLeft([], (x, a) => 
       {
                                  def other = dup.Except(x); // other groups in configs

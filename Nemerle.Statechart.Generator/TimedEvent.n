@@ -23,6 +23,8 @@ namespace Nemerle.Statechart
     public name : string;
     gen : StaticGenerator;
     
+    public reuse_timer : bool {get;set;}
+    
     timer_name : string
     {
       [Memoize]
@@ -41,7 +43,7 @@ namespace Nemerle.Statechart
       }
     }
     
-    init_expr : PExpr
+    set_interval : PExpr
     {
       [Memoize]
       get
@@ -49,11 +51,25 @@ namespace Nemerle.Statechart
         match (evt.time_expr)
         {
           | TimedExprType.After(t) => def val = t.TotalMilliseconds;
+                                      <[ $(timer_name : usesite).Interval = $val; ]>
+          | _                      => <[]>
+        }
+      }
+    }
+    
+    init_expr : PExpr
+    {
+      [Memoize]
+      get
+      {
+        match (evt.time_expr)
+        {
+          | TimedExprType.After    => def interval = if (reuse_timer) <[]> else set_interval;
                                       <[
                                          $(timer_name : usesite).AutoReset = false;
-                                         $(timer_name : usesite).Interval = $val;
+                                         $interval;
                                          $(timer_name : usesite).Elapsed += $(name : usesite);
-                                      ]>;
+                                      ]>
           | _                      => <[]>
         }
       }
@@ -76,7 +92,11 @@ namespace Nemerle.Statechart
       [Memoize]
       get
       {
-        <[ $(timer_name : usesite).Start() ]>
+        def start = if (reuse_timer) set_interval else <[]>;
+        <[ 
+           $start;
+           $(timer_name : usesite).Start() 
+         ]>;
       }
     }
     
