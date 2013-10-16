@@ -50,12 +50,35 @@ namespace Nemerle.Statechart
       }
     }
     
+    actions : list[FsmAction]
+    {
+      [Memoize]
+      get
+      {
+        def tran = StateTransitions.SelectMany(_.action);
+        def st = States.SelectMany(_.actions);
+        def pseudo = PseudoStates.SelectMany(_.Actions);
+        tran.Concat(st).Concat(pseudo).NToList()
+      }
+    }
+    
     CheckActivities() : void 
     {
       def do_act = States.SelectMany(x => x.do_activity.Select(y => (x, y)));
 
+      def other_actions = actions;
+      foreach ((_, StateAction.Do(action = Actions(actions = FsmAction.Normal(name = n, parameters = []) :: [])) as act) in do_act)
+      {
+        match (other_actions.Find(x => if (x is FsmAction.Normal(name = n2)) n2 == n else false))
+        {
+          | Some(a) => messager.AddError(FsmError.DoActivityDuplicateAction(act, a))
+          | _       => ()
+        }
+      }
+      
       def sm = do_act.Filter((x : FsmState, _) => x.PartOfStateMachine.HasValue);
       def do_act = sm.GroupBy((x : FsmState, _) => x.PartOfStateMachine.Value.SubMachineType);
+      
       foreach (group in do_act)
       {
         foreach (st in group.GroupBy((x, _) => x.name))
