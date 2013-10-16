@@ -66,6 +66,18 @@ namespace Nemerle.Statechart
     //  }
     //}
 
+    public Parts : list[string]
+    {
+      get
+      {
+        match (this)
+        {
+          | Name             => name :: []
+          | QualifiedName(p) => p + [name]
+        }
+      }
+    }
+
     public FullName : string
     {
       get
@@ -99,11 +111,59 @@ namespace Nemerle.Statechart
     //}
   }
 
+  [Record]
+  public variant EventClass
+  {
+    | Internal
+    | External
+      {
+        path : list[string];
+
+        ty : TypeInfo;
+        
+        public base_class : list[string]
+        {
+          [Memoize]
+          get
+          {
+            if (path.IsEmpty()) null else path.ChopLast().NToList()
+          }
+        }
+
+        public Base : string
+        {
+          [Memoize]
+          get
+          {
+            $<#..$(base_class; ".")#>
+          }
+        }
+        
+        public FullName : string
+        {
+          [Memoize]
+          get
+          {
+            $<#..$(path; ".")#>
+          }
+        }
+
+        public evt_name : string
+        {
+          [Memoize]
+          get
+          {
+            if (path.IsEmpty()) null else path.Last()
+          }
+        }
+      }
+  }
+
   public variant TimedExpr
   {
     | Expr { expr : TimedExprType; }
     | Error { type : TimedErrorType; }
-    
+
     public override ToString() : string
     {
       match (this)
@@ -113,7 +173,7 @@ namespace Nemerle.Statechart
       }
     }
   }
-  
+
   [Record]
   public variant TimedErrorType
   {
@@ -122,13 +182,13 @@ namespace Nemerle.Statechart
     | InvalidValue
     | DuplicateUnit { name : string; }
   }
-  
+
   public variant TimedExprType
   {
     | After { time : TimeSpan;}
     | AfterSince { }
     | When { time : DateTime; }
-    
+
     public override ToString() : string
     {
       match (this)

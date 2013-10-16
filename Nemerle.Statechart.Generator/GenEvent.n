@@ -68,10 +68,6 @@ namespace Nemerle.Statechart
       n.Parms.Map((x, y) => (x, <[ $(y : usesite)]>))
     }
 
-    public static SendEventCode(evt : string) : PExpr
-    {
-      <[ PostEvent(Event.$(evt.ToUpperFirst() : usesite).New) ]>
-    }
     
     [Memoized]
     public EventDeclInTopState : ClassMember
@@ -206,16 +202,27 @@ namespace Nemerle.Statechart
       }
     }
 
+    public static GetBase(this evt : StateEvent.Normal) : PExpr
+    {
+      match (evt.ev_class)
+      {
+        | EventClass.External as e => <[ $(e.Base : usesite) ]>
+        | Internal                 => <[ Event ]>
+      }
+    }
+    
     public static CreateExpr(this evt : StateEvent) : PExpr
     {
+      
       match (evt)
       {
         | StateEvent.Completion  => <[ CompletionEvent.New ]>
-        | Normal as n            => match (n.ParmNames)
+        | Normal as n            => def base_class = n.GetBase();
+                                    match (n.ParmNames)
                                     {
-                                      | []    => <[ Event.$(evt.TargetName : usesite).New ]>
+                                      | []    => <[ $base_class.$(evt.TargetName : usesite).New ]>
                                       | parms => def parms = parms.Map(x => <[ $(x : usesite) ]>);
-                                                 <[ Event.$(evt.TargetName : usesite)(..$parms) ]>
+                                                 <[ $base_class.$(evt.TargetName : usesite)(..$parms) ]>
                                     }
         | Timed                   => <[]>
       }

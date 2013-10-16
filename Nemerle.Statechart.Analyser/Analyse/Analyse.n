@@ -19,6 +19,18 @@ namespace Nemerle.Statechart
   partial class FsmAnalyser : INotifyPropertyChanged
   {
 
+    internal CreateEvent(evt : TransitionEvent) : StateEvent
+    {
+      | TransitionEvent.Normal(n, _)   => match (EventClasses.Find(x => if (x is EventClass.External(evt_name = n2) when n != null) n2 == n.ToUpperFirst() else false))
+                                          {
+                                            | Some(e) => StateEvent.Normal(evt.Location, n, GetEventParms(evt), e)
+                                            | _       => StateEvent.Normal(evt.Location, n, GetEventParms(evt), EventClass.Internal())
+                                          }
+      | Completion as e                => StateEvent.Completion(e.Location)
+      | Timed(TimedExpr.Expr(ex)) as e => StateEvent.Timed(e.Location, ex)
+      | _                              => throw InvalidOperationException("invalid event")
+    }
+    
     internal GetEventParms(evt : TransitionEvent) : list[string * string]
     {
       def (name, parms) = if (evt is TransitionEvent.Normal as n) (n.name, n.parms) else (null, []);
