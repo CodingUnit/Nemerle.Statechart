@@ -9,6 +9,14 @@ using Nemerle.Statechart;
 using System.Collections.Generic;
 using System.Linq;
 
+[Event]
+variant Events
+{
+  | A
+  | B
+  | C
+}
+
   /// <summary>
   /// Description of junction_example.
   /// </summary>
@@ -16,27 +24,64 @@ using System.Linq;
   <#
   flags testing;
   name "composite @at syntax";
+  flags debug;
+  
+  event_class Events;
   
   state A
   {
+    a / send_other(b);
+    b => C;
+    c => A;
   }
 
   state B
   {
     a => C;
-    @A:
-      {
-        a => B;
-        b => C;
-      }
+    b => A;
+    c => B;
   }
   
   state C
   {
     a => A;
+    b => B;
+    c => C;
   }
   #>)]
 public class example
+{
+}
+
+  [statechart(
+  <#
+  flags testing;
+  name "composite @at syntax";
+  
+  event_class Events;
+  
+  state A
+  {
+    a => B;
+    b => C;
+    c => A;
+  }
+
+  state B
+  {
+    a => C;
+    b => A;
+    c => B;
+  }
+  
+  state C
+  {
+    a => A;
+    b => B;
+    c => C;
+  }
+  #>)]
+public class example2
 {
 }
 
@@ -45,14 +90,14 @@ module Test
   Main() : void
   {
     def fsm = example();
-    def tester = fsm.GetTester();
-    tester.ConsoleTestInit();
-    tester.Initiate("A", "EntryA");
-    tester.Test("a", "B", "ExitA", "EntryB");
-    tester.Test("a", "C", "ExitB", "EntryC");
-    tester.Test("a", "A", "ExitC", "EntryA");
-    tester.Test("b", "C", "ExitA", "EntryC");
-    tester.Test("a", "A", "ExitC", "EntryA");
+    def fsm2 = example2();
+    def tester1 = fsm.GetTester();
+    tester1.ConsoleTestInit();
+    def tester2 = fsm2.GetTester();
+    tester2.ConsoleTestInit();
+    tester1.Initiate(["A"]);
+    tester2.Initiate(["A"]);
+    FsmMessenger.Instance.Post(Events.A.New);
     fsm.Terminate();
   }
 }
