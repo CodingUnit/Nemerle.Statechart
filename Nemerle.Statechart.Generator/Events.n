@@ -17,7 +17,7 @@ namespace Nemerle.Statechart
     gen : StaticGenerator;
     events : list[StateEvent];
 
-    
+
     [Memoized]
     events_with_most_parameters : list[StateEvent]
     {
@@ -45,7 +45,7 @@ namespace Nemerle.Statechart
         events_wo_completion.Exclude(_.IsExternal)
       }
     }
-    
+
     [Memoized]
     events_wo_completion : list[StateEvent]
     {
@@ -72,7 +72,7 @@ namespace Nemerle.Statechart
         events_generators.Exclude(x => x.evt.IsCompletion)
       }
     }
-    
+
     external_events : list[GenEvent]
     {
       [Memoize]
@@ -81,7 +81,7 @@ namespace Nemerle.Statechart
         events_generators.Filter(x => x.evt.IsExternal)
       }
     }
-    
+
     NeedEvtContextName : bool
     {
       get
@@ -138,31 +138,31 @@ namespace Nemerle.Statechart
 
     public SendOtherCode(evt : string) : PExpr
     {
-      match (gen.Events.Find(x => x.Name == evt))
+      match (events_generators.Find(x => x.evt.Name == evt))
       {
-        | Some(e) => <[ Messenger.PostOthers($(e.CreateExpr()), this) ]>
+        | Some(e) => <[ Messenger.PostOthers($(e.CreateExpr), this) ]>
         | _       => <[ ]>
       }
     }
-    
+
     public SendAllCode(evt : string) : PExpr
     {
-      match (gen.Events.Find(x => x.Name == evt))
+      match (events_generators.Find(x => x.evt.Name == evt))
       {
-        | Some(e) => <[ Messenger.Post($(e.CreateExpr())) ]>
+        | Some(e) => <[ Messenger.Post($(e.CreateExpr)) ]>
         | _       => <[ ]>
       }
     }
-    
+
     public SendEventCode(evt : string) : PExpr
     {
-      match (gen.Events.Find(x => x.Name == evt))
+      match (events_generators.Find(x => x.evt.Name == evt))
       {
-        | Some(e) => <[ PostEvent($(e.CreateExpr())) ]>
+        | Some(e) => <[ PostEvent($(e.CreateExpr)) ]>
         | _       => <[ ]>
       }
     }
-    
+
     timed_events : list[MatchCase]
     {
       [Memoize]
@@ -171,40 +171,41 @@ namespace Nemerle.Statechart
         gen.timed_events.DispatchCases
       }
     }
-    
+
     external_events_disp_case : list[MatchCase]
     {
       [Memoize]
       get
       {
         def group = external_events.GroupBy(x => x.evt.ExtClass.Base);
-        
+
         def get_events(e)
         {
           def ext = e.evt.ExtClass;
-          def base_class = ext.Base;
           def evt = ext.evt_name;
-          <[ case: | $(base_class : usesite).$(evt : usesite) => current_event = e;
-                                                                 $(e.RunEvent)
-           ]>
+          def base_class = e.GetBase;
+          <[ case: | $base_class.$(evt : usesite) => current_event = e;
+                                $(e.RunEvent)
+          ]>
         }
-        
+
         def get_case(e)
         {
-          
+
           def ignore = <[case: _ => null]>;
           def cases = e.FoldLeft([ignore], (x, a) => get_events(x) :: a);
-          <[ case: | e is $(e.Key : usesite) => match (e) 
+          def base_class = e.First().GetBase;
+          <[ case: | e is $base_class => match (e) 
                                                 {
                                                   ..$cases
                                                 }
           ]>
         }
-        
+
         group.Map(get_case)
       }
     }
-    
+
     internal_event_disp_case : MatchCase
     {
       [Memoize]
@@ -221,7 +222,7 @@ namespace Nemerle.Statechart
           } ]>
       }
     }
-    
+
     completion_disp_case : MatchCase
     {
       [Memoize]
@@ -229,11 +230,11 @@ namespace Nemerle.Statechart
       {
         def completion = GenEvent(StateEvent.Completion(), gen);
         <[ case: e is CompletionEvent => current_event = e;
-                                         $(completion.RunEvent)
+                                        $(completion.RunEvent)
         ]>
       }
     }
-    
+
     timed_disp_case : MatchCase
     {
       [Memoize]
@@ -247,7 +248,7 @@ namespace Nemerle.Statechart
                     ]>
       }
     }
-    
+
     dispatch_body : list[MatchCase]
     {
       [Memoize]
@@ -265,7 +266,7 @@ namespace Nemerle.Statechart
         cases
       }
     }
-    
+
     GenBaseStruct() : void
     {
       when (NeedEvtContext) GenEventCtx();
@@ -323,13 +324,13 @@ namespace Nemerle.Statechart
         <[case: | _ => throw InvalidOperationException("Unknown event") ]>
       }
     }
-    
+
     [Memoized]
     StringToEvent : list[MatchCase]
     {
       get
       {
-        events_with_most_parameters.Filter(x => x.Parms.Length == 0).FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.Name : string) => $(x.CreateExpr()) ]> :: a);
+        events_generators.Filter(x => x.evt.Parms.Length == 0).FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.evt.Name : string) => $(x.CreateExpr) ]> :: a);
       }
     }
 
@@ -340,20 +341,23 @@ namespace Nemerle.Statechart
       {
         def create_parms(x)
         {
-          | StateEvent.Completion  => <[ CompletionEvent.New ]>
-          | Normal as n =>
+          match (x.evt)
+          {
+            | StateEvent.Completion  => <[ CompletionEvent.New ]>
+            | Normal as n =>
               def parms = n.ParmTypes.MapI((i, t) => <[ $($"p$i" : dyn) :> $(t : usesite)]>);
               def empty_pars = NList.Range(3).FoldLeft([], (x, a) => if (parms.Length > x) a else <[ _ = $($"p$x" : dyn) ]> :: a);
-              def base_class = n.GetBase();
-               <[
-                 {..$empty_pars}
-                 $base_class.$(n.TargetName : usesite)(..$parms) 
-               ]>
-          | Timed => <[ ]>
+              def base_class = x.GetBase;
+              <[
+                {..$empty_pars}
+                $base_class.$(n.TargetName : usesite)(..$parms) 
+              ]>
+            | Timed => <[ ]>
+          }
         }
-        
-        def events = events_with_most_parameters.Filter(x => x.Parms.Length <= 3);
-        events.FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.Name : string) => $(create_parms(x)) ]> :: a);
+
+        def events = events_generators.Filter(x => x.evt.Parms.Length <= 3);
+        events.FoldRight(UnknownEvent :: [], (x : GenEvent, a) => <[case: | $(x.evt.Name : string) => $(create_parms(x)) ]> :: a);
       }
     }
 
@@ -364,33 +368,36 @@ namespace Nemerle.Statechart
       {
         def create_parms(x)
         {
-          | StateEvent.Completion => <[ CompletionEvent.New ]>
-          | Normal as n           =>
-          
+          match (x.evt)
+          {
+            | StateEvent.Completion => <[ CompletionEvent.New ]>
+            | Normal as n           =>
+
             def parms = n.ParmTypes.MapI((i, t) => <[ parms[$i] :> $(t : usesite)]>);
-            def base_class = n.GetBase();
-            def run = <[ $base_class.$(x.TargetName : usesite)(..$parms) ]>;
+            def base_class = x.GetBase;
+            def run = <[ $base_class.$(n.TargetName : usesite)(..$parms) ]>;
             def body = if (parms.IsEmpty()) 
                         {
                           <[ _ = parms;
-                             $run
+                            $run
                           ]>
                         } else
                         {
                           def num = n.ParmNames.Length;
                           def s = if (n.parms.Length > 1) "s" else "";
-                          def str = $"event $(x.Name) need $num parameter$s";
+                          def str = $"event $(n.Name) need $num parameter$s";
                           <[ if (parms.Length >= $num) $run else throw InvalidOperationException($str) ]>
                         }
-             body
-          | Timed => <[ ]>
+            body
+            | Timed => <[ ]>
+          }
         }
-        
-        def events = events_with_most_parameters;
-        events.FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.Name : string) => $(create_parms(x)) ]> :: a);
+
+        def events = events_generators;
+        events.FoldRight(UnknownEvent :: [], (x, a) => <[case: | $(x.evt.Name : string) => $(create_parms(x)) ]> :: a);
       }
     }
-    
+
     [Memoized]
     public EventDeclsInTopState : list[ClassMember]
     {
@@ -400,7 +407,7 @@ namespace Nemerle.Statechart
         events_generators.Map(_.EventDeclInTopState) + timed
       }
     }
-    
+
     public EventDeclInState(tr : Transition, body : PExpr) : ClassMember
     {
       def e = tr.Trigger;
@@ -412,42 +419,42 @@ namespace Nemerle.Statechart
         def fsm = <[parameter: fsm : $(gen.ChartName : usesite) ]>;
         def parms = fsm :: most.event_parameter_decls();
         def most_parms = match (most)
-                         {
-                           | StateEvent.Normal as n => n.ParmNames
-                           | _                      => []
-                         }
+                          {
+                            | StateEvent.Normal as n => n.ParmNames
+                            | _                      => []
+                          }
         def ignore = if (most_parms.Length > e.Parms.Length)
-                     {
-                       def ignores = most_parms.Map(x => <[ _ = $(x : usesite) ]>);
+                      {
+                        def ignores = most_parms.Map(x => <[ _ = $(x : usesite) ]>);
                        <[ { ..$ignores } ]>
-                     } else
-                     {
-                       <[]>
-                     }
+                      } else
+                      {
+                        <[]>
+                      }
         <[ decl: public override $(e.Name : usesite)(..$parms) : State { $ignore; $body } ]>
       }
     }
-    
+
     GenPost() : void
     {
       def body = if (StringToEvent.Length > 1) 
-                 {
-                   <[
+                  {
+                  <[
                       def res = match (evt)
                                 {
                                   ..$StringToEvent
                                 }
                       PostEvent(res)
-                   ]>
-                 }  else 
-                 {
-                   <[
-                      match (evt)
+                  ]>
+                  }  else 
+                  {
+                  <[
+                    match (evt)
                       {
                         ..$StringToEvent
                       }
-                   ]>
-                 }
+                  ]>
+                  }
       gen.Define(<[ decl:
             public override PostEvent(evt : string) : void
             {

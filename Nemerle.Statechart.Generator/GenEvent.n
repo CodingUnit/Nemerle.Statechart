@@ -47,16 +47,16 @@ namespace Nemerle.Statechart
 
     public static fsm_event_declaration(this n : StateEvent) : PExpr
     {
-      
+
       def parms = match (n)
-                  {
-                    | StateEvent.Normal as n => def parms = n.ParmTypes;
+                   {
+                     | StateEvent.Normal as n => def parms = n.ParmTypes;
                                                 parms.Map(x => <[ $x ]>);
-                    | _                      => []
-                  }
+                     | _                      => []
+                   }
       <[ EventInfo($(n.Name), [..$(parms)]) ]>
     }
-    
+
     public static event_parms_names(this n : StateEvent) : list[PExpr]
     {
       | StateEvent.Normal as n => n.parms.Map((x, _) => <[ $(x : usesite)]>)
@@ -68,7 +68,7 @@ namespace Nemerle.Statechart
       n.Parms.Map((x, y) => (x, <[ $(y : usesite)]>))
     }
 
-    
+
     [Memoized]
     public EventDeclInTopState : ClassMember
     {
@@ -79,7 +79,7 @@ namespace Nemerle.Statechart
         def parms = parms.Map((_, t) => <[parameter: _ : $t]>);
         def parms = fsm :: parms;
         <[ decl: public virtual $(evt.Name : usesite)(..$parms) : State { null } ]>
-     }
+      }
     }
 
     public static event_parameter_decls(this evt : StateEvent) : list[PParameter]
@@ -96,10 +96,10 @@ namespace Nemerle.Statechart
       get
       {
         def parms = evt.event_parameter_decls();
-        <[decl: public $(evt.Name : usesite)(..$parms) : void { PostEvent($(evt.CreateExpr())) } ]>
+        <[decl: public $(evt.Name : usesite)(..$parms) : void { PostEvent($(CreateExpr)) } ]>
       }
     }
-    
+
     [Memoized]
     public RunEventBody : MatchCase
     {
@@ -115,12 +115,12 @@ namespace Nemerle.Statechart
       get
       {
         def parms = match (evt)
-        {
-          | StateEvent.Normal as n => def parms = n.ParmNames.Map(x => <[ $(x : usesite) ]>);
+                     {
+                       | StateEvent.Normal as n => def parms = n.ParmNames.Map(x => <[ $(x : usesite) ]>);
                                       parms
-          | _                      => []
-        }
-        
+                       | _                      => []
+                     }
+
         def parms = <[ this ]> :: parms;
         <[ cur_state.$(evt.Name : usesite)(..$parms) ]>
       }
@@ -202,32 +202,46 @@ namespace Nemerle.Statechart
       }
     }
 
-    public static GetBase(this evt : StateEvent.Normal) : PExpr
+    public GetBase : PExpr
     {
-      match (evt.ev_class)
+      get
       {
-        | EventClass.External as e => <[ $(e.Base : usesite) ]>
-        | Internal                 => <[ Event ]>
+        match ((evt :> StateEvent.Normal).ev_class)
+        {
+          | EventClass.External as e => def base_class = e.Base.SplitToList('.');
+          
+                                        def loop(lst)
+                                        {
+                                          | []           => <[ ]>
+                                          | head :: []   => <[ $(head : usesite) ]>
+                                          | head :: tail => <[ $(loop(tail)).$(head : usesite) ]>
+                                        }
+                                        
+                                        loop(base_class.Rev());
+          | Internal                 => <[ Event ]>
+        }
       }
     }
-    
-    public static CreateExpr(this evt : StateEvent) : PExpr
+
+    public CreateExpr : PExpr
     {
-      
-      match (evt)
+      get
       {
-        | StateEvent.Completion  => <[ CompletionEvent.New ]>
-        | Normal as n            => def base_class = n.GetBase();
-                                    match (n.ParmNames)
-                                    {
-                                      | []    => <[ $base_class.$(evt.TargetName : usesite).New ]>
-                                      | parms => def parms = parms.Map(x => <[ $(x : usesite) ]>);
-                                                 <[ $base_class.$(evt.TargetName : usesite)(..$parms) ]>
-                                    }
-        | Timed                   => <[]>
+        match (evt)
+        {
+          | StateEvent.Completion  => <[ CompletionEvent.New ]>
+          | Normal as n            => def base_class = GetBase;
+                                      match (n.ParmNames)
+                                      {
+                                        | []    => <[ $base_class.$(evt.TargetName : usesite).New ]>
+                                        | parms => def parms = parms.Map(x => <[ $(x : usesite) ]>);
+                                                  <[ $base_class.$(evt.TargetName : usesite)(..$parms) ]>
+                                      }
+          | Timed                   => <[]>
+        }
       }
     }
-    
+
     public EventDecl(ty : TypeBuilder) : void
     {
       def parms = evt.event_parms();
@@ -237,16 +251,16 @@ namespace Nemerle.Statechart
       match (parms)
       {
         | []    => ty.Define(InstanceWoParms);
-                   ty.Define(InstanceField);
+                  ty.Define(InstanceField);
         | parms => foreach ((n, t) in parms)
                    {
-                    _ = ty.DefineWithSource(<[decl: public $(n : usesite) : $t; ]>);
+                     _ = ty.DefineWithSource(<[decl: public $(n : usesite) : $t; ]>);
                    }
       }
       ty.Compile()
     }    
-    
-    
+
+
   }
 
 }
