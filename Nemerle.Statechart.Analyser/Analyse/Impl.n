@@ -48,12 +48,11 @@ namespace Nemerle.Statechart
     | UnknownTarget {tran : StateTransition; target : TransitionTarget;}
     | InitialPseudoStateAtMostOne { init : PseudoStateNode.Initial; }
     | InitialTransitionMustGoToState { init : PseudoStateNode.Initial; }
-    | InitialTransitionCannotHaveGuards { init : PseudoStateNode.Initial; }
     | InitialTransitionToHistoryMustHaveDefaultTran { init : PseudoStateNode.Initial; hist : PseudoStateNode.History; }
     | CompositeStateWithIncomingTransitionsMustHaveInitial { st : FsmState; }
     | StateHasNotHistory { st : FsmState; }
     | ElseMustHaveOtherTransition { tr : Transition; }
-    | SeveralElseGuards { tr : list[Transition]; }
+    | SeveralElseGuards { tr : Transition; }
     | PseudoStateNotFound { name : string; }
     | SeveralPseudoStates { lst : list[PseudoStateNode]; }
     | RelocatePseudoNotFound { tr : StateTransition; }
@@ -69,6 +68,7 @@ namespace Nemerle.Statechart
     | TimedEventNeedPositive { evt : StateEvent; }
     | SeveralInitialAttribute { st : FsmState; }
     | DoActivityDuplicateAction { do_act : StateAction.Do; act : FsmAction; }
+    | InitialTransitionsGuardMustBeDistinctive { init : PseudoStateNode.Initial }
     //| ThereMustBeOnlyOneInitial {st : FsmState; tr : list[StateTransition.Initial]; }
 
     public Loc : Location
@@ -98,9 +98,11 @@ namespace Nemerle.Statechart
           | ParentStateNotFound(tr, _)
           | StateNotFound(tr, _)
           | DuplicateStateTarget(tr, _)
+          | SeveralElseGuards(tr)
           | TimedEventNeedPositive(tr)
           | SeveralInitialAttribute(tr)
           | DoActivityDuplicateAction(_, tr)
+          | InitialTransitionsGuardMustBeDistinctive(tr)
           | LocalTransitionTargetMustBeWithinOrSuper(tr)             => tr.Location
           | ParsingError(e)                                          => e.Location
           | _                                                        => Location.Default
@@ -144,11 +146,10 @@ namespace Nemerle.Statechart
           | ParentStateNotFound(s, p)                                => $<#Parent state "$p" for state "$s" not found#>
           | InitialPseudoStateAtMostOne(i)                           => $<#There can be only one initial pseudostate in region, error defined in "$i" #>
           | InitialTransitionMustGoToState(i)                        => $<#Transition from initial pseudostate "$i", must go to default sub state or history of a composite state, not other targets#>
-          | InitialTransitionCannotHaveGuards(i)                     => $<#Transition from initial pseudostate cannon have guards: "$i"#>
           | InitialTransitionToHistoryMustHaveDefaultTran(i, h)      => $<#History pseudostate "$h" targeted from initial pseudostate "$i" must have transition to default state#>
           | StateHasNotHistory(s)                                    => $<#State "$s" does'nt have history #>
           | ElseMustHaveOtherTransition(t)                           => $<#Single else guard in "$t" but no other transitions with same event and guards#>
-          | SeveralElseGuards(t)                                     => $<#Several else guards is not permitted: ..$t#>
+          | SeveralElseGuards(t)                                     => $<#Several else guards is not permitted: $t#>
           | PseudoStateNotFound(n)                                   => $<#Pseudostate with name "$n" not found#>
           | SeveralPseudoStates(lst)                                 => $<#Several pseudostates with same name found [..$lst]#>
           | RelocatePseudoNotFound(t)                                => $<#Pseudostate source of transition "$t" not found#>
@@ -168,6 +169,7 @@ namespace Nemerle.Statechart
           | TimedEventNeedPositive(e)                                => $<#Timed relative event "$e" need positive value above zero#>
           | SeveralInitialAttribute(st)                              => $<#Attribute [Initial] on state "$st" is used on another state in same composite state#>
           | DoActivityDuplicateAction(act, a)                        => $<#There is actions "$a" with same name as do activity "$act" this is not allowed#>
+          | InitialTransitionsGuardMustBeDistinctive(init)           => $<#Initial pseudo state "$init" must have transitions those guards is cover all possible cases with all guards and one else guard#>
       //| ThereMustBeOnlyOneInitial(s, t)                             => $<#In state "$s" may be only one unguarded initial transition, these transitions erroneus: "..$t"#>
       //| Sequence(e)                                            => $<#..$(e;"\n";GetError)#>
       //| n                                                        => throw InvalidOperationException($"unnkown error $n")

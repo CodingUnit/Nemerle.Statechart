@@ -56,21 +56,27 @@ namespace Nemerle.Statechart
       foreach (FsmState(initial = Some(i)) as state in States)
       {
         def tran = i.tran;
-        when (!tran.action.IsEmpty() || tran.To is TransitionTarget.PseudoState(PseudoStateNode.History))
+        match (tran)
         {
-          def st = FsmState(this, StateType.State()); // create simple state
-          st.name = $"$(state)Initial";
-          st.generated = true;
-          def ntran = StateTransition(st, tran.To, TransitionKind.External);// :: [];
-          ntran.trigger = StateEvent.Completion();
-          st.transitions = ntran :: []; // create completion transition to target of initial
-          def act = tran.action;
-          st.entry = act.Map(StateAction.Entry(st.ToString(), _, ActionFlags.None)); // entry action to initial actions
-          def sub = state.sub_states;
-          st.Super = state;
-          state.sub_states = sub.AddBefore(st).NToList(); // add substate before other sub states
-          tran.To = TransitionTarget.State(st);
-          tran.action = []; // clear action
+          | StateTransition(action = [], guard = GuardNode.Empty, To = TransitionTarget.State) :: [] => ()
+          | lst =>
+                    def st = FsmState(this, StateType.State()); // create simple state
+                    st.name = $"$(state)Initial"; // it is initial state
+                    st.generated = true;
+                    foreach (tr in lst)
+                    {
+                      tr.RelocateFrom = null;
+                      tr.FromPseudo = None();
+                      tr.From = st;
+                      tr.trigger = StateEvent.Completion();
+                    }
+                    st.transitions = lst; // create completion transition to target of initial
+                    def sub = state.sub_states;
+                    st.Super = state;
+                    state.sub_states = sub.AddBefore(st).NToList(); // add substate before other sub states
+                    def tran = StateTransition(i, st, TransitionKind.Local);
+                    i.tran = tran :: [];
+
         }
       }
     }
@@ -133,7 +139,6 @@ namespace Nemerle.Statechart
       {
         def tran = st.deferred_events.Map(create_tran(st, _));
         st.DefineTransitions(tran);
-        //HTransition(evt.Location, HTarget.State(st), evt, GuardNode.Empty(), FsmAction.Expr(<[ Defer ]>) :: [], HTarget.Nowhere(), TransitionKind.Internal)
       }
     }
 
@@ -279,12 +284,14 @@ namespace Nemerle.Statechart
           grouped_equal_prio.IterI((i, x) => x.Iter(x => x.Priority = i)); // set prio for each group of transition with equal prio
           def (conflict, other) = grouped_equal_prio.Partition(x => x.IsMoreThanOne()); // get conflicting transitions with equal prio
 
+          def conflict = conflict.Map(x => CheckGuards(conf, x));
+          def conflict = conflict.Filter(x => x.IsMoreThanOne());
           def conflict = CheckDuplicatesConflicts(conf, conflict);
           def trans = conflict + other; // merge again transitions in set
           def trans = trans.OrderBy(x => x.Head.Priority); // sorting by priority
           def trans = trans.Map(x => x.Sort(tran_compare)); // sort each group by guard
           def trans = trans.Flatten(); // remove grouping
-          CheckGuards(trans);
+          
           def (run, other) = trans.SplitFind(x => x.Guard.IsEmpty || x.Guard is GuardNode.Else); // find last with no guard or else guard
           def (not_guarded, guarded) = run.Partition(x => x.Guard.IsEmpty);
           def (run, overriden) = match (not_guarded)
@@ -302,14 +309,21 @@ namespace Nemerle.Statechart
       }
     }
 
-    CheckGuards(tran : list[Transition]) : void
+    CheckGuards(st : ActiveStateConfig, tran : list[Transition]) : list[Transition]
     {
       match (tran.Partition(x => x.Guard is GuardNode.Else))
       {
-        | ([], _)  => ()
+        | ([], _)  => tran
         | ([e], g) => def guards_tr = g.Filter(x => x.Guard.NotEmpty);
-                      when (guards_tr.IsEmpty()) messager.AddError(FsmError.ElseMustHaveOtherTransition(e));
-        | (e, _)   => messager.AddError(FsmError.SeveralElseGuards(e))
+                      if (guards_tr.IsEmpty()) 
+                      {
+                        messager.AddError(FsmError.ElseMustHaveOtherTransition(e));
+                        st.transitions = st.transitions.Except(e).NToList();
+                        g
+                      } else tran
+        | (e, o)   => e.Iter(x => messager.AddError(FsmError.SeveralElseGuards(x)));
+                      st.transitions = st.transitions.Exclude(e);
+                      o
       }
     }
 

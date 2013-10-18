@@ -19,19 +19,19 @@ namespace Nemerle.Statechart
   {
     | Initial 
       { 
-        tran : StateTransition;
+        tran : list[StateTransition] {get;set;default []}
 
-        this(st : FsmState, tran : StateNode.Transition)
+        this(st : FsmState, tran : list[StateNode.Transition])
         {
           base(0, st);
-          this.tran = StateTransition(this, TransitionEvent.Completion(-1), tran);
-          this.tran.kind = TransitionKind.Local;
+          this.tran = tran.Map(StateTransition(this, TransitionEvent.Completion(-1), _));
+          this.tran.Iter(x => x.kind = TransitionKind.Local);
         }
 
         this(st : FsmState, tostate : FsmState)
         {
           base(0, st);
-          this.tran = StateTransition(this, tostate, TransitionKind.Local)
+          this.tran = StateTransition(this, tostate, TransitionKind.Local) :: []
         }
       }
     | History 
@@ -172,7 +172,7 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | Initial(tran = tr)
+          | Initial(tran = tr)         => tr.SelectMany(_.action).NToList()
           | History(default = Some(tr))
           | Join(transition = tr)
           | EntryPoint(tran = tr) 
@@ -202,8 +202,8 @@ namespace Nemerle.Statechart
         | History(t) as p               => def p = History(Location, copy, state, p.default.Map(x => x.Clone()), t);
                                            p.default.Iter(x => change_pseudo(x, p));
                                            p
-        | Initial(t)                    => def p = Initial(Location, copy, state, t.Clone());
-                                           change_pseudo(p.tran, p);
+        | Initial as p                  => def p = Initial(Location, copy, state, p.tran.Map(_.Clone()));
+                                           p.tran.Iter(x => change_pseudo(x, p));
                                            p
         | Join(j) as p                  => def p = Join(Location, copy, state, j, p.joined_states, p.transition.Clone());
                                            change_pseudo(p.transition, p);
@@ -222,7 +222,8 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | PseudoStateNode.EntryPoint(_, tr) 
+          | Initial(tran = tr)                => tr
+          | EntryPoint(_, tr) 
           | Join(transition = tr)
           | ExitPoint(tran = Some(tr))        => tr :: []
           | Fork(target = t)                  => t.SelectMany(_.NestedTransitions).NToList()
@@ -244,7 +245,7 @@ namespace Nemerle.Statechart
     {
       match (this)
       {
-        | Initial(tr)
+        | Initial as p                  => p.tran.Iter(x => x.Retarget(find_state, find_pseudo))
         | EntryPoint(_, tr)
         | Join(transition = tr)
         | History(default = Some(tr))
