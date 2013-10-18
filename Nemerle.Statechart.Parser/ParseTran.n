@@ -24,43 +24,47 @@ namespace Nemerle.Statechart
     get_state_qualified_target(name : NameIdentifier) : TargetType
     {
       | Name(name = n)           => TargetType.Named(name.pos, n)
-      | QualifiedName(parts = p, name = n) => //def (tar, lst) = n.SplitLast();
+      | QualifiedName(parts = p, name = n) => 
                                     def st = $<#..$(p;".")#>;
                                     TargetType.Qualified(name.pos, st, TargetType.Named(name.pos, n))
 
     }
 
-    qualified_target(name : NameIdentifier, _ : NToken) : TargetType
+    qualified_target(cm1 : NToken, name : NameIdentifier, cm2 : NToken, _ : NToken) : TargetType
     {
       def pos = name.pos;
-
+      def braces = !cm1.IsEmpty && !cm2.IsEmpty;
+      
       def get_target(n)
       {
-        | "history"  with hist = HistoryType.None
-        | "H"  with hist = HistoryType.Shallow
-        | "h"  with hist = HistoryType.Shallow
-        | "h*" with hist = HistoryType.Deep
-        | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, hist, None()))
-        | "final"
-        | "$0"       => TargetType.Final(pos)
-        | "self"
-        | "@"        => TargetType.Self(pos)
-        | "terminate"
-        | "x"
-        | "X"        => TargetType.PseudoState(name.pos, PseudoStateModelNode.Terminate(0))
-        | x when (x.IndexOf('(') != -1 ) => 
-              def n = string(n.Explode().Except(['(', ')']).ToArray());
-              TargetType.Named(name.pos, n)
-          //| _ => TargetType.Named(name.pos, name.TargetName.Trim('(',')'))
-        | _                      => TargetType.Named(name.pos, n)
+        if (braces) TargetType.Named(name.pos, n) else
+        match (n)
+        {
+          | "history"  with hist = HistoryType.None
+          | "H"  with hist = HistoryType.Shallow
+          | "h"  with hist = HistoryType.Shallow
+          | "h*" with hist = HistoryType.Deep
+          | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, hist, None()))
+          | "final"
+          | "$0"       => TargetType.Final(pos)
+          | "self"
+          | "@"        => TargetType.Self(pos)
+          | "terminate"
+          | "x"
+          | "X"        => TargetType.PseudoState(name.pos, PseudoStateModelNode.Terminate(0))
+          | x when (x.IndexOf('(') != -1 ) => 
+                def n = string(n.Explode().Except(['(', ')']).ToArray());
+                TargetType.Named(name.pos, n)
+          | _                      => TargetType.Named(name.pos, n)
+        }
       }
 
       match (name)
       {
-        | Name(name = n) => get_target(n)
+        | Name(name = n)                     => get_target(n)
         | QualifiedName(parts = p, name = n) => 
             def st = $<#..$(p;".")#>;
-            TargetType.Qualified(name.pos, st, get_target(n))//State(st, StateType.State()), 
+            TargetType.Qualified(name.pos, st, get_target(n))
       }
     }
 
