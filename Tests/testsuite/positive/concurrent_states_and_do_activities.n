@@ -8,6 +8,7 @@ using Nemerle.Statechart;
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
   /// <summary>
   /// Description of junction_example.
@@ -15,31 +16,41 @@ using System.Linq;
   [statechart(
   <#
   flags testing;
-  name "completion transitions with guards";
+  name "concurrent states and do activities";
   //flags debug;
-  
-  state A
-  {
-    entry / a1;
-    a [else] / act1 => B;
-    a [else] / act2 => C;
-  }
 
-  state B
+  region A
   {
-    a => A;
+    state B
+    {
+      do / act1;
+    }
+    
+  } and
+  {
+    state C
+    {
+      do / act2;
+    }
+    
   }
   
-  state C
-  {
-    a => A;
-  }
+  
   #>)]
 public class example
 {
-  public g1 : bool {get;set;}
+  act1(_ : CancellationToken) : void
+  {
+    for (mutable i = 0; i < 10; i++)
+      Console.WriteLine('0')
+  }
+  
+  act2(_ : CancellationToken) : void
+  {
+    for (mutable i = 0; i < 5; i++)
+      Console.WriteLine('0')
+  }
 }
-
 
 module Test
 {
@@ -48,30 +59,32 @@ module Test
     def fsm = example();
     def tester = fsm.GetTester();
     tester.ConsoleTestInit();
-    tester.Initiate("C", "a1", "EntryA", "ExitA", "act2", "EntryC");
-    fsm.g1 = true;
-    tester.Test("a", "B", "ExitC", "a1", "EntryA", "ExitA", "act1", "EntryB");
+    tester.Initiate("BC", ["A", "B", "C"]);
     fsm.Terminate();
   }
 }
 
 /*
 BEGIN-OUTPUT
-a1
 EntryA
-ExitA
-act2
-EntryC
-[C]
-Ok
-Processing a 'a' 
-ExitC
-a1
-EntryA
-ExitA
-act1
 EntryB
-[B]
+EntryC
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+[BC]
 Ok
 END-OUTPUT
 */

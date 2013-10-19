@@ -25,7 +25,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    Transitions  : list[Transition] {get;set;}
+    Transitions  : list[Transition] {get;set;default []}
 
     public InitialTransition : Transition {get;set;}
 
@@ -45,22 +45,25 @@ namespace Nemerle.Statechart
     
     CreateActiveConfigurations() : void
     {
-      def init = TopState.initial_tran.Head.ToHTransition;
-      def trav = ConfigTraverser(transitions, ActiveConfigProc);
-      foreach (st in finite_automatas)
+      if (finite_automatas.IsEmpty()) () else
       {
-        foreach (st in st.history.Value) PseudoCreate(st, trav);
-      }
-      trav.Start();
-      InitialTransition = trav.InitialTransition(init);
-      def trans = trav.Result.NToList();
-      def trans = MergeConcurrentTransitions(trans);
-      def groups = trans.GroupBy(_.Source);
-      foreach (gr in groups)
-      {
-        gr.Key.transitions = gr.NToList()
-      }
-      Transitions = ActiveStates.SelectMany(_.transitions).NToList()
+        def init = TopState.initial_tran.Head.ToHTransition;
+        def trav = ConfigTraverser(transitions, ActiveConfigProc);
+        foreach (st in finite_automatas)
+        {
+          foreach (st in st.history.Value) PseudoCreate(st, trav);
+        }
+        trav.Start();
+        InitialTransition = trav.InitialTransition(init);
+        def trans = trav.Result.NToList();
+        def trans = MergeConcurrentTransitions(trans);
+        def groups = trans.GroupBy(_.Source);
+        foreach (gr in groups)
+        {
+          gr.Key.transitions = gr.NToList()
+        }
+        Transitions = ActiveStates.SelectMany(_.transitions).NToList()
+     }
     }
 
     find_concurrent(tran : list[Transition]) : list[list[Transition]]
