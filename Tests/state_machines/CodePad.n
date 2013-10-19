@@ -25,13 +25,14 @@ namespace Nemerle.Statechart.Tests
 
     state Idle
     {
+      
       $> / clear();
       num(n) / enter_room(n) => Interaction;
     }
 
     state Interaction
     {
-      cancel => Idle;
+      cancel / beep(10) => Idle;
 
       state EnteringRoomNumber
       {
@@ -42,9 +43,10 @@ namespace Nemerle.Statechart.Tests
 
       state EnteringPassword
       {
-        entry / clear_pass;
-        entry / view_dash();
+        entry / clear_pass view_dash;
 
+        cancel / beep_fail => Idle;
+        
         num(n) [password.Length == pass_length - 1] / enter_pass(n) => ${
                                                                           pass_ok            => Unlocked;
                                                                           else / beep_fail() => Idle;
@@ -52,30 +54,42 @@ namespace Nemerle.Statechart.Tests
         num(n) [else] / enter_pass(n);
       }
 
-      state Call
+      state InhabitantInteraction
       {
-        do / room_call;
-        answer       => Talking;
-        after (10 s) => Idle;
         enter_permitted => Unlocked;
-      }
+        
+        state Call
+        {
+          entry  / green_signal;
+          exit   / red_signal;
+          do / room_call;
+          
+          tube         => Talking;
+          after (10 s) => Idle;
+        }
 
-      state Talking
-      {
-        tube_is_put     => Idle;
-        after (15s)     => Idle;
-        enter_permitted => Unlocked;
+        state Talking
+        {
+          tube        => Idle;
+          after (15s) => Idle;
+        }
       }
+      
+      
     }
   }
 
-  @Locked: magnetic_key [key_ok] => Unlocked;
-  @Locked: Inside_button         => Unlocked;
+  @Locked: 
+  {
+    magnetic_key [key_ok] => Unlocked;
+    Inside_button         => Unlocked;
+  }
 
   state Unlocked
   {
     do / beep_enter;
     entry / unlock_door;
+    entry / clear;
     after (5s) => Locked;
   }
   #>)]
@@ -124,11 +138,14 @@ namespace Nemerle.Statechart.Tests
 
     view_dash() : void
     {
-      OnShow("---");
+      OnShow("-----");
     }
 
     beep_fail() : void
     {
+      Beep.Beep(100, 1000, 70);
+      Beep.Beep(100, 1000, 70);
+      Beep.Beep(100, 1000, 70);
     }
 
     beep(n : int) : void

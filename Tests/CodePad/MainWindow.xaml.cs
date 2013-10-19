@@ -29,8 +29,20 @@ namespace CodePadExample
             fsm.lock_door += () => Dispatcher.Invoke(new Action(fsm_lock_door));
             fsm.unlock_door += () => Dispatcher.Invoke(new Action(fsm_unlock_door));
             fsm.Show += x => Dispatcher.Invoke(new Action<string>(fsm_Show), x);
+            fsm.red_signal += () => Dispatcher.Invoke(new Action(fsm_red_signal));
+            fsm.green_signal += () => Dispatcher.Invoke(new Action(fsm_green_signal));
             fsm.TransitionCompleted += (x, y) => Dispatcher.Invoke(new EventHandler(fsm_TransitionCompleted), x, y);
             fsm.Initiate();
+        }
+
+        void fsm_green_signal()
+        {
+            signal_image.Source = new BitmapImage(new Uri(@"pack://application:,,,/CodePad;component/Images/d_light_g.png"));
+        }
+
+        void fsm_red_signal()
+        {
+            signal_image.Source = new BitmapImage(new Uri(@"pack://application:,,,/CodePad;component/Images/d_light_r.png"));
         }
 
         void fsm_TransitionCompleted(object sender, EventArgs e)
@@ -41,45 +53,56 @@ namespace CodePadExample
 
         void fsm_Show(string obj)
         {
-            display.Text = obj;
+            display_text.Text = obj;
         }
 
         void fsm_unlock_door()
         {
-            door_status.Text = "Unlocked";
+            door_image.Source = new BitmapImage(new Uri(@"pack://application:,,,/CodePad;component/Images/d_door2.png"));
         }
 
         void fsm_lock_door()
         {
-            door_status.Text = "Locked";
+            door_image.Source = new BitmapImage(new Uri(@"pack://application:,,,/CodePad;component/Images/d_door1.png"));
         }
 
-        private void button1_Click(object sender, RoutedEventArgs e)
+        private void Window_TextInput(object sender, TextCompositionEventArgs e)
+        {
+            var str = e.Text;
+            var ch = str[0];
+            if (ch >= '0' && ch <= '9') 
+            {
+                fsm.num(int.Parse(str));
+                e.Handled = true;
+            }
+        }
+
+        private void Window_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Return)
+            {
+                fsm.key();
+                e.Handled = true;
+            }
+            else
+                if (e.Key == Key.Escape)
+                {
+                    fsm.cancel();
+                    e.Handled = true;
+                }
+        }
+
+        private void button1_Click_1(object sender, RoutedEventArgs e)
         {
             fsm.num(1);
         }
 
-        private void button0_Click(object sender, RoutedEventArgs e)
-        {
-            fsm.num(0);
-        }
-
-        private void key_button_Click(object sender, RoutedEventArgs e)
-        {
-            fsm.key();
-        }
-
-        private void clear_button_Click(object sender, RoutedEventArgs e)
-        {
-            fsm.cancel();
-        }
-
-        private void button2_Click(object sender, RoutedEventArgs e)
+        private void button2_Click_1(object sender, RoutedEventArgs e)
         {
             fsm.num(2);
         }
 
-        private void button3_Click(object sender, RoutedEventArgs e)
+        private void button_Click(object sender, RoutedEventArgs e)
         {
             fsm.num(3);
         }
@@ -114,6 +137,21 @@ namespace CodePadExample
             fsm.num(9);
         }
 
+        private void button_key_Click(object sender, RoutedEventArgs e)
+        {
+            fsm.key();
+        }
+
+        private void button0_Click(object sender, RoutedEventArgs e)
+        {
+            fsm.num(0);
+        }
+
+        private void button_cancel_Click(object sender, RoutedEventArgs e)
+        {
+            fsm.cancel();
+        }
+
         private void ibutton_Click(object sender, RoutedEventArgs e)
         {
             fsm.magnetic_key();
@@ -124,41 +162,20 @@ namespace CodePadExample
             fsm.Inside_button();
         }
 
-        private void homephone_open_Click(object sender, RoutedEventArgs e)
+        private void room_button_Click(object sender, RoutedEventArgs e)
         {
             fsm.enter_permitted();
         }
 
-        private void homephone_answer_button_Click(object sender, RoutedEventArgs e)
+        private void image5_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            fsm.answer();
+            fsm.tube();
         }
 
-        private void Window_TextInput(object sender, TextCompositionEventArgs e)
+        private void door_image_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            var str = e.Text;
-            var ch = str[0];
-            if (ch >= '0' && ch <= '9') 
-            {
-                fsm.num(int.Parse(str));
-                e.Handled = true;
-            }
         }
 
-        private void Window_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Return)
-            {
-                fsm.key();
-                e.Handled = true;
-            }
-            else
-                if (e.Key == Key.Escape)
-                {
-                    fsm.cancel();
-                    e.Handled = true;
-                }
-        }
 
     }
 }
