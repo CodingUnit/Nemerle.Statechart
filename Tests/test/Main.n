@@ -4,62 +4,96 @@ using Nemerle.Text;
 using Nemerle.Utility;
 
 using System;
-using Nemerle.Statechart;
-
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
-
+using System.Console;
+using Nemerle.Statechart;
   /// <summary>
-  /// Description of junction_example.
+  /// Description of Hypothetical.
   /// </summary>
-[statechart(
-  <#
+  [statechart(<#
+
   flags testing;
-  name "concurrent states and do activities";
-  //flags debug;
+
+  name "transitions in sub region 'and' declaration";
 
   region A
   {
     state B
     {
-      do / act1;
+      a => C;
     }
 
-  } and
-  {
     state C
     {
-      do / act2;
+      a => B;
     }
-
+  } and 
+  {
+    state D
+    {
+    }
+    
+    b => E;
   }
-
-
+  
+  state E
+  {
+    a => A;
+  }
   #>)]
-public class example
-{
-
-}
-
-/// <summary>
-  /// Description of junction_example.
-  /// </summary>
-[statechart( // W: No Statechart to generate
-  <#
-  flags testing;
-  name "concurrent states and do activities";
-  //flags debug;
-
-  #>)]
-public class example2
-{
-
-}
-
-module Test
-{
-  Main() : void
+  public class example
   {
   }
-}
+
+  module Test
+  {
+    Main() : void
+    {
+      def fsm = example();
+      def tester = fsm.GetTester();
+      tester.ConsoleTestInit();
+      tester.Initiate("BD", ["A", "B", "D"]);
+      tester.Test("a", "CD", "ExitB", "EntryC");
+      tester.Test("b", "E", "ExitD", "ExitC", "ExitA", "EntryE");
+      tester.Test("a", "BD", "ExitE", "EntryA", "EntryB", "EntryD");
+      tester.Test("b", "E", "ExitD", "ExitB", "ExitA", "EntryE");
+      fsm.Terminate();
+    }
+  }
+  
+ /*
+BEGIN-OUTPUT
+EntryA
+EntryB
+EntryD
+[BD]
+Ok
+Processing a 'a' 
+ExitB
+EntryC
+[CD]
+Ok
+Processing a 'b' 
+ExitD
+ExitC
+ExitA
+EntryE
+[E]
+Ok
+Processing a 'a' 
+ExitE
+EntryA
+EntryB
+EntryD
+[BD]
+Ok
+Processing a 'b' 
+ExitD
+ExitB
+ExitA
+EntryE
+[E]
+Ok
+END-OUTPUT
+*/

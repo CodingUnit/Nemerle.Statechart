@@ -85,7 +85,6 @@ namespace Nemerle.Statechart
         def (states, decls)   = decls.PartitionType();
         def (trans, decls)    = decls.PartitionType();
         def (defer, decls)    = decls.PartitionType();
-        def defer = defer.SelectMany(x : Defer => x.evt).NToList();
         def (do_act, decls)   = decls.PartitionType();
 
         def (pseudo, decls) = decls.PartitionType();
@@ -113,15 +112,7 @@ namespace Nemerle.Statechart
 
     and_sub_region(tok : NToken, _ : NToken, decls : List[StateNode], _ : NToken) : StateNode.State
     {
-      def decls = decls.NToList();
-      def (seq, decls)    = decls.PartitionType();
-      def decls           = seq.SelectMany(x : StateNode.Sequence => x.lst).Concat(decls).NToList();      
-      def (states, other) = decls.PartitionType();
-      def (pseudo, other) = other.PartitionType();
-      def init            = pseudo.Filter(_ is StateNode.PseudoState(PseudoStateModelNode.Initial));
-      def exc_init        = pseudo.Exclude(init);
-      def other           = other + exc_init.Map(_ : StateNode);
-      State(tok.StartPos, null, null, [], [], [], [], [], [], states, init, StateType.SubRegion(), other.Map(x => Error(x.pos, x)));
+      CreateState(tok.StartPos, null, [], decls, StateType.SubRegion(), None())
     }
     
     region_delim(_ : NToken, beg : NToken, _ : NToken, _ : NToken) : StateNode
@@ -138,24 +129,29 @@ namespace Nemerle.Statechart
     
     region(tok : NToken, name : NToken, parent : option[NameIdentifier], _ : NToken, decls : List[StateNode], _ : NToken, and_regs : List[StateNode.State]) : StateNode
     {
-      def decls = decls.NToList();
       def (seq, decls)      = decls.PartitionType();
-      def decls             = seq.SelectMany(x : StateNode.Sequence => x.lst).Concat(decls).NToList();      
-      def (en, decls)       = decls.PartitionType();
-      def (ex, decls)       = decls.PartitionType();
+      def decls             = seq.SelectMany(x : StateNode.Sequence => x.lst).Concat(decls).NToList();
       def (states, decls)   = decls.PartitionType();
-      def (trans, decls)    = decls.PartitionType();
-      def (defer, decls)    = decls.PartitionType();
-      def defer = defer.SelectMany(x : Defer => x.evt).NToList();
-      def (do_act, decls)   = decls.PartitionType();
       def (pseudo, decls)   = decls.PartitionType();
-      def init              = pseudo.Filter(_ is StateNode.PseudoState(PseudoStateModelNode.Initial));
-      def pseudo            = pseudo.Exclude(init);
-      def parent = parent.Map(_.FullName);
+      def (init, pseudo)    = pseudo.Partition(_ is StateNode.PseudoState(PseudoStateModelNode.Initial));
       def name   = GetText(name);
-      def st = State(tok.StartPos, null, null, [], [], [], [], [], [], states, init, StateType.SubRegion(), decls.Map(x => Error(x.pos, x)));
-      def st = st :: and_regs.NToList();
-      State(tok.StartPos, name, parent, [], en, ex, trans, do_act, defer, st, pseudo, StateType.Region(), decls.Map(x => Error(x.pos, x)))
+      def pos = tok.StartPos;
+      def st = State(pos, null, null, [], [], [], [], [], [], states, init, StateType.SubRegion(), []);
+      def decls = pseudo.Map(_ : StateNode) + decls;
+      def other = and_regs.NToList();
+      
+      def en = other.SelectMany(x => x.entry);
+      def ex = other.SelectMany(x => x.exit);
+      def trans = other.SelectMany(x => x.transitions);
+      def defer = other.SelectMany(x => x.defer);
+      def do_act = other.SelectMany(x => x.do_activity);
+      def pseudo = other.SelectMany(x => x.pseudo_states.Exclude(x => x is StateNode.PseudoState(PseudoStateModelNode.Initial)));
+      def decls = en.Concat(ex).Concat(trans).Concat(defer).Concat(do_act).Concat(pseudo).NToList() + decls;
+      
+      def other = other.Map(x => StateNode.State(x.pos, x.name, x.parent, x.attributes, [], [], [], [], [], x.sub_states, x.pseudo_states.Filter(x => x is StateNode.PseudoState(PseudoStateModelNode.Initial)), x.type, x.errors));
+      def st = st :: other;
+      def decls = st.Map(_ : StateNode) + decls;
+      CreateState(pos, name, [], decls, StateType.Region(), parent)
     }
 
   }
