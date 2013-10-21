@@ -4,159 +4,151 @@ using Nemerle.Text;
 using Nemerle.Utility;
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nemerle.Statechart;
 
-namespace Nemerle.Statechart.Tests
-{
+using System.Collections.Generic;
+using System.Linq;
+
   /// <summary>
-  /// Description of AlarmClock.
+  /// Description of junction_example.
   /// </summary>
   [statechart(
   <#
-  flags auto_initial;
-  // flags debug;
+  flags testing;
+
+  //flags debug;
+
+  b => D;
   
-  state Powered
+   region A
+   {
+     state B
+     {
+       a => C;
+     }
+     
+     state C
+     {
+       a => B;
+       b => E;
+     }
+     
+   } and
+   {
+     state D
+     {
+       c => F;
+     }
+     
+     state F
+     {
+       
+     }
+   }
+   
+   state E
+   {
+     a => C;
+   }
+  #>)]
+  public class example
   {
-    no_battery => NotPowered;
-    
-    state KeepTime
-    {
-      state PMIconOff
-      {
-        after_12_hours => PMIconOn;
-      }
-      
-      state PMIconOn
-      {
-        pass_12_hours => PMIconOff;
-      }
-    }
-    
-    [---]
-    
-    state Run
-    {
-      
-      state DisplayCurrentTime
-      {
-        push_hour, push_min           => DisplayAlarmTime;
-        push_hour_and_min [is_alarm_on]  => Beep;
-      }
-      
-      state DisplayAlarmTime
-      {
-        hour_min_release => DisplayCurrentTime;
-      }
-      
-      state Beep
-      {
-        hour_min_release => DisplayCurrentTime;
-      }
-      
-      time_set  => TimeSet;
-      alarm_set => AlarmSet;
-    }
-    
-    state AlarmSet
-    {
-      entry / al_icon_on;
-      exit  / al_icon_off;
-      
-      run => Run;
-      
-      state DisplayAlarmTime
-      {
-        push_hour / UpdateHours;
-        push_min  / UpdateMins;
-      }
-      
-    }
-    
-    state TimeSet
-    {
-      run => Run;
-      
-      state DisplayCurrentTime
-      {
-        push_hour / UpdateHours;
-        push_min  / UpdateMins;
-      }
-      
-    }
-    
-    [---]
-    
-    state AlarmOff
-    {
-      alarm_on => AlarmOn;
-    }
-    
-    state AlarmOn
-    {
-      entry / alarm_icon_on;
-      exit  / alarm_icon_off;
-      alarm_off => AlarmOff;
-      
-      state Idle
-      {
-        current_time_is_alarm [light_pressed] => @;
-        current_time_is_alarm [else]          => Ringing;
-      }
-      
-      state Ringing
-      {
-        drowse_light / alarm += TimeSpan.FromSeconds(4) => Idle;
-        after (1 min) => Idle;
-      }
-    }
-    
-    [---]
-    
-    state BacklightOff
-    {
-      drowse_light => BacklightOn;
-    }
-    
-    state BacklightOn
-    {
-      drowse_light_release => BacklightOff;
-    }
   }
-  
-  state NotPowered
-  {
-    battery => Powered;
-  }
-  
-  #>)] // E: Body expression must be a string
-  public class AlarmClock
-  {
-    mutable alarm : DateTime;
-    
-    light_pressed : bool 
-    {
-      get
-      {
-        true
-      }
-    }
-    
-    is_alarm_on : bool
-    {
-      get
-      {
-        true
-      }
-    }
-  }
-}
+
+
 
 module Test
 {
   Main() : void
   {
+    def fsm = example();
+    def tester = fsm.GetTester();
+    tester.ConsoleTestInit();
+    tester.Initiate("B|D", ["A", "B", "D"]);
+    tester.Test("a", "C|D", ["B"], ["C"]);
+    tester.Test("a", "B|D", ["C"], ["B"]);
+    tester.Test("a", "C|D", ["B"], ["C"]);
+    tester.Test("b", ["D", "C", "A"], ["E"]);
+    tester.Test("a", "C|D", ["E"], ["A", "C", "D"]);
+    tester.Test("c", "C|F", ["D"], ["F"]);
+    tester.Test("b", ["F", "C", "A"], ["E"]);
+    tester.Test("a", "C|D", ["E"], ["A", "C", "D"]);
+    tester.Test("a", "B|D", ["C"], ["B"]);
+    tester.Test("b", "B|D", ["D", "B", "A", "Top"], ["Top", "A", "B", "D"]);
+    fsm.Terminate();
   }
 }
+
+/*
+BEGIN-OUTPUT
+EntryA
+EntryB
+EntryD
+[B|D]
+Ok
+Processing a 'a' 
+ExitB
+EntryC
+[C|D]
+Ok
+Processing a 'a' 
+ExitC
+EntryB
+[B|D]
+Ok
+Processing a 'a' 
+ExitB
+EntryC
+[C|D]
+Ok
+Processing a 'b' 
+ExitD
+ExitC
+ExitA
+EntryE
+[E]
+Ok
+Processing a 'a' 
+ExitE
+EntryA
+EntryC
+EntryD
+[C|D]
+Ok
+Processing a 'c' 
+ExitD
+EntryF
+[C|F]
+Ok
+Processing a 'b' 
+ExitF
+ExitC
+ExitA
+EntryE
+[E]
+Ok
+Processing a 'a' 
+ExitE
+EntryA
+EntryC
+EntryD
+[C|D]
+Ok
+Processing a 'a' 
+ExitC
+EntryB
+[B|D]
+Ok
+Processing a 'b' 
+ExitD
+ExitB
+ExitA
+ExitTop
+EntryTop
+EntryA
+EntryB
+EntryD
+[B|D]
+Ok
+END-OUTPUT
+*/
