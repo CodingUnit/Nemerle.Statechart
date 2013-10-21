@@ -18,8 +18,9 @@ namespace Nemerle.Statechart
   class States
   {
     gen : StaticGenerator;
+    [RecordIgnore]
     mutable ty : TypeBuilder;
-    
+
     id_type : PExpr
     {
       get
@@ -27,7 +28,7 @@ namespace Nemerle.Statechart
         gen.StateIdType
       }
     }
-    
+
     default_id : PExpr
     {
       get
@@ -54,23 +55,86 @@ namespace Nemerle.Statechart
       }
     }
 
-    concurrent_field_pattern : bool
+    public concurrent_field_pattern : bool
     {
       [Memoize]
       get
       {
         def flags = gen.FsmFlags;
         if (flags.ForceFieldConcurrentStates) true
-         else
-         {
-           if (flags.ForceConcurrentStateCombination) false else
+        else
+        {
+          if (flags.ForceConcurrentStateCombination) false else
             gen.ActiveStates.Count() > gen.ConcurrentCombinationsLimit || gen.transitions.Length > gen.ConcurrentTransitionsLimit
-         }
+        }
       }
+    }
+
+    public ExecStateCode(st : ActiveStateConfig) : PExpr
+    {
+      if (st.IsConcurrent && concurrent_field_pattern)
+      {
+        GenRegion.ExecStateCode(st)
+      } else
+      {
+        def name = $"State$st";
+        <[ $(name : usesite) ]>
+      }
+    }
+
+    //StateNames : 
+    //{
+    //  def state_names = $[(st.name, $"State$(st)"), st in ActiveStates]; // создаем имена состояний
+    //}
+    
+    state_fields : list[ClassMember]
+    {
+      [Memoize]
+      get
+      {
+        state_names.Map((x, y) =>  <[decl: public static $(y : usesite) : State.$(x : usesite) = State.$(x : usesite)(); ]>)
+      }
+    }
+    
+    state_names : list[string * string]
+    {
+      [Memoize]
+      get
+      {
+        if (concurrent_field_pattern) 
+        {
+          def st = gen.states.Exclude(_.IsTop);
+          st.Map(x => (x.ToString(), $"State$x"));
+        } else
+          {
+            def (conc, other) = gen.ActiveStates.NToList().Partition(x => x.IsConcurrent);
+            def conc = conc.Map(x => x.ToString());
+            def other = other.SelectMany(x => x.states).Distinct().Exclude(_.IsTop);
+            def other = other.Map(x => x.ToString());
+            def st = conc.Concat(other);
+            st.Map(x => (x, $"State$x"))
+          }
+      }
+    }
+    
+    public IsInStateFromStrBody : list[MatchCase]
+    {
+      get
+      {
+        def mexpr = state_names.FoldRight([<[case: | _ => throw InvalidOperationException("Invalid state") ]>], 
+                                      ((x, _), a) => <[case: | $(x : string) => State.$(x : usesite).Id()]> :: a);
+        mexpr
+      }
+    }
+    
+    EmitStateFields() : void
+    {
+      gen.Define(state_fields); // create state variables for fast using 
     }
     
     GenBaseStruct() : void
     {
+      EmitStateFields();
       ty = gen.DefineNested(gen.ty, top);
       gen.state_builder = ty;
       when (gen.HasDeferedEvents) DeferrableEvents.EmitIsDeferDeclaration(ty);
@@ -78,28 +142,64 @@ namespace Nemerle.Statechart
       gen.Define(ty, defs);
       gen.compile_list ::= ty;
     }
-   
+
+    ActiveStates : list[ActiveStateConfig]
+    {
+      [Memoize]
+      get
+      {
+        gen.ActiveStates.NToList()
+      }
+    }
+    
     EmitConcField() : void
     {
-    }
-
-    EmitConcCombinations() : void
-    {
-      foreach (st in gen.ActiveStates)
+      def (conc, other) = ActiveStates.Partition(_.IsConcurrent);
+      foreach (st in other)
       {
         def st_gen = GenActiveStateConfig(gen, st, ty);
-        //def ty = DefineState(ty, st);
         def ty = st_gen.Emit();
         gen.compile_list ::= ty;
         gen.StateBuilders ::= (st, ty);
       }
+
+      def other = other.SelectMany(_.simple_states).NToList();
+      def conc = conc.SelectMany(_.states).Distinct().NToList().Exclude(other);
+      
+      foreach (st when !st.IsTop in conc)
+      {
+        def st_gen = GenRegion(gen, ty, st);
+        def ty = st_gen.Emit();
+        gen.compile_list ::= ty;
+        //gen.StateBuilders ::= (st, ty);
+      }
+      
     }
-    
+
+    EmitConcCombinations() : void
+    {
+      foreach (st in ActiveStates)
+      {
+        def st_gen = GenActiveStateConfig(gen, st, ty);
+        def ty = st_gen.Emit();
+        gen.compile_list ::= ty;
+        gen.StateBuilders ::= (st, ty);
+      }
+      def composite = gen.states.Exclude(_.IsSimple);
+      foreach (st in composite)
+      {
+        def st_gen = GenState(gen, st, ty);
+        def ty = st_gen.Emit();
+        gen.compile_list ::= ty;
+      }
+    }
+
     public Emit() : void
     {
       GenBaseStruct();
-      //if (concurrent_field_pattern) 
-        //EmitConcField() else 
+      if (concurrent_field_pattern) 
+        EmitConcField()
+       else 
         EmitConcCombinations()
 
     }

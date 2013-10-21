@@ -20,7 +20,7 @@ namespace Nemerle.Statechart
     gen : StaticGenerator;
     ty : TypeBuilder;
     st : HState;
-    
+
     id_type : PExpr
     {
       get
@@ -28,25 +28,26 @@ namespace Nemerle.Statechart
         gen.StateIdType
       }
     }
-    
+
     id_expr : PExpr
     {
       [Memoize]
       get
       {
-        //def (expr, _) = GetId(st.Id);
-        //expr
-        null
+        def (expr, _) = gen.GetId(st.Id);
+        expr
       }
     }
-    
-    ClassBody : ClassMember
+
+    ClassBody : ClassMember.TypeDeclaration
     {
       [Memoize]
       get
       {
         <[ variant_option: |  $(st.name : usesite)
                               {
+                                  public this() {}
+                                
                                   public override get_id() : $id_type { $id_expr }
 
                                   public static Id() : $id_type
@@ -62,11 +63,82 @@ namespace Nemerle.Statechart
         ]>
       }
     }
-    
+
+    NumSubRegions : list[int]
+    {
+      [Memoize]
+      get
+      {
+        list.Range(st.hierarchy.Length)
+      }
+    }
+
+    ConcFields : list[ClassMember]
+    {
+      get
+      {
+        NumSubRegions.Map(i => <[ decl: mutable $($"cur_state$i" : usesite) : State ]>)
+      }
+    }
+
+    InitPars : list[PParameter]
+    {
+      get
+      {
+        NumSubRegions.Map(x => <[ parameter: $($"st$x" : usesite) : State ]>)
+      }
+    }
+
+    Init : ClassMember
+    {
+      get
+      {
+        def body = NumSubRegions.Map(i => <[ this.$($"cur_state$i" : usesite) = $($"st$i" : usesite) ]>);
+        <[decl: public Init(..$InitPars) : State 
+        {
+          ..$body;
+          this
+        } ]>
+      }
+    }
+
+    public static ExecStateCode(st : ActiveStateConfig) : PExpr
+    {
+      def loop(st)
+      {
+        | []           => <[]>
+        | head :: tail => if (head.IsConcurrent)
+                          {
+                            def name = StaticGenerator.GetExecStateName(head.ToString());
+                            def sreg = head.hierarchy.Map(x => x.states.First(x => tail.ContainsRef(x)));
+                            def tail = tail.Exclude(sreg.ContainsRef);
+                            def sreg_expr = sreg.Map(x => loop(x :: tail));
+                            <[ $name.Init(..$sreg_expr) ]>
+                          } else
+                          if (head.IsSimple) 
+                          {
+                            def name = StaticGenerator.GetExecStateName(head.ToString());
+                            name
+                          } else loop(tail)
+      }
+
+      loop(st.states)
+    }
+
+    //DefineTransitions(ty : TypeBuilder, conf : ActiveStateConfig) : void
+    //{
+    //  DeferrableEvents.EmitInState(conf, ty);
+    //}
+
     public Emit() : TypeBuilder
     {
-      
-      null
+      def ty = gen.DefineNested(ty, ClassBody);
+      when (st.IsConcurrent)
+      {
+        gen.Define(ty, ConcFields);
+        gen.Define(ty, Init);
+      }
+      ty
     }
   }
 }

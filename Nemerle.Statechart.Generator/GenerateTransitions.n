@@ -75,7 +75,7 @@ namespace Nemerle.Statechart
     public GetDestination(tran : TargetDeterminator) : PExpr
     {
       | State(st)      => def checks = GetStateChecks(st);
-                          def st_code = GetExecStateName(st);
+                          def st_code = GetExecStateCode(st);
                           <[ $checks; $st_code ]>
       | NoStateChange  => <[ cur_state ]>
       | Terminate      => <[ Terminate();null ]>
@@ -149,7 +149,6 @@ namespace Nemerle.Statechart
         | _                        => def name = GetTransitionName(tr);
                                       <[ fsm.$(name : usesite)(..$(tr.Trigger.event_parms_names()));]>
       }
-      
     }
 
     DefineDeferedEvents() : void
@@ -168,10 +167,20 @@ namespace Nemerle.Statechart
       Define(ty, defs)
     }
 
+    //internal DefineTransitions(ty : TypeBuilder, st : HState) : void
+    //{
+    //  DeferrableEvents.EmitInState(st, ty);
+    //  def defs =  {
+    //                def group = st.transitions;
+    //                group.MapToList(x => gen_events.EventDeclInState(x.Trigger, DefineHandlerTransBody(x)))
+    //              }
+    //  Define(ty, defs)
+    //}
+    
     DefineTransitionActions() : void
     {
       Define(GetTransitionFunction(Initial));
-      foreach (st in ActiveStates)
+      foreach (st when !(st.IsConcurrent && gen_states.concurrent_field_pattern) in ActiveStates)
       {
         def body = GetTransitionFunction(st);
         Define(body);
