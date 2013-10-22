@@ -8,6 +8,7 @@ using Nemerle.Statechart;
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
   /// <summary>
   /// Description of junction_example.
@@ -15,47 +16,47 @@ using System.Linq;
   [statechart(
   <#
   flags testing;
-
+  name "concurrent states and do activities";
   //flags debug;
 
-  b => D;
+  region A
+  {
+    state B
+    {
+      do / act1;
+      _ => $0;
+    }
+    
+  } and
+  {
+    state C
+    {
+      do / act2;
+      _ => $0;
+    }
+    
+   _ => D;
+  }
   
-   region A
-   {
-     state B
-     {
-       a => C;
-     }
-     
-     state C
-     {
-       a => B;
-       b => E;
-     }
-     
-   } and
-   {
-     state D
-     {
-       c => F;
-     }
-     
-     state F
-     {
-       
-     }
-   }
-   
-   state E
-   {
-     a => C;
-   }
-  #>)]
-  public class example
+  state D
   {
   }
-
-
+  
+  #>)]
+public class example
+{
+  act1(_ : CancellationToken) : void
+  {
+    for (mutable i = 0; i < 10; i++)
+      Console.WriteLine('0')
+  }
+  
+  act2(_ : CancellationToken) : void
+  {
+    for (mutable i = 0; i < 5; i++)
+      Console.WriteLine('0')
+  }
+}
 
 module Test
 {
@@ -64,17 +65,8 @@ module Test
     def fsm = example();
     def tester = fsm.GetTester();
     tester.ConsoleTestInit();
-    tester.Initiate("B|D", ["A", "B", "D"]);
-    tester.Test("a", "C|D", ["B"], ["C"]);
-    tester.Test("a", "B|D", ["C"], ["B"]);
-    tester.Test("a", "C|D", ["B"], ["C"]);
-    tester.Test("b", ["D", "C", "A"], ["E"]);
-    tester.Test("a", "C|D", ["E"], ["A", "C", "D"]);
-    tester.Test("c", "C|F", ["D"], ["F"]);
-    tester.Test("b", ["F", "C", "A"], ["E"]);
-    tester.Test("a", "C|D", ["E"], ["A", "C", "D"]);
-    tester.Test("a", "B|D", ["C"], ["B"]);
-    tester.Test("b", "B|D", ["D", "B", "A", "Top"], ["Top", "A", "B", "D"]);
+    tester.Initiate("D", 500, "EntryA", "EntryB", "EntryC", "ExitB", "ExitC", 
+                              "EntryASubRegion0Final", "EntryASubRegion1Final", "ExitASubRegion1Final", "ExitASubRegion0Final", "ExitA", "EntryD");
     fsm.Terminate();
   }
 }
@@ -83,72 +75,31 @@ module Test
 BEGIN-OUTPUT
 EntryA
 EntryB
-EntryD
-[B|D]
-Ok
-Processing a 'a' 
+EntryC
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
 ExitB
-EntryC
-[C|D]
-Ok
-Processing a 'a' 
 ExitC
-EntryB
-[B|D]
-Ok
-Processing a 'a' 
-ExitB
-EntryC
-[C|D]
-Ok
-Processing a 'b' 
-ExitD
-ExitC
+EntryASubRegion0Final
+EntryASubRegion1Final
+ExitASubRegion1Final
+ExitASubRegion0Final
 ExitA
-EntryE
-[E]
-Ok
-Processing a 'a' 
-ExitE
-EntryA
-EntryC
 EntryD
-[C|D]
-Ok
-Processing a 'c' 
-ExitD
-EntryF
-[C|F]
-Ok
-Processing a 'b' 
-ExitF
-ExitC
-ExitA
-EntryE
-[E]
-Ok
-Processing a 'a' 
-ExitE
-EntryA
-EntryC
-EntryD
-[C|D]
-Ok
-Processing a 'a' 
-ExitC
-EntryB
-[B|D]
-Ok
-Processing a 'b' 
-ExitD
-ExitB
-ExitA
-ExitTop
-EntryTop
-EntryA
-EntryB
-EntryD
-[B|D]
+[D]
 Ok
 END-OUTPUT
 */
