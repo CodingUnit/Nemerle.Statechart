@@ -113,11 +113,11 @@ namespace Nemerle.Statechart
           st.Map(x => (x.ToString(), $"State$x"));
         } else
           {
-            def (conc, other) = gen.ActiveStates.NToList().Partition(x => x.IsConcurrent);
-            def conc = conc.Map(x => x.ToString());
-            def other = other.SelectMany(x => x.states).Distinct().Exclude(_.IsTop);
-            def other = other.Map(x => x.ToString());
-            def st = conc.Concat(other);
+            def conf = gen.ActiveStates;
+            def conf = conf.Map(x => x.ToString());
+            def st = gen.states.Filter(x => ((x.IsSimple && !x.regions.IsEmpty()) || x.IsComposite) && !x.IsTop);
+            def other = st.Map(x => x.ToString());
+            def st = conf + other;
             st.Map(x => (x, $"State$x"))
           }
       }
@@ -191,7 +191,7 @@ namespace Nemerle.Statechart
         gen.compile_list ::= ty;
         gen.StateBuilders ::= (st, ty);
       }
-      def composite = gen.states.Exclude(_.IsSimple);
+      def composite = gen.states.Filter(x => ((x.IsSimple && !x.regions.IsEmpty()) || x.IsComposite) && !x.IsTop);
       foreach (st in composite)
       {
         def st_gen = GenState(gen, st, ty);
@@ -205,7 +205,7 @@ namespace Nemerle.Statechart
       GenBaseStruct();
       if (concurrent_field_pattern) 
         EmitConcField()
-       else 
+      else 
         EmitConcCombinations()
 
     }
