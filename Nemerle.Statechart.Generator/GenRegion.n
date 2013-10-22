@@ -47,7 +47,7 @@ namespace Nemerle.Statechart
         <[ variant_option: |  $(st.name : usesite)
                               {
                                   public this() {}
-                                
+
                                   public override get_id() : $id_type { $id_expr }
 
                                   public static Id() : $id_type
@@ -89,11 +89,16 @@ namespace Nemerle.Statechart
       }
     }
 
+    SubRegionState(n : int) : PExpr
+    {
+      <[ this.$($"cur_state$n" : usesite) ]>
+    }
+
     Init : ClassMember
     {
       get
       {
-        def body = NumSubRegions.Map(i => <[ this.$($"cur_state$i" : usesite) = $($"st$i" : usesite) ]>);
+        def body = NumSubRegions.Map(i => <[ $(SubRegionState(i)) = $($"st$i" : usesite) ]>);
         <[decl: public Init(..$InitPars) : State 
         {
           ..$body;
@@ -115,20 +120,68 @@ namespace Nemerle.Statechart
                             def sreg_expr = sreg.Map(x => loop(x :: tail));
                             <[ $name.Init(..$sreg_expr) ]>
                           } else
-                          if (head.IsSimple) 
-                          {
-                            def name = StaticGenerator.GetExecStateName(head.ToString());
-                            name
-                          } else loop(tail)
+                            if (head.IsSimple) 
+                            {
+                              def name = StaticGenerator.GetExecStateName(head.ToString());
+                              name
+                            } else loop(tail)
       }
 
       loop(st.states)
     }
 
-    //DefineTransitions(ty : TypeBuilder, conf : ActiveStateConfig) : void
+    //DefineTransitions(ty : TypeBuilder, st : ActiveStateConfig) : void
     //{
-    //  DeferrableEvents.EmitInState(conf, ty);
+    //  DeferrableEvents.EmitInState(st, ty);
+    //  def defs =  {
+    //                def group = st.transitions;
+    //                group.MapToList(x => gen_events.EventDeclInState(x, DefineHandlerTransBody(x)))
+    //              }
+    //  Define(ty, defs)
     //}
+
+    LaunchEventInSubRegions(tr : Transition) : PExpr
+    {
+      def evt = tr.Trigger;
+
+      def expr = NumSubRegions.Map(x => <[ match ($(SubRegionState(x)).$(evt.Name : usesite)(..$(evt.event_parms_names())))
+                                            {
+                                              | null => ()
+                                              | st   => $(SubRegionState(x)) = st;
+                                            }]>);
+      <[ {..$expr} ]>
+    }
+
+    DefineHandlerTransBody(base_st : HState, tr : Transition) : PExpr
+    {
+      match (tr.Target)
+      {
+        | TargetDeterminator.Defer => <[ fsm.Defer(); null ]>
+        | _                        => 
+                                      match (tr.Target)
+                                      {
+                                        //| TargetDeterminator.Completion(st)
+                                        | State(st)                         when st.states.ContainsRef(base_st) => LaunchEventInSubRegions(tr)
+                                                                                  //def (ignore, parms) = gen.gen_events.GetParams(tr);
+                                        | _                                  => def name = gen.GetTransitionName(tr);
+                                                                                <[ fsm.$(name : usesite)(..$(tr.Trigger.event_parms_names()));]>
+                                      }
+                                      
+      }
+    }
+
+    DefineTransitions(ty : TypeBuilder, st : HState) : void
+    {
+      //DeferrableEvents.EmitInState(conf, ty);
+      def confs = gen.ActiveStates.Filter(x => x.states.ContainsRef(st));
+      def trans = confs.SelectMany(_.transitions).NToList();
+      def grouped = trans.GroupBy(_.Trigger);
+      foreach (tr in grouped)
+      {
+        def defs = tr.Map(x => gen.gen_events.EventDeclInState(x, DefineHandlerTransBody(st, x)));
+        gen.Define(ty, defs);
+      }
+    }
 
     public Emit() : TypeBuilder
     {
@@ -137,6 +190,7 @@ namespace Nemerle.Statechart
       {
         gen.Define(ty, ConcFields);
         gen.Define(ty, Init);
+        DefineTransitions(ty, st);
       }
       ty
     }

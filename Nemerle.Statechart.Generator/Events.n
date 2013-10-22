@@ -408,10 +408,10 @@ namespace Nemerle.Statechart
       }
     }
 
-    public EventDeclInState(tr : Transition, body : PExpr) : ClassMember
+    public GetParams(tr : Transition) : PExpr * list[PParameter]
     {
       def e = tr.Trigger;
-      if (e.IsTimed) gen.timed_events.EventDeclInState(tr, body) else
+      if (e.IsTimed) (<[]>, []) else
       {
         def evt = events.Filter(x => x.Name == e.Name);
         def most = evt.OrderByDescending(x => x.Parms.Length).First();
@@ -426,11 +426,21 @@ namespace Nemerle.Statechart
         def ignore = if (most_parms.Length > e.Parms.Length)
                       {
                         def ignores = most_parms.Map(x => <[ _ = $(x : usesite) ]>);
-                       <[ { ..$ignores } ]>
+                      <[ { ..$ignores } ]>
                       } else
                       {
                         <[]>
                       }
+        (ignore, parms)
+      }
+    }
+
+    public EventDeclInState(tr : Transition, body : PExpr) : ClassMember
+    {
+      def e = tr.Trigger;
+      if (e.IsTimed) gen.timed_events.EventDeclInState(tr, body) else
+      {
+        def (ignore, parms) = GetParams(tr);
         <[ decl: public override $(e.Name : usesite)(..$parms) : State { $ignore; $body } ]>
       }
     }
@@ -462,15 +472,15 @@ namespace Nemerle.Statechart
             }
             ]>);
       def body = if (StringToEventParms3.Length > 1)
-                 {
-                   <[ def res = match(evt)
+                  {
+                  <[ def res = match(evt)
                                 {
                                   ..$StringToEventParms3
                                 }
                       PostEvent(res) ]>
-                 } else
-                 {
-                   
+                  } else
+                  {
+
                    <[ _ = p0;
                       _ = p1;
                       _ = p2;
@@ -478,7 +488,7 @@ namespace Nemerle.Statechart
                       {
                         ..$StringToEventParms3
                       } ]>
-                 }
+                  }
       gen.Define(<[decl:
                     public PostEvent(evt : string, p0 : object, p1 : object = null, p2 : object = null) : void
                     {
@@ -486,20 +496,20 @@ namespace Nemerle.Statechart
                     }
                   ]>);
       def body = if (StringToEventParmsAll.Length > 1)
-                 {
-                   <[ def res = match(evt)
+                  {
+                  <[ def res = match(evt)
                                 {
                                   ..$StringToEventParmsAll
                                 }
                       PostEvent(res) ]>
-                 } else
-                 {
+                  } else
+                  {
                    <[ _ = parms;
                       match(evt)
                       {
                         ..$StringToEventParmsAll
                       } ]>
-                 }
+                  }
       gen.Define(<[decl:
                     public PostEvent(evt : string, params parms : array[object]) : void
                     {
