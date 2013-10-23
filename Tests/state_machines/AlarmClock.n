@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Statechart;
+using System.Threading;
 
 namespace Nemerle.Statechart.Tests
 {
@@ -16,125 +17,217 @@ namespace Nemerle.Statechart.Tests
   [statechart(
   <#
   flags auto_initial testing force_concurrent_combination;
-  // flags debug;
   
-  state Powered
+  
+  state Operations : Powered
   {
-    no_battery => NotPowered;
-    
-    state KeepTime
-    {
-      state PMIconOff
-      {
-        after_12_hours => PMIconOn;
-      }
-      
-      state PMIconOn
-      {
-        pass_12_hours => PMIconOff;
-      }
-    }
-    
-    [---]
-    
-    state Run
-    {
-      
-      state DisplayCurrentTime
-      {
-        push_hour, push_min              => DisplayAlarmTime;
-        push_hour_and_min [is_alarm_on]  => Beep;
-      }
-      
-      state DisplayAlarmTime
-      {
-        hour_min_release => DisplayCurrentTime;
-      }
-      
-      state Beep
-      {
-        hour_min_release => DisplayCurrentTime;
-      }
-      
-      time_set  => TimeSet;
-      alarm_set => AlarmSet;
-    }
-    
-    state AlarmSet
-    {
-      entry / al_icon_on;
-      exit  / al_icon_off;
-      
-      run => Run;
-      
-      state DisplayAlarmTime
-      {
-        push_hour / UpdateHours;
-        push_min  / UpdateMins;
-      }
-      
-    }
-    
-    state TimeSet
-    {
-      run => Run;
-      
-      state DisplayCurrentTime
-      {
-        push_hour / UpdateHours;
-        push_min  / UpdateMins;
-      }
-      
-    }
-    
-    [---]
-    
-    state AlarmOff
-    {
-      alarm_on => AlarmOn;
-    }
-    
-    state AlarmOn
-    {
-      entry / alarm_icon_on;
-      exit  / alarm_icon_off;
-      alarm_off => AlarmOff;
-      
-      state Idle
-      {
-        current_time_is_alarm [light_pressed] => @;
-        current_time_is_alarm [else]          => Ringing;
-      }
-      
-      state Ringing
-      {
-        drowse_light / alarm += TimeSpan.FromSeconds(4) => Idle;
-        after (1 min) => Idle;
-      }
-    }
-    
-    [---]
-    
-    state BacklightOff
-    {
-      drowse_light => BacklightOn;
-    }
-    
-    state BacklightOn
-    {
-      drowse_light_release => BacklightOff;
-    }
   }
   
-  state NotPowered
+  state Run : Operations
   {
-    battery => Powered;
+    after (500 ms) / update_time;
+      
+    state DisplayCurrentTime
+    {
+      entry / disp_cur_time_blink;
+      after (1 s) => @;
+      push_hour                     => DisplayAlarmTime;
+      push_min [in_state(AlarmOn)]  => Beep;
+    }
+      
+    state DisplayAlarmTime
+    {
+      entry / disp_alarm_time;
+      push_hour, push_min => DisplayCurrentTime;
+      after (5 s)         => DisplayCurrentTime;
+    }
+      
+    state Beep
+    {
+      push_hour, push_min => DisplayCurrentTime;
+    }
+      
+    time_set  => TimeSet;
+    alarm_set => AlarmSet;
   }
-  
+    
+  state AlarmSet : Operations
+  {
+    entry / al_icon_on;
+    exit  / al_icon_off;
+      
+    run => Run;
+      
+    state DisplayAlarmTime
+    {
+      state SetNormal
+      {
+        after (400 ms) / disp_cur_set_alarm => @;
+        push_hour / UpdateAlarmHours;
+        push_min  / UpdateAlarmMins;
+        hold_hour => SetFastHour;
+        hold_min  => SetFastMin;
+      }
+        
+      state SetFast
+      {
+        push_hour / UpdateAlarmHours disp_alarm_time;
+        push_min  / UpdateAlarmMins disp_alarm_time;
+        release_hour, release_min => SetNormal;
+            
+        state SetFastHour
+        {
+          do / send_hour_fast;
+        }
+
+        state SetFastMin : SetFast
+        {
+          do / send_min_fast;
+        }
+      }
+        
+    }
+      
+  }
+    
+  state TimeSet : Operations
+  {
+    run => Run;
+      
+    state DisplayCurrentTime
+    {
+      state SetNormal
+      {
+        after (400 ms) / disp_cur_set_time => @;
+        push_hour / UpdateTimeHours;
+        push_min  / UpdateTimeMins;
+        hold_hour => SetFastHour;
+        hold_min  => SetFastMin;
+      }
+          
+      state SetFast
+      {
+        push_hour / UpdateTimeHours disp_cur_time;
+        push_min  / UpdateTimeMins disp_cur_time;
+        release_hour, release_min => SetNormal;
+            
+        state SetFastHour
+        {
+          do / send_hour_fast;
+        }
+
+        state SetFastMin : SetFast
+        {
+          do / send_min_fast;
+        }
+      }
+    }
+  }
   #>)]
-  public class AlarmClock
+  partial public class AlarmClock
   {
-    mutable alarm : DateTime;
+    
+    AlarmTime : string
+    {
+      get
+      {
+        TimeString(alarm)
+      }
+    }
+    
+    update_time() : void
+    {
+      def pass = DateTime.Now - Now + diff;
+      def old = Now;
+      Now = Now.Add(pass);
+      if (old.Hour > 12 && Now.Hour < 12) pass_12_hours() else
+      if (old.Hour < 12 && Now.Hour > 12) after_12_hours() else ()
+    }
+    
+    send_hour_fast(tok : CancellationToken) : void
+    {
+      while (!tok.IsCancellationRequested)
+      {
+        this.push_hour();
+        Thread.Sleep(100);
+      }
+    }
+
+    send_min_fast(tok : CancellationToken) : void
+    {
+      while (!tok.IsCancellationRequested)
+      {
+        this.push_min();
+        Thread.Sleep(100);
+      }
+    }
+    
+    disp_cur_time() : void
+    {
+      OnShow(TimeString(Now))
+    }
+    
+    disp_alarm_time() : void
+    {
+      OnShow(AlarmTime)
+    }
+    
+    disp_cur_set_time() : void
+    {
+      OnShow(if (blink) "     " else TimeString(Now))
+    }
+    
+    disp_cur_set_alarm() : void
+    {
+      OnShow(if (blink) "     " else AlarmTime)
+    }
+    
+    UpdateAlarmHours() : void
+    {
+      alarm = alarm.AddHours(1);
+    }
+    
+    UpdateAlarmMins() : void
+    {
+      alarm = alarm.AddMinutes(1);
+    }
+    
+    UpdateTimeHours() : void
+    {
+      Now = Now.AddHours(1);
+      diff = diff.Add(TimeSpan.FromHours(1));
+    }
+    
+    UpdateTimeMins() : void
+    {
+      Now = Now.AddMinutes(1);
+      diff = diff.Add(TimeSpan.FromMinutes(1));
+    }
+    
+    disp_cur_time_blink() : void
+    {
+      OnShow(CurTime);
+    }
+    
+    TimeString(time : DateTime, blink : bool = false) : string
+    {
+      time.ToString(if (!blink) "hh:mm" else "hh mm")
+    }
+    
+    CurTime : string
+    {
+      get
+      {
+        TimeString(Now, blink)
+      }
+    }
+    
+    OnShow(str : string) : void
+    {
+      Show?.Invoke(str)
+    }
+    
+    public event Show : Action[string];
     
     light_pressed : bool 
     {
