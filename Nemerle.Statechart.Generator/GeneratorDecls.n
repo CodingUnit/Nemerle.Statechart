@@ -37,6 +37,8 @@ namespace Nemerle.Statechart
 
     internal gen_events : GenEvents;
     
+    //gen_regions : Regions;
+    
     [Memoized]
     HistoryStates : list[PseudoState.History]
     {
@@ -119,8 +121,18 @@ namespace Nemerle.Statechart
 
     Initial : Transition;
 
-    ActiveStates : IEnumerable[ActiveStateConfig];
+    internal ConcurrentCombinationsLimit : int = 50;
+    internal ConcurrentTransitionsLimit : int = 300;
+    internal ActiveStates : IEnumerable[ActiveStateConfig];
 
+    internal states : IEnumerable[HState]
+    {
+      get
+      {
+        ActiveStates.SelectMany(_.states).Distinct().NToList()
+      }
+    }
+    
     mutable decls : Map[string, list[ClassMember]];
     mutable action_for : Map[string, string]; // source_name * dest_name
     mutable event_for : Map[string, string];
@@ -187,6 +199,8 @@ namespace Nemerle.Statechart
     
     public WithSources : bool {get;set;}
 
+    gen_states : States;
+    
     public this(active_states : list[ActiveStateConfig], fsm_flags : MachineFlags, initial : Transition, id : StateId, loaded : Hashtable[string, StateNode.StateMachine], ty : TypeBuilder)
     {
       ActiveStates = active_states;
@@ -200,6 +214,8 @@ namespace Nemerle.Statechart
       util = GenUtil(ty, WithSources);
       gen_events = GenEvents(this, Events);
       timed_events = TimedEvents(this);
+      gen_states = States(this);
+      //gen_regions = Regions(this);
     }
 
     public Generate() : void

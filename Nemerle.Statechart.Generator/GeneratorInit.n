@@ -23,7 +23,7 @@ namespace Nemerle.Statechart
     {
       def initial = DefineTransBody(Initial); // define initial transition
       def events = Events.Map(GenEvent.fsm_event_declaration);
-      def state_names = $[(st.name, $"State$(st)"), st in ActiveStates]; // создаем имена состояний
+      
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
       def prop_st_change_expr = if (FsmFlags.PropertyStateChanged) <[ OnPropertyChanged("CurState") ]> else <[ () ]>;
       when (HasDeferedEvents || FsmFlags.PropertyStateChanged)
@@ -78,7 +78,7 @@ namespace Nemerle.Statechart
                   ]>;
       ty.AddImplementedInterface(<[ ActiveStateMachine[State] ]>);
       when (FsmFlags.TestingFeatures) ty.AddImplementedInterface(<[ Nemerle.Statechart.ITestStateMachine ]>);
-      Define(state_names.Map((x, y) =>  <[decl: public static $(y : usesite) : State.$(x : usesite) = State.$(x : usesite)(); ]>)); // create state variables for fast using 
+      
       Define(dummy.td.GetMembers());
     }
 
@@ -112,7 +112,7 @@ namespace Nemerle.Statechart
         def comp = ListUtils.Init(StatesId.Length, i => <[ cur_id.$($"id$i" : usesite) & id.$($"id$i" : usesite) == id.$($"id$i" : usesite) ]>);
         def expr = MergeExpr(comp, (x, y) => <[ $x && $y ]>);
         <[
-        def id = $st_id;
+          def id = $st_id;
           def cur_id = cur_state.get_id();
           $expr
         ]>
@@ -126,7 +126,7 @@ namespace Nemerle.Statechart
           {
             | <[ $(_ : usesite) ]> => <[ cur_state.get_id() & id == id ]>
             | _ => <[
-                def id = $st_id;
+                      def id = $st_id;
                       cur_state.get_id() & id  == id 
                   ]>
           }
@@ -180,12 +180,10 @@ namespace Nemerle.Statechart
                             }
                             ]>;
 
-      def states = ActiveStates;//LivedNestedStates.Exclude(_.IsTopState);
-      def mexpr = states.FoldRight([<[case: | _ => throw InvalidOperationException("Invalid state") ]>], 
-                                   (x, a) => <[case: | $(x.name : string) => State.$(x.name : usesite).Id()]> :: a);
+      def body = gen_states.IsInStateFromStrBody;
       def str_is_in_state = <[decl: public IsInState(st : string) : bool
                               {
-                                def id = match (st) {..$mexpr };
+                                def id = match (st) { ..$body };
                                 IsInState(id)
                               } ]>;
       Define([is_in_state, is_in_state2, st_is_in_state, str_is_in_state]);
