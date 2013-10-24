@@ -19,26 +19,16 @@ namespace Nemerle.Statechart
   {
     gen : StaticGenerator;
 
-    transitions : list[Transition * StateEvent.Timed]
-    {
-      [Memoize]
-      get
-      {
-        def tran = gen.transitions.FoldLeft([], (x, a) => if (x.Trigger is StateEvent.Timed as e) (x, e) :: a else a);
-        def tran = tran.GroupBy((x, _) => x.Source);  // group by source config
-        tran.Map(_.Distinct()).Flatten().NToList() // select only distinct
-      }
-    }
 
     [RecordIgnore]
-    events : list[Transition * StateEvent.Timed * string * bool] {get;set;default []}
+    events : list[Transition * StateEvent.Timed * string] {get;set;default []}
 
-    event_gen : list[GenTimedEvent]
+    internal event_gen : list[GenTimedEvent]
     {
       [Memoize]
       get
       {
-        events.Map(GenTimedEvent(_, _, _, gen, _))
+        events.Map(GenTimedEvent(this, _, _, _, gen))
       }
     }
 
@@ -63,20 +53,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    public GetEntryStateCode(st : ActiveStateConfig) : PExpr
-    {
-      def evt = event_gen.Filter(x => x.tran.Source : object == st);
-      def code = evt.Map(_.StartCode);
-      <[ { ..$code } ]>
-    }
-
-    public GetExitStateCode(tran : Transition) : PExpr
-    {
-      def evt = event_gen.Filter(x => x.tran.Source : object == tran.Source);
-      def code = evt.Map(_.StopCode);
-      <[ { ..$code } ]>
-    }
-
     public DeclInTopState : list[ClassMember]
     {
       [Memoize]
@@ -85,13 +61,13 @@ namespace Nemerle.Statechart
         original_evt.Map(_.DeclInTopState)
       }
     }
-    
+
     public EventDeclInState(tr : Transition, body : PExpr) : ClassMember
     {
       def evt = event_gen.First(x => x.tran : object == tr);
       evt.DeclInState(body)
     }
-    
+
     public DispatchCases : list[MatchCase]
     {
       [Memoize]
@@ -112,9 +88,14 @@ namespace Nemerle.Statechart
       ty.Compile();
     }
 
-    Prepare() : void
+    Prepare(tran : list[Transition]) : void
     {
-      def (after, other) = transitions.Partition((_, y) => y.time_expr is TimedExprType.After); // partition events optimized only after syntax for those that starts after state entry
+      def all_tran = tran;
+      def tran = tran.FoldLeft([], (x, a) => if (x.Trigger is StateEvent.Timed as e) (x, e) :: a else a);
+      def tran = tran.GroupBy((x, _) => x.Source);  // group by source config
+      def tran = tran.Map(_.Distinct()).Flatten().NToList(); // select only distinct
+      
+      def (after, other) = tran.Partition((_, y) => y.time_expr is TimedExprType.After); // partition events optimized only after syntax for those that starts after state entry
       def dup = after.GroupBy((x, _) => x.Source); // group by source config in distinct configs it may use one timer and event name
 
       def has_other_evt(gr, i)
@@ -122,36 +103,127 @@ namespace Nemerle.Statechart
         gr.Exists(x => x.Count() > i) // have this index
       }
 
-      def create_name((x, e), i, other)
+      def map = Hashtable();
+      
+      def exists_name((x, e), name)
       {
-        def (name, reuse) = if (has_other_evt(other, i)) // if has events in other configurations with this index in this state
+        def key = (x.OriginateFrom, e);
+        if (map.ContainsKey(key)) map[key] == name else false
+      }
+      
+      def get_name(all, i)
+      {
+        def name = if (i != 0) $"After$i" else "After"; // create index name for it
+        if (all.Exists(x => exists_name(x, name)))
+          get_name(all, i + 1) else name
+      }
+      
+      def create_name(all, (x, e), i, other)
+      {
+        def key = (x.OriginateFrom, e);
+        def name = if (map.ContainsKey(key)) 
+                   {
+                     map[key]
+                   } else
+                   {
+                    def name = if (has_other_evt(other, i)) // if has events in other configurations with this index in this state
                     {
-                      def name = if (i != 0) $"After$i" else "After"; // create index name for it
-                      (name, true)
+                      def name = get_name(all, i);
+                      name
                     } else
                     {
-                      (e.TargetName, false)
+                      e.TargetName
                     }
-        (x, e, name, reuse)
+                    map.Add(key, name);
+                    name
+                  }
+        
+        
+        (x, e, name)
       }
 
-      def other = other.Map((x, y) => (x, y, y.TargetName, false));
+      def other = other.Map((x, y) => (x, y, y.TargetName));
+      
       def res = dup.FoldLeft([], (x, a) => 
       {
-                                 def other = dup.Except(x); // other groups in configs
-                                 def res = x.MapIndex(create_name(_, _, other)).NToList();
+                                 def other = dup.Exclude(y => y.Key : object == x.Key); // other groups in configs
+                                 def res = x.MapIndex(create_name(x, _, _, other)).NToList();
                                  res + a
       });
+      
       events = res + other;
+      ModifyPaths(all_tran)
+    }
+
+    ModifyPaths(tran : list[Transition]) : void
+    {
+      def modify_path(tr, x, src, tar, a)
+      {
+        def entry_gen = event_gen.Filter(x => x.tran.Source == tar : object);
+        def exit_gen = event_gen.Filter(x => x.tran.Source == src : object);
+        match (x)
+        {
+          | TranPath(kind = PathKind.Entry, state = st) => 
+              
+              match (entry_gen.Filter(x => x.state : object == st))
+              {
+                | []  => x :: a
+                | lst => def lst = lst.Map(x => TranPath(st, PathNode.Action(st, FsmAction.Expr(x.StartCode(tr))) :: [], PathKind.Action));
+                         x :: lst + a
+              }
+          | TranPath(kind = PathKind.Exit, state = st) => 
+              match (exit_gen.Filter(x => x.state : object == st))
+              {
+                | []  => x :: a
+                | lst => def lst = lst.Map(x => TranPath(st, PathNode.Action(st, FsmAction.Expr(x.StopCode)) :: [], PathKind.Action));
+                         lst + (x  ::  a)
+              }
+
+          | x => x :: a
+        }
+      }
+      
+      def check_tran(tr, tar)
+      {
+        unless (tr.Target is TargetDeterminator.NoStateChange)
+        foreach (node in tr.DecisionTree.GetBreadthFirstEnumerable())
+        {
+          def old_path = node.path.TranPath;
+          def path = old_path.FoldBack([], (x, a) => modify_path(tr, x, tr.Source, tar, a));
+          when (path.Length != old_path.Count()) node.path = PathSequence(path);
+        }
+      }
+      
+      def check(tr)
+      {
+          match (tr.Target)
+          {
+            | TargetDeterminator.State(st) => check_tran(tr, st)
+            | TargetDeterminator.Completion(st) => 
+                match (st.transitions.Find(x => x.Trigger.IsCompletion))
+                  {
+                    | Some(tran) => check(tran)
+                    | _          => ()
+                  }
+            | _   => ()
+          }
+      }
+      
+      foreach (tr in tran)
+      {
+        check(tr)
+      }
+
+    }
+
+    public Init(tran : list[Transition]) : void
+    {
+      Prepare(tran);
     }
 
     public Emit() : void
     {
-      unless (transitions.IsEmpty())
-      {
-        Prepare();
-        EmitEvents();
-      }
+      EmitEvents();
     }
   }
 }

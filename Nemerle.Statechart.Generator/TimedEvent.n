@@ -18,12 +18,35 @@ namespace Nemerle.Statechart
   [Record]
   class GenTimedEvent
   {
+    public events : TimedEvents;
     public tran : Transition;
+    
+    public state : HState
+    {
+      get
+      {
+        tran.OriginateFrom
+      }
+    }
+    
     public evt  : StateEvent.Timed;
     public name : string;
     gen : StaticGenerator;
     
-    public reuse_timer : bool {get;set;}
+    public reuse_timer(tran : Transition) : bool 
+    {
+      def source = tran.Source;
+      def src_evts = events.event_gen.Filter(x  => x.tran.Source : object == source);
+      match (src_evts.Find(x => x : object != this && x.name == name))
+      {
+        | Some(e) => match (e.evt.time_expr, evt.time_expr)
+                      {
+                        | (TimedExprType.After(a1), TimedExprType.After(a2)) => a1 != a2
+                        | _                                                  => false
+                      }
+        | _       => false
+      }
+    }
     
     timer_name : string
     {
@@ -64,7 +87,7 @@ namespace Nemerle.Statechart
       {
         match (evt.time_expr)
         {
-          | TimedExprType.After    => def interval = if (reuse_timer) <[]> else set_interval;
+          | TimedExprType.After    => def interval = set_interval;
                                       <[
                                          $(timer_name : usesite).AutoReset = false;
                                          $interval;
@@ -75,29 +98,35 @@ namespace Nemerle.Statechart
       }
     }
     
+    public OptName : string
+    {
+      [Memoize]
+      get
+      {
+        def name = name.Replace('(', '_').Replace(')', ' ').Replace(':', '_').Replace('.', '_');
+        name.ToUpperFirst()
+      }
+    }
+    
     SendEventDecl : ClassMember
     {
       get
       {
         <[decl: $(name : usesite)(_ : object, _ : ElapsedEventArgs) : void
                 {
-                  PostEvent(TimEvent.$(name : usesite).New)
+                  PostEvent(TimEvent.$(OptName : usesite).New)
                 }]>
       }
     }
     
     
-    public StartCode : PExpr
+    public StartCode(tran : Transition) : PExpr
     {
-      [Memoize]
-      get
-      {
-        def start = if (reuse_timer) set_interval else <[]>;
+        def start = if (reuse_timer(tran)) set_interval else <[]>;
         <[ 
            $start;
            $(timer_name : usesite).Start() 
          ]>;
-      }
     }
     
     public DispatchCode : MatchCase
@@ -105,7 +134,7 @@ namespace Nemerle.Statechart
       [Memoize]
       get
       {
-        <[case: | TimEvent.$(name : usesite) => cur_state.$(name : usesite)(this) ]>
+        <[case: | TimEvent.$(OptName : usesite) => cur_state.$(name : usesite)(this) ]>
       }
     }
     
@@ -137,7 +166,7 @@ namespace Nemerle.Statechart
       [Memoize]
       get
       {
-        <[ variant_option: | $(name : usesite)
+        <[ variant_option: | $(OptName : usesite)
          {
            
           public override ToString() : string
@@ -182,7 +211,7 @@ namespace Nemerle.Statechart
                     {
                       when (instance == null) 
                       {
-                        instance = $(name : usesite)()
+                        instance = $(OptName : usesite)()
                       }
                       instance
                     }
