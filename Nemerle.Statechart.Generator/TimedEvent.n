@@ -21,6 +21,14 @@ namespace Nemerle.Statechart
     public events : TimedEvents;
     public tran : Transition;
     
+    public Source : ActiveStateConfig
+    {
+      get
+      {
+        tran.Source
+      }
+    }
+    
     public state : HState
     {
       get
@@ -33,18 +41,26 @@ namespace Nemerle.Statechart
     public name : string;
     gen : StaticGenerator;
     
+    public StartTranPath(tr : Transition) : TranPath
+    {
+      TranPath(state, PathNode.Action(state, FsmAction.Expr(StartCode(tr))) :: [], PathKind.Action)
+    }
+    
     public reuse_timer(tran : Transition) : bool 
     {
-      def source = tran.Source;
-      def src_evts = events.event_gen.Filter(x  => x.tran.Source : object == source);
-      match (src_evts.Find(x => x : object != this && x.name == name))
+      if (tran.Kind == TransitionKind.History) true else
       {
-        | Some(e) => match (e.evt.time_expr, evt.time_expr)
-                      {
-                        | (TimedExprType.After(a1), TimedExprType.After(a2)) => a1 != a2
-                        | _                                                  => false
-                      }
-        | _       => false
+        def source = tran.Source;
+        def src_evts = events.event_gen.Filter(x  => x.tran.Source : object == source);
+        match (src_evts.Find(x => x : object != this && x.name == name))
+        {
+          | Some(e) => match (e.evt.time_expr, evt.time_expr)
+                        {
+                          | (TimedExprType.After(a1), TimedExprType.After(a2)) => a1 != a2
+                          | _                                                  => false
+                        }
+          | _       => false
+        }
       }
     }
     
@@ -122,11 +138,12 @@ namespace Nemerle.Statechart
     
     public StartCode(tran : Transition) : PExpr
     {
-        def start = if (reuse_timer(tran)) set_interval else <[]>;
-        <[ 
-           $start;
-           $(timer_name : usesite).Start() 
-         ]>;
+      def reuse = if (tran != null) reuse_timer(tran) else true;
+      def start = if (reuse) set_interval else <[]>;
+      <[ 
+        $start;
+        $(timer_name : usesite).Start() 
+      ]>;
     }
     
     public DispatchCode : MatchCase
