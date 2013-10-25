@@ -35,6 +35,10 @@ namespace AlarmClockWindow
             fsm.Show += x => Dispatcher.Invoke(new Action<string>(fsm_Show), x);
             fsm.al_icon_off += () => Dispatcher.Invoke(new Action(fsm_al_icon_off));
             fsm.al_icon_on += () => Dispatcher.Invoke(new Action(fsm_al_icon_on));
+            fsm.light_off += () => Dispatcher.Invoke(new Action(fsm_light_off));
+            fsm.light_on += () => Dispatcher.Invoke(new Action(fsm_light_on));
+            fsm.alarm_icon_off += () => Dispatcher.Invoke(new Action(fsm_alarm_icon_off));
+            fsm.alarm_icon_on += () => Dispatcher.Invoke(new Action(fsm_alarm_icon_on));
             key_stroke_hour.holded += new Action(key_stroke_hour_holded);
             key_stroke_hour.released += new Action(key_stroke_hour_released);
             key_stroke_min.holded += new Action(key_stroke_min_holded);
@@ -42,6 +46,26 @@ namespace AlarmClockWindow
             key_stroke_hour.Initiate();
             key_stroke_min.Initiate();
             fsm.Initiate();
+        }
+
+        void fsm_alarm_icon_on()
+        {
+            signal_image.Source = new BitmapImage(new Uri(@"pack://application:,,,/AlarmClock;component/Images/alarm2.png"));
+        }
+
+        void fsm_alarm_icon_off()
+        {
+            signal_image.Source = null;
+        }
+
+        void fsm_light_on()
+        {
+            background.Fill = Brushes.LightGoldenrodYellow;
+        }
+
+        void fsm_light_off()
+        {
+            background.Fill = new SolidColorBrush(Color.FromRgb(0xE6, 0xE6, 0xE6));
         }
 
         void key_stroke_min_released()
@@ -152,6 +176,26 @@ namespace AlarmClockWindow
         private void minute_button_PreviewMouseUp(object sender, MouseButtonEventArgs e)
         {
             key_stroke_min.release();
+        }
+
+        private void alarm_on_radio_Checked(object sender, RoutedEventArgs e)
+        {
+            fsm.alarm_on();
+        }
+
+        private void alarm_off_radio_Checked(object sender, RoutedEventArgs e)
+        {
+            fsm.alarm_off();
+        }
+
+        private void drowse_light_button_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            fsm.drowse_light();
+        }
+
+        private void drowse_light_button_PreviewMouseUp(object sender, MouseButtonEventArgs e)
+        {
+            fsm.drowse_light_release();
         }
 
 

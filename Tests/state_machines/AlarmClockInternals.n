@@ -6,6 +6,7 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace Nemerle.Statechart.Tests
 {
@@ -20,8 +21,6 @@ namespace Nemerle.Statechart.Tests
     
     state KeepTime
     {
-      entry / set_am_pm;
-      
       state PMIconOff
       {
         entry / set_am;
@@ -39,25 +38,26 @@ namespace Nemerle.Statechart.Tests
     
     state AlarmOff
     {
+      entry  / alarm_icon_off;
       alarm_on => AlarmOn;
     }
     
     state AlarmOn
     {
       entry / alarm_icon_on;
-      exit  / alarm_icon_off;
       alarm_off => AlarmOff;
       
       state Idle
       {
-        current_time_is_alarm [light_pressed] => @;
-        current_time_is_alarm [else]          => Ringing;
+        current_time_is_alarm [in_state(BacklightOn)] => @;
+        current_time_is_alarm [else]                  => Ringing;
       }
       
       state Ringing
       {
-        drowse_light / alarm += TimeSpan.FromSeconds(4) => Idle;
+        drowse_light / alarm = Now + TimeSpan.FromSeconds(4) => Idle;
         after (1 min) => Idle;
+        do / Beep;
       }
     }
    
@@ -65,11 +65,13 @@ namespace Nemerle.Statechart.Tests
    
     state BacklightOff
     {
+      entry / light_off;
       drowse_light => BacklightOn;
     }
     
     state BacklightOn
     {
+      entry / light_on;
       drowse_light_release => BacklightOff;
     }
 
@@ -107,16 +109,32 @@ namespace Nemerle.Statechart.Tests
       }
     }
     
+    
     EntryPowered() : void
     {
       Now = DateTime.Now;
       diff = TimeSpan.Zero;
     }
-    
+
     set_am_pm() : void
     {
-      if (Now.Hour > 12) Onset_pm(); else Onset_am();
+      set_am_pm(Now);
+    }
+
+    set_am_pm(time : DateTime) : void
+    {
+      if (time.Hour > 12) Onset_pm(); else Onset_am();
     }
     
+    Beep(tok : CancellationToken) : void
+    {
+      while (!tok.IsCancellationRequested)
+      {
+        Beep.Beep(100, 2000, 100);
+        Thread.Sleep(70);
+        Beep.Beep(100, 2000, 100);
+        Thread.Sleep(500);
+      }
+    }
   }
 }

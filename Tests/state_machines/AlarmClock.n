@@ -17,7 +17,7 @@ namespace Nemerle.Statechart.Tests
   [statechart(
   <#
   flags auto_initial testing force_concurrent_combination;
-  
+  //flags debug;
   
   state Operations : Powered
   {
@@ -25,54 +25,58 @@ namespace Nemerle.Statechart.Tests
   
   state Run : Operations
   {
+    entry / set_am_pm;
     after (500 ms) / update_time;
-      
+
     state DisplayCurrentTime
     {
       entry / disp_cur_time_blink;
       after (1 s) => @;
       push_hour                     => DisplayAlarmTime;
       push_min [in_state(AlarmOn)]  => Beep;
-    }
       
+    }
+    
     state DisplayAlarmTime
     {
       entry / disp_alarm_time;
-      push_hour, push_min => DisplayCurrentTime;
-      after (5 s)         => DisplayCurrentTime;
+      push_hour, push_min, after (5 s) => DisplayCurrentTime;
     }
-      
+    
     state Beep
     {
-      push_hour, push_min => DisplayCurrentTime;
+      push_hour, push_min, after (5 s) => DisplayCurrentTime;
+      do / Beep;
     }
-      
+
     time_set  => TimeSet;
     alarm_set => AlarmSet;
   }
-    
+  
   state AlarmSet : Operations
   {
     entry / al_icon_on;
+    entry / setup_time = alarm;
     exit  / al_icon_off;
-      
-    run => Run;
-      
-    state DisplayAlarmTime
+    
+    run / alarm = setup_time => Run;
+    
+    state SetupTime
     {
       state SetNormal
       {
-        after (400 ms) / disp_cur_set_alarm => @;
-        push_hour / UpdateAlarmHours;
-        push_min  / UpdateAlarmMins;
+        entry / {disp_cur_set_time(); set_am_pm(setup_time);}
+        after (300 ms) => @;
+        push_hour / UpdateHours;
+        push_min  / UpdateMins;
         hold_hour => SetFastHour;
         hold_min  => SetFastMin;
       }
         
       state SetFast
       {
-        push_hour / UpdateAlarmHours disp_alarm_time;
-        push_min  / UpdateAlarmMins disp_alarm_time;
+        push_hour / SetHour;
+        push_min  / SetMin;
         release_hour, release_min => SetNormal;
             
         state SetFastHour
@@ -85,47 +89,29 @@ namespace Nemerle.Statechart.Tests
           do / send_min_fast;
         }
       }
-        
+    
     }
-      
+   
   }
     
   state TimeSet : Operations
   {
-    run => Run;
-      
+    run / set_cur_time => Run;
+    entry / setup_time = Now;
+    
     state DisplayCurrentTime
     {
-      state SetNormal
+      submachine SetupCurrentTime[SetupTime]
       {
-        after (400 ms) / disp_cur_set_time => @;
-        push_hour / UpdateTimeHours;
-        push_min  / UpdateTimeMins;
-        hold_hour => SetFastHour;
-        hold_min  => SetFastMin;
-      }
-          
-      state SetFast
-      {
-        push_hour / UpdateTimeHours disp_cur_time;
-        push_min  / UpdateTimeMins disp_cur_time;
-        release_hour, release_min => SetNormal;
-            
-        state SetFastHour
-        {
-          do / send_hour_fast;
-        }
-
-        state SetFastMin : SetFast
-        {
-          do / send_min_fast;
-        }
+        
       }
     }
   }
   #>)]
   partial public class AlarmClock
   {
+    
+    mutable setup_time : DateTime;
     
     AlarmTime : string
     {
@@ -135,13 +121,22 @@ namespace Nemerle.Statechart.Tests
       }
     }
     
+    SetupTime : string
+    {
+      get
+      {
+        TimeString(setup_time)
+      }
+    }
+    
     update_time() : void
     {
       def pass = DateTime.Now - Now + diff;
       def old = Now;
       Now = Now.Add(pass);
-      if (old.Hour > 12 && Now.Hour < 12) pass_12_hours() else
-      if (old.Hour < 12 && Now.Hour > 12) after_12_hours() else ()
+      if (old.Hour >= 12 && Now.Hour < 12) pass_12_hours() else
+      if (old.Hour < 12 && Now.Hour == 12) after_12_hours() else ();
+      when (Now.Hour == alarm.Hour && Now.Minute == alarm.Minute && Now.Second == alarm.Second) current_time_is_alarm();
     }
     
     send_hour_fast(tok : CancellationToken) : void
@@ -162,9 +157,15 @@ namespace Nemerle.Statechart.Tests
       }
     }
     
-    disp_cur_time() : void
+    set_cur_time() : void
     {
-      OnShow(TimeString(Now))
+      Now = setup_time;
+      diff = Now - DateTime.Now;
+    }
+    
+    disp_setup_time() : void
+    {
+      OnShow(SetupTime)
     }
     
     disp_alarm_time() : void
@@ -174,34 +175,19 @@ namespace Nemerle.Statechart.Tests
     
     disp_cur_set_time() : void
     {
-      OnShow(if (blink) "     " else TimeString(Now))
+      OnShow(if (blink) "     " else TimeString(setup_time))
     }
     
-    disp_cur_set_alarm() : void
+    UpdateHours() : void
     {
-      OnShow(if (blink) "     " else AlarmTime)
+      setup_time = setup_time.AddHours(1);
     }
-    
-    UpdateAlarmHours() : void
+ 
+    UpdateMins() : void
     {
-      alarm = alarm.AddHours(1);
-    }
-    
-    UpdateAlarmMins() : void
-    {
-      alarm = alarm.AddMinutes(1);
-    }
-    
-    UpdateTimeHours() : void
-    {
-      Now = Now.AddHours(1);
-      diff = diff.Add(TimeSpan.FromHours(1));
-    }
-    
-    UpdateTimeMins() : void
-    {
-      Now = Now.AddMinutes(1);
-      diff = diff.Add(TimeSpan.FromMinutes(1));
+      def old = setup_time;
+      def newt = setup_time.AddMinutes(1);
+      setup_time = if (newt.Hour != old.Hour) newt.AddHours(old.Hour - newt.Hour) else newt;
     }
     
     disp_cur_time_blink() : void
@@ -227,23 +213,21 @@ namespace Nemerle.Statechart.Tests
       Show?.Invoke(str)
     }
     
+    SetHour() : void
+    {
+      UpdateHours();
+      disp_setup_time(); 
+      set_am_pm(setup_time);
+    }
+    
+    SetMin() : void
+    {
+      UpdateMins();
+      disp_setup_time(); 
+      set_am_pm(setup_time);
+    }
+    
     public event Show : Action[string];
-    
-    light_pressed : bool 
-    {
-      get
-      {
-        true
-      }
-    }
-    
-    is_alarm_on : bool
-    {
-      get
-      {
-        true
-      }
-    }
   }
 }
 
