@@ -159,7 +159,7 @@ namespace CodePadExample
 
         private void inside_button_Click(object sender, RoutedEventArgs e)
         {
-            fsm.Inside_button();
+            fsm.inside_button();
         }
 
         private void room_button_Click(object sender, RoutedEventArgs e)

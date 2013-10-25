@@ -26,28 +26,30 @@ namespace Nemerle.Statechart.Tests
   state Run : Operations
   {
     entry / set_am_pm;
-    after (500 ms) / update_time;
+    do / update_time;
 
     state DisplayCurrentTime
     {
-      entry / disp_cur_time_blink;
-      after (1 s) => @;
+      do / disp_cur_time_blink;
       push_hour                     => DisplayAlarmTime;
       push_min [in_state(AlarmOn)]  => Beep;
+    }
+    
+    state CheckMode
+    {
+      push_hour, push_min, after (5 s) => DisplayCurrentTime;
       
+      state DisplayAlarmTime
+      {
+        entry / disp_alarm_time;
+      }
+    
+      state Beep
+      {
+        do / Beep;
+      }
     }
     
-    state DisplayAlarmTime
-    {
-      entry / disp_alarm_time;
-      push_hour, push_min, after (5 s) => DisplayCurrentTime;
-    }
-    
-    state Beep
-    {
-      push_hour, push_min, after (5 s) => DisplayCurrentTime;
-      do / Beep;
-    }
 
     time_set  => TimeSet;
     alarm_set => AlarmSet;
@@ -65,8 +67,7 @@ namespace Nemerle.Statechart.Tests
     {
       state SetNormal
       {
-        entry / {disp_cur_set_time(); set_am_pm(setup_time);}
-        after (300 ms) => @;
+        do / disp_cur_set_time;
         push_hour / UpdateHours;
         push_min  / UpdateMins;
         hold_hour => SetFastHour;
@@ -75,18 +76,16 @@ namespace Nemerle.Statechart.Tests
         
       state SetFast
       {
-        push_hour / SetHour;
-        push_min  / SetMin;
         release_hour, release_min => SetNormal;
             
         state SetFastHour
         {
-          do / send_hour_fast;
+          do / set_hour_fast;
         }
 
         state SetFastMin : SetFast
         {
-          do / send_min_fast;
+          do / set_min_fast;
         }
       }
     
@@ -101,7 +100,7 @@ namespace Nemerle.Statechart.Tests
     
     state DisplayCurrentTime
     {
-      submachine SetupCurrentTime[SetupTime]
+      submachine SetupTime
       {
         
       }
@@ -111,49 +110,36 @@ namespace Nemerle.Statechart.Tests
   partial public class AlarmClock
   {
     
-    mutable setup_time : DateTime;
     
-    AlarmTime : string
-    {
-      get
-      {
-        TimeString(alarm)
-      }
-    }
-    
-    SetupTime : string
-    {
-      get
-      {
-        TimeString(setup_time)
-      }
-    }
-    
-    update_time() : void
-    {
-      def pass = DateTime.Now - Now + diff;
-      def old = Now;
-      Now = Now.Add(pass);
-      if (old.Hour >= 12 && Now.Hour < 12) pass_12_hours() else
-      if (old.Hour < 12 && Now.Hour == 12) after_12_hours() else ();
-      when (Now.Hour == alarm.Hour && Now.Minute == alarm.Minute && Now.Second == alarm.Second) current_time_is_alarm();
-    }
-    
-    send_hour_fast(tok : CancellationToken) : void
+    update_time(tok : CancellationToken) : void
     {
       while (!tok.IsCancellationRequested)
       {
-        this.push_hour();
-        Thread.Sleep(100);
+        def pass = DateTime.Now - Now + diff;
+        def old = Now;
+        Now = Now.Add(pass);
+        if (old.Hour >= 12 && Now.Hour < 12) pass_12_hours() else
+        if (old.Hour < 12 && Now.Hour == 12) after_12_hours() else ();
+        when (Now.Hour == alarm.Hour && Now.Minute == alarm.Minute && Now.Second == alarm.Second) current_time_is_alarm();
+        _ = tok.WaitHandle.WaitOne(500);
+      }
+    }
+    
+    set_hour_fast(tok : CancellationToken) : void
+    {
+      while (!tok.IsCancellationRequested)
+      {
+        SetHour();
+        _ = tok.WaitHandle.WaitOne(150);
       }
     }
 
-    send_min_fast(tok : CancellationToken) : void
+    set_min_fast(tok : CancellationToken) : void
     {
       while (!tok.IsCancellationRequested)
       {
-        this.push_min();
-        Thread.Sleep(100);
+        SetMin();
+        _ = tok.WaitHandle.WaitOne(100);
       }
     }
     
@@ -173,9 +159,23 @@ namespace Nemerle.Statechart.Tests
       OnShow(AlarmTime)
     }
     
-    disp_cur_set_time() : void
+    disp_cur_set_time(tok : CancellationToken) : void
     {
-      OnShow(if (blink) "     " else TimeString(setup_time))
+      while (!tok.IsCancellationRequested)
+      {
+        OnShow(if (blink) TimeString(setup_time) else "     ");
+        set_am_pm(setup_time);
+        _ = tok.WaitHandle.WaitOne(300);
+      }
+    }
+
+    disp_cur_time_blink(tok : CancellationToken) : void
+    {
+      while (!tok.IsCancellationRequested)
+      {
+        OnShow(CurTime);
+        _ = tok.WaitHandle.WaitOne(1000);
+      }
     }
     
     UpdateHours() : void
@@ -190,27 +190,9 @@ namespace Nemerle.Statechart.Tests
       setup_time = if (newt.Hour != old.Hour) newt.AddHours(old.Hour - newt.Hour) else newt;
     }
     
-    disp_cur_time_blink() : void
+    defer_alarm() : void
     {
-      OnShow(CurTime);
-    }
-    
-    TimeString(time : DateTime, blink : bool = false) : string
-    {
-      time.ToString(if (!blink) "hh:mm" else "hh mm")
-    }
-    
-    CurTime : string
-    {
-      get
-      {
-        TimeString(Now, blink)
-      }
-    }
-    
-    OnShow(str : string) : void
-    {
-      Show?.Invoke(str)
+      alarm = Now + TimeSpan.FromMinutes(1)
     }
     
     SetHour() : void
@@ -227,7 +209,6 @@ namespace Nemerle.Statechart.Tests
       set_am_pm(setup_time);
     }
     
-    public event Show : Action[string];
   }
 }
 

@@ -19,19 +19,16 @@ namespace Nemerle.Statechart.Tests
   {
     no_battery => NotPowered;
     
-    state KeepTime
+    state PMIconOff
     {
-      state PMIconOff
-      {
-        entry / set_am;
-        after_12_hours => PMIconOn;
-      }
+      entry / set_am;
+      after_12_hours => PMIconOn;
+    }
       
-      state PMIconOn
-      {
-        entry / set_pm;
-        pass_12_hours => PMIconOff;
-      }
+    state PMIconOn
+    {
+      entry / set_pm;
+      pass_12_hours => PMIconOff;
     }
     
     [---]
@@ -55,7 +52,7 @@ namespace Nemerle.Statechart.Tests
       
       state Ringing
       {
-        drowse_light / alarm = Now + TimeSpan.FromSeconds(4) => Idle;
+        drowse_light / defer_alarm => Idle;
         after (1 min) => Idle;
         do / Beep;
       }
@@ -85,9 +82,11 @@ namespace Nemerle.Statechart.Tests
   #>)]
   partial class AlarmClock
   {
+    mutable Now : DateTime;
+    
     mutable alarm : DateTime;
     
-    mutable Now : DateTime;
+    mutable setup_time : DateTime;
     
     mutable blink_flag : bool;
     
@@ -109,7 +108,6 @@ namespace Nemerle.Statechart.Tests
       }
     }
     
-    
     EntryPowered() : void
     {
       Now = DateTime.Now;
@@ -123,7 +121,7 @@ namespace Nemerle.Statechart.Tests
 
     set_am_pm(time : DateTime) : void
     {
-      if (time.Hour > 12) Onset_pm(); else Onset_am();
+      if (time.Hour > 12) after_12_hours() else pass_12_hours()
     }
     
     Beep(tok : CancellationToken) : void
@@ -136,5 +134,41 @@ namespace Nemerle.Statechart.Tests
         Thread.Sleep(500);
       }
     }
+    
+    TimeString(time : DateTime, blink : bool = false) : string
+    {
+      time.ToString(if (!blink) "hh:mm" else "hh mm")
+    }
+    
+    CurTime : string
+    {
+      get
+      {
+        TimeString(Now, blink)
+      }
+    }
+    
+    AlarmTime : string
+    {
+      get
+      {
+        TimeString(alarm)
+      }
+    }
+    
+    SetupTime : string
+    {
+      get
+      {
+        TimeString(setup_time)
+      }
+    }
+    
+    OnShow(str : string) : void
+    {
+      Show?.Invoke(str)
+    }
+
+    public event Show : Action[string];    
   }
 }
