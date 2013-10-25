@@ -190,14 +190,17 @@ namespace Nemerle.Statechart
         foreach (node in tr.DecisionTree.GetBreadthFirstEnumerable())
         {
           def old_path = node.path.TranPath;
-          def states = node.path.TranPath.Map(_.state).Distinct();
+          def states = node.path.TranPath.Exclude(x => x.kind == PathKind.Action).Map(_.state).Distinct();
           def path = old_path.FoldBack([], modify_path(tr, _, tr.Source, tar, _));
           def path = if (tar != null)
           {
             match (event_gen.Filter(x => x.Source : object == tar))
             {
               | [] => path
-              | e  => def not_runned = e.Exclude(x => states.ContainsRef(x.state)).OrderBy(x => x.state.hierarchy_pos);
+              | e  => def not_runned = e.Exclude(x => states.ContainsRef(x.state));
+                      def fixed = if (tr.Kind == TransitionKind.History) [] else tr.Source.states.Intersect(tar.states);
+                      def not_runned = not_runned.Exclude(x => fixed.ContainsRef(x.state));
+                      def not_runned = not_runned.OrderBy(x => x.state.hierarchy_pos);
                       if (not_runned.IsEmpty()) path else
                       {
                         def run = not_runned.Map(x => x.StartTranPath(null));

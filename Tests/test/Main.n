@@ -8,63 +8,68 @@ using Nemerle.Statechart;
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Console;
+using System.Diagnostics;
+
   /// <summary>
   /// Description of junction_example.
   /// </summary>
   [statechart(
   <#
   flags testing;
-  name "concurrent states and do activities";
-  //flags debug;
 
-  region A
+   name "timed events and history";
+  
+   state A
+   {
+     after (1s) / check_time(200, 400) => C;
+     
+     state B
+     {
+       (H)
+       entry / start_time;
+       after (700 ms) / check_time(600, 800) => D;
+       after (500 ms) / check_time(400, 600);
+       
+       state E
+       {
+       }
+     }
+     
+     state D
+     {
+       entry / start_time;
+     }
+     
+   }
+   
+  state C
   {
-    state B
+    entry / start_time;
+    a => B.H;
+    after (500 ms) / check_time(400, 600);
+  }
+  
+   #>)]
+  public class example
+  { 
+    time : Stopwatch = Stopwatch();
+    
+    start_time() : void
     {
-      do / act1;
-      _ => $0;
+      time.Stop();
+      time.Reset();
+      time.Start();
     }
     
-  } and
-  {
-    state C
+    check_time(start : int, end : int) : void
     {
-      do / act2;
-      _ => $0;
+      def ms = time.ElapsedMilliseconds;
+      if (ms > start && ms < end) WriteLine("OK") else WriteLine("Fail")
     }
-    
-   _ => D;
   }
-  
-  state D
-  {
-  }
-  
-  #>)]
-public class example
-{
-  mutable a1 : int;
-  mutable a2 : int;
-  
-  act1(_ : CancellationToken) : void
-  {
-    for (mutable i = 0; i < 10; i++)
-      a1++;
-  }
-  
-  act2(_ : CancellationToken) : void
-  {
-    for (mutable i = 0; i < 5; i++)
-      a2++;
-  }
-  
-  public check() : void
-  {
-    if (a1 == 10 && a2 == 5) WriteLine("OK") else WriteLine("Fail")
-  }
-}
+
+
 
 module Test
 {
@@ -73,9 +78,8 @@ module Test
     def fsm = example();
     def tester = fsm.GetTester();
     tester.ConsoleTestInit();
-    tester.Initiate("D", 500, "EntryA", "EntryB", "EntryC", "ExitB", "ExitC", 
-                              "EntryASubRegion0Final", "EntryASubRegion1Final", "ExitASubRegion1Final", "ExitASubRegion0Final", "ExitA", "EntryD");
-    fsm.check();
+    tester.Initiate("C", 2000, "EntryA", "EntryB", "EntryE", "ExitE", "ExitB", "EntryD", "ExitD", "ExitA", "EntryC");
+    tester.TestWait("a", 2000, "C", "ExitC", "EntryA", "EntryB", "EntryE", "ExitE", "ExitB", "EntryD", "ExitD", "ExitA", "EntryC");
     fsm.Terminate();
   }
 }
@@ -84,17 +88,33 @@ module Test
 BEGIN-OUTPUT
 EntryA
 EntryB
-EntryC
-ExitB
-ExitC
-EntryASubRegion0Final
-EntryASubRegion1Final
-ExitASubRegion1Final
-ExitASubRegion0Final
-ExitA
-EntryD
-[D]
-Ok
+EntryE
 OK
+ExitE
+ExitB
+OK
+EntryD
+ExitD
+ExitA
+OK
+EntryC
+[C]
+Ok
+Processing a 'a' 
+ExitC
+EntryA
+EntryB
+EntryE
+OK
+ExitE
+ExitB
+OK
+EntryD
+ExitD
+ExitA
+OK
+EntryC
+[C]
+Ok
 END-OUTPUT
 */
