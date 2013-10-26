@@ -1,0 +1,79 @@
+﻿namespace Nemerle.Statechart
+{
+  using Regions;
+
+  syntax module Main
+  {
+    using PrettyPrint;
+    using Outline;
+    using TokenNames;
+    using StandardSpanClasses;
+    using Whitespaces;
+    using Identifiers;
+	  using CStyleComments;
+    using Events;
+    using PseudoStates;
+    using Transitions;
+
+	  regex Integer  = '0' | ['1'..'9'] ['0'..'9']*;
+	  alias Numeric = Integer;
+
+	  token Identifier = !Keyword IdentifierBody
+    {
+      regex KeywordToken = "state" | "entry" | "exit" | "else" | "flags" | "name" | "region" | "and";
+      token Keyword = KeywordToken !IdentifierPartCharacters;
+    }
+
+	  syntax FullyQualified = (Identifier; ".")+;
+
+	  syntax Parent = ':' ParentIdentifier
+	  {
+	    syntax ParentIdentifier 
+	    {
+		    | RegionReference 
+		    | FullyQualified;
+	    }
+	  }
+
+	  syntax Attributes = '[' (Identifier; ',')+ ']';
+
+	  syntax StateMachineDecl
+	  {
+	    | Flags
+	    | Name
+	    | StateDecl
+	  }
+
+    token RegionDelimToken = '[' "---" '-'* ']';
+
+	  syntax StateDecl
+	  {
+	    | State
+      | EventClass
+      | PseudoState
+      | Transitions
+      | RegionSequence = StateDecl ^ 20 RegionDelimToken StateDecl ^ 10
+      | Regions
+      | Sequence =  StateDecl ^ 10 (StateDecl ^ 10)+
+	  }
+
+	  regex SyntaxDelim = ':' | '=';
+
+	  syntax Flags = "flags" SyntaxDelim? Identifier+ ';';
+
+	  syntax Name = "name" SyntaxDelim? NameIdentifier ';'
+	  {
+      token NameIdentifier 
+	    {
+		    | Identifier 
+		    | CommaIdentifier = Start = "\"" Body = (!'\"' Any)+ End = "\"";
+	    }
+	  }
+
+	  syntax State = Attributes? "state" sm Identifier Parent? '{' StateDecl* '}';
+
+	  [StartRule, ExplicitSpaces]
+	  syntax StateMachine = s StateMachineDecl* !Any;
+
+  }
+}
