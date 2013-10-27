@@ -107,29 +107,21 @@ namespace Nemerle.Statechart
 
     DefineIsInState() : void
     {
-      def create_comp_expr(st_id)
+      def create_comp_expr()
       {
         def comp = ListUtils.Init(StatesId.Length, i => <[ cur_id.$($"id$i" : usesite) & id.$($"id$i" : usesite) == id.$($"id$i" : usesite) ]>);
         def expr = MergeExpr(comp, (x, y) => <[ $x && $y ]>);
         <[
-          def id = $st_id;
           def cur_id = cur_state.get_id();
           $expr
         ]>
       }
 
-      def get_body(st_id)
+      def get_body()
       {
         if (StatesId.IsSimple)
         {
-          match (st_id)
-          {
-            | <[ $(_ : usesite) ]> => <[ cur_state.get_id() & id == id ]>
-            | _ => <[
-                      def id = $st_id;
-                      cur_state.get_id() & id  == id 
-                  ]>
-          }
+           <[ cur_state.get_id() & id == id ]>
         } else
         {
           def ids = StatesId;
@@ -146,47 +138,42 @@ namespace Nemerle.Statechart
                        def ids = ctor :: ids;
                         <[decl: struct LongId
                           {
-                          ..$ids
+                            ..$ids
                           } ]>
                      } else
                      {
                        def ids = names.Map(x => <[decl: public mutable $(x : usesite) : uint; ]>);
                         <[decl: class LongId
                           {
-                          ..$ids
+                            ..$ids
                           }
                         ]>
                      }
           DefineNested(mem).Compile();
-          create_comp_expr(st_id);
+          create_comp_expr();
         }
       }
       def is_in_state = <[decl:
                 public IsInState(st : State) : bool
                 {
-                  IsInState(st.get_id())
-                }
-            ]>;
-      def id_type = StateIdType;
-      def is_in_state2 = <[decl:
-                public IsInState(id : $id_type) : bool
-                {
-                  $(get_body(<[ id ]>))
+                  def id = st.get_id();
+                  $(get_body())
                 }
             ]>;
       def st_is_in_state = <[decl: static IsInState(cur_state : State, st : State) : bool
                             {
-                              $(get_body(<[ st.get_id() ]>))
+                              def id = st.get_id();
+                              $(get_body())
                             }
                             ]>;
 
       def body = gen_states.IsInStateFromStrBody;
       def str_is_in_state = <[decl: public IsInState(st : string) : bool
                               {
-                                def id = match (st) { ..$body };
-                                IsInState(id)
+                                def st = match (st) { ..$body };
+                                IsInState(st)
                               } ]>;
-      Define([is_in_state, is_in_state2, st_is_in_state, str_is_in_state]);
+      Define([is_in_state, st_is_in_state, str_is_in_state]);
     }
 
 
