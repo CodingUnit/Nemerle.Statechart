@@ -10,22 +10,79 @@
     using Identifiers;
     using Targets;
     using Transitions;
+    using Main;
+    using Actions;
 
-
-    syntax InitialTransition 
+    syntax InitialTarget 
     {
-      | Simple   = Goto SimpleTarget ';'
+      | Simple   = SimpleTarget ';'
       | Junction = JunctionTarget
     }
     
-    regex InitialKeyword = "initial" | "0";
+    //span class Keyword = ['a'..'z']+;
 
-    syntax Initial = InitialKeyword Guard? ActionList? InitialTransition;
+    syntax Initial = InitialKeyword Guard? ActionList? "=>" InitialTarget
+    {
+      regex InitialKeyword = "initial" | "0";
+    }
 
-    syntax JuncTranBody = GuardDecl? ActionList? Goto TransitionTarget;
+    syntax JuncTranBody = GuardDecl? ActionList? "=>" TransitionTarget;
 
     syntax JunctionBody = '{' (!'}' JuncTranBody)+ '}';
 
-    syntax PseudoState = Initial;
+    syntax History
+    {
+      | HistoryLong    = "history" ':' Identifier DefaultTransition? ';';
+      | HistoryDeep    = DeepKey (DefaultTransition ';')?
+      {
+        regex DeepKey = "(H*)";
+      }
+      | HistoryShallow = ShallowKey (DefaultTransition ';')?
+      {
+        regex ShallowKey = "(H)";
+      }
+    }
+
+    syntax DefaultTransition = ActionList? "=>" SimpleTarget;
+
+    syntax EntryPointTransition = ActionList? "=>" TransitionTarget;
+
+    syntax EntryPoint = EntryPointHead EntryPointTransition
+    {
+      syntax EntryPointHead
+      {
+        | Ver1 = "entry:" Identifier 
+        | Ver2 = !'@' Identifier ':'
+        | Ver3 = '(' Identifier ')'
+      }
+    }
+
+    syntax ExitPointTransition = ActionList? "=>" TransitionTarget;
+
+    syntax ExitPoint = ExitPointDecl Identifier ExitPointEnd
+    {
+      syntax ExitPointEnd 
+      {
+        | End = ";"
+        | Tran = ExitPointTransition
+      }
+
+     syntax ExitPointDecl
+     {
+       | Normal = "exit:"
+       | Alternative = ExitPointId 
+       {
+        regex ExitPointId = "(X)" | "(x)";
+       }
+     }
+    }
+
+    syntax PseudoState 
+    {
+      | Initial
+      | History
+      | EntryPoint
+      | ExitPoint
+    }
   }
 }
