@@ -10,22 +10,10 @@
     using Identifiers;
     using Targets;
     using Transitions;
-    using Main;
+    using Base;
     using Actions;
 
-    syntax InitialTarget 
-    {
-      | Simple   = SimpleTarget ';'
-      | Junction = JunctionTarget
-    }
     
-    //span class Keyword = ['a'..'z']+;
-
-    syntax Initial = InitialKeyword Guard? ActionList? "=>" InitialTarget
-    {
-      regex InitialKeyword = "initial" | "0";
-    }
-
     syntax JuncTranBody = GuardDecl? ActionList? "=>" TransitionTarget;
 
     syntax JunctionBody = '{' (!'}' JuncTranBody)+ '}';
@@ -57,32 +45,48 @@
       }
     }
 
-    syntax ExitPointTransition = ActionList? "=>" TransitionTarget;
+    
+    alias ExitPointTransition = EntryPointTransition;
 
-    syntax ExitPoint = ExitPointDecl Identifier ExitPointEnd
+    syntax ExitPointDecl = ExitPointKey Identifier
+    {
+      regex ExitPointKey = "exit:" | "(X)" | "(x)";
+    }
+
+    syntax ExitPoint = ExitPointDecl ExitPointEnd
     {
       syntax ExitPointEnd 
       {
         | End = ";"
         | Tran = ExitPointTransition
       }
+    }
 
-     syntax ExitPointDecl
-     {
-       | Normal = "exit:"
-       | Alternative = ExitPointId 
-       {
-        regex ExitPointId = "(X)" | "(x)";
-       }
-     }
+    syntax InitialTarget 
+    {
+      | Simple   = SimpleTarget ';'
+      | JunctionTarget
     }
 
     syntax PseudoState 
     {
-      | Initial
+      | Initial = InitialKeyword Guard? ActionList? "=>" InitialTarget
+        {
+          regex InitialKeyword = "initial" | "0";
+        }
       | History
       | EntryPoint
       | ExitPoint
+      | Terminate = TerminateKey ';'
+        {
+          regex TerminateKey = "terminate" | 'X' | 'x';
+        }
+      | Join     = "join" Identifier Guard? ActionList? "=>" TransitionTarget
+      | Junction = "junction" Identifier JunctionBody
+      | Choice   = "choice" Identifier '$'? JunctionBody
+      | Merge    = "merge" Identifier JuncTranBody;
     }
+
+    
   }
 }

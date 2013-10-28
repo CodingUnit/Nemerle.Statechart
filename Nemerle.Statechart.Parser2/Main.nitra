@@ -1,7 +1,5 @@
 ﻿namespace Nemerle.Statechart
 {
-  using Regions;
-
   syntax module Main
   {
     using PrettyPrint;
@@ -11,22 +9,12 @@
     using Whitespaces;
     using Identifiers;
 	  using CStyleComments;
-    using Events;
     using PseudoStates;
     using Transitions;
     using Actions;
-
-	  regex Integer  = '0' | ['1'..'9'] ['0'..'9']*;
-	  alias Numeric = Integer;
-    //span class Keyword = ['a'..'z']+;
-
-	  token Identifier = !Keyword !'=' IdentifierBody
-    {
-      regex KeywordToken = "state" | "entry" | "exit" | "else" | "flags" | "name" | "region" | "and" | "initial" | "0" | "entry:" | "exit:" | "(X)" | "(x)" | "history" | "(H*)" | "(H)";
-      token Keyword = KeywordToken !IdentifierPartCharacters;
-    }
-
-	  syntax FullyQualified = (Identifier; ".")+;
+    using Regions;
+    using Events;
+    using Base;
 
 	  syntax Parent = ':' ParentIdentifier
 	  {
@@ -37,47 +25,39 @@
 	    }
 	  }
 
-	  syntax Attributes = '[' (Identifier; ',')+ ']';
-
-	  syntax StateMachineDecl
-	  {
-	    | Flags
-	    | Name
-	    | StateDecl
-	  }
-
-    token RegionDelimToken = '[' "---" '-'* ']';
-
 	  syntax StateDecl
 	  {
-	    | State
+	    | State = Attributes? "state" sm Identifier Parent? '{' StateDecl* '}'
       | Entry
       | Exit
+      | DoActivity
       | EventClass
+      | DeferrableEvent
       | PseudoState
       | Transition
-      | RegionSequence = StateDecl ^ 20 RegionDelimToken (StateDecl ^ 20)+
+      | RegionSequence = StateDecl ^ 20 (RegionDelimToken StateDecl ^ 20)+
       | Regions
       | Sequence =  StateDecl ^ 30 (StateDecl ^ 30)+
 	  }
-
-	  regex SyntaxDelim = ':' | '=';
-
-	  syntax Flags = "flags" SyntaxDelim? Identifier+ ';';
-
-	  syntax Name = "name" SyntaxDelim? NameIdentifier ';'
+    
+    token NameIdentifier 
 	  {
-      token NameIdentifier 
-	    {
-		    | Identifier 
-		    | CommaIdentifier = Start = "\"" Body = (!'\"' Any)+ End = "\"";
-	    }
+		  | Identifier 
+		  | CommaIdentifier = Start = "\"" Body = (!'\"' Any)+ End = "\"";
 	  }
-
-	  syntax State = Attributes? "state" sm Identifier Parent? '{' StateDecl* '}';
-
+    
 	  [StartRule, ExplicitSpaces]
-	  syntax StateMachine = s StateMachineDecl* !Any;
+	  syntax StateMachine = s StateMachineDecl* !Any
+    {
+      regex SyntaxDelim = ':' | '=';
+
+      syntax StateMachineDecl
+	    {
+	      | Flags = "flags" SyntaxDelim? Identifier+ ';';
+	      | Name  = "name" SyntaxDelim? NameIdentifier ';';
+	      | StateDecl
+	    }
+    }
 
   }
 }
