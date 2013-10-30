@@ -12,6 +12,7 @@
     using Targets;
     using Actions;
     using Events;
+    using Base;
 
     syntax Guard = '[' GuardDecl ']';
 
@@ -23,9 +24,9 @@
     {
       | LongExpr = "${" (!"$}" Any)+ "$}"
       | Simple   = (!AfterTokens Any)+
-      {
-        regex AfterTokens = ']' | AnyGoto | '/';
-      }
+        {
+          regex AfterTokens = ']' | AnyGoto | '/';
+        }
     }
 
     syntax GuardDecl
@@ -34,6 +35,12 @@
       | GuardExpr
     }
 
+    alias PseudoTran = EntryPointTransition;
+
+    syntax DefaultTransition = ActionList? "=>" SimpleTarget;
+
+    syntax EntryPointTransition = ActionList? "=>" TransitionTarget;
+
     syntax NormalTransition 
     {
       | LocalTransition    = Events Guard? ActionList? LocalGoto TransitionTarget;
@@ -41,13 +48,25 @@
       | Transition         = Events Guard? ActionList? ExtGoto TransitionTarget;
     }
 
+    syntax RelocateTransition
+    {
+      | Combined = '@' FullyQualified ':' '{' NormalTransition* '}'
+      | Join     = JoinRelocateTran
+      | State    = '@' FullyQualified ':' NormalTransition
+      | Pseudo   = '@' FullyQualified ':' PseudoTran
+    }
+
+    syntax JoinRelocateTran
+    {
+      | Main = '@' '(' (FullyQualified; ',')+ ')' ':' Transition
+      | Alt  = '@' FullyQualified '(' (Identifier; ',')+ ')' ':' Transition
+    }
+
     syntax Transition
     {
       | NormalTransition
-      //| RelocateTransition
+      | RelocateTransition
     }
-
-    //syntax A = "(=>";
 
   }
 }
