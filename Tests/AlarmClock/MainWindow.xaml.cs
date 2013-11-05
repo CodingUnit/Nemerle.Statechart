@@ -113,24 +113,6 @@ namespace AlarmClockWindow
             am_pm_sign.Text = "AM";
         }
 
-        void send_hour(CancellationToken tok)
-        {
-            while (!tok.IsCancellationRequested)
-            {
-                fsm.push_hour();
-                Thread.Sleep(10);
-            }
-        }
-
-        void send_min(CancellationToken tok)
-        {
-            while (!tok.IsCancellationRequested)
-            {
-                fsm.push_min();
-                Thread.Sleep(10);
-            }
-        }
-
         void fsm_TransitionCompleted()
         {
             if (status.Items.Count == 2) status.Items.RemoveAt(1);
@@ -170,12 +152,22 @@ namespace AlarmClockWindow
 
         private void hour_button_PreviewMouseUp(object sender, MouseButtonEventArgs e)
         {
-            key_stroke_hour.release();
+          if (key_stroke_hour.NeedCancel)
+          {
+            hour_button.ReleaseMouseCapture();
+            e.Handled = true;
+          }
+          key_stroke_hour.release();
         }
 
         private void minute_button_PreviewMouseUp(object sender, MouseButtonEventArgs e)
         {
-            key_stroke_min.release();
+          if (key_stroke_min.NeedCancel)
+          {
+            minute_button.ReleaseMouseCapture();
+            e.Handled = true;
+          }
+          key_stroke_min.release();
         }
 
         private void alarm_on_radio_Checked(object sender, RoutedEventArgs e)
