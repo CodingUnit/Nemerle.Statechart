@@ -14,26 +14,31 @@
     using Events;
     using Base;
 
-    syntax Guard = '[' GuardDecl ']';
+    syntax Guard = '[' GuardDecl ']'
+    {
+      syntax GuardDecl
+      {
+        | Else = "else"
+        | SimpleExpr = (!']' Any)+
+        | LongGuardExpr
+      }
+    }
 
     regex ExtGoto   = "=>" | ")=>";
     regex LocalGoto = "(=>";
     regex AnyGoto   = ExtGoto | LocalGoto;
 
-    syntax GuardExpr
-    {
-      | LongExpr = "${" (!"$}" Any)+ "$}"
-      | Simple   = (!AfterTokens Any)+
-        {
-          regex AfterTokens = ']' | AnyGoto | '/';
-        }
-    }
-
-    syntax GuardDecl
+    syntax JunctionGuard
     {
       | Else = "else"
-      | GuardExpr
+      | SimpleExpr = (!AfterTokens Any)+
+        {
+          regex AfterTokens = "=>" | '/' | '}';
+        }
+      | LongGuardExpr
     }
+
+    syntax LongGuardExpr = "${" (!"$}" Any)+ "$}";
 
     alias PseudoTran = EntryPointTransition;
 
@@ -53,21 +58,21 @@
     syntax Transition
     {
       | NormalTransition
-      | RelocateTransition
+      | RelocateTransition = '@' RelocateTranBody
         {
-          syntax RelocateTransition
+          syntax RelocateTranBody
           {
-            | Combined = '@' FullyQualified ':' '{' NormalTransition* '}'
+            | Combined = FullyQualified ':' '{' NormalTransition* '}'
             | Join     = JoinRelocateTran
               {
                 syntax JoinRelocateTran
                 {
-                  | Main = '@' '(' (FullyQualified; ',')+ ')' ':' Transition
-                  | Alt  = '@' FullyQualified '(' (Identifier; ',')+ ')' ':' Transition
+                  | Main = '(' (FullyQualified; ',')+ ')' ':' Transition
+                  | Alt  = FullyQualified '(' (Identifier; ',')+ ')' ':' Transition
                 }
               }
-            | State    = '@' FullyQualified ':' NormalTransition
-            | Pseudo   = '@' FullyQualified ':' PseudoTran
+            | State    = FullyQualified ':' NormalTransition
+            | Pseudo   = FullyQualified ':' PseudoTran
           }
         }
     }

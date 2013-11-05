@@ -15,6 +15,7 @@ namespace Nemerle.Statechart
   using Nemerle.Statechart.Grammar.MainAst;
   using Nemerle.Statechart.Grammar.BaseAst;
   using Nemerle.Statechart.Grammar.MainAst.StateMachine.StateMachineDecl;
+  using Nemerle.Statechart.Grammar.ActionsAst.ActionList.Action;
   /// <summary>
   /// Description of Parser.
   /// </summary>
@@ -90,8 +91,40 @@ namespace Nemerle.Statechart
       id.FoldRight([], (x, a) => if (x is Identifier.Ast) x.GetText() :: a else a);
     }
     
+    parse_action(pos : int, text : string) : Actions
+    {
+      def expr = MainParser.ParseExpr(env, text);
+      def act = FsmAction.Expr(pos, expr);
+      Actions(pos, act :: [])
+    }
+    
+    GetActions(lst : ActionsAst.ActionList.Action) : Actions
+    {
+      | SimpleActionList(ActionsAst.SimpleActionList.Ast((a, _))) => 
+          def act = a.FoldLeft([], ((x, _), a) => if (x is Identifier.Ast as x) FsmAction.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
+          Actions(lst.Location.StartPos, act)
+      | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.SimpleExpr as e) => 
+          def text = e.GetText();
+          parse_action(e.Location.StartPos, text);
+      | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.LongExprAction(_, e, _)) => 
+          def text = e.GetText();
+          parse_action(e.Location.StartPos, text);
+      | _ => Actions(lst.Location.StartPos, [])
+    }
+    
     CreateState(pos : int, name : string, decls : list[MainAst.StateDecl], type : StateType, parent : option[NameIdentifier]) : StateNode.State
     {
+      mutable defer = [];
+      mutable do_act = [];
+      foreach (d in decls)
+      {
+        | StateDecl.DeferrableEvent(EventsAst.DeferrableEvent.Deferrable(Events = EventsAst.SimpleEventList.Ast((e, _)))) => 
+            def lst = e.FoldLeft([], (x, a) => if (x is Identifier.Ast as x) TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
+            defer ::= StateNode.Defer(d.Location.StartPos, lst)
+        | StateDecl.DoActivity(ActionsAst.DoActivity.Ast(ActionList = ActionsAst.ActionList.Ast(_, a)))                   => 
+            def act = GetActions(a);
+            do_act ::= StateNode.DoActivity(d.Location.StartPos, act, ActivityFlag.None);
+      }
       null
     }
     
