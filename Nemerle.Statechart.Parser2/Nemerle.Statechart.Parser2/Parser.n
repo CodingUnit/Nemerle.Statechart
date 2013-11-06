@@ -8,12 +8,17 @@ using System.Collections.Generic;
 using System.Linq;
 using Nitra;
 using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
 using Nemerle.Statechart.Grammar;
 
 namespace Nemerle.Statechart
 {
   using Nemerle.Statechart.Grammar.MainAst;
   using Nemerle.Statechart.Grammar.BaseAst;
+  using Nemerle.Statechart.Grammar.PseudoStatesAst;
+  using Nemerle.Statechart.Grammar.TransitionsAst;
+  using Nemerle.Statechart.Grammar.TargetsAst;
+  using Nemerle.Statechart.Grammar.TransitionsAst.Guard;
   using Nemerle.Statechart.Grammar.MainAst.StateMachine.StateMachineDecl;
   using Nemerle.Statechart.Grammar.ActionsAst.ActionList.Action;
   /// <summary>
@@ -23,13 +28,13 @@ namespace Nemerle.Statechart
   {
     public flags_map : Hashtable[string, MachineFlag];
     public env : GlobalEnv;
-    
+
     public this(flags : list[string * MachineFlag], env : GlobalEnv)
     {
       this.env = env;
       flags_map = Hashtable(flags);
     }
-    
+
     public Parse(loc : Nemerle.Compiler.Location, text : string) : StateNode.StateMachine * list[Error]
     {
       def parserHost = ParserHost();
@@ -38,40 +43,40 @@ namespace Nemerle.Statechart
         def source = SourceSnapshot(text, loc.FileIndex, loc.File);
         def result = Main.StateMachine(source, parserHost);
         def ast = MainAstWalkers.StateMachine(result);
-        
+
         if (result.IsSuccess) 
         {
           match (ast)
           {
             | MainAst.StateMachine.Ast as a => def res = ConvertTree(a);
-                                               (res, [])
+                                              (res, [])
             | _                             => (null, [])
           }
-          
+
         } else (null, result.GetErrors().NToList())
         //    def (line, col) = error.Location.StartLineColumn;
         //    WriteLine($<#$line:$col: $(error.Message)#>);
       }
 
     }
-    
+
     GetFlags(str : list[string]) : MachineFlags
     {
       def err = List();
       def proc_tok(str, a)
       {
         def flag= if (flags_map.ContainsKey(str)) flags_map[str] else 
-                    {
-                      err.Add(str);
-                      MachineFlag.None
-                    }
+                   {
+                     err.Add(str);
+                     MachineFlag.None
+                   }
         flag | a
       }
-      
+
       def flags = str.FoldLeft(MachineFlag.None, proc_tok);
       MachineFlags(flags, err.NToList());
     }
-    
+
     GetNameIdentifier(fully : FullyQualified.Ast) : NameIdentifier
     {
       def id = fully.Identifiers[0];
@@ -80,54 +85,190 @@ namespace Nemerle.Statechart
       {
         | Identifier.Ast(i) :: []   => NameIdentifier.Name(pos, fully.GetText(i))
         | lst                       => def lst = GetIdentifierText(lst);
-                                       def (last, lst) = lst.SplitLast();
-                                       NameIdentifier.QualifiedName(pos, last, lst)
+                                      def (last, lst) = lst.SplitLast();
+                                      NameIdentifier.QualifiedName(pos, last, lst)
       }
 
     }
-    
+
     GetIdentifierText(id : list[Identifier]) : list[string]
     {
       id.FoldRight([], (x, a) => if (x is Identifier.Ast) x.GetText() :: a else a);
     }
-    
+
+    parse_expr(text : string) : PExpr
+    {
+      MainParser.ParseExpr(env, text);
+    }
+
     parse_action(pos : int, text : string) : Actions
     {
-      def expr = MainParser.ParseExpr(env, text);
+      def expr = parse_expr(text);
       def act = FsmAction.Expr(pos, expr);
       Actions(pos, act :: [])
     }
-    
-    GetActions(lst : ActionsAst.ActionList.Action) : Actions
+
+    GetActions(lst : ActionsAst.ActionList) : Actions
     {
-      | SimpleActionList(ActionsAst.SimpleActionList.Ast((a, _))) => 
-          def act = a.FoldLeft([], ((x, _), a) => if (x is Identifier.Ast as x) FsmAction.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
-          Actions(lst.Location.StartPos, act)
-      | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.SimpleExpr as e) => 
-          def text = e.GetText();
-          parse_action(e.Location.StartPos, text);
-      | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.LongExprAction(_, e, _)) => 
-          def text = e.GetText();
-          parse_action(e.Location.StartPos, text);
-      | _ => Actions(lst.Location.StartPos, [])
+      match (lst)
+      {
+        | ActionsAst.ActionList.Ast(_, a) => 
+            match (a)
+            {
+              | SimpleActionList(ActionsAst.SimpleActionList.Ast((a, _))) => 
+              def act = a.FoldLeft([], ((x, _), a) => if (x is Identifier.Ast as x) FsmAction.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
+              Actions(lst.Location.StartPos, act)
+              | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.SimpleExpr as e)
+              | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.LongExprAction(_, e, _)) => 
+              def text = e.GetText();
+              parse_action(e.Location.StartPos, text);
+              | _ => Actions(lst.Location.StartPos, [])
+            }
+        | _ => Actions(lst.Location.StartPos, [])
+      }
     }
-    
+
+    parse_guard_expr(pos : int, text : string) : GuardNode
+    {
+      def expr = parse_expr(text);
+      GuardNode.Expr(pos, expr)
+    }
+
+    GetGuard(g : TransitionsAst.Guard.Ast) : GuardNode
+    {
+      def pos = g.Location.StartPos;
+      match (g.GuardDecl)
+      {
+        | GuardDecl.Else             => GuardNode.Else(pos)
+        | GuardDecl.LongGuardExpr(TransitionsAst.LongGuardExpr.Ast(_, e, _))
+        | GuardDecl.SimpleExpr as e => 
+          def text = e.GetText();
+          parse_guard_expr(pos, text);
+      }
+    }
+
+    GetQualifiedTarget(name : NameIdentifier, braces : bool) : TargetType
+    {
+      def pos = name.pos;
+
+      def get_target(n)
+      {
+        if (braces) TargetType.Named(name.pos, n) else
+          match (n)
+          {
+            | "history"  with hist = HistoryType.None
+            | "H"  with hist = HistoryType.Shallow
+            | "h"  with hist = HistoryType.Shallow
+            | "h*" with hist = HistoryType.Deep
+            | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, hist, None()))
+            | "final"
+            | "$0"       => TargetType.Final(pos)
+            | "self"
+            | "@"        => TargetType.Self(pos)
+            | "terminate"
+            | "x"
+            | "X"        => TargetType.PseudoState(name.pos, PseudoStateModelNode.Terminate(0))
+            | x when (x.IndexOf('(') != -1 ) => 
+                def n = string(n.Explode().Except(['(', ')']).ToArray());
+                TargetType.Named(name.pos, n)
+            | _                      => TargetType.Named(name.pos, n)
+          }
+      }
+
+      match (name)
+      {
+        | Name(name = n)                     => get_target(n)
+        | QualifiedName(parts = p, name = n) => 
+            def st = $<#..$(p;".")#>;
+            TargetType.Qualified(name.pos, st, get_target(n))
+      }
+    }
+
+    GetTarget(t : TargetsAst.TransitionTarget) : TargetType
+    {
+      | TransitionTarget.Normal(t, _) => 
+          match (t)
+          {
+            | TargetsAst.NormalTarget.SimpleTarget(t) => 
+                match (t)
+                {
+                  | TargetsAst.SimpleTarget.QualifiedTarget(TargetsAst.QualifiedTarget.Ast(b1, BaseAst.FullyQualified.Ast as f, b2)) => 
+                  def name = GetNameIdentifier(f);
+                  def braces = b1.HasValue && b2.HasValue;
+                  GetQualifiedTarget(name, braces)
+                }
+          }
+    }
+
+    GetNodes(body : JunctionBody.Ast) : list[JunctionNode]
+    {
+      def nodes = body.JuncTranBodies;
+
+      def get_guard(g)
+      {
+        | Some(g) => def pos = g.Location.StartPos;
+                    def g = match (g)
+                    {
+                      | TransitionsAst.JunctionGuard.Else            => GuardNode.Else(pos)
+                      | TransitionsAst.JunctionGuard.LongGuardExpr(TransitionsAst.LongGuardExpr.Ast(_, e, _))
+                      | TransitionsAst.JunctionGuard.SimpleExpr as e => 
+                          def text = e.GetText();
+                          parse_guard_expr(pos, text);
+                    }
+                    g
+        | _       => GuardNode.Empty()
+      }
+
+      def create_nodes(x)
+      {
+        | JunctionBody.JuncTranBody.Ast(g, a, _, t) => JunctionNode(x.Location.StartPos, get_guard(g), a.Map(GetActions), GetTarget(t))
+      }
+
+      def nodes = nodes.FoldLeft([], (x, a) => if (x is JunctionBody.JuncTranBody.Ast as x) create_nodes(x) :: a else a);
+      nodes
+    }
+
+    CreatePseudo(p : PseudoStatesAst.PseudoState) : option[StateNode.PseudoState]
+    {
+      def pos = p.Location.StartPos;
+      def pseudo = match (p)
+                    {
+                      | PseudoState.Choice(_, Identifier.Ast as n, _, JunctionBody.Ast as b) => 
+                          def nodes = GetNodes(b);
+                          def name = n.GetText();
+                          PseudoStateModelNode.Junction(p.Location.StartPos, name, nodes, JunctionType.Choice)
+                      | _ => null
+                    }
+     if (pseudo != null) Some(StateNode.PseudoState(pos, pseudo)) else None()
+    }
+
     CreateState(pos : int, name : string, decls : list[MainAst.StateDecl], type : StateType, parent : option[NameIdentifier]) : StateNode.State
     {
       mutable defer = [];
       mutable do_act = [];
+      mutable entry = [];
+      mutable exit = [];
+      mutable pseudo = [];
       foreach (d in decls)
-      {
-        | StateDecl.DeferrableEvent(EventsAst.DeferrableEvent.Deferrable(Events = EventsAst.SimpleEventList.Ast((e, _)))) => 
-            def lst = e.FoldLeft([], (x, a) => if (x is Identifier.Ast as x) TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
-            defer ::= StateNode.Defer(d.Location.StartPos, lst)
-        | StateDecl.DoActivity(ActionsAst.DoActivity.Ast(ActionList = ActionsAst.ActionList.Ast(_, a)))                   => 
-            def act = GetActions(a);
-            do_act ::= StateNode.DoActivity(d.Location.StartPos, act, ActivityFlag.None);
-      }
+        {
+          | StateDecl.DeferrableEvent(EventsAst.DeferrableEvent.Deferrable(Events = EventsAst.SimpleEventList.Ast((e, _))))
+          | StateDecl.DeferrableEvent(EventsAst.DeferrableEvent.Deferred(Events = EventsAst.SimpleEventList.Ast((e, _)))) =>
+              def lst = e.FoldLeft([], (x, a) => if (x is Identifier.Ast as x) TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
+              defer ::= StateNode.Defer(d.Location.StartPos, lst)
+          | StateDecl.DoActivity(ActionsAst.DoActivity.Ast(ActionList = a))                   => 
+              def act = GetActions(a);
+              do_act ::= StateNode.DoActivity(d.Location.StartPos, act, ActivityFlag.None);
+          | StateDecl.Entry(ActionsAst.Entry.Ast(ActionList = a)) => 
+              def act = GetActions(a);
+              entry ::= StateNode.Entry(d.Location.StartPos, ActionFlags.None, act)
+          | StateDecl.Exit(ActionsAst.Exit.Ast(ActionList = a)) => 
+              def act = GetActions(a);
+              exit ::= StateNode.Exit(d.Location.StartPos, ActionFlags.None, act)
+          | StateDecl.PseudoState(p) => CreatePseudo(p).Iter(x => pseudo ::= x)
+        }
       null
     }
-    
+
     ConvertTree(ast : MainAst.StateMachine.Ast) : StateNode.StateMachine
     {
       mutable flags = MachineFlag.None;
@@ -139,12 +280,12 @@ namespace Nemerle.Statechart
       mutable err = [];
       def decls = ast.StateMachineDecls;
       foreach (d in decls)
-      {
-        | Flags(Flags = (a, _))                                                                        => def data = GetIdentifierText(a);
+        {
+          | Flags(Flags = (a, _))                                                                        => def data = GetIdentifierText(a);
                                                                                                           def fl = GetFlags(data);
                                                                                                           unless (fl.errors.IsEmpty()) err ::= StateNode.Flags(d.Location.StartPos, fl);
                                                                                                           flags |= fl.flags;
-        | EventClass(EventsAst.EventClass.Ast(_, _, FullyQualified.Ast as f, o, _))                    => 
+          | EventClass(EventsAst.EventClass.Ast(_, _, FullyQualified.Ast as f, o, _))                    => 
                                                                                                           def n = GetNameIdentifier(f);
                                                                                                           def evt = match (o)
                                                                                                                     {
@@ -152,28 +293,28 @@ namespace Nemerle.Statechart
                                                                                                                       | _                                                      => []
                                                                                                                     }
                                                                                                           event_class ::= StateNode.EventClassDecl(d.Location.StartPos, n, evt)
-        | EventDecl(EventsAst.EventDecl.Ast(Name = Identifier.Ast as a, Types = (t, _)))               => 
+          | EventDecl(EventsAst.EventDecl.Ast(Name = Identifier.Ast as a, Types = (t, _)))               => 
                                                                                                           def name = a.GetText();
                                                                                                           def lst = GetIdentifierText(t);
                                                                                                           event_decls ::= StateNode.EventDecl(d.Location.StartPos, name, lst);
-        | Name(Name = n)                                                                               => match (n)
-                                                                                                          {
-                                                                                                            | Name.Nested.NameIdentifier.CommaIdentifier(Body = i)       => def name = d.GetText(i);
-                                                                                                                                                                            names ::= StateNode.Name(d.Location.StartPos, name);
-                                                                                                            | Name.Nested.NameIdentifier.Identifier(Identifier.Ast as i) => def name = i.GetText();
-                                                                                                                                                                            names ::= StateNode.Name(d.Location.StartPos, name);
-                                                                                                            | _                                                          => ();
-                                                                                                          }
-        | Using(Type = FullyQualified.Ast as f)                                                        => def data = GetNameIdentifier(f);
+          | Name(Name = n)                                                                               => match (n)
+              {
+                | Name.Nested.NameIdentifier.CommaIdentifier(_, i, _)
+                | Name.Nested.NameIdentifier.Identifier(Identifier.Ast as i) => 
+                    def name = i.GetText();
+                    names ::= StateNode.Name(d.Location.StartPos, name);
+                | _                                                          => ();
+              }
+          | Using(Type = FullyQualified.Ast as f)                                                        => def data = GetNameIdentifier(f);
                                                                                                           usings ::= StateNode.Using(d.Location.StartPos, data.FullName)
-        | StateDecl as d                                                                               => st_decl ::= d.StateDecl;
-        | _                                                                                            => ()
-      }
-     def st = CreateState(ast.Location.StartPos, null, st_decl, StateType.State(), None());
-     def (name, error) = (names.Head, names.Tail);
-     def error = error.Map(_ : StateNode) + err;
-     def error = error.Map(x => StateNode.Error(x.pos, x));
-     StateNode.StateMachine(ast.Location.StartPos, MachineFlags(flags, []), name.name, st, usings, event_decls, event_class, error)
+          | StateDecl as d                                                                               => st_decl ::= d.StateDecl;
+          | _                                                                                            => ()
+        }
+      def st = CreateState(ast.Location.StartPos, null, st_decl, StateType.State(), None());
+      def (name, error) = (names.Head, names.Tail);
+      def error = error.Map(_ : StateNode) + err;
+      def error = error.Map(x => StateNode.Error(x.pos, x));
+      StateNode.StateMachine(ast.Location.StartPos, MachineFlags(flags, []), name.name, st, usings, event_decls, event_class, error)
     }
   }
 }
