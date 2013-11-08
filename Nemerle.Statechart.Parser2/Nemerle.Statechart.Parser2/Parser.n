@@ -83,8 +83,8 @@ namespace Nemerle.Statechart
             def name = n.GetText();
             def tran = match (e)
             {
-              | PseudoStatesAst.ExitPoint.ExitPointEnd.End                                                 => None()
               | PseudoStatesAst.ExitPoint.ExitPointEnd.Tran(TransitionsAst.EntryPointTransition.Ast as tr) => GetEntryPointTran(tr)
+              | _                                                                                          => None()
             }
             PseudoStateModelNode.ExitPoint(pos, name, tran)
         | PseudoState.History(PseudoStatesAst.History.HistoryDeep(_, t)) with type = HistoryType.Deep
@@ -110,6 +110,57 @@ namespace Nemerle.Statechart
                         | _       => None()
                       }
             PseudoStateModelNode.History(pos, type, tran)
+        | PseudoState.Initial(_, g, a, _, t) => 
+            def act = a.Map(GetActions);
+            def guard = g.MapDefault(GetGuard, GuardNode.Empty(-1));
+            def tar = match (t)
+            {
+              | PseudoState.Initial.Nested.InitialTarget.Simple(t, _)                                       => 
+                 match (GetSimpleTarget(t))
+                 {
+                   | Some(t) => StateNode.Transition(pos, TargetType.NoTarget(-1), [], guard, act, t, TransitionKind.Local) :: []
+                   | _       => []
+                 }
+               
+               
+              | PseudoState.Initial.Nested.InitialTarget.JunctionTarget(TargetsAst.JunctionTarget.Ast as t) => 
+                 match (GetJunctionTarget(t, JunctionType.Junction))
+                 {
+                   | Some(TargetType.PseudoState(PseudoStateModelNode.Junction as j)) => 
+                       j.nodes.Map(x => StateNode.Transition(x.pos, TargetType.NoTarget(-1), [], x.guard, x.action, x.to, TransitionKind.Local))
+                   | _ => []
+                 }
+              | _ => []
+            }
+          
+            match (tar)
+            {
+              | []  => null
+              | lst => PseudoStateModelNode.Initial(pos, lst)
+            }
+        | PseudoState.Join(_, BaseAst.Identifier.Ast as n, TransitionsAst.TransitionPart.Ast(g, a, _, t)) => 
+           def name = n.GetText();
+           match (GetTran(p, g, a, t, TransitionKind.External))
+           {
+             | Some(t) => PseudoStateModelNode.Join(pos, name, [], t)
+             | _       => null
+           }
+           
+        | PseudoState.Junction(_, n, PseudoStatesAst.JunctionBody.Ast as b) => 
+           def name = n.GetText();
+           def nodes = GetNodes(b);
+           PseudoStateModelNode.Junction(pos, name, nodes, JunctionType.Junction)
+           
+        | PseudoState.Merge(_, n, TransitionsAst.TransitionPart.Ast(g, a, _, t)) =>
+           def name = n.GetText();
+           match (GetTran(p, g, a, t, TransitionKind.External))
+           {
+             | Some(t) => def node = JunctionNode(pos, t.guard, t.action, t.to);
+                          PseudoStateModelNode.Junction(pos, name, node :: [], JunctionType.Merge)
+             | _       => null
+           }
+           
+        | PseudoState.Terminate => PseudoStateModelNode.Terminate(pos)
         | _ => null
       }
       if (pseudo != null) Some(StateNode.PseudoState(pos, pseudo)) else None()
@@ -117,11 +168,12 @@ namespace Nemerle.Statechart
 
     CreateState(pos : int, name : string, decls : list[MainAst.StateDecl], type : StateType, parent : option[NameIdentifier]) : StateNode.State
     {
-      mutable defer = [];
+      mutable defer  = [];
       mutable do_act = [];
-      mutable entry = [];
-      mutable exit = [];
+      mutable entry  = [];
+      mutable exit   = [];
       mutable pseudo = [];
+      def decls = decls.FoldLeft([], (x, a) => if (x is MainAst.StateDecl.Sequence(h, t)) a + (h :: t) else a);
       foreach (d in decls)
         {
           | StateDecl.DeferrableEvent(EventsAst.DeferrableEvent.Deferrable(Events = EventsAst.SimpleEventList.Ast((e, _))))
@@ -137,7 +189,18 @@ namespace Nemerle.Statechart
           | StateDecl.Exit(ActionsAst.Exit.Ast(ActionList = a)) => 
               def act = GetActions(a);
               exit ::= StateNode.Exit(d.Location.StartPos, ActionFlags.None, act)
-          | StateDecl.PseudoState(p) => CreatePseudo(p).Iter(x => pseudo ::= x)
+          | StateDecl.PseudoState(p) => match (CreatePseudo(p))
+                                        {
+                                          | Some(p) => pseudo ::= p
+                                          | _       => ()
+                                        }
+          ///
+          | StateDecl.Regions(a) => ()
+          | StateDecl.RegionSequence(first, other) => ()
+          | StateDecl.State(a, _, n, p, _, d, _) => ()
+          | StateDecl.SubMachine(a, _, n, t, p, _, d, _) => ()
+          | StateDecl.Transition(t) => ()
+          | _ => ()
         }
       null
     }

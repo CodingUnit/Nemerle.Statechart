@@ -32,16 +32,22 @@ namespace Nemerle.Statechart
       GuardNode.Expr(pos, expr)
     }
 
-    GetGuard(g : TransitionsAst.Guard.Ast) : GuardNode
+    GetGuard(g : TransitionsAst.Guard) : GuardNode
     {
       def pos = g.Location.StartPos;
-      match (g.GuardDecl)
+      match (g)
       {
-        | GuardDecl.Else             => GuardNode.Else(pos)
-        | GuardDecl.LongGuardExpr(TransitionsAst.LongGuardExpr.Ast(_, e, _))
-        | GuardDecl.SimpleExpr as e => 
-          def text = e.GetText();
-          parse_guard_expr(pos, text);
+        | TransitionsAst.Guard.Ast(_, g, _) => 
+              match (g)
+              {
+                | GuardDecl.Else             => GuardNode.Else(pos)
+                | GuardDecl.LongGuardExpr(TransitionsAst.LongGuardExpr.Ast(_, e, _))
+                | GuardDecl.SimpleExpr as e => 
+                    def text = e.GetText();
+                    parse_guard_expr(pos, text)
+                | _ => GuardNode.Empty(-1)
+              }
+        | _ => GuardNode.Empty(-1)
       }
     }
 
@@ -166,6 +172,7 @@ namespace Nemerle.Statechart
                       | TransitionsAst.JunctionGuard.SimpleExpr as e => 
                           def text = e.GetText();
                           parse_guard_expr(pos, text);
+                      | _ => GuardNode.Empty()
                     }
                     g
         | _       => GuardNode.Empty()
@@ -188,6 +195,19 @@ namespace Nemerle.Statechart
       nodes
     }
 
+    GetTran(ast : Nitra.Ast, guard : option[TransitionsAst.Guard], act : option[ActionsAst.ActionList], tar : TargetsAst.TransitionTarget, type : TransitionKind = TransitionKind.Local) : option[StateNode.Transition]
+    {
+      def pos = ast.Location.StartPos;
+      match (GetTarget(tar))
+      {
+        | Some(to) => def act = act.Map(GetActions);
+                      def guard = guard.MapDefault(GetGuard, GuardNode.Empty(-1));
+                      def tran = StateNode.Transition(pos, TargetType.NoTarget(-1), [], guard, act, to, type);
+                      Some(tran)
+        | _        => None()
+      }
+    }
+    
     GetEntryPointTran(tran : TransitionsAst.EntryPointTransition.Ast) : option[StateNode.Transition]
     {
       def act = tran.ActionListOpt;
