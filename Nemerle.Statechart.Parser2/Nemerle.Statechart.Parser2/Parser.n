@@ -140,7 +140,7 @@ namespace Nemerle.Statechart
             }
         | PseudoState.Join(_, BaseAst.Identifier.Ast as n, TransitionsAst.TransitionPart.Ast(g, a, _, t)) => 
            def name = n.GetText();
-           match (GetTran(p, g, a, t, TransitionKind.External))
+           match (GetTran(p, None(), g, a, t, TransitionKind.External))
            {
              | Some(t) => PseudoStateModelNode.Join(pos, name, [], t)
              | _       => null
@@ -153,7 +153,7 @@ namespace Nemerle.Statechart
            
         | PseudoState.Merge(_, n, TransitionsAst.TransitionPart.Ast(g, a, _, t)) =>
            def name = n.GetText();
-           match (GetTran(p, g, a, t, TransitionKind.External))
+           match (GetTran(p, None(), g, a, t, TransitionKind.External))
            {
              | Some(t) => def node = JunctionNode(pos, t.guard, t.action, t.to);
                           PseudoStateModelNode.Junction(pos, name, node :: [], JunctionType.Merge)
@@ -166,13 +166,45 @@ namespace Nemerle.Statechart
       if (pseudo != null) Some(StateNode.PseudoState(pos, pseudo)) else None()
     }
 
-    CreateState(pos : int, name : string, decls : list[MainAst.StateDecl], type : StateType, parent : option[NameIdentifier]) : StateNode.State
+    GetParent(par : MainAst.Parent) : option[string]
+    {
+      | MainAst.Parent.Ast(_, MainAst.Parent.ParentIdentifier.RegionReference(RegionsAst.RegionReference.Ast as r)) =>
+          def parent = r.GetText();
+          Some(parent)
+      | MainAst.Parent.Ast(_, MainAst.Parent.ParentIdentifier.FullyQualified(BaseAst.FullyQualified.Ast as a)) => Some(a.GetText())
+      | _ => None()
+    }
+    
+    GetAttribute(attr : BaseAst.Attributes) : list[StateAttribute]
+    {
+      | BaseAst.Attributes.Ast(_, (a, _), _) => 
+      
+        def pos = attr.Location.StartPos;
+        def check_attr(x)
+        {
+          if (x is BaseAst.Identifier.Ast as x) 
+            match (x.GetText())
+            {
+              | "Initial" => StateAttribute.Initial(pos)
+              | str         => StateAttribute.Unknown(pos, str)
+            }
+           else StateAttribute.Unknown(pos, null)
+        }
+        
+        a.Map(check_attr)
+      | _ => []
+    }
+    
+    CreateState(pos : int, attr : list[StateAttribute], name : string, decls : list[MainAst.StateDecl], type : StateType, parent : option[string]) : StateNode.State
     {
       mutable defer  = [];
       mutable do_act = [];
       mutable entry  = [];
       mutable exit   = [];
       mutable pseudo = [];
+      mutable states = [];
+      mutable tran   = [];
+      mutable err    = [];
       def decls = decls.FoldLeft([], (x, a) => if (x is MainAst.StateDecl.Sequence(h, t)) a + (h :: t) else a);
       foreach (d in decls)
         {
@@ -197,12 +229,23 @@ namespace Nemerle.Statechart
           ///
           | StateDecl.Regions(a) => ()
           | StateDecl.RegionSequence(first, other) => ()
-          | StateDecl.State(a, _, n, p, _, d, _) => ()
+          | StateDecl.State(a, _, n, p, _, d, _) as t => 
+              def name = n.GetText();
+              def parent = if (p is Some(p)) GetParent(p) else None();
+              def attr = a.MapDefault(GetAttribute, []);
+              def state = CreateState(t.Location.StartPos, attr, name, d, StateType.State(), parent);
+              states ::= state;
           | StateDecl.SubMachine(a, _, n, t, p, _, d, _) => ()
-          | StateDecl.Transition(t) => ()
-          | _ => ()
+          | StateDecl.Transition(TransitionsAst.Transition.NormalTransition(t)) => 
+             match (CreateTransition(t))
+             {
+               | Some(t) => tran ::= t
+               | _       => ()
+             }
+          
+          | n => ()//err ::= StateNode.Error(pos, n)
         }
-      null
+      StateNode.State(pos, name, parent, attr, entry, exit, tran, do_act, defer, states, pseudo, type, err)
     }
 
   }

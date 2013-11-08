@@ -195,14 +195,15 @@ namespace Nemerle.Statechart
       nodes
     }
 
-    GetTran(ast : Nitra.Ast, guard : option[TransitionsAst.Guard], act : option[ActionsAst.ActionList], tar : TargetsAst.TransitionTarget, type : TransitionKind = TransitionKind.Local) : option[StateNode.Transition]
+    GetTran(ast : Nitra.Ast, evt : option[EventsAst.Events], guard : option[TransitionsAst.Guard], act : option[ActionsAst.ActionList], tar : TargetsAst.TransitionTarget, type : TransitionKind = TransitionKind.Local) : option[StateNode.Transition]
     {
       def pos = ast.Location.StartPos;
       match (GetTarget(tar))
       {
         | Some(to) => def act = act.Map(GetActions);
                       def guard = guard.MapDefault(GetGuard, GuardNode.Empty(-1));
-                      def tran = StateNode.Transition(pos, TargetType.NoTarget(-1), [], guard, act, to, type);
+                      def evt = evt.MapDefault(GetEvents, []);
+                      def tran = StateNode.Transition(pos, TargetType.NoTarget(-1), evt, guard, act, to, type);
                       Some(tran)
         | _        => None()
       }
@@ -238,5 +239,56 @@ namespace Nemerle.Statechart
       | _ => None()
     }
 
+    CreateTransition(tr : TransitionsAst.NormalTransition) : option[StateNode.Transition]
+    {
+      | TransitionsAst.NormalTransition.InternalTransition(EventsAst.Events.Ast as e, g, a, _) => 
+          match (GetEvents(e))
+          {
+            | []  => None()
+            | lst => 
+                def guard = g.MapDefault(GetGuard, GuardNode.Empty());
+                def act = GetActions(a);
+                def tran = StateNode.Transition(tr.Location.StartPos, TargetType.NoTarget(-1,), lst, guard, if (act.Empty) None() else Some(act), TargetType.NoTarget(-1), TransitionKind.Internal);
+                Some(tran)
+          }
+      | TransitionsAst.NormalTransition.LocalTransition(e, g, a, _, t) with kind = TransitionKind.Local
+      | TransitionsAst.NormalTransition.Transition(e, g, a, _, t) with kind = TransitionKind.External   => GetTran(tr, Some(e), g, a, t, kind)
+      | _ => None()
+    }
+    
+    GetTimeExpr(expr : EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr) : TimedExpr
+    {
+      null
+    }
+    
+    GetEvents(evt : EventsAst.Events) : list[TransitionEvent]
+    {
+      | EventsAst.Events.Ast((e, _)) => 
+      
+        def get_event(x, a)
+        {
+          def pos = x.Location.StartPos;
+          match (x)
+          {
+            | EventsAst.SingleEvent.SimpleEvent(BaseAst.Identifier.Ast as n, p) => 
+                def name = n.GetText();
+                def parms = match (p)
+                {
+                  | Some(EventsAst.SingleEvent.SimpleEvent.Nested.Parms.Ast(_, (p, _), _)) => GetIdentifierText(p)
+                  | _                                                                      => []
+                }
+                TransitionEvent.Normal(x.Location.StartPos, name, parms) :: a
+            | EventsAst.SingleEvent.Completion => TransitionEvent.Completion(pos) :: a
+            | EventsAst.SingleEvent.TimedEvent(_, _, e, _) => 
+               def expr = GetTimeExpr(e);
+               TransitionEvent.Timed(pos, expr) :: a
+            | _ => a
+          }
+          
+        }
+      
+        e.FoldBack([], get_event)
+      | _ => []
+    }
   }
 }
