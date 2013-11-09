@@ -240,20 +240,27 @@ namespace Nemerle.Statechart
       | _ => None()
     }
 
-    CreateTransition(tr : TransitionsAst.NormalTransition) : option[StateNode.Transition]
+    CreateTransition(tr : TransitionsAst.Transition) : option[StateNode.Transition]
     {
-      | TransitionsAst.NormalTransition.InternalTransition(EventsAst.Events.Ast as e, g, a, _) => 
-          match (GetEvents(e))
-          {
-            | []  => None()
-            | lst => 
-                def guard = g.MapDefault(GetGuard, GuardNode.Empty());
-                def act = GetActions(a);
-                def tran = StateNode.Transition(tr.Location.StartPos, TargetType.NoTarget(-1,), lst, guard, if (act.Empty) None() else Some(act), TargetType.NoTarget(-1), TransitionKind.Internal);
-                Some(tran)
-          }
-      | TransitionsAst.NormalTransition.LocalTransition(e, g, a, _, t) with kind = TransitionKind.Local
-      | TransitionsAst.NormalTransition.Transition(e, g, a, _, t) with kind = TransitionKind.External   => GetTran(tr, Some(e), g, a, t, kind)
+      | TransitionsAst.Transition.NormalTransition(t) => 
+      
+        match (t)
+        {
+          | TransitionsAst.NormalTransition.InternalTransition(EventsAst.Events.Ast as e, g, a, _) => 
+              match (GetEvents(e))
+              {
+                | []  => None()
+                | lst => 
+                    def guard = g.MapDefault(GetGuard, GuardNode.Empty());
+                    def act = GetActions(a);
+                    def tran = StateNode.Transition(tr.Location.StartPos, TargetType.NoTarget(-1,), lst, guard, if (act.Empty) None() else Some(act), TargetType.NoTarget(-1), TransitionKind.Internal);
+                    Some(tran)
+              }
+          | TransitionsAst.NormalTransition.LocalTransition(e, g, a, _, t) with kind = TransitionKind.Local
+          | TransitionsAst.NormalTransition.Transition(e, g, a, _, t)      with kind = TransitionKind.External => GetTran(tr, Some(e), g, a, t, kind)
+          | _ => None()
+        }
+      | TransitionsAst.Transition.RelocateTransition(_, t) => None()
       | _ => None()
     }
     
@@ -312,10 +319,10 @@ namespace Nemerle.Statechart
             }
             
             def lst = [
-                       (_ is Units.Days,    x => TimeSpan.FromDays(x :> double), get_float),
-                       (_ is Units.Hours,   x => TimeSpan.FromHours(x :> double), get_float),
-                       (_ is Units.Minutes, x => TimeSpan.FromMinutes(x :> double), get_float),
-                       (_ is Units.Seconds, x => TimeSpan.FromSeconds(x :> double), get_float),
+                       (_ is Units.Days,    x => TimeSpan.FromDays(x :> double),         get_float),
+                       (_ is Units.Hours,   x => TimeSpan.FromHours(x :> double),        get_float),
+                       (_ is Units.Minutes, x => TimeSpan.FromMinutes(x :> double),      get_float),
+                       (_ is Units.Seconds, x => TimeSpan.FromSeconds(x :> double),      get_float),
                        (_ is Units.MSec,    x => TimeSpan.FromMilliseconds(x :> double), get_float),
                        (_ is Units.Ticks,   x : object => TimeSpan.FromTicks(x :> long), get_long),
                       ];
@@ -338,13 +345,14 @@ namespace Nemerle.Statechart
              }
 
             def vals = e.Map(get_value);
-            match (vals.Find(x => x is TimedExpr.Error))
+            match (vals.Find(_ is TimedExpr.Error))
             {
               | Some(e) => e
               | _       => vals.Reduce(accumulate)
             }
           | e    => TimedExpr.Error(TimedErrorType.DuplicateUnit(e))
         }
+       | _ => TimedExpr.Error(TimedErrorType.InvalidValue())
     }
     
     GetEvents(evt : EventsAst.Events) : list[TransitionEvent]
