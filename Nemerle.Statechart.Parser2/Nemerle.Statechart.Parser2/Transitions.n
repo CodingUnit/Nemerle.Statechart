@@ -19,14 +19,15 @@ namespace Nemerle.Statechart
   using Nemerle.Statechart.Grammar.TransitionsAst.Guard;
   using Nemerle.Statechart.Grammar.MainAst.StateMachine.StateMachineDecl;
   using Nemerle.Statechart.Grammar.ActionsAst.ActionList.Action;
+  using Nemerle.Statechart.Grammar.TransitionsAst.Transition.RelocateTransition.Nested.RelocateTranBody;
   using Nemerle.Statechart.Grammar.EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr.Nested;
-  
+
   /// <summary>
   /// Description of Transitions.
   /// </summary>
   partial public class Parser
   {
-    
+
     parse_guard_expr(pos : int, text : string) : GuardNode
     {
       def expr = parse_expr(text);
@@ -39,15 +40,15 @@ namespace Nemerle.Statechart
       match (g)
       {
         | TransitionsAst.Guard.Ast(_, g, _) => 
-              match (g)
-              {
-                | GuardDecl.Else             => GuardNode.Else(pos)
-                | GuardDecl.LongGuardExpr(TransitionsAst.LongGuardExpr.Ast(_, e, _))
-                | GuardDecl.SimpleExpr as e => 
+            match (g)
+            {
+              | GuardDecl.Else             => GuardNode.Else(pos)
+              | GuardDecl.LongGuardExpr(TransitionsAst.LongGuardExpr.Ast(_, e, _))
+              | GuardDecl.SimpleExpr as e => 
                     def text = e.GetText();
                     parse_guard_expr(pos, text)
-                | _ => GuardNode.Empty(-1)
-              }
+              | _ => GuardNode.Empty(-1)
+            }
         | _ => GuardNode.Empty(-1)
       }
     }
@@ -97,19 +98,19 @@ namespace Nemerle.Statechart
                                     TargetType.Qualified(name.pos, st, TargetType.Named(name.pos, n))
 
     }
-    
+
     GetJunctionTarget(tar : TargetsAst.JunctionTarget.Ast, type : JunctionType) : option[TargetType]
     {
       match (tar.JunctionBody)
       {
         | PseudoStatesAst.JunctionBody.Ast as b => def nodes = GetNodes(b);
-                                                   def pos = tar.Location.StartPos;
-                                                   Some(TargetType.PseudoState(pos, PseudoStateModelNode.Junction(pos, null, nodes, type)))
+                                                  def pos = tar.Location.StartPos;
+                                                  Some(TargetType.PseudoState(pos, PseudoStateModelNode.Junction(pos, null, nodes, type)))
         | _ => None()
       }
-      
+
     }
-    
+
     GetSimpleTarget(t : TargetsAst.SimpleTarget) : option[TargetType]
     {
       def pos = t.Location.StartPos;
@@ -125,7 +126,7 @@ namespace Nemerle.Statechart
         | _ => None()
       }
     }
-    
+
     GetTarget(t : TargetsAst.TransitionTarget) : option[TargetType]
     {
       | TransitionTarget.Normal(t, _) => 
@@ -134,10 +135,10 @@ namespace Nemerle.Statechart
           {
             | TargetsAst.NormalTarget.SimpleTarget(t) => GetSimpleTarget(t)
             | TargetsAst.NormalTarget.ForkTarget(TargetsAst.NormalTarget.ForkTarget.Nested.ForkTarget.Normal(_, n, _, (t, _), _)) => 
-               def lst = n :: t;
-               def lst = lst.FoldBack([], (x, a) => if (x is BaseAst.FullyQualified.Ast as x) GetNameIdentifier(x) :: a else a);
-               def targets = lst.Map(get_state_qualified_target);
-               Some(TargetType.PseudoState(pos, PseudoStateModelNode.Fork(pos, targets)))
+              def lst = n :: t;
+              def lst = lst.FoldBack([], (x, a) => if (x is BaseAst.FullyQualified.Ast as x) GetNameIdentifier(x) :: a else a);
+              def targets = lst.Map(get_state_qualified_target);
+              Some(TargetType.PseudoState(pos, PseudoStateModelNode.Fork(pos, targets)))
             | TargetsAst.NormalTarget.ForkTarget(TargetsAst.NormalTarget.ForkTarget.Nested.ForkTarget.Alternative(BaseAst.FullyQualified.Ast as n, _, (t, _), _)) => 
                 def tar = GetIdentifierData(t);
                 def tar = tar.Map(x => TargetType.Named(x));
@@ -153,9 +154,9 @@ namespace Nemerle.Statechart
             | _ => None()
           }
       | TransitionTarget.Junction(TransitionTarget.Junction.Nested.BracesTarget.ChoiceTarget(_, TargetsAst.JunctionTarget.Ast as a)) => 
-         GetJunctionTarget(a, JunctionType.Choice);
+          GetJunctionTarget(a, JunctionType.Choice);
       | TransitionTarget.Junction(TransitionTarget.Junction.Nested.BracesTarget.JunctionTarget(TargetsAst.JunctionTarget.Ast as a)) => 
-         GetJunctionTarget(a, JunctionType.Junction);
+          GetJunctionTarget(a, JunctionType.Junction);
       | _ => None()
     }
 
@@ -184,10 +185,10 @@ namespace Nemerle.Statechart
         match (x)
         {
           | JunctionBody.JuncTranBody.Ast(g, act, _, t) => match (GetTarget(t))
-                                                           {
-                                                             | Some(t) => JunctionNode(x.Location.StartPos, get_guard(g), act.Map(GetActions), t) :: a
-                                                             | _       => a
-                                                           }
+              {
+                | Some(t) => JunctionNode(x.Location.StartPos, get_guard(g), act.Map(GetActions), t) :: a
+                | _       => a
+              }
           | _ => a
         }
       }
@@ -209,21 +210,21 @@ namespace Nemerle.Statechart
         | _        => None()
       }
     }
-    
-    GetEntryPointTran(tran : TransitionsAst.EntryPointTransition.Ast) : option[StateNode.Transition]
+
+    GetEntryPointTran(tran : TransitionsAst.EntryPointTransition) : option[StateNode.Transition]
     {
-      def act = tran.ActionListOpt;
-      def tar = tran.TransitionTarget;
-      def pos = tran.Location.StartPos;
-      match (GetTarget(tar))
-      {
-        | Some(to) => def act = if (act is Some(a)) Some(GetActions(a)) else None();
-                      def tran = StateNode.Transition(pos, TargetType.NoTarget(pos), [], GuardNode.Empty(-1), act, to, TransitionKind.Local);
-                      Some(tran)
-        | _        => None()
-      }
+      | TransitionsAst.EntryPointTransition.Ast(act, _, tar) => 
+      
+        def pos = tran.Location.StartPos;
+        match (GetTarget(tar))
+        {
+          | Some(to) => def act = if (act is Some(a)) Some(GetActions(a)) else None();
+                        def tran = StateNode.Transition(pos, TargetType.NoTarget(pos), [], GuardNode.Empty(-1), act, to, TransitionKind.Local);
+                        Some(tran)
+          | _        => None()
+        }
     }
-    
+
     GetDefaultTran(tr : TransitionsAst.DefaultTransition) : option[StateNode.Transition]
     {
       | TransitionsAst.DefaultTransition.Ast(a, _, t) => 
@@ -236,36 +237,94 @@ namespace Nemerle.Statechart
                 Some(tran)
             | _ => None()
           }
-          
+
       | _ => None()
     }
 
-    CreateTransition(tr : TransitionsAst.Transition) : option[StateNode.Transition]
+    GetExtTran(tr : TransitionsAst.ExtTransition) : option[StateNode.Transition]
     {
-      | TransitionsAst.Transition.NormalTransition(t) => 
-      
-        match (t)
-        {
-          | TransitionsAst.NormalTransition.InternalTransition(EventsAst.Events.Ast as e, g, a, _) => 
-              match (GetEvents(e))
-              {
-                | []  => None()
-                | lst => 
+      | TransitionsAst.ExtTransition.Ast(e, g, a, _, t) => GetTran(tr, Some(e), g, a, t, TransitionKind.External)
+      | _                                               => None()
+    }
+    
+    CreateTransition(tr : TransitionsAst.NormalTransition) : option[StateNode.Transition]
+    {
+      | TransitionsAst.NormalTransition.InternalTransition(EventsAst.Events.Ast as e, g, a, _) => 
+          match (GetEvents(e))
+          {
+            | []  => None()
+            | lst => 
                     def guard = g.MapDefault(GetGuard, GuardNode.Empty());
                     def act = GetActions(a);
                     def tran = StateNode.Transition(tr.Location.StartPos, TargetType.NoTarget(-1,), lst, guard, if (act.Empty) None() else Some(act), TargetType.NoTarget(-1), TransitionKind.Internal);
                     Some(tran)
-              }
-          | TransitionsAst.NormalTransition.LocalTransition(e, g, a, _, t) with kind = TransitionKind.Local
-          | TransitionsAst.NormalTransition.Transition(e, g, a, _, t)      with kind = TransitionKind.External => GetTran(tr, Some(e), g, a, t, kind)
-          | _ => None()
-        }
-      | TransitionsAst.Transition.RelocateTransition(_, t) => None()
+          }
+      | TransitionsAst.NormalTransition.LocalTransition(e, g, a, _, t) => GetTran(tr, Some(e), g, a, t, TransitionKind.Local)
+      | TransitionsAst.NormalTransition.Transition(t) => GetExtTran(t)
       | _ => None()
     }
-    
-    
-    
+
+    CreateRelocateTran(tr : TransitionsAst.Transition.RelocateTransition) : option[StateNode]
+    {
+      | TransitionsAst.Transition.RelocateTransition(_, t) => 
+          match (t)
+          {
+            | Transition.RelocateTransition.Nested.RelocateTranBody.Combined(BaseAst.FullyQualified.Ast as n, _, _, tran, _) => 
+                def pos = tr.Location.StartPos;
+                def from = TargetType.Named(pos, n.GetText());
+                def tran = tran.Map(CreateTransition).FilterValues(x => x);
+                def tran = tran.Map(x => x.ChangeFrom(from));
+                Some(StateNode.Sequence(pos, tran))
+                
+            | Transition.RelocateTransition.Nested.RelocateTranBody.Join(t) => 
+                match (t)
+                {
+                  | Join.Nested.JoinRelocateTran.Main(_, (n, _), _, _, tran) => 
+                     
+                     match (GetExtTran(tran))
+                     {
+                       | Some(tran) => def pos = tr.Location.StartPos;
+                                       def name = n.FoldBack([], (x, a) => if (x is BaseAst.FullyQualified.Ast as x) GetNameIdentifier(x) :: a else a);
+                                       def from = TargetType.PseudoState(pos, PseudoStateModelNode.Join(pos, null, name, tran));
+                                       Some(tran.ChangeFrom(from))
+                       | _          => None()
+                     }
+                  | Join.Nested.JoinRelocateTran.Alt(BaseAst.FullyQualified.Ast as par, _, (n, _), _, _, tran) => 
+                  
+                     def name = n.Map(x => x.GetText());
+                     def par = GetNameIdentifier(par);
+                     def name = name.Map(x => par.Add(x));
+                     match (GetExtTran(tran))
+                     {
+                       | Some(tran) => def pos = tr.Location.StartPos;
+                                       def from = TargetType.PseudoState(pos, PseudoStateModelNode.Join(pos, null, name, tran));
+                                       Some(tran.ChangeFrom(from))
+                       | _          => None()
+                     }
+                  | _ => None()
+                }
+                
+            | State(BaseAst.FullyQualified.Ast as n, _, tran) => match (CreateTransition(tran))
+                                                                 {
+                                                                   | Some(tran) => def pos = tr.Location.StartPos;
+                                                                                   def name = n.GetText();
+                                                                                   def from = TargetType.Named(pos, name);
+                                                                                   Some(tran.ChangeFrom(from))
+                                                                   | _          => None()
+                                                                 }
+                                                                 
+            | Pseudo(BaseAst.FullyQualified.Ast as n, _, tran) => match (GetEntryPointTran(tran))
+                                                                  {
+                                                                    | Some(tran) => def pos = tr.Location.StartPos;
+                                                                                    def tar = TargetType.PseudoState(pos, PseudoStateModelNode.EntryPoint(pos, n.GetText(), null));
+                                                                                    Some(tran.ChangeFrom(tar))
+                                                                    | _          => None()
+                                                                  }
+                                                                  
+            | _                                                => None()
+          }
+    }
+
     check_timed_err(lst : list[Num * Units]) : string
     {
       def check(f)
@@ -273,7 +332,7 @@ namespace Nemerle.Statechart
         def elem = lst.Filter((_, x) => f(x));
         if (elem.Length > 1) Some(elem.First()[1].GetText()) else None()
       }
-      
+
       def check_func = [_ is Units.Days, _ is Units.Hours, _ is Units.Minutes, _ is Units.Seconds, _ is Units.MSec, _ is Units.Ticks];
       match (check_func.FindElem(check))
       {
@@ -281,27 +340,27 @@ namespace Nemerle.Statechart
         | _       => null
       }
     }
-    
+
     GetTimeExpr(expr : EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr) : TimedExpr
     {
       | EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr.FullTimeExpr as e =>
-        try
-        {
-          def time = TimeSpan.Parse(e.GetText());
-          TimedExpr.Expr(TimedExprType.After(time))
-        }
-        catch
-        {
-          | FormatException   => TimedExpr.Error(TimedErrorType.InvalidValue())
-          | OverflowException => TimedExpr.Error(TimedErrorType.Overflow())
-        }
-        
+          try
+          {
+            def time = TimeSpan.Parse(e.GetText());
+            TimedExpr.Expr(TimedExprType.After(time))
+          }
+          catch
+          {
+            | FormatException   => TimedExpr.Error(TimedErrorType.InvalidValue())
+            | OverflowException => TimedExpr.Error(TimedErrorType.Overflow())
+          }
+
       | EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr(e) => 
-      
-        match (check_timed_err(e))
-        {
-          | null => 
-          
+
+          match (check_timed_err(e))
+          {
+            | null => 
+
             def ret(t)
             {
               TimedExpr.Expr(TimedExprType.After(t))
@@ -312,21 +371,21 @@ namespace Nemerle.Statechart
               def num = GetFloatNum(v);
               if (double.IsNaN(num)) None() else Some(num : object)
             }
-            
+
             def get_long(v)
             {
               GetLongNum(v).Map(_ : object)
             }
-            
+
             def lst = [
-                       (_ is Units.Days,    x => TimeSpan.FromDays(x :> double),         get_float),
-                       (_ is Units.Hours,   x => TimeSpan.FromHours(x :> double),        get_float),
-                       (_ is Units.Minutes, x => TimeSpan.FromMinutes(x :> double),      get_float),
-                       (_ is Units.Seconds, x => TimeSpan.FromSeconds(x :> double),      get_float),
-                       (_ is Units.MSec,    x => TimeSpan.FromMilliseconds(x :> double), get_float),
-                       (_ is Units.Ticks,   x : object => TimeSpan.FromTicks(x :> long), get_long),
+                      (_ is Units.Days,    x => TimeSpan.FromDays(x :> double),         get_float),
+                      (_ is Units.Hours,   x => TimeSpan.FromHours(x :> double),        get_float),
+                      (_ is Units.Minutes, x => TimeSpan.FromMinutes(x :> double),      get_float),
+                      (_ is Units.Seconds, x => TimeSpan.FromSeconds(x :> double),      get_float),
+                      (_ is Units.MSec,    x => TimeSpan.FromMilliseconds(x :> double), get_float),
+                      (_ is Units.Ticks,   x : object => TimeSpan.FromTicks(x :> long), get_long),
                       ];
-            
+
             def get_value(t, u)
             {
               def (_, res, get_num) = lst.First((e, _, _) => e(u));
@@ -335,14 +394,14 @@ namespace Nemerle.Statechart
               {
                 ret(res(n))
               } else TimedExpr.Error(TimedErrorType.InvalidValue());
-                
+
             }
-            
-             def accumulate(x : TimedExpr, y : TimedExpr)
-             {
-               | (TimedExpr.Expr(TimedExprType.After(a)), TimedExpr.Expr(TimedExprType.After(b))) => ret(a + b)
-               | _                                                                                => TimedExpr.Error(TimedErrorType.InvalidValue())
-             }
+
+            def accumulate(x : TimedExpr, y : TimedExpr)
+            {
+              | (TimedExpr.Expr(TimedExprType.After(a)), TimedExpr.Expr(TimedExprType.After(b))) => ret(a + b)
+              | _                                                                                => TimedExpr.Error(TimedErrorType.InvalidValue())
+            }
 
             def vals = e.Map(get_value);
             match (vals.Find(_ is TimedExpr.Error))
@@ -350,15 +409,15 @@ namespace Nemerle.Statechart
               | Some(e) => e
               | _       => vals.Reduce(accumulate)
             }
-          | e    => TimedExpr.Error(TimedErrorType.DuplicateUnit(e))
-        }
-       | _ => TimedExpr.Error(TimedErrorType.InvalidValue())
+            | e    => TimedExpr.Error(TimedErrorType.DuplicateUnit(e))
+          }
+      | _ => TimedExpr.Error(TimedErrorType.InvalidValue())
     }
-    
+
     GetEvents(evt : EventsAst.Events) : list[TransitionEvent]
     {
       | EventsAst.Events.Ast((e, _)) => 
-      
+
         def get_event(x, a)
         {
           def pos = x.Location.StartPos;
@@ -374,13 +433,13 @@ namespace Nemerle.Statechart
                 TransitionEvent.Normal(x.Location.StartPos, name, parms) :: a
             | EventsAst.SingleEvent.Completion => TransitionEvent.Completion(pos) :: a
             | EventsAst.SingleEvent.TimedEvent(_, _, e, _) => 
-               def expr = GetTimeExpr(e);
-               TransitionEvent.Timed(pos, expr) :: a
+              def expr = GetTimeExpr(e);
+              TransitionEvent.Timed(pos, expr) :: a
             | _ => a
           }
-          
+
         }
-      
+
         e.FoldBack([], get_event)
       | _ => []
     }

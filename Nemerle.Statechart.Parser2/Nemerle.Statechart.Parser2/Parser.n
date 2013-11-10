@@ -235,14 +235,31 @@ namespace Nemerle.Statechart
               def attr = a.MapDefault(GetAttribute, []);
               def state = CreateState(t.Location.StartPos, attr, name, d, StateType.State(), parent);
               states ::= state;
-          | StateDecl.SubMachine(a, _, n, t, p, _, d, _) => ()
-          | StateDecl.Transition(t) => 
+              
+          | StateDecl.SubMachine(a, _, n, t, p, _, d, _) => 
+             def type = t.MapDefault(x => if (x is StateDecl.SubMachine.Nested.TypeDecl.Ast(_, t, _)) t.GetText() else null, null);
+             def parent = if (p is Some(p)) GetParent(p) else None();
+             def state = CreateState(pos, a.MapDefault(GetAttribute, []), n.GetText(), d, StateType.SubMachine(type, true), parent);
+             states ::= state;
+             
+          | StateDecl.Transition(TransitionsAst.Transition.NormalTransition(t)) => 
              match (CreateTransition(t))
              {
                | Some(t) => tran ::= t
                | _       => ()
              }
-          | n => ()//err ::= StateNode.Error(pos, n)
+          | StateDecl.Transition(TransitionsAst.Transition.RelocateTransition as t) => 
+             match (CreateRelocateTran(t))
+             {
+               | Some(t) => match (t)
+                            {
+                              | StateNode.Sequence(tr) as s => def tr = tr.Map(x => x :> StateNode.Transition);
+                                                               tran = tran + tr;   
+                              | StateNode.Transition as tr  => tran ::= tr
+                            }
+               | _       => ()
+             }
+          | _ => ()
         }
       StateNode.State(pos, name, parent, attr, entry, exit, tran, do_act, defer, states, pseudo, type, err)
     }
