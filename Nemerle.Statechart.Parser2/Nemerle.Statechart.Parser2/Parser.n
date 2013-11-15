@@ -194,6 +194,22 @@ namespace Nemerle.Statechart
       | _ => []
     }
     
+    CreateState(st : StateDecl.State, decls : list[MainAst.StateDecl], type : StateType) : StateNode.State
+    {
+      match (st)
+      {
+        | StateDecl.State(a, _, n, p, _, d, _) as t => CreateState(t, n, p, a, decls ?? d, type)
+      }
+    }
+
+    CreateState(ast : Nitra.Ast, name : BaseAst.Identifier, parent : option[MainAst.Parent], attr : option[BaseAst.Attributes], decls : list[MainAst.StateDecl], type : StateType) : StateNode.State
+    {
+      def name = name.GetText();
+      def parent = if (parent is Some(p)) GetParent(p) else None();
+      def attr = attr.MapDefault(GetAttribute, []);
+      CreateState(ast.Location.StartPos, attr, name, decls, type, parent);
+    }
+    
     CreateState(pos : int, attr : list[StateAttribute], name : string, decls : list[MainAst.StateDecl], type : StateType, parent : option[string]) : StateNode.State
     {
       mutable defer  = [];
@@ -230,18 +246,20 @@ namespace Nemerle.Statechart
                                       | Some(st) => states ::= st
                                       | _        => ()
                                     }
-          | StateDecl.RegionSequence(first, other) => ()
-          | StateDecl.State(a, _, n, p, _, d, _) as t => 
-              def name = n.GetText();
-              def parent = if (p is Some(p)) GetParent(p) else None();
-              def attr = a.MapDefault(GetAttribute, []);
-              def state = CreateState(t.Location.StartPos, attr, name, d, StateType.State(), parent);
+          
+          | StateDecl.State as t => 
+              def state = if (t.StateDecls is StateDecl.RegionSequence as r :: []) 
+               {
+                 CreateRegionFromSequence(t, r); 
+               } else
+               {
+                CreateState(t, null, StateType.State())
+              }
               states ::= state;
               
-          | StateDecl.SubMachine(a, _, n, t, p, _, d, _) => 
+          | StateDecl.SubMachine(a, _, n, t, p, _, d, _) as st => 
              def type = t.MapDefault(x => if (x is StateDecl.SubMachine.Nested.TypeDecl.Ast(_, t, _)) t.GetText() else null, null);
-             def parent = if (p is Some(p)) GetParent(p) else None();
-             def state = CreateState(pos, a.MapDefault(GetAttribute, []), n.GetText(), d, StateType.SubMachine(type, true), parent);
+             def state = CreateState(st, n, p, a, d, StateType.SubMachine(type, true));
              states ::= state;
              
           | StateDecl.Transition(TransitionsAst.Transition.NormalTransition(t)) => 
@@ -271,15 +289,13 @@ namespace Nemerle.Statechart
     {
       | RegionsAst.Regions.Region(RegionsAst.OneRegion.Ast(a, _, n, p, _, d, _), and_regs) =>
           def pos = reg.Location.StartPos;
-          def name = n.GetText();
-          def attr = a.MapDefault(GetAttribute, []);
-          def parent = if (p is Some(p)) GetParent(p) else None();
           def (region_sep, decls) = d.Partition(x => x is StateDecl.RegionSequence);
           def sep = region_sep.Map(x => StateNode.Region(x.Location.StartPos));
           def err = sep.Map(x => StateNode.Error(x.pos, x));
-          def state = CreateState(pos, attr, name, decls, StateType.SubRegion(), parent);
+          def state = CreateState(reg, n, p, a, decls, StateType.SubRegion());
           def (init, pseudo) = state.pseudo_states.Partition(x => x.node is PseudoStateModelNode.Initial);
           def reg = StateNode.State(pos, null, null, [], [], [], [], [], [], state.sub_states, init, StateType.SubRegion(), err);
+          
           
           def create_and_regions(x, (a1, a2) as a)
           {
@@ -297,7 +313,7 @@ namespace Nemerle.Statechart
           def (and_regs, decls) = and_regs.FoldBack(([], []), create_and_regions);
           
           def decls = state :: decls;
-          def state = reg :: and_regs;
+          def states = reg :: and_regs;
           
           def en = decls.SelectMany(_.entry).NToList();
           def ex = decls.SelectMany(_.exit).NToList();
@@ -307,19 +323,38 @@ namespace Nemerle.Statechart
           def pseudo = decls.SelectMany(x => x.pseudo_states.Exclude(x => x is StateNode.PseudoState(PseudoStateModelNode.Initial))).Concat(pseudo).NToList();
           def err = decls.SelectMany(_.errors).Concat(err).NToList();
           
-          def state = StateNode.State(pos, name, parent, attr, en, ex, trans, do_act, defer, state, pseudo, StateType.Region(), err);
+          def state = StateNode.State(pos, state.name, state.parent, state.attributes, en, ex, trans, do_act, defer, states, pseudo, StateType.Region(), err);
           Some(state)
           
          | RegionsAst.Regions.Empty(RegionsAst.OneRegion.Ast(a, _, n, p, _, d, _) as t) => 
-             def name = n.GetText();
-             def pos = t.Location.StartPos;
-             def attr = a.MapDefault(GetAttribute, []);
-             def parent = if (p is Some(p)) GetParent(p) else None();
-             def state = CreateState(pos, attr, name, d, StateType.Region(), parent);
+             def state = CreateState(t, n, p, a, d, StateType.Region());
              Some(state)
              
          | _ => None()
 
     }
+    
+    CreateRegionFromSequence(st : StateDecl.State, seq : StateDecl.RegionSequence) : StateNode.State
+    {
+        def first = seq.StateDecl;
+        def other = seq.StateDecls;
+        def other = other.Map((_, x) => x);
+        def lst = first :: other;
+        
+        def create_sub_regions(reg)
+        {
+          def st = CreateState(reg.Location.StartPos, [], null, reg :: [], StateType.SubRegion(), None());
+          def trans = st.transitions;
+          (trans, st.ChangeTransitions([]))
+        }
+        
+        def (trans, regs) = lst.Map(create_sub_regions).Split();
+        def trans = trans.Flatten();
+        def st = CreateState(st, [], StateType.Region());//StateNode.State(first.Location.StartPos, )
+        def st = st.ChangeTransitions(trans);
+        def st = st.ChangeSubStates(regs);
+        st
+    }
+    
   }
 }
