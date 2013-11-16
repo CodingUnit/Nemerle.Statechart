@@ -10,6 +10,7 @@ using Nemerle.Compiler;
 using Nemerle.Compiler.Parsetree;
 using Nitra;
 using System.Globalization;
+
 namespace Nemerle.Statechart
 {
   using Nemerle.Statechart.Grammar;
@@ -27,22 +28,22 @@ namespace Nemerle.Statechart
   /// </summary>
   partial public class Parser
   {
-    public flags_map : Hashtable[string, MachineFlag];
-    public env : GlobalEnv;
+    public flags_map : Hashtable[string, MachineFlag] {get;set;}
+    public env : GlobalEnv {get;set;}
 
-    public this(flags : list[string * MachineFlag], env : GlobalEnv)
-    {
-      this.env = env;
-      flags_map = Hashtable(flags);
-    }
-
+    [Accessor]
+    mutable result : Nitra.Internal.ParseResult;
+    
+    [Accessor]
+    mutable source : SourceSnapshot;
+    
     public Parse(loc : Nemerle.Compiler.Location, text : string) : StateNode.StateMachine * list[Error]
     {
       def parserHost = ParserHost();
       if (string.IsNullOrWhiteSpace(text)) (null, []) else
       {
-        def source = SourceSnapshot(text, loc.FileIndex, loc.File);
-        def result = Main.StateMachine(source, parserHost);
+        source = SourceSnapshot(text, loc.FileIndex, loc.File);
+        result = Main.StateMachine(source, parserHost);
         def ast = MainAstWalkers.StateMachine(result);
 
         if (result.IsSuccess) 
@@ -50,7 +51,7 @@ namespace Nemerle.Statechart
           match (ast)
           {
             | MainAst.StateMachine.Ast as a => def res = ConvertTree(a);
-                                              (res, [])
+                                               (res, [])
             | _                             => (null, [])
           }
 
@@ -90,26 +91,37 @@ namespace Nemerle.Statechart
     
     GetNameIdentifier(fully : FullyQualified.Ast) : NameIdentifier
     {
-      def id = fully.Identifiers[0];
+      def id = fully.QualifiedIdentifiers[0];
       def pos = fully.Location.StartPos;
       match (id)
       {
-        | Identifier.Ast(i) :: []   => NameIdentifier.Name(pos, fully.GetText(i))
-        | lst                       => def lst = GetIdentifierText(lst);
-                                       def (last, lst) = lst.SplitLast();
-                                       NameIdentifier.QualifiedName(pos, last, lst)
+        | QualifiedIdentifier.Ast :: []   => def text = $<#..$(id; ".")#>;
+                                             NameIdentifier.Name(pos, text)
+        | lst                             => def lst = GetIdentifierText(lst);
+                                             def (last, lst) = lst.SplitLast();
+                                             NameIdentifier.QualifiedName(pos, last, lst)
       }
 
     }
-    
-    GetIdentifierText(id : list[Identifier]) : list[string]
-    {
-      id.FoldRight([], (x, a) => if (x is Identifier.Ast) x.GetText() :: a else a);
-    }
 
-    GetIdentifierData(id : list[Identifier]) : list[int * string]
+    GetIdentifierText(id : list[EventIdentifier]) : list[string]
     {
-      id.FoldRight([], (x, a) => if (x is Identifier.Ast) (x.Location.StartPos, x.GetText()) :: a else a);
+      id.FoldRight([], (x, a) => if (x is EventIdentifier.Ast) x.GetText() :: a else a);
+    }
+    
+    GetIdentifierText(id : list[QualifiedIdentifier]) : list[string]
+    {
+      id.FoldRight([], (x, a) => if (x is QualifiedIdentifier.Ast) x.GetText() :: a else a);
+    }
+    
+    GetIdentifierText(id : list[AnyIdentifier]) : list[string]
+    {
+      id.FoldRight([], (x, a) => if (x is AnyIdentifier.Ast) x.GetText() :: a else a);
+    }
+    
+    GetIdentifierData(id : list[AnyIdentifier]) : list[int * string]
+    {
+      id.FoldRight([], (x, a) => if (x is AnyIdentifier.Ast) (x.Location.StartPos, x.GetText()) :: a else a);
     }
     
     parse_expr(text : string) : PExpr

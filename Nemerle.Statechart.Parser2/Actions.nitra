@@ -7,13 +7,34 @@
     using TokenNames;
     using StandardSpanClasses;
     using Whitespaces;
-    using Identifiers;
     using Transitions;
     using Base;
 
+    syntax SimpleAction
+    {
+      | List = (AnyIdentifier ('(' ')')?; ',')+
+      | Empty = '(' ')'
+    }
+
+
     regex ActionEnd = ';' | AnyGoto;
 
-    syntax SimpleActionList = (Identifier ('(' ')')?; ',')+ & ActionEnd;
+    syntax SimpleActionList = SimpleAction & ActionEnd;
+
+    syntax LongExprAction = "${" Expr "$}"
+    {
+      token Expr = (!"$}" Any)*;
+    }
+
+    syntax SimpleExpr = !SimpleActionList !BraceExpr !LongExprAction Expr
+    {
+      token Expr = (!ActionEnd Any)+;
+    }
+
+    syntax BraceExpr  = '{' Expr '}'
+    {
+      token Expr = (!'}' Any)*;
+    }
 
     syntax ActionList = '/' Action
     {
@@ -23,21 +44,42 @@
         {
           syntax Expr
           {
-            | LongExprAction = "${" Expr "$}"
-            {
-              token Expr = (!"$}" Any)+;
-            }
-            | SimpleExpr     = !SimpleActionList (!ActionEnd Any)+
+            | LongExprAction
+            | SimpleExpr
+            | BraceExpr
           }
         }
         | SimpleActionList
       }
     }
 
-    syntax Entry = Attributes? "entry" ActionList ';';
+    syntax ActList = '/' Action
+    {
+      syntax Action
+      {
+        | Expr
+        {
+          syntax Expr
+          {
+            | LongExprAction
+            | SimpleExpr = SimpleExpr ';'
+            | BraceExpr
+          }
+        }
+        | SimpleActionList = SimpleActionList ';'
+      }
+    }
 
-    syntax Exit = Attributes? "exit" ActionList ';';
+    syntax Entry = Attributes? EntryKey ActList
+    {
+      regex EntryKey = "entry" | "$>";
+    }
 
-    syntax DoActivity = Attributes? "do" ActionList ';';
+    syntax Exit = Attributes? ExitKey ActList
+    {
+      regex ExitKey = "exit" | "$<";
+    }
+
+    syntax DoActivity = Attributes? "do" ActList;
   }
 }

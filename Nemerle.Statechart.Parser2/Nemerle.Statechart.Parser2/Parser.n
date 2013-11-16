@@ -36,22 +36,42 @@ namespace Nemerle.Statechart
 
     GetActions(lst : ActionsAst.ActionList) : Actions
     {
-      match (lst)
-      {
-        | ActionsAst.ActionList.Ast(_, a) => 
-            match (a)
-            {
-              | SimpleActionList(ActionsAst.SimpleActionList.Ast((a, _))) => 
-                  def act = a.FoldBack([], ((x, _), a) => if (x is Identifier.Ast as x) FsmAction.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
-                  Actions(lst.Location.StartPos, act)
-              | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.SimpleExpr as e)
-              | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.LongExprAction(_, e, _)) => 
-                  def text = e.GetText();
-                  parse_action(e.Location.StartPos, text);
-              | _ => Actions(lst.Location.StartPos, [])
-            }
-        | _ => Actions(lst.Location.StartPos, [])
-      }
+      | ActionsAst.ActionList.Ast(_, a) => 
+          match (a)
+          {
+            | SimpleActionList(ActionsAst.SimpleActionList.Ast(ActionsAst.SimpleAction.Empty)) => Actions(a.Location.StartPos, [])
+            | SimpleActionList(ActionsAst.SimpleActionList.Ast(ActionsAst.SimpleAction.List((a, _)))) => 
+                def act = a.FoldBack([], ((x, _), a) => if (x is Identifier.Ast as x) FsmAction.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
+                Actions(lst.Location.StartPos, act)
+            | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.SimpleExpr(e))
+            | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.LongExprAction(ActionsAst.LongExprAction.Ast( _, e, _)))
+            | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.BraceExpr(ActionsAst.BraceExpr.Ast(_, e, _))) => 
+                def text = e.GetText();
+                parse_action(e.Location.StartPos, text);
+              
+            | _ => Actions(lst.Location.StartPos, [])
+          }
+      | _ => Actions(lst.Location.StartPos, [])
+    }
+    
+    GetActions(lst : ActionsAst.ActList) : Actions
+    {
+      | ActionsAst.ActList.Ast(_, a) => 
+          match (a)
+          {
+            | SimpleActionList(ActionsAst.SimpleActionList.Ast(ActionsAst.SimpleAction.Empty), _) => Actions(a.Location.StartPos, [])
+            | SimpleActionList(ActionsAst.SimpleActionList.Ast(ActionsAst.SimpleAction.List((a, _))), _) => 
+                def act = a.FoldBack([], ((x, _), a) => if (x is Identifier.Ast as x) FsmAction.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
+                Actions(lst.Location.StartPos, act)
+            | Expr(ActionsAst.ActList.Action.Expr.Nested.Expr.SimpleExpr(ActionsAst.SimpleExpr.Ast(e), _))
+            | Expr(ActionsAst.ActList.Action.Expr.Nested.Expr.LongExprAction(ActionsAst.LongExprAction.Ast( _, e, _)))
+            | Expr(ActionsAst.ActList.Action.Expr.Nested.Expr.BraceExpr(ActionsAst.BraceExpr.Ast(_, e, _))) => 
+                def text = e.GetText();
+                parse_action(e.Location.StartPos, text);
+              
+            | _ => Actions(lst.Location.StartPos, [])
+          }
+      | _ => Actions(lst.Location.StartPos, [])
     }
     
     CreatePseudo(p : PseudoStatesAst.PseudoState) : option[StateNode.PseudoState]
@@ -59,7 +79,7 @@ namespace Nemerle.Statechart
       def pos = p.Location.StartPos;
       def pseudo = match (p)
       {
-        | PseudoState.Choice(_, Identifier.Ast as n, _, JunctionBody.Ast as b) => 
+        | PseudoState.Choice(_, AnyIdentifier.Ast as n, _, JunctionBody.Ast as b) => 
             def nodes = GetNodes(b);
             def name = n.GetText();
             PseudoStateModelNode.Junction(p.Location.StartPos, name, nodes, JunctionType.Choice)
@@ -69,9 +89,9 @@ namespace Nemerle.Statechart
               | Some(tr) => 
                   match (n)
                   {
-                    | PseudoStatesAst.EntryPoint.EntryPointHead.Ver1(_, BaseAst.Identifier.Ast as n)
-                    | PseudoStatesAst.EntryPoint.EntryPointHead.Ver2(BaseAst.Identifier.Ast as n, _)
-                    | PseudoStatesAst.EntryPoint.EntryPointHead.Ver3(_, BaseAst.Identifier.Ast as n, _) => 
+                    | PseudoStatesAst.EntryPoint.EntryPointHead.Ver1(_, BaseAst.AnyIdentifier.Ast as n)
+                    | PseudoStatesAst.EntryPoint.EntryPointHead.Ver2(BaseAst.AnyIdentifier.Ast as n, _)
+                    | PseudoStatesAst.EntryPoint.EntryPointHead.Ver3(_, BaseAst.AnyIdentifier.Ast as n, _) => 
                         def name = n.GetText();
                         PseudoStateModelNode.EntryPoint(pos, name, tr)
                     | _ => null
@@ -79,7 +99,7 @@ namespace Nemerle.Statechart
               | _ => null
                                 
             }
-        | PseudoState.ExitPoint(PseudoStatesAst.ExitPoint.Ast(PseudoStatesAst.ExitPointDecl.Ast(_, BaseAst.Identifier.Ast as n), e)) => 
+        | PseudoState.ExitPoint(PseudoStatesAst.ExitPoint.Ast(PseudoStatesAst.ExitPointDecl.Ast(_, BaseAst.AnyIdentifier.Ast as n), e)) => 
             def name = n.GetText();
             def tran = match (e)
             {
@@ -137,7 +157,7 @@ namespace Nemerle.Statechart
               | []  => null
               | lst => PseudoStateModelNode.Initial(pos, lst)
             }
-        | PseudoState.Join(_, BaseAst.Identifier.Ast as n, TransitionsAst.TransitionPart.Ast(g, a, _, t)) => 
+        | PseudoState.Join(_, BaseAst.AnyIdentifier.Ast as n, TransitionsAst.TransitionPart.Ast(g, a, _, t)) => 
            def name = n.GetText();
            match (GetTran(p, None(), g, a, t, TransitionKind.External))
            {
@@ -170,7 +190,7 @@ namespace Nemerle.Statechart
       | MainAst.Parent.Ast(_, MainAst.Parent.ParentIdentifier.RegionReference(RegionsAst.RegionReference.Ast as r)) =>
           def parent = r.GetText();
           Some(parent)
-      | MainAst.Parent.Ast(_, MainAst.Parent.ParentIdentifier.FullyQualified(BaseAst.FullyQualified.Ast as a)) => Some(a.GetText())
+      | MainAst.Parent.Ast(_, MainAst.Parent.ParentIdentifier.FullyQualified(BaseAst.FullyQualified.Ast((id, _)))) => Some($<#..$(id; ".")#>)
       | _ => None()
     }
     
@@ -202,7 +222,7 @@ namespace Nemerle.Statechart
       }
     }
 
-    CreateState(ast : Nitra.Ast, name : BaseAst.Identifier, parent : option[MainAst.Parent], attr : option[BaseAst.Attributes], decls : list[MainAst.StateDecl], type : StateType) : StateNode.State
+    CreateState(ast : Nitra.Ast, name : BaseAst.AnyIdentifier, parent : option[MainAst.Parent], attr : option[BaseAst.Attributes], decls : list[MainAst.StateDecl], type : StateType) : StateNode.State
     {
       def name = name.GetText();
       def parent = if (parent is Some(p)) GetParent(p) else None();
@@ -227,13 +247,13 @@ namespace Nemerle.Statechart
           | StateDecl.DeferrableEvent(EventsAst.DeferrableEvent.Deferred(Events = EventsAst.SimpleEventList.Ast((e, _)))) =>
               def lst = e.FoldBack([], (x, a) => if (x is Identifier.Ast as x) TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
               defer ::= StateNode.Defer(d.Location.StartPos, lst)
-          | StateDecl.DoActivity(ActionsAst.DoActivity.Ast(ActionList = a))                   => 
+          | StateDecl.DoActivity(ActionsAst.DoActivity.Ast(ActList = a))                   => 
               def act = GetActions(a);
               do_act ::= StateNode.DoActivity(d.Location.StartPos, act, ActivityFlag.None);
-          | StateDecl.Entry(ActionsAst.Entry.Ast(ActionList = a)) => 
+          | StateDecl.Entry(ActionsAst.Entry.Ast(ActList = a)) => 
               def act = GetActions(a);
               entry ::= StateNode.Entry(d.Location.StartPos, ActionFlags.None, act)
-          | StateDecl.Exit(ActionsAst.Exit.Ast(ActionList = a)) => 
+          | StateDecl.Exit(ActionsAst.Exit.Ast(ActList = a)) => 
               def act = GetActions(a);
               exit ::= StateNode.Exit(d.Location.StartPos, ActionFlags.None, act)
           | StateDecl.PseudoState(p) => match (CreatePseudo(p))
@@ -253,8 +273,8 @@ namespace Nemerle.Statechart
                  CreateRegionFromSequence(t, r); 
                } else
                {
-                CreateState(t, null, StateType.State())
-              }
+                 CreateState(t, null, StateType.State())
+               }
               states ::= state;
               
           | StateDecl.SubMachine(a, _, n, t, p, _, d, _) as st => 

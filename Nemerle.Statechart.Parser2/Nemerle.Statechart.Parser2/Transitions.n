@@ -53,32 +53,15 @@ namespace Nemerle.Statechart
       }
     }
 
-    GetQualifiedTarget(name : NameIdentifier, braces : bool) : TargetType
+    GetQualifiedTarget(name : NameIdentifier) : TargetType
     {
       def pos = name.pos;
 
       def get_target(n)
       {
-        if (braces) TargetType.Named(name.pos, n) else
-          match (n)
-          {
-            | "history"  with hist = HistoryType.None
-            | "H"  with hist = HistoryType.Shallow
-            | "h"  with hist = HistoryType.Shallow
-            | "h*" with hist = HistoryType.Deep
-            | "H*" with hist = HistoryType.Deep => TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, hist, None()))
-            | "final"
-            | "$0"       => TargetType.Final(pos)
-            | "self"
-            | "@"        => TargetType.Self(pos)
-            | "terminate"
-            | "x"
-            | "X"        => TargetType.PseudoState(name.pos, PseudoStateModelNode.Terminate(0))
-            | x when (x.IndexOf('(') != -1 ) => 
-                def n = string(n.Explode().Except(['(', ')']).ToArray());
-                TargetType.Named(name.pos, n)
-            | _                      => TargetType.Named(name.pos, n)
-          }
+          | x when (x.IndexOf('(') != -1 ) => def n = string(n.Explode().Except(['(', ')']).ToArray());
+                                              TargetType.Named(pos, n)
+          | _                              => TargetType.Named(pos, n)
       }
 
       match (name)
@@ -86,7 +69,7 @@ namespace Nemerle.Statechart
         | Name(name = n)                     => get_target(n)
         | QualifiedName(parts = p, name = n) => 
             def st = $<#..$(p;".")#>;
-            TargetType.Qualified(name.pos, st, get_target(n))
+            TargetType.Qualified(pos, st, get_target(n))
       }
     }
 
@@ -111,18 +94,54 @@ namespace Nemerle.Statechart
 
     }
 
+    GetPseudoTarget(p : TargetsAst.PseudoTarget) : option[TargetType]
+    {
+      | TargetsAst.PseudoTarget.ExitPoint(PseudoStatesAst.ExitPointDecl.Ast(_, BaseAst.AnyIdentifier.Ast as id)) =>
+          def name = id.GetText();
+          def pos = p.Location.StartPos;
+          Some(TargetType.PseudoState(pos, PseudoStateModelNode.ExitPoint(pos, name, None())))
+      | TargetsAst.PseudoTarget.History(h) =>
+        match (h)
+        {
+          | TargetsAst.PseudoTarget.History.Nested.History.History with type = HistoryType.None
+          | TargetsAst.PseudoTarget.History.Nested.History.Deep with type = HistoryType.Deep
+          | TargetsAst.PseudoTarget.History.Nested.History.Shallow with type = HistoryType.Shallow => def pos = p.Location.StartPos;
+                                                                                                      Some(TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, type, None())))
+          | _ => None()
+        }
+      
+      | TargetsAst.PseudoTarget.Terminate => def pos = p.Location.StartPos;
+                                             Some(TargetType.PseudoState(pos, PseudoStateModelNode.Terminate(-1)))
+      | _ => None()
+    }
+    
     GetSimpleTarget(t : TargetsAst.SimpleTarget) : option[TargetType]
     {
       def pos = t.Location.StartPos;
       match (t)
       {
-        | TargetsAst.SimpleTarget.QualifiedTarget(TargetsAst.QualifiedTarget.Ast(b1, BaseAst.FullyQualified.Ast as f, b2)) => 
-            def name = GetNameIdentifier(f);
-            def braces = b1.HasValue && b2.HasValue;
-            Some(GetQualifiedTarget(name, braces))
-        | TargetsAst.SimpleTarget.ExitPointTarget(PseudoStatesAst.ExitPointDecl.Ast(_, BaseAst.Identifier.Ast as id)) => 
-            def name = id.GetText();
-            Some(TargetType.PseudoState(pos, PseudoStateModelNode.ExitPoint(pos, name, None())))
+        | TargetsAst.SimpleTarget.QualifiedTarget(t) => //TargetsAst.QualifiedTarget.Qualified(b1, BaseAst.FullyQualified.Ast as f, b2)
+            match (t)
+            {
+              | TargetsAst.SimpleTarget.QualifiedTarget.Nested.QualifiedTarget.Qualified(BaseAst.FullyQualified.Ast as f)
+              | TargetsAst.SimpleTarget.QualifiedTarget.Nested.QualifiedTarget.QualifiedState(_, BaseAst.FullyQualified.Ast as f, _) => 
+                  def name = GetNameIdentifier(f);
+                  Some(GetQualifiedTarget(name))
+              | TargetsAst.SimpleTarget.QualifiedTarget.Nested.QualifiedTarget.QualifiedPseudo(BaseAst.FullyQualified.Ast as f, _, p) => 
+                  match (GetPseudoTarget(p))
+                  {
+                    | Some(nested) => 
+                        def name = GetNameIdentifier(f);
+                        def name = name.FullName;
+                        def st = $<#..$(name;".")#>;
+                        Some(TargetType.Qualified(pos, st, nested))
+                    | _ => None()
+                  }
+              | _ => None()
+            }
+        | TargetsAst.SimpleTarget.PseudoTarget(p) => GetPseudoTarget(p)
+        | TargetsAst.SimpleTarget.Self  => Some(TargetType.Self(pos))
+        | TargetsAst.SimpleTarget.Final => Some(TargetType.Final(pos))
         | _ => None()
       }
     }
@@ -250,7 +269,7 @@ namespace Nemerle.Statechart
     
     CreateTransition(tr : TransitionsAst.NormalTransition) : option[StateNode.Transition]
     {
-      | TransitionsAst.NormalTransition.InternalTransition(EventsAst.Events.Ast as e, g, a, _) => 
+      | TransitionsAst.NormalTransition.InternalTransition(EventsAst.Events.Ast as e, g, a) => 
           match (GetEvents(e))
           {
             | []  => None()
@@ -424,7 +443,7 @@ namespace Nemerle.Statechart
           def pos = x.Location.StartPos;
           match (x)
           {
-            | EventsAst.SingleEvent.SimpleEvent(BaseAst.Identifier.Ast as n, p) => 
+            | EventsAst.SingleEvent.SimpleEvent(BaseAst.EventIdentifier.Ast as n, p) => 
                 def name = n.GetText();
                 def parms = match (p)
                 {
