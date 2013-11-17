@@ -6,11 +6,12 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nemerle.Compiler;
 
 namespace Nemerle.Statechart
 {
   [Record]
-  variant FsmJunctionNode : IGeneralTree[FsmJunctionNode]
+  variant FsmJunctionNode : Located, IGeneralTree[FsmJunctionNode]
   {
     | Node { nodes : list[FsmJunctionNode] {get;set;} }
     | Target
@@ -33,6 +34,15 @@ namespace Nemerle.Statechart
     
     public Parent : FsmJunctionNode {get;set;}
 
+    public override ToString() : string
+    {
+      match (this)
+      {
+        | Node   => $<#JunctionNode$ParentNode [$guard] / ..$(actions; ",") ..$ChildNodes#>
+        | Target as t => $<#JunctionTarget$ParentNode $(t.target)#>
+      }
+    }
+    
     public Clone() : FsmJunctionNode
     {
       match (this)
@@ -97,7 +107,7 @@ namespace Nemerle.Statechart
                       | (JunctionNode(g, a, t), [])  => FsmJunctionNode.Target(g, a.GetActions(), st, null, TransitionTarget.Create(st.state, t))
                       | (JunctionNode(g, a, _), _)   => FsmJunctionNode.Node(g, a.GetActions(), st, null, acc.NToList())
                     }
-
+        node.Location = x.Location;
         acc.Iter(x => x.Parent = node);
         node
       }

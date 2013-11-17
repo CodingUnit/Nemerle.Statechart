@@ -45,12 +45,12 @@ namespace Nemerle.Statechart
       }
     }
 
-    UpdateJunctionReference(p : PseudoStateNode.Junction, _st : FsmState, tran : StateTransition) : void
+    UpdateJunctionReference(p : PseudoStateNode.Junction, _st : FsmState, _tran : StateTransition) : void
     {
       def check_target(t)
       {
         def tar = t.target;
-        match (ResolveTarget(t.state, tar, tran))
+        match (ResolveTarget(t.state, tar, TranType.Junction(t)))
         {
           | null => ()
           | nt    => t.target = nt;
@@ -62,7 +62,7 @@ namespace Nemerle.Statechart
     
     UpdateTransitionReference(tr : StateTransition, st : FsmState) : void
     {
-      match (ResolveTarget(st, tr.To, tr))
+      match (ResolveTarget(st, tr.To, TranType.Normal(tr)))
       {
         | null => ()
         | t    => tr.To = t
@@ -95,14 +95,14 @@ namespace Nemerle.Statechart
 
     }
     
-    TraverseQual(st : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
+    TraverseQual(st : FsmState, tr : TransitionTarget, tran : TranType) : TransitionTarget
     {
       match (tr)
       {
         | Qualified(parent = par, target = t) => def res = GetQual(st, par, tran);
                                                  match (res, t)
                                                  {
-                                                   | (null, _) => messager.AddError(FsmError.UnknownTarget(tran, tr)); TransitionTarget.Error(tr)
+                                                   | (null, _) => messager.AddError(FsmError.UnknownTarget(tran, tr)); TransitionTarget.Error(tran.To)
                                                    | (res, _)  => if (res.type is SubMachine(unresolved = true)) tr else TraverseQual(res, t, tran)
                                                  }
                                                  
@@ -115,7 +115,7 @@ namespace Nemerle.Statechart
       }
     }
     
-    GetNamed(n : string, tran : StateTransition, st : FsmState, deflt : TransitionTarget) : TransitionTarget
+    GetNamed(n : string, tran : TranType, st : FsmState, deflt : TransitionTarget) : TransitionTarget
     {
       match (GetNamed(n, null, tran, st))
       {
@@ -124,7 +124,7 @@ namespace Nemerle.Statechart
       }
     }
     
-    ResolveTarget(st : FsmState, tr : TransitionTarget, tran : StateTransition) : TransitionTarget
+    ResolveTarget(st : FsmState, tr : TransitionTarget, tran : TranType) : TransitionTarget
     {
       match (tr)
       {
