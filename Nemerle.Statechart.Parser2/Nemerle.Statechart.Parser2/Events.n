@@ -1,0 +1,165 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+
+  using Nemerle.Statechart.Grammar;
+  using Nemerle.Statechart.Grammar.MainAst;
+  using Nemerle.Statechart.Grammar.BaseAst;
+  using Nemerle.Statechart.Grammar.PseudoStatesAst;
+  using Nemerle.Statechart.Grammar.TransitionsAst;
+  using Nemerle.Statechart.Grammar.TargetsAst;
+  using Nemerle.Statechart.Grammar.TransitionsAst.Guard;
+  using Nemerle.Statechart.Grammar.MainAst.StateMachine.StateMachineDecl;
+  using Nemerle.Statechart.Grammar.EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr.Nested;
+
+  /// <summary>
+  /// Description of Events.
+  /// </summary>
+  partial public class Parser
+  {
+
+    check_timed_err(lst : list[Num * Units]) : string
+    {
+      def check(f)
+      {
+        def elem = lst.Filter((_, x) => f(x));
+        if (elem.Length > 1) 
+        {
+          def (_, unit) = elem.ElementAt(1);
+          Some(unit.GetText().Trim())
+        } else None()
+      }
+
+      def check_func = [_ is Units.Days, _ is Units.Hours, _ is Units.Minutes, _ is Units.Seconds, _ is Units.MSec, _ is Units.Ticks];
+      match (check_func.FindElem(check))
+      {
+        | Some(t) => t
+        | _       => null
+      }
+    }
+
+    GetTimeExpr(expr : EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr) : TimedExpr
+    {
+      | EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr.FullTimeExpr as e =>
+          try
+          {
+            def time = TimeSpan.Parse(e.GetText());
+            TimedExpr.Expr(TimedExprType.After(time))
+          }
+          catch
+          {
+            | FormatException   => TimedExpr.Error(TimedErrorType.InvalidValue())
+            | OverflowException => TimedExpr.Error(TimedErrorType.Overflow())
+          }
+
+      | EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr(e) => 
+
+          def get_errors((n, x), (a1, a2))
+          {
+            match (x)
+            {
+              | UnitDecl.Error as x => (x :: a1, a2)
+              | UnitDecl.Units(u)   => (a1, (n, u) :: a2)
+              | _                   => (a1, a2)
+            }
+          }
+          
+          def (err, e) = e.FoldBack(([], []), get_errors);
+          if (!err.IsEmpty()) TimedExpr.Error(TimedErrorType.UnknownUnit(err.Head.GetText().Trim())) else
+          match (check_timed_err(e))
+          {
+            | null => 
+
+            def ret(t)
+            {
+              TimedExpr.Expr(TimedExprType.After(t))
+            }
+
+            def get_float(v)
+            {
+              def num = GetFloatNum(v);
+              if (double.IsNaN(num)) None() else Some(num : object)
+            }
+
+            def get_long(v)
+            {
+              GetLongNum(v).Map(_ : object)
+            }
+
+            def lst = [
+                      (_ is Units.Days,    x => TimeSpan.FromDays(x :> double),         get_float),
+                      (_ is Units.Hours,   x => TimeSpan.FromHours(x :> double),        get_float),
+                      (_ is Units.Minutes, x => TimeSpan.FromMinutes(x :> double),      get_float),
+                      (_ is Units.Seconds, x => TimeSpan.FromSeconds(x :> double),      get_float),
+                      (_ is Units.MSec,    x => TimeSpan.FromMilliseconds(x :> double), get_float),
+                      (_ is Units.Ticks,   x : object => TimeSpan.FromTicks(x :> long), get_long),
+                      ];
+
+            def get_value(t, u)
+            {
+              def (_, res, get_num) = lst.First((e, _, _) => e(u));
+              def num = get_num(t);
+              if (num is Some(n)) 
+              {
+                ret(res(n))
+              } else TimedExpr.Error(TimedErrorType.InvalidValue());
+
+            }
+
+            def accumulate(x : TimedExpr, y : TimedExpr)
+            {
+              | (TimedExpr.Expr(TimedExprType.After(a)), TimedExpr.Expr(TimedExprType.After(b))) => ret(a + b)
+              | _                                                                                => TimedExpr.Error(TimedErrorType.InvalidValue())
+            }
+
+            def vals = e.Map(get_value);
+            match (vals.Find(_ is TimedExpr.Error))
+            {
+              | Some(e) => e
+              | _       => vals.Reduce(accumulate)
+            }
+            | e    => TimedExpr.Error(TimedErrorType.DuplicateUnit(e))
+          }
+      | _ => TimedExpr.Error(TimedErrorType.InvalidValue())
+    }
+
+    GetEvents(evt : EventsAst.Events) : list[TransitionEvent]
+    {
+      | EventsAst.Events.Ast((e, _)) => 
+
+        def get_event(x, a)
+        {
+          def pos = x.Location.StartPos;
+          match (x)
+          {
+            | EventsAst.SingleEvent.SimpleEvent(BaseAst.EventIdentifier.Ast as n, p) => 
+                def name = n.GetText();
+                def parms = match (p)
+                {
+                  | Some(EventsAst.SingleEvent.SimpleEvent.Nested.Parms.Ast(_, (p, _), _)) => GetIdentifierText(p)
+                  | _                                                                      => []
+                }
+                TransitionEvent.Normal(x.Location.StartPos, name, parms) :: a
+            | EventsAst.SingleEvent.Completion => TransitionEvent.Completion(pos) :: a
+            | EventsAst.SingleEvent.TimedEvent(_, _, e, _) => 
+              def expr = GetTimeExpr(e);
+              TransitionEvent.Timed(pos, expr) :: a
+            | _ => a
+          }
+
+        }
+
+        e.FoldBack([], get_event)
+      | _ => []
+    }
+
+  }
+}
