@@ -41,8 +41,9 @@ namespace Nemerle.Statechart
           {
             | SimpleActionList(ActionsAst.SimpleActionList.Ast(ActionsAst.SimpleAction.Empty)) => Actions(a.Location.StartPos, [])
             | SimpleActionList(ActionsAst.SimpleActionList.Ast(ActionsAst.SimpleAction.List((a, _)))) => 
-                def act = a.FoldBack([], ((x, _), a) => if (x is Identifier.Ast as x) FsmAction.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
+                def act = a.FoldBack([], ((x, _), a) => if (x is AnyIdentifier.Ast as x) FsmAction.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
                 Actions(lst.Location.StartPos, act)
+                
             | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.SimpleExpr(e))
             | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.LongExprAction(ActionsAst.LongExprAction.Ast( _, e, _)))
             | Expr(ActionsAst.ActionList.Action.Expr.Nested.Expr.BraceExpr(ActionsAst.BraceExpr.Ast(_, e, _))) => 
@@ -61,7 +62,7 @@ namespace Nemerle.Statechart
           {
             | SimpleActionList(ActionsAst.SimpleActionList.Ast(ActionsAst.SimpleAction.Empty), _) => Actions(a.Location.StartPos, [])
             | SimpleActionList(ActionsAst.SimpleActionList.Ast(ActionsAst.SimpleAction.List((a, _))), _) => 
-                def act = a.FoldBack([], ((x, _), a) => if (x is Identifier.Ast as x) FsmAction.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
+                def act = a.FoldBack([], ((x, _), a) => if (x is AnyIdentifier.Ast as x) FsmAction.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
                 Actions(lst.Location.StartPos, act)
             | Expr(ActionsAst.ActList.Action.Expr.Nested.Expr.SimpleExpr(ActionsAst.SimpleExpr.Ast(e), _))
             | Expr(ActionsAst.ActList.Action.Expr.Nested.Expr.LongExprAction(ActionsAst.LongExprAction.Ast( _, e, _)))
@@ -83,6 +84,7 @@ namespace Nemerle.Statechart
             def nodes = GetNodes(b);
             def name = n.GetText();
             PseudoStateModelNode.Junction(p.Location.StartPos, name, nodes, JunctionType.Choice)
+            
         | PseudoState.EntryPoint(PseudoStatesAst.EntryPoint.Ast(n, TransitionsAst.EntryPointTransition.Ast as tr)) => 
             match (GetEntryPointTran(tr))
             {
@@ -240,12 +242,12 @@ namespace Nemerle.Statechart
       mutable states = [];
       mutable tran   = [];
       mutable err    = [];
-      def decls = decls.FoldLeft([], (x, a) => if (x is MainAst.StateDecl.Sequence(h, t)) a + (h :: t) else a);
+      def decls = decls.FoldBack([], (x, a) => if (x is MainAst.StateDecl.Sequence(h, t)) (h :: t) + a else x :: a);
       foreach (d in decls)
         {
           | StateDecl.DeferrableEvent(EventsAst.DeferrableEvent.Deferrable(Events = EventsAst.SimpleEventList.Ast((e, _))))
           | StateDecl.DeferrableEvent(EventsAst.DeferrableEvent.Deferred(Events = EventsAst.SimpleEventList.Ast((e, _)))) =>
-              def lst = e.FoldBack([], (x, a) => if (x is Identifier.Ast as x) TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
+              def lst = e.FoldBack([], (x, a) => if (x is EventIdentifier.Ast as x) TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
               defer ::= StateNode.Defer(d.Location.StartPos, lst)
           | StateDecl.DoActivity(ActionsAst.DoActivity.Ast(ActList = a))                   => 
               def act = GetActions(a);
@@ -302,7 +304,7 @@ namespace Nemerle.Statechart
              }
           | _ => ()
         }
-      StateNode.State(pos, name, parent, attr, entry, exit, tran, do_act, defer, states, pseudo, type, err)
+      StateNode.State(pos, name, parent, attr, entry.Rev(), exit.Rev(), tran.Rev(), do_act.Rev(), defer.Rev(), states.Rev(), pseudo.Rev(), type, err.Rev())
     }
 
     CreateRegion(reg : RegionsAst.Regions) : option[StateNode.State]
