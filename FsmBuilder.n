@@ -69,19 +69,6 @@ namespace Nemerle.Statechart
       }
     }
 
-    start_pos : int
-    {
-      [Memoize]
-      get
-      {
-        if (body != null)
-        {
-          def ntext = File.ReadAllText(loc.File);
-          ntext.IndexOf(body)
-        } else -1
-      }
-    }
-    
     [Memoized]
     public body : string
     {
@@ -111,20 +98,11 @@ namespace Nemerle.Statechart
       }
     }
     
-    file_snapshot : Nitra.SourceSnapshot
+    public ConvLocation(location : Nitra.Location) : Location
     {
-      [Memoize]
-      get
-      {
-        def text = File.ReadAllText(loc.File);
-        Nitra.SourceSnapshot(text, loc.FileIndex, loc.File)
-      }
-    }
-    
-    public ConvLocation(loc : Nitra.Location) : Location
-    {
-      def nloc = Nitra.Location(file_snapshot, loc.StartPos + start_pos, loc.EndPos + start_pos);
-      Nitra.Util.ToNemerleLocation(nloc);
+      def nloc = Nitra.Util.ToNemerleLocation(location);
+      def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line - 1 + loc.Line, nloc.Column) else Location(nloc, nloc.Line, nloc.Column + loc.Column);
+      nloc
     }
     
     Parse() : void
@@ -142,9 +120,7 @@ namespace Nemerle.Statechart
                {
                  foreach (err in err)
                  {
-                   def nloc = err.Location;
-                   def nloc = Nitra.Location(file_snapshot, nloc.StartPos + start_pos, nloc.EndPos + start_pos);
-                   def nloc = Nitra.Util.ToNemerleLocation(nloc);
+                   def nloc = ConvLocation(err.Location);
                    def line = nloc.Line;
                    def col  = nloc.Column;
                    Message.Error(nloc, $"Error in input at $(line):$(col): $(err.Message)");
