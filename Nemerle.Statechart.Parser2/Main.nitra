@@ -1,13 +1,19 @@
-﻿namespace Nemerle.Statechart.Grammar
+﻿language NemerleStatechart
+{
+  syntax module Nemerle.Statechart.Grammar.Main start rule StateMachine;
+  //syntax module Nemerle.Statechart.Grammar.Actions;
+  //syntax module Nemerle.Statechart.Grammar.Base;
+  //syntax module Nemerle.Statechart.Grammar.Events;
+  //syntax module Nemerle.Statechart.Grammar.PseudoStates;
+  //syntax module Nemerle.Statechart.Grammar.Regions;
+  //syntax module Nemerle.Statechart.Grammar.Targets;
+  //syntax module Nemerle.Statechart.Grammar.Transitions;
+}
+
+namespace Nemerle.Statechart.Grammar
 {
   syntax module Main
   {
-    using PrettyPrint;
-    using Outline;
-    using TokenNames;
-    using StandardSpanClasses;
-    using Whitespaces;
-	  
     using Nitra.Core;
     using PseudoStates;
     using Transitions;
@@ -16,46 +22,45 @@
     using Events;
     using Base;
 
-	  syntax Parent = ':' ParentIdentifier
-	  {
-	    syntax ParentIdentifier 
-	    {
-		    | RegionReference 
-		    | FullyQualified
-	    }
-	  }
-
-	  syntax StateDecl
-	  {
-	    | State = Attributes? "state" sm AnyIdentifier Parent? '{' StateDecl* '}'
-      | Entry
-      | Exit
-      | SubMachine = Attributes? "submachine" AnyIdentifier TypeDecl? Parent? '{' StateDecl* '}'
+      syntax Parent = ':' ParentIdentifier
       {
-        syntax TypeDecl = '[' Type ']'
+        syntax ParentIdentifier 
         {
-          syntax Type = AnyIdentifier;
+            | RegionReference 
+            | FullyQualified
         }
       }
-      | DoActivity
-      | DeferrableEvent
-      | PseudoState
-      | Transition
-		precedence region:
 
-      | RegionSequence = StateDecl ^ region (RegionDelimToken StateDecl ^ region)+
-      | Regions
-      | Sequence =  StateDecl+// ^ 30 (StateDecl ^ 30)+
-	  }
+      syntax StateDecl
+      {
+        | State = Attributes? "state" sm AnyIdentifier Parent? '{' StateDecl* '}'
+        | Entry
+        | Exit
+        | SubMachine = Attributes? "submachine" AnyIdentifier TypeDecl? Parent? '{' StateDecl* '}'
+        {
+          syntax TypeDecl = '[' Type ']'
+          {
+            syntax Type = AnyIdentifier;
+          }
+        }
+        | DoActivity
+        | DeferrableEvent
+        | PseudoState
+        | Transition
+      precedence region:
+
+        | RegionSequence = StateDecl (RegionDelimToken StateDecl)+
+        | Regions
+        | Sequence =  StateDecl StateDecl+
+      }
     
-	  [StartRule, ExplicitSpaces]
-	  syntax StateMachine = s StateMachineDecl* !Any
+    syntax StateMachine = StateMachineDecl*
     {
       regex SyntaxDelim = ':' | '=';
 
       syntax StateMachineDecl
-	    {
-	      | Flags = "flags" SyntaxDelim? (AnyIdentifier; FlagsDelim)+ ';'
+      {
+        | Flags = "flags" SyntaxDelim? (AnyIdentifier; FlagsDelim)+ ';'
         {
           token FlagsDelim
           {
@@ -63,22 +68,22 @@
             | Spaces = s
           }
         }
-	      | Name  = "name" SyntaxDelim? NameIdentifier ';'
+        | Name  = "name" SyntaxDelim? NameIdentifier ';'
         {
           token NameIdentifier 
-	        {
-		        | AnyIdentifier 
-		        | CommaIdentifier = "\"" Body "\""
+            {
+                | AnyIdentifier 
+                | CommaIdentifier = "\"" Body "\""
             {
                token Body = (!'\"' Any)+;
             }
-	        }
+            }
         }
         | Using = "using" FullyQualifiedAny ';'
         | EventClass
         | EventDecl
-	      | StateDecl
-	    }
+        | StateDecl
+        }
     }
 
   }

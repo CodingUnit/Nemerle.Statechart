@@ -81,8 +81,84 @@ namespace Nemerle.Statechart
       loop()
     }
 
+    
+    enum PostOrderState 
+    {
+      | TraverseStart
+      | Current
+      | End
+    } 
+      
+    class TreePostOrderEnumerator[T] : IEnumerator[T]
+    {
+      tree : T;
+      mutable current : Node;
+      mutable state : PostOrderState;
+      child_func : T -> IEnumerable[T];
+      
+      public this(tree : T, func : T -> IEnumerable[T])
+      {
+        this.tree = tree;
+        //current = Node(tree, Enumerable.Empty().GetEnumerator(), null);
+        child_func = func;
+        state = PostOrderState.TraverseStart;
+      }
+      
+      [Record]
+      class Node
+      {
+        public Elem : T;
+        public Iter : IEnumerator[T];
+        public Up   : Node;
+      }
+      
+     
+      
+      public Dispose() : void{  }
+      
+      public MoveNext() : bool
+      { 
+        match (state)
+        {
+          | TraverseStart => 
+            
+            def loop(cur)
+            {
+              def childs = child_func(cur.Elem).GetEnumerator();
+              if (childs.MoveNext())
+              {
+                loop(Node(childs.Current, childs, cur))
+              } else
+              {
+                current = cur;
+                state = PostOrderState.Current;
+                true
+              }
+            }
+            
+            loop(Node(tree, Enumerable.Empty().GetEnumerator(), null))
+        }
+        /*
+        traverse_start: have_childs       => traverse_start(childs[0])
+        traverse_start: else, cur         => current
+        current: have_neighbour, cur.next => traverse_start(cur.next)
+        current: have_upper, cur.up       => current(cur.up)
+        current: else                     => end
+        */
+      }
+      
+      public Reset() : void{ throw System.NotImplementedException() }
+      
+      public Current : T
+      {
+        get{ current.Elem }
+      }
+      
+    }
+    
     public GetPostOrderEnumerable[T](tree : T, childs : T -> IEnumerable[T]) : IEnumerable[T]
     {
+        
       def child = SCG.Stack();
       def parent = SCG.Stack();
 
