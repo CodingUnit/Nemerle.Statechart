@@ -11,13 +11,162 @@ using SCG = System.Collections.Generic;
 
 namespace Nemerle.Statechart
 {
+  using ListUtils;
+  
   public enum TreeTraversalType
   {
     | PreOrder
     | PostOrder
     | BreadthFirst
   }
-  
+
+    [Record]
+    public class TreePostOrderEnumerable[T] : IEnumerable[T]
+    {
+      tree : T;            
+      child_func : T -> IEnumerable[T];
+      
+      public GetEnumerator() : System.Collections.Generic.IEnumerator[T] { TreePostOrderEnumerator(tree, child_func) }
+        
+      public static Test() : bool
+      {
+        def map = Hashtable();
+        map['a'] = ['b', 'c', 'j'];
+        map['b'] = ['d', 'e'];
+        map['h'] = ['i'];
+        map['f'] = ['h', 'g'];
+        map['c'] = ['f'];
+        map['j'] = ['k'];
+        
+        
+        def it = TreePostOrderEnumerable('a', x => if (map.ContainsKey(x)) map[x] else Enumerable.Empty());
+        def res = it.NToList();
+        ListUtils.EqualsValue(res, ['d', 'e', 'b', 'i', 'h', 'g', 'f', 'c', 'k', 'j', 'a']);
+      }
+    }
+
+    enum PostOrderState 
+    {
+      | TraverseStart
+      | Current
+      | End
+    } 
+    
+    class TreePostOrderEnumerator[T] : IEnumerator[T]
+    {
+      tree : T;            
+      child_func : T -> IEnumerable[T];
+      
+      mutable current : Node;
+      mutable state : PostOrderState;
+      
+      
+      public this(tree : T, func : T -> IEnumerable[T])
+      {
+        this.tree = tree;
+        child_func = func;
+        state = PostOrderState.TraverseStart;
+      }
+      
+      Top : Node
+      {
+        [Memoize]
+        get
+        {
+          Node(tree, Enumerable.Empty().GetEnumerator(), null, child_func)
+        }
+      }
+      
+      [Record]
+      class Node
+      {
+        public Elem : T; // element
+        public Iter : IEnumerator[T]; // neighbours iterator
+        public Up   : Node; // parent
+        child_func : T -> IEnumerable[T]; // func for get childs of this node
+        
+        public Child : Node
+        {
+          [Memoize] // memoize result for future to not recalc
+          get
+          {
+            def childs = child_func(Elem).GetEnumerator();
+            if (childs.MoveNext()) // if move next have childs
+            {
+              Node(childs.Current, childs, this, child_func) // create node with it as parent and its neighbours
+            } else
+            {
+              null // return null
+            }
+          }
+        }
+        
+        public Neighbour : Node
+        {
+          [Memoize]
+          get
+          {
+            if (Iter.MoveNext()) // get next elem from iterator
+            {
+              Node(Iter.Current, Iter, Up, child_func) // create neigbour node with current, iterator and parent
+            } else null // else return null
+          }
+        }
+      }
+      
+     
+      
+      public Dispose() : void{  }
+      
+      public MoveNext() : bool
+      { 
+        def traverse_below(cur)
+        {
+          if (cur.Child != null)
+            traverse_below(cur.Child) 
+          else cur;
+        }
+            
+        match (state)
+        {
+          | TraverseStart => current = traverse_below(Top);
+                             state = PostOrderState.Current;
+                             true
+          | Current       => match (current.Neighbour)
+                             {
+                               | null => match (current.Up)
+                                         {
+                                           | null => state = PostOrderState.End;
+                                                     false
+                                           | node => current = node;
+                                                     true
+                                         }
+                               | node => current = traverse_below(node);
+                                         true
+                             }
+          | End           => false
+             
+        }
+        /*
+        traverse_start: have_childs       => traverse_start(childs[0])
+        traverse_start: else, cur         => current
+        current: have_neighbour           => traverse_start(cur.next)
+        current: have_upper, cur.up       => current(cur.up)
+        current: else                     => end
+        */
+      }
+      
+      
+      
+      public Reset() : void{ state = PostOrderState.TraverseStart }
+      
+      public Current : T
+      {
+        get{ current.Elem }
+      }
+      
+    }
+    
   public interface IGeneralTree[T]
   {
     Current : T {get;}
@@ -82,96 +231,26 @@ namespace Nemerle.Statechart
     }
 
     
-    enum PostOrderState 
-    {
-      | TraverseStart
-      | Current
-      | End
-    } 
       
-    class TreePostOrderEnumerator[T] : IEnumerator[T]
-    {
-      tree : T;
-      mutable current : Node;
-      mutable state : PostOrderState;
-      child_func : T -> IEnumerable[T];
-      
-      public this(tree : T, func : T -> IEnumerable[T])
-      {
-        this.tree = tree;
-        //current = Node(tree, Enumerable.Empty().GetEnumerator(), null);
-        child_func = func;
-        state = PostOrderState.TraverseStart;
-      }
-      
-      [Record]
-      class Node
-      {
-        public Elem : T;
-        public Iter : IEnumerator[T];
-        public Up   : Node;
-      }
-      
-     
-      
-      public Dispose() : void{  }
-      
-      public MoveNext() : bool
-      { 
-        match (state)
-        {
-          | TraverseStart => 
-            
-            def loop(cur)
-            {
-              def childs = child_func(cur.Elem).GetEnumerator();
-              if (childs.MoveNext())
-              {
-                loop(Node(childs.Current, childs, cur))
-              } else
-              {
-                current = cur;
-                state = PostOrderState.Current;
-                true
-              }
-            }
-            
-            loop(Node(tree, Enumerable.Empty().GetEnumerator(), null))
-        }
-        /*
-        traverse_start: have_childs       => traverse_start(childs[0])
-        traverse_start: else, cur         => current
-        current: have_neighbour, cur.next => traverse_start(cur.next)
-        current: have_upper, cur.up       => current(cur.up)
-        current: else                     => end
-        */
-      }
-      
-      public Reset() : void{ throw System.NotImplementedException() }
-      
-      public Current : T
-      {
-        get{ current.Elem }
-      }
-      
-    }
+   
     
     public GetPostOrderEnumerable[T](tree : T, childs : T -> IEnumerable[T]) : IEnumerable[T]
     {
-        
-      def child = SCG.Stack();
-      def parent = SCG.Stack();
+//       assert2(false);
+       TreePostOrderEnumerable(tree, childs)
+      //def child = SCG.Stack();
+      //def parent = SCG.Stack();
 
-      child.Push(tree);
+      //child.Push(tree);
 
-      while (child.Count != 0)
-      {
-        def curr = child.Pop();
-        parent.Push(curr);
-        def childs = childs(curr);
-        foreach (s in childs) child.Push(s);
-      }
-      parent
+      //while (child.Count != 0)
+      //{
+      //  def curr = child.Pop();
+      //  parent.Push(curr);
+      //  def childs = childs(curr);
+      //  foreach (s in childs) child.Push(s);
+      //}
+      //parent
     }
 
     public GetBreadthFirstEnumerable[T](tree : T, childs : T -> IEnumerable[T]) : IEnumerable[T]
@@ -225,14 +304,16 @@ namespace Nemerle.Statechart
 
       def fold_func(x, chacc)
       {
-        def len = x.ChildNodes.Count();
-        def (child, lst) = chacc.PopRev(len);
-        def acc = folder(x.Current, child);
-        deque.Add(acc);
-        acc :: lst
+        //chacc.
+        //def len = x.ChildNodes.Count();
+        //def (child, lst) = chacc.PopRev(len);
+        //def acc = folder(x.Current, child);
+        //deque.Add(acc);
+        //acc :: lst
       }
 
-      tree.GetPostOrderIter().FoldLeft([], fold_func).Head
+      fold_func(tree.Current, tree.ChildNodes)
+      //tree.GetPostOrderIter().FoldLeft([], fold_func).Head
     }
   }
 }
