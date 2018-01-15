@@ -160,10 +160,7 @@ namespace Nemerle.Statechart
       
       public Reset() : void{ state = PostOrderState.TraverseStart }
       
-      public Current : T
-      {
-        get{ current.Elem }
-      }
+      public Current : T { get{ current.Elem } }
       
     }
     
@@ -274,12 +271,26 @@ namespace Nemerle.Statechart
     
     public Fold[T, TAcc](node : T, init : TAcc, childs : T -> IEnumerable[T], folder : T * TAcc -> TAcc) : TAcc
     {
-      def fold(n, acc)
-      {
-        folder(n, acc)// :: tail
-      }
+      //def fold(n, acc)
+      //{
+      //  folder(n, acc)// :: tail
+      //}
 
-      GetPostOrderEnumerable(node, childs).FoldLeft(init, fold)
+      //GetPostOrderEnumerable(node, childs).FoldLeft(init, fold)
+      
+      def loop(n, acc)
+      {
+        def acc = childs(node).Fold(acc, loop);
+        folder(n, acc)
+      }
+      //def loop(n, acc)
+      //{
+      //  def (chacc, tail) = acc.PopRev(childs(n).Count());
+      //  folder(n, chacc) :: tail;
+      //}
+      
+      //GetPostOrderEnumerable(node, childs).FoldLeft([init], loop).Head
+      loop(node, init)
     }
     
     public FoldTree[T, TAcc](this node : IGeneralTree[T], init : TAcc, folder : T * IEnumerable[TAcc] -> TAcc) : TAcc
@@ -291,19 +302,26 @@ namespace Nemerle.Statechart
     {
       def loop(n, acc)
       {
-        def (chacc, tail) = acc.PopRev(childs(n).Count());
-        folder(n, chacc) :: tail;
+        def acc = childs(node).Select(x => loop(x, acc));
+        folder(n, acc)
       }
+      //def loop(n, acc)
+      //{
+      //  def (chacc, tail) = acc.PopRev(childs(n).Count());
+      //  folder(n, chacc) :: tail;
+      //}
       
-      GetPostOrderEnumerable(node, childs).FoldLeft([init], loop).Head
+      //GetPostOrderEnumerable(node, childs).FoldLeft([init], loop).Head
+      loop(node, init)
     }
     
     public Reduce[T](this tree : IGeneralTree[T], folder : T * IEnumerable[T] -> T) : T
     {
-      def deque = List();
 
-      def fold_func(x, chacc)
+      def fold_func(x)
       {
+        def childs = tree.ChildNodes.Select(fold_func);
+        folder(x.Current, childs)
         //chacc.
         //def len = x.ChildNodes.Count();
         //def (child, lst) = chacc.PopRev(len);
@@ -312,7 +330,7 @@ namespace Nemerle.Statechart
         //acc :: lst
       }
 
-      fold_func(tree.Current, tree.ChildNodes)
+      fold_func(tree)
       //tree.GetPostOrderIter().FoldLeft([], fold_func).Head
     }
   }
