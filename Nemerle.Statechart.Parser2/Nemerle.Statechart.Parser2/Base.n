@@ -14,14 +14,14 @@ using System.Globalization;
 namespace Nemerle.Statechart
 {
   using Nemerle.Statechart.Grammar;
-  using Nemerle.Statechart.Grammar.MainAst;
-  using Nemerle.Statechart.Grammar.BaseAst;
-  using Nemerle.Statechart.Grammar.PseudoStatesAst;
-  using Nemerle.Statechart.Grammar.TransitionsAst;
-  using Nemerle.Statechart.Grammar.TargetsAst;
-  using Nemerle.Statechart.Grammar.TransitionsAst.Guard;
-  using Nemerle.Statechart.Grammar.MainAst.StateMachine.StateMachineDecl;
-  using Nemerle.Statechart.Grammar.ActionsAst.ActionList.Action;
+  using Nemerle.Statechart.Grammar.MainParseTree;
+  using Nemerle.Statechart.Grammar.BaseParseTree;
+  using Nemerle.Statechart.Grammar.PseudoStatesParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree;
+  using Nemerle.Statechart.Grammar.TargetsParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree.Guard;
+  using Nemerle.Statechart.Grammar.MainParseTree.StateMachine.StateMachineDecl;
+  using Nemerle.Statechart.Grammar.ActionsParseTree.ActionList.Action;
 
   /// <summary>
   /// Description of Base.
@@ -32,37 +32,42 @@ namespace Nemerle.Statechart
     public env : GlobalEnv {get;set;}
 
     [Accessor]
-    mutable result : Nitra.Internal.ParseResult;
+    mutable result : Nitra.IParseResult;
     
     [Accessor]
     mutable source : SourceSnapshot;
     
-    public Parse(loc : Nemerle.Compiler.Location, text : string) : StateNode.StateMachine * list[Error]
+    public Parse(loc : Nemerle.Compiler.Location, text : string) : StateNode.StateMachine * list[ProjectSystem.CompilerMessage]
     {
-      def parserHost = ParserHost();
+      def msg = Nitra.ProjectSystem.CompilerMessageList();
+      def parserHost = ParseSession(Main.StateMachine, compilerMessages = msg);
+      
       if (string.IsNullOrWhiteSpace(text)) (null, []) else
       {
-        source = SourceSnapshot(text, loc.FileIndex, loc.File);
-        result = Main.StateMachine(source, parserHost);
-        def ast = MainAstWalkers.StateMachine(result);
-
+        source = SourceSnapshot(text, loc.File);
+        result = parserHost.Parse(source);//Main.StateMachine(source, parserHost);
+        def ast = result.CreateParseTree();
         if (result.IsSuccess) 
         {
           match (ast)
           {
-            | MainAst.StateMachine.Ast as a => def res = ConvertTree(a);
-                                               (res, [])
-            | _                             => (null, [])
+            | MainParseTree.StateMachine as a => def res = ConvertTree(a);
+                                                 (res, [])
+            | _                               => (null, [])
           }
 
-        } else (null, result.GetErrors().NToList())
+           
+        } else 
+        {
+          (null, msg.GetMessages().NToList())
+        }
         //    def (line, col) = error.Location.StartLineColumn;
         //    WriteLine($<#$line:$col: $(error.Message)#>);
       }
 
     }
 
-    GetFloatNum(ast : Nitra.Ast) : double
+    GetFloatNum(ast : Nitra.ParseTree) : double
     {
       def text = ast.GetText();
       mutable res;
@@ -76,7 +81,7 @@ namespace Nemerle.Statechart
       
     }
     
-    GetLongNum(ast : Nitra.Ast) : option[long]
+    GetLongNum(ast : Nitra.ParseTree) : option[long]
     {
       def text = ast.GetText();
       mutable res;
@@ -89,53 +94,56 @@ namespace Nemerle.Statechart
       }      
     }
     
-    GetNameIdentifier(fully : FullyQualifiedAny.Ast) : NameIdentifier
+    GetNameIdentifier(fully : FullyQualifiedAny) : NameIdentifier
     {
-      def id = fully.AnyIdentifiers[0];
+      def id = fully.AnyIdentifiersData[0];
       def pos = fully.Location.StartPos;
       match (id)
       {
-        | AnyIdentifier.Ast :: []   => def text = $<#..$(id; ".")#>;
-                                       NameIdentifier.Name(pos, text)
-        | lst                       => def lst = GetIdentifierText(lst);
-                                       def (last, lst) = lst.SplitLast();
-                                       NameIdentifier.QualifiedName(pos, last, lst)
+        | _ :: []   => def text = $<#..$(id; ".")#>;
+                       NameIdentifier.Name(pos, text)
+        | lst       => def lst = GetLocatedText(lst).NToList();
+                       def (last, lst) = lst.SplitLast();
+                       NameIdentifier.QualifiedName(pos, last, lst)
       }      
     }
     
-    GetNameIdentifier(fully : FullyQualified.Ast) : NameIdentifier
+    GetNameIdentifier(fully : FullyQualified): NameIdentifier
     {
-      def id = fully.QualifiedIdentifiers[0];
+      def id = fully.QualifiedIdentifiersData[0];
       def pos = fully.Location.StartPos;
       match (id)
       {
-        | QualifiedIdentifier.Ast :: []   => def text = $<#..$(id; ".")#>;
-                                             NameIdentifier.Name(pos, text)
-        | lst                             => def lst = GetIdentifierText(lst);
-                                             def (last, lst) = lst.SplitLast();
-                                             NameIdentifier.QualifiedName(pos, last, lst)
+        | _ :: []   => def text = $<#..$(id; ".")#>;
+                       NameIdentifier.Name(pos, text)
+        | lst       => def lst = GetLocatedText(lst).NToList();
+                       def (last, lst) = lst.SplitLast();
+                       NameIdentifier.QualifiedName(pos, last, lst)
       }
 
     }
 
-    GetIdentifierText(id : list[EventIdentifier]) : list[string]
+    GetLocatedText(id : IEnumerable[Nitra.Located]) : IEnumerable[string]
     {
-      id.FoldRight([], (x, a) => if (x is EventIdentifier.Ast) x.GetText() :: a else a);
+      //id.FoldRight([], (x, a) => if (!x.IsMissing) x.GetText() :: a else a);
+      id.Select(x => x.GetText());
     }
     
-    GetIdentifierText(id : list[QualifiedIdentifier]) : list[string]
-    {
-      id.FoldRight([], (x, a) => if (x is QualifiedIdentifier.Ast) x.GetText() :: a else a);
-    }
+    //GetIdentifierText(id : list[QualifiedIdentifier]) : list[string]
+    //{
+    //  id.Map(_.GetText());
+    //  //id.FoldRight([], (x, a) => if (x is QualifiedIdentifier.Ast) x.GetText() :: a else a);
+    //}
     
-    GetIdentifierText(id : list[AnyIdentifier]) : list[string]
-    {
-      id.FoldRight([], (x, a) => if (x is AnyIdentifier.Ast) x.GetText() :: a else a);
-    }
+    //GetIdentifierText(id : list[AnyIdentifier]) : list[string]
+    //{
+    //  id.Map(_.GetText());
+    //  //id.FoldRight([], (x, a) => if (x is AnyIdentifier.Ast) x.GetText() :: a else a);
+    //}
     
     GetIdentifierData(id : list[AnyIdentifier]) : list[int * string]
     {
-      id.FoldRight([], (x, a) => if (x is AnyIdentifier.Ast) (x.Location.StartPos, x.GetText()) :: a else a);
+      id.Map(x => (x.Location.StartPos, x.GetText()));
     }
     
     parse_expr(text : string) : PExpr
