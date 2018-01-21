@@ -11,16 +11,17 @@ using Nitra;
 namespace Nemerle.Statechart
 {
   using Nemerle.Statechart.Grammar;
-  using Nemerle.Statechart.Grammar.MainAst;
-  using Nemerle.Statechart.Grammar.BaseAst;
-  using Nemerle.Statechart.Grammar.PseudoStatesAst;
-  using Nemerle.Statechart.Grammar.TransitionsAst;
-  using Nemerle.Statechart.Grammar.TargetsAst;
-  using Nemerle.Statechart.Grammar.TransitionsAst.Guard;
-  using Nemerle.Statechart.Grammar.MainAst.StateMachine.StateMachineDecl;
-  using Nemerle.Statechart.Grammar.ActionsAst.ActionList.Action;
-  using Nemerle.Statechart.Grammar.TransitionsAst.Transition.RelocateTransition.Nested.RelocateTranBody;
-  using Nemerle.Statechart.Grammar.EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr.Nested;
+  using Nemerle.Statechart.Grammar.MainParseTree;
+  using Nemerle.Statechart.Grammar.BaseParseTree;
+  using Nemerle.Statechart.Grammar.PseudoStatesParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree;
+  using Nemerle.Statechart.Grammar.TargetsParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree.Guard;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree.Guard.Nested;
+  using Nemerle.Statechart.Grammar.MainParseTree.StateMachine.StateMachineDecl;
+  using Nemerle.Statechart.Grammar.ActionsParseTree.ActionList.Action;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree.Transition.RelocateTransition.Nested.RelocateTranBody;
+  using Nemerle.Statechart.Grammar.EventsParseTree.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr.Nested;
 
   /// <summary>
   /// Description of Transitions.
@@ -34,16 +35,16 @@ namespace Nemerle.Statechart
       GuardNode.Expr(pos, expr)
     }
 
-    GetGuard(g : TransitionsAst.Guard) : GuardNode
+    GetGuard(g : TransitionsParseTree.Guard) : GuardNode
     {
       def pos = g.Location.StartPos;
       match (g)
       {
-        | TransitionsAst.Guard.Ast(_, g, _) => 
+        | TransitionsParseTree.Guard(GuardDecl = g) => 
             match (g)
             {
-              | GuardDecl.Else             => GuardNode.Else(pos)
-              | GuardDecl.LongGuardExpr(TransitionsAst.LongGuardExpr.Ast(_, e, _))
+              | GuardDecl.Else                                                       => GuardNode.Else(pos)
+              | GuardDecl.LongGuardExpr(LongGuardExpr = TransitionsParseTree.LongGuardExpr(Expr = e))
               | GuardDecl.SimpleExpr as e => 
                     def text = e.GetText();
                     parse_guard_expr(pos, text)
@@ -82,54 +83,50 @@ namespace Nemerle.Statechart
 
     }
 
-    GetJunctionTarget(tar : TargetsAst.JunctionTarget.Ast, type : JunctionType) : option[TargetType]
+    GetJunctionTarget(tar : TargetsParseTree.JunctionTarget, type : JunctionType) : option[TargetType]
     {
-      match (tar.JunctionBody)
-      {
-        | PseudoStatesAst.JunctionBody.Ast as b => def nodes = GetNodes(b);
-                                                  def pos = tar.Location.StartPos;
-                                                  Some(TargetType.PseudoState(pos, PseudoStateModelNode.Junction(pos, null, nodes, type)))
-        | _ => None()
-      }
-
+      def nodes = GetNodes(tar.JunctionBody);
+      def pos = tar.Location.StartPos;
+      Some(TargetType.PseudoState(pos, PseudoStateModelNode.Junction(pos, null, nodes, type)))
+      //  | _ => None()
     }
 
-    GetPseudoTarget(p : TargetsAst.PseudoTarget) : option[TargetType]
+    GetPseudoTarget(p : TargetsParseTree.PseudoTarget) : option[TargetType]
     {
-      | TargetsAst.PseudoTarget.ExitPoint(PseudoStatesAst.ExitPointDecl.Ast(_, BaseAst.AnyIdentifier.Ast as id)) =>
+      | TargetsParseTree.PseudoTarget.ExitPoint(ExitPointDecl = PseudoStatesParseTree.ExitPointDecl(AnyIdentifier = id)) =>
           def name = id.GetText();
           def pos = p.Location.StartPos;
           Some(TargetType.PseudoState(pos, PseudoStateModelNode.ExitPoint(pos, name, None())))
-      | TargetsAst.PseudoTarget.History(h) =>
+      | TargetsParseTree.PseudoTarget.History(History = h) =>
         match (h)
         {
-          | TargetsAst.PseudoTarget.History.Nested.History.History with type = HistoryType.None
-          | TargetsAst.PseudoTarget.History.Nested.History.Deep with type = HistoryType.Deep
-          | TargetsAst.PseudoTarget.History.Nested.History.Shallow with type = HistoryType.Shallow => def pos = p.Location.StartPos;
-                                                                                                      Some(TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, type, None())))
+          | TargetsParseTree.PseudoTarget.History.Nested.History with type = HistoryType.None
+          | TargetsParseTree.PseudoTarget.History.Nested.History.Deep with type = HistoryType.Deep
+          | TargetsParseTree.PseudoTarget.History.Nested.History.Shallow with type = HistoryType.Shallow => def pos = p.Location.StartPos;
+                                                                                                            Some(TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, type, None())))
           | _ => None()
         }
       
-      | TargetsAst.PseudoTarget.Terminate => def pos = p.Location.StartPos;
-                                             Some(TargetType.PseudoState(pos, PseudoStateModelNode.Terminate(-1)))
+      | TargetsParseTree.PseudoTarget.Terminate => def pos = p.Location.StartPos;
+                                                   Some(TargetType.PseudoState(pos, PseudoStateModelNode.Terminate(-1)))
       | _ => None()
     }
     
-    GetSimpleTarget(t : TargetsAst.SimpleTarget) : option[TargetType]
+    GetSimpleTarget(t : TargetsParseTree.SimpleTarget) : option[TargetType]
     {
       def pos = t.Location.StartPos;
       match (t)
       {
-        | TargetsAst.SimpleTarget.QualifiedTarget(t) => //TargetsAst.QualifiedTarget.Qualified(b1, BaseAst.FullyQualified.Ast as f, b2)
+        | TargetsParseTree.SimpleTarget.QualifiedTarget(QualifiedTarget = t) => //TargetsAst.QualifiedTarget.Qualified(b1, BaseAst.FullyQualified.Ast as f, b2)
             match (t)
             {
-              | TargetsAst.SimpleTarget.QualifiedTarget.Nested.QualifiedTarget.Qualified(BaseAst.FullyQualified.Ast as f) =>
+              | TargetsParseTree.SimpleTarget.QualifiedTarget.Nested.QualifiedTarget.Qualified(FullyQualified = f) =>
                   def name = GetNameIdentifier(f);
                   Some(GetQualifiedTarget(name))
-              | TargetsAst.SimpleTarget.QualifiedTarget.Nested.QualifiedTarget.QualifiedState(_, BaseAst.FullyQualifiedAny.Ast as f, _) => 
+              | TargetsParseTree.SimpleTarget.QualifiedTarget.Nested.QualifiedTarget.QualifiedState(FullyQualifiedAny = f) => 
                   def name = GetNameIdentifier(f);
                   Some(GetQualifiedTarget(name))
-              | TargetsAst.SimpleTarget.QualifiedTarget.Nested.QualifiedTarget.QualifiedPseudo(BaseAst.FullyQualified.Ast as f, _, p) => 
+              | TargetsParseTree.SimpleTarget.QualifiedTarget.Nested.QualifiedTarget.QualifiedPseudo(FullyQualified = f, PseudoTarget = p) => 
                   match (GetPseudoTarget(p))
                   {
                     | Some(nested) => 
@@ -140,27 +137,27 @@ namespace Nemerle.Statechart
                   }
               | _ => None()
             }
-        | TargetsAst.SimpleTarget.PseudoTarget(p) => GetPseudoTarget(p)
-        | TargetsAst.SimpleTarget.Self  => Some(TargetType.Self(pos))
-        | TargetsAst.SimpleTarget.Final => Some(TargetType.Final(pos))
-        | _ => None()
+        | TargetsParseTree.SimpleTarget.PseudoTarget(PseudoTarget = p) => GetPseudoTarget(p)
+        | TargetsParseTree.SimpleTarget.Self  => Some(TargetType.Self(pos))
+        | TargetsParseTree.SimpleTarget.Final => Some(TargetType.Final(pos))
+        | _                                   => None()
       }
     }
 
-    GetTarget(t : TargetsAst.TransitionTarget) : option[TargetType]
+    GetTarget(t : TargetsParseTree.TransitionTarget) : option[TargetType]
     {
-      | TransitionTarget.Normal(t, _) => 
+      | TransitionTarget.Normal(NormalTarget = t) => 
           def pos = t.Location.StartPos;
           match (t)
           {
-            | TargetsAst.NormalTarget.SimpleTarget(t) => GetSimpleTarget(t)
-            | TargetsAst.NormalTarget.ForkTarget(TargetsAst.NormalTarget.ForkTarget.Nested.ForkTarget.Normal(_, n, _, (t, _), _)) => 
+            | TargetsParseTree.NormalTarget.SimpleTarget(SimpleTarget = t) => GetSimpleTarget(t)
+            | TargetsParseTree.NormalTarget.ForkTarget(ForkTarget = TargetsParseTree.NormalTarget.ForkTarget.Nested.ForkTarget.Normal(FullyQualified = n, FullyQualifiedsData = (t, _))) => 
                 def lst = n :: t;
-                def lst = lst.FoldBack([], (x, a) => if (x is BaseAst.FullyQualified.Ast as x) GetNameIdentifier(x) :: a else a);
+                def lst = lst.Map(GetNameIdentifier);
                 def targets = lst.Map(get_state_qualified_target);
                 Some(TargetType.PseudoState(pos, PseudoStateModelNode.Fork(pos, targets)))
               
-            | TargetsAst.NormalTarget.ForkTarget(TargetsAst.NormalTarget.ForkTarget.Nested.ForkTarget.Alternative(BaseAst.FullyQualified.Ast as n, _, (t, _), _)) => 
+            | TargetsParseTree.NormalTarget.ForkTarget(ForkTarget = TargetsParseTree.NormalTarget.ForkTarget.Nested.ForkTarget.Alternative(FullyQualified = n, AnyIdentifiersData = (t, _))) => 
                 def tar = GetIdentifierData(t);
                 def tar = tar.Map(x => TargetType.Named(x));
                 def name = GetNameIdentifier(n);
@@ -174,13 +171,13 @@ namespace Nemerle.Statechart
                 Some(tar)
             | _ => None()
           }
-      | TransitionTarget.Junction(TransitionTarget.Junction.Nested.BracesTarget.ChoiceTarget(_, TargetsAst.JunctionTarget.Ast as a)) with type = JunctionType.Choice
-      | TransitionTarget.Junction(TransitionTarget.Junction.Nested.BracesTarget.JunctionTarget(TargetsAst.JunctionTarget.Ast as a)) with type = JunctionType.Junction => 
+      | TransitionTarget.Junction(BracesTarget = TransitionTarget.Junction.Nested.BracesTarget.ChoiceTarget(JunctionTarget = a)) with type = JunctionType.Choice
+      | TransitionTarget.Junction(BracesTarget = TransitionTarget.Junction.Nested.BracesTarget.JunctionTarget(JunctionTarget = a)) with type = JunctionType.Junction => 
           GetJunctionTarget(a, type);
       | _ => None()
     }
 
-    GetNodes(body : JunctionBody.Ast) : list[JunctionNode]
+    GetNodes(body : JunctionBody) : list[JunctionNode]
     {
       def nodes = body.JuncTranBodies;
 
@@ -189,9 +186,9 @@ namespace Nemerle.Statechart
         | Some(g) => def pos = g.Location.StartPos;
                     def g = match (g)
                     {
-                      | TransitionsAst.JunctionGuard.Else            => GuardNode.Else(pos)
-                      | TransitionsAst.JunctionGuard.LongGuardExpr(TransitionsAst.LongGuardExpr.Ast(_, e, _))
-                      | TransitionsAst.JunctionGuard.SimpleExpr as e => 
+                      | TransitionsParseTree.JunctionGuard.Else            => GuardNode.Else(pos)
+                      | TransitionsParseTree.JunctionGuard.LongGuardExpr(LongGuardExpr = TransitionsParseTree.LongGuardExpr(Expr = e))
+                      | TransitionsParseTree.JunctionGuard.SimpleExpr as e => 
                           def text = e.GetText();
                           parse_guard_expr(pos, text);
                       | _ => GuardNode.Empty()
@@ -204,7 +201,8 @@ namespace Nemerle.Statechart
       {
         match (x)
         {
-          | JunctionBody.JuncTranBody.Ast(g, act, _, t) => match (GetTarget(t))
+          | JunctionBody.Nested.JuncTranBody(JunctionGuardOptData = g, ActionListOptData = act, TransitionTarget = t) => 
+              match (GetTarget(t))
               {
                 | Some(t) => JunctionNode(x.Location.StartPos, get_guard(g), act.Map(GetActions), t) :: a
                 | _       => a
@@ -217,9 +215,9 @@ namespace Nemerle.Statechart
       nodes
     }
 
-    GetTran(ast : Nitra.Ast, evt : option[EventsAst.Events], guard : option[TransitionsAst.Guard], act : option[ActionsAst.ActionList], tar : TargetsAst.TransitionTarget, type : TransitionKind = TransitionKind.Local) : option[StateNode.Transition]
+    GetTran(ParseTree : Nitra.ParseTree, evt : option[EventsParseTree.Events], guard : option[TransitionsParseTree.Guard], act : option[ActionsParseTree.ActionList], tar : TargetsParseTree.TransitionTarget, type : TransitionKind = TransitionKind.Local) : option[StateNode.Transition]
     {
-      def pos = ast.Location.StartPos;
+      def pos = ParseTree.Location.StartPos;
       match (GetTarget(tar))
       {
         | Some(to) => def act = act.Map(GetActions);
@@ -231,9 +229,9 @@ namespace Nemerle.Statechart
       }
     }
 
-    GetEntryPointTran(tran : TransitionsAst.EntryPointTransition) : option[StateNode.Transition]
+    GetEntryPointTran(tran : TransitionsParseTree.EntryPointTransition) : option[StateNode.Transition]
     {
-      | TransitionsAst.EntryPointTransition.Ast(act, _, tar) => 
+      | TransitionsParseTree.EntryPointTransition(ActionListOptData = act, TransitionTarget = tar) => 
       
         def pos = tran.Location.StartPos;
         match (GetTarget(tar))
@@ -246,9 +244,9 @@ namespace Nemerle.Statechart
       | _ => None()
     }
 
-    GetDefaultTran(tr : TransitionsAst.DefaultTransition) : option[StateNode.Transition]
+    GetDefaultTran(tr : TransitionsParseTree.DefaultTransition) : option[StateNode.Transition]
     {
-      | TransitionsAst.DefaultTransition.Ast(a, _, t) => 
+      | TransitionsParseTree.DefaultTransition(ActionListOptData = a, SimpleTarget = t) => 
           match (GetSimpleTarget(t))
           {
             | Some(to) => 
@@ -262,15 +260,16 @@ namespace Nemerle.Statechart
       | _ => None()
     }
 
-    GetExtTran(tr : TransitionsAst.ExtTransition) : option[StateNode.Transition]
+    GetExtTran(tr : TransitionsParseTree.ExtTransition) : option[StateNode.Transition]
     {
-      | TransitionsAst.ExtTransition.Ast(e, g, a, _, t) => GetTran(tr, Some(e), g, a, t, TransitionKind.External)
-      | _                                               => None()
+      //| TransitionsParseTree.ExtTransition.ParseTree(e, g, a, _, t) => 
+      GetTran(tr, Some(tr.Events), tr.GuardOptData, tr.ActionListOptData, tr.TransitionTarget, TransitionKind.External)
+      //| _                                               => None()
     }
     
-    CreateTransition(tr : TransitionsAst.NormalTransition) : option[StateNode.Transition]
+    CreateTransition(tr : TransitionsParseTree.NormalTransition) : option[StateNode.Transition]
     {
-      | TransitionsAst.NormalTransition.InternalTransition(EventsAst.Events.Ast as e, g, a) => 
+      | TransitionsParseTree.NormalTransition.InternalTransition(Events = e, GuardOptData = g, ActList = a) => 
           match (GetEvents(e))
           {
             | []  => None()
@@ -280,37 +279,37 @@ namespace Nemerle.Statechart
                     def tran = StateNode.Transition(tr.Location.StartPos, TargetType.NoTarget(-1,), lst, guard, if (act.Empty) None() else Some(act), TargetType.NoTarget(-1), TransitionKind.Internal);
                     Some(tran)
           }
-      | TransitionsAst.NormalTransition.LocalTransition(e, g, a, _, t) => GetTran(tr, Some(e), g, a, t, TransitionKind.Local)
-      | TransitionsAst.NormalTransition.Transition(t) => GetExtTran(t)
+      | TransitionsParseTree.NormalTransition.LocalTransition(Events = e, GuardOptData = g, ActionListOptData = a, TransitionTarget = t) => GetTran(tr, Some(e), g, a, t, TransitionKind.Local)
+      | TransitionsParseTree.NormalTransition.Transition(ExtTransition = t) => GetExtTran(t)
       | _ => None()
     }
 
-    CreateRelocateTran(tr : TransitionsAst.Transition.RelocateTransition) : option[StateNode]
+    CreateRelocateTran(tr : TransitionsParseTree.Transition.RelocateTransition) : option[StateNode]
     {
-      | TransitionsAst.Transition.RelocateTransition(_, t) => 
+      | TransitionsParseTree.Transition.RelocateTransition(RelocateTranBody = t) => 
           match (t)
           {
-            | Transition.RelocateTransition.Nested.RelocateTranBody.Combined(BaseAst.FullyQualified.Ast as n, _, _, tran, _) => 
+            | Transition.RelocateTransition.Nested.RelocateTranBody.Combined(FullyQualified = n, NormalTransitionsData = tran) => 
                 def pos = tr.Location.StartPos;
                 def from = TargetType.Named(pos, n.GetText());
                 def tran = tran.Map(CreateTransition).FilterValues(x => x);
                 def tran = tran.Map(x => x.ChangeFrom(from));
                 Some(StateNode.Sequence(pos, tran))
                 
-            | Transition.RelocateTransition.Nested.RelocateTranBody.Join(t) => 
+            | Transition.RelocateTransition.Nested.RelocateTranBody.Join(JoinRelocateTran = t) => 
                 match (t)
                 {
-                  | Join.Nested.JoinRelocateTran.Main(_, (n, _), _, _, tran) => 
+                  | Join.Nested.JoinRelocateTran.Main(FullyQualifiedsData = (n, _), ExtTransition = tran) => 
                      
                      match (GetExtTran(tran))
                      {
                        | Some(tran) => def pos = tr.Location.StartPos;
-                                       def name = n.FoldBack([], (x, a) => if (x is BaseAst.FullyQualified.Ast as x) GetNameIdentifier(x) :: a else a);
+                                       def name = n.Map(GetNameIdentifier);
                                        def from = TargetType.PseudoState(pos, PseudoStateModelNode.Join(pos, null, name, tran));
                                        Some(tran.ChangeFrom(from))
                        | _          => None()
                      }
-                  | Join.Nested.JoinRelocateTran.Alt(BaseAst.FullyQualified.Ast as par, _, (n, _), _, _, tran) => 
+                  | Join.Nested.JoinRelocateTran.Alt(FullyQualified = par, AnyIdentifiersData = (n, _), ExtTransition = tran) => 
                   
                      def name = n.Map(x => x.GetText());
                      def par = GetNameIdentifier(par);
@@ -325,22 +324,22 @@ namespace Nemerle.Statechart
                   | _ => None()
                 }
                 
-            | State(BaseAst.FullyQualified.Ast as n, _, tran) => match (CreateTransition(tran))
-                                                                 {
-                                                                   | Some(tran) => def pos = tr.Location.StartPos;
-                                                                                   def name = n.GetText();
-                                                                                   def from = TargetType.Named(pos, name);
-                                                                                   Some(tran.ChangeFrom(from))
-                                                                   | _          => None()
-                                                                 }
+            | State(FullyQualified = n, NormalTransition = tran) => match (CreateTransition(tran))
+                                                                    {
+                                                                      | Some(tran) => def pos = tr.Location.StartPos;
+                                                                                      def name = n.GetText();
+                                                                                      def from = TargetType.Named(pos, name);
+                                                                                      Some(tran.ChangeFrom(from))
+                                                                      | _          => None()
+                                                                    }
                                                                  
-            | Pseudo(BaseAst.FullyQualified.Ast as n, _, tran) => match (GetEntryPointTran(tran))
-                                                                  {
-                                                                    | Some(tran) => def pos = tr.Location.StartPos;
-                                                                                    def tar = TargetType.PseudoState(pos, PseudoStateModelNode.EntryPoint(pos, n.GetText(), null));
-                                                                                    Some(tran.ChangeFrom(tar))
-                                                                    | _          => None()
-                                                                  }
+            | Pseudo(FullyQualified = n, PseudoTran = tran) => match (GetEntryPointTran(tran))
+                                                               {
+                                                                 | Some(tran) => def pos = tr.Location.StartPos;
+                                                                                 def tar = TargetType.PseudoState(pos, PseudoStateModelNode.EntryPoint(pos, n.GetText(), null));
+                                                                                 Some(tran.ChangeFrom(tar))
+                                                                 | _          => None()
+                                                               }
                                                                   
             | _                                                => None()
           }
