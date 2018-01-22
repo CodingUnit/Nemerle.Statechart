@@ -100,16 +100,16 @@ namespace Nemerle.Statechart
             }
             PseudoStateModelNode.ExitPoint(pos, name, tran)
             
-        | PseudoState.History(PseudoStatesParseTree.History.HistoryDeep(_, t))    with type = HistoryType.Deep
-        | PseudoState.History(PseudoStatesParseTree.History.HistoryShallow(_, t)) with type = HistoryType.Shallow => 
+        | PseudoState.History(History = PseudoStatesParseTree.History.HistoryDeep(HistoryEndOptData = t))    with type = HistoryType.Deep
+        | PseudoState.History(History = PseudoStatesParseTree.History.HistoryShallow(HistoryEndOptData = t)) with type = HistoryType.Shallow => 
             def tran = match (t)
                        {
-                         | Some(PseudoStatesParseTree.HistoryEnd.Tran(t, _)) => GetDefaultTran(t)
-                         | _                                           => None()
+                         | Some(PseudoStatesParseTree.HistoryEnd.Tran(DefaultTransition = t)) => GetDefaultTran(t)
+                         | _                                                                  => None()
                        }
             PseudoStateModelNode.History(pos, type, tran)
             
-        | PseudoState.History(PseudoStatesParseTree.History.HistoryLong(_, _, type, t, _)) => 
+        | PseudoState.History(History = PseudoStatesParseTree.History.HistoryLong(Type = type, DefaultTransitionOptData = t)) => 
             match (type)
             {
               | PseudoStatesParseTree.History.HistoryLong.Nested.Type.Deep    with type = HistoryType.Deep
@@ -123,12 +123,12 @@ namespace Nemerle.Statechart
               | _                                                       => null
             }
             
-        | PseudoState.Initial(_, g, a, _, t) => 
+        | PseudoState.Initial(GuardOptData = g, ActionListOptData = a, InitialTarget = t) => 
             def act = a.Map(GetActions);
             def guard = g.MapDefault(GetGuard, GuardNode.Empty(-1));
             def tar = match (t)
             {
-              | PseudoState.Initial.Nested.InitialTarget.Simple(t, _)                                       => 
+              | PseudoState.Initial.Nested.InitialTarget.Simple(SimpleTarget = t)                                       => 
                  match (GetSimpleTarget(t))
                  {
                    | Some(t) => StateNode.Transition(pos, TargetType.NoTarget(-1), [], guard, act, t, TransitionKind.Local) :: []
@@ -136,7 +136,7 @@ namespace Nemerle.Statechart
                  }
                
                
-              | PseudoState.Initial.Nested.InitialTarget.JunctionTarget(TargetsParseTree.JunctionTarget.ParseTree as t) => 
+              | PseudoState.Initial.Nested.InitialTarget.JunctionTarget(JunctionTarget = t) => 
                  match (GetJunctionTarget(t, JunctionType.Junction))
                  {
                    | Some(TargetType.PseudoState(PseudoStateModelNode.Junction as j)) => 
@@ -151,7 +151,7 @@ namespace Nemerle.Statechart
               | []  => null
               | lst => PseudoStateModelNode.Initial(pos, lst)
             }
-        | PseudoState.Join(_, BaseParseTree.AnyIdentifier.ParseTree as n, TransitionsParseTree.TransitionPart.ParseTree(g, a, _, t)) => 
+        | PseudoState.Join(AnyIdentifier = n, TransitionPart = TransitionsParseTree.TransitionPart(GuardOptData = g, ActionListOptData = a, TransitionTarget = t)) => 
            def name = n.GetText();
            match (GetTran(p, None(), g, a, t, TransitionKind.External))
            {
@@ -159,12 +159,12 @@ namespace Nemerle.Statechart
              | _       => null
            }
            
-        | PseudoState.Junction(_, n, PseudoStatesParseTree.JunctionBody.ParseTree as b) => 
+        | PseudoState.Junction(AnyIdentifier = n, JunctionBody = b) => 
            def name = n.GetText();
            def nodes = GetNodes(b);
            PseudoStateModelNode.Junction(pos, name, nodes, JunctionType.Junction)
            
-        | PseudoState.Merge(_, n, TransitionsParseTree.TransitionPart.ParseTree(g, a, _, t)) =>
+        | PseudoState.Merge(AnyIdentifier = n, TransitionPart = TransitionsParseTree.TransitionPart(GuardOptData = g, ActionListOptData = a, TransitionTarget = t)) =>
            def name = n.GetText();
            match (GetTran(p, None(), g, a, t, TransitionKind.External))
            {
@@ -181,10 +181,10 @@ namespace Nemerle.Statechart
 
     GetParent(par : MainParseTree.Parent) : option[string]
     {
-      | MainParseTree.Parent.ParseTree(_, MainParseTree.Parent.ParentIdentifier.RegionReference(RegionsParseTree.RegionReference.ParseTree as r)) =>
+      | MainParseTree.Parent(ParentIdentifier = MainParseTree.Parent.Nested.ParentIdentifier.RegionReference(RegionReference = r)) =>
           def parent = r.GetText();
           Some(parent)
-      | MainParseTree.Parent.ParseTree(_, MainParseTree.Parent.ParentIdentifier.FullyQualified(BaseParseTree.FullyQualified.ParseTree((id, _)))) => Some($<#..$(id; ".")#>)
+      | MainParseTree.Parent(ParentIdentifier = MainParseTree.Parent.Nested.ParentIdentifier.FullyQualified(FullyQualified = FullyQualified(QualifiedIdentifiersData = (id, _)))) => Some($<#..$(id; ".")#>)
       | _ => None()
     }
     
