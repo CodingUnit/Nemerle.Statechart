@@ -208,22 +208,45 @@ namespace Nemerle.Statechart
       | _ => []
     }
     
-    CreateState(st : StateDecl.State, decls : list[list[MainParseTree.StateDecl]], type : StateType) : StateNode.State
-    {
-      def regions = st.RegionSequence.StateDeclsesData[0];
-      CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, decls ?? regions, type)
-      //match (st)
-      //{
-      //  | StateDecl.State(a, _, n, p, _, d, _) as t => 
-      //}
-    }
+    //CreateState(st : StateDecl.State, decls : list[list[MainParseTree.StateDecl]], type : StateType) : StateNode.State
+    //{
+    //  if (decls != null)
+    //  {
+    //    CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, decls, type)
+    //  } else
+    //  {
+    //    def regions = st.RegionSequence.StateDeclsesData[0];
+    //    //def st_regions = regions.Map(x => CreateState(st, null, None(), None(), x, StateType.SubRegion())); // concurrent and regions
+    //    //CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, st_regions, StateType.Region())
+    //    CreateRegionFromSequence(st, regions)
+    //  }
+    //  //match (st)
+    //  //{
+    //  //  | StateDecl.State(a, _, n, p, _, d, _) as t => 
+    //  //}
+    //}
 
-    CreateState(ast : Nitra.ParseTree, name : BaseParseTree.AnyIdentifier, parent : option[MainParseTree.Parent], attr : option[BaseParseTree.Attributes], decls : list[list[StateDecl]], type : StateType, err : list[StateNode.Error] = null) : StateNode.State
+    //CreateState(ast : Nitra.ParseTree, name : BaseParseTree.AnyIdentifier, parent : option[MainParseTree.Parent], attr : option[BaseParseTree.Attributes], decls : list[StateDecl], type : StateType, err : list[StateNode.Error] = null) : StateNode.State
+    //{
+    //  def name = name.GetText();
+    //  def parent = if (parent is Some(p)) GetParent(p) else None();
+    //  def attr = attr.MapDefault(GetAttribute, []);
+    //  CreateState(ast.Location.StartPos, attr, name, decls, type, parent, err);
+    //}
+    
+    CreateState(ast : Nitra.ParseTree, name : BaseParseTree.AnyIdentifier, parent : option[MainParseTree.Parent], attr : option[BaseParseTree.Attributes], decls : RegionsParseTree.RegionSequence, type : StateType, err : list[StateNode.Error] = null) : StateNode.State
     {
       def name = name.GetText();
       def parent = if (parent is Some(p)) GetParent(p) else None();
       def attr = attr.MapDefault(GetAttribute, []);
-      CreateState(ast.Location.StartPos, attr, name, decls, type, parent, err);
+      
+      match (decls.StateDeclsesData[0])
+      {
+        | [decls] => CreateState(ast.Location.StartPos, attr, name, decls, type, parent) 
+        | r       => def regs = r.Map(x => CreateState(ast.Location.StartPos, [], null, x, StateType.SubRegion(), None()));
+                     StateNode.State(ast.Location.StartPos, name, parent, attr, [], [], [], [], [], regs, [], StateType.Region(), err);
+      }
+      //
     }
     
     CreateState(pos : int, attr : list[StateAttribute], name : string, decls : list[MainParseTree.StateDecl], type : StateType, parent : option[string], errors : list[StateNode.Error] = null) : StateNode.State
@@ -236,55 +259,48 @@ namespace Nemerle.Statechart
       mutable states = [];
       mutable tran   = [];
       mutable err    = errors ?? [];
-      def decls = decls.FoldBack([], (x, a) => if (x is MainParseTree.StateDecl.Sequence(h, t)) (h :: t) + a else x :: a);
+      //def decls = decls.FoldBack([], (x, a) => if (x is MainParseTree.StateDecl.Sequence(h, t)) (h :: t) + a else x :: a);
       foreach (d in decls)
         {
-          | StateDecl.DeferrableEvent(EventsParseTree.DeferrableEvent.Deferrable(EventsParseTree.SimpleEventList.ParseTree((e, _)), _, _, _))
-          | StateDecl.DeferrableEvent(EventsParseTree.DeferrableEvent.Deferred(_, _, EventsParseTree.SimpleEventList.ParseTree((e, _)), _)) =>
-              def lst = e.FoldBack([], (x, a) => if (x is EventIdentifier.ParseTree as x) TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []) :: a else a);
+          | StateDecl.DeferrableEvent(DeferrableEvent = EventsParseTree.DeferrableEvent.Deferrable(SimpleEventList = e))
+          | StateDecl.DeferrableEvent(DeferrableEvent = EventsParseTree.DeferrableEvent.Deferred(SimpleEventList = e)) =>
+              def lst = e.EventIdentifiersData[0].Map(x => TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []));
               defer ::= StateNode.Defer(d.Location.StartPos, lst)
-          | StateDecl.DoActivity(ActionsParseTree.DoActivity.ParseTree(ActList = a))                   => 
-              def act = GetActions(a);
+          | StateDecl.DoActivity as d => 
+              def act = GetActions(d.ActList);
               do_act ::= StateNode.DoActivity(d.Location.StartPos, act, ActivityFlag.None);
-          | StateDecl.Entry(ActionsParseTree.Entry.ParseTree(ActList = a)) => 
-              def act = GetActions(a);
+          | StateDecl.Entry as e => 
+              def act = GetActions(e.Entry.ActList);
               entry ::= StateNode.Entry(d.Location.StartPos, ActionFlags.None, act)
-          | StateDecl.Exit(ActionsParseTree.Exit.ParseTree(ActList = a)) => 
-              def act = GetActions(a);
+          | StateDecl.Exit as e => 
+              def act = GetActions(e.Exit.ActList);
               exit ::= StateNode.Exit(d.Location.StartPos, ActionFlags.None, act)
-          | StateDecl.PseudoState(p) => match (CreatePseudo(p))
+          | StateDecl.PseudoState as p => match (CreatePseudo(p.PseudoState))
                                         {
                                           | Some(p) => pseudo ::= p
                                           | _       => ()
                                         }
-          | StateDecl.Regions(r) => match (CreateRegion(r))
-                                    {
-                                      | Some(st) => states ::= st
-                                      | _        => ()
-                                    }
+          | StateDecl.Regions as r => match (CreateRegion(r.Regions))
+                                      {
+                                        | Some(st) => states ::= st
+                                        | _        => ()
+                                      }
           
-          | StateDecl.State as t => 
-              def state = if (t.StateDecls is StateDecl.RegionSequence as r :: []) 
-               {
-                 CreateRegionFromSequence(t, r); 
-               } else
-               {
-                 CreateState(t, null, StateType.State())
-               }
-              states ::= state;
+          | StateDecl.State as t => def state = CreateRegionFromSequence(t, t.RegionSequence); 
+                                    states ::= state;
               
-          | StateDecl.SubMachine(a, _, n, t, p, _, d, _) as st => 
-             def type = t.MapDefault(x => if (x is StateDecl.SubMachine.Nested.TypeDecl.ParseTree(_, t, _)) t.GetText() else null, null);
-             def state = CreateState(st, n, p, a, d, StateType.SubMachine(type, true));
+          | StateDecl.SubMachine as st => //(a, _, n, t, p, _, d, _) as st
+             def type = st.TypeDeclOptData.MapDefault(x => x.AnyIdentifier.GetText(), null);
+             def state = CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, st.RegionSequence, StateType.SubMachine(type, true));
              states ::= state;
              
-          | StateDecl.Transition(TransitionsParseTree.Transition.NormalTransition(t)) => 
-             match (CreateTransition(t))
+          | StateDecl.Transition(Transition = TransitionsParseTree.Transition.NormalTransition as t) => 
+             match (CreateTransition(t.NormalTransition))
              {
                | Some(t) => tran ::= t
                | _       => ()
              }
-          | StateDecl.Transition(TransitionsParseTree.Transition.RelocateTransition as t) => 
+          | StateDecl.Transition(Transition = TransitionsParseTree.Transition.RelocateTransition as t) => 
              match (CreateRelocateTran(t))
              {
                | Some(t) => match (t)
@@ -303,22 +319,25 @@ namespace Nemerle.Statechart
 
     CreateRegion(reg : RegionsParseTree.Regions) : option[StateNode.State]
     {
-      def get_separator_err(d)
-      {
-        def (region_sep, decls) = d.FoldBack(([], []), (x, (a1, a2)) => if (x is StateDecl.RegionSequence as x) (x :: a1, a2) else (a1, x :: a2));
-        def sep = region_sep.Map(x => StateNode.Region(x.StateDecls.Head[0].StartPos));
-        def err = sep.Map(x => StateNode.Error(x.pos, x));
-        (err, decls)
-      }
-      
+      //def get_separator_err(d)
+      //{
+      //  def (region_sep, decls) = d.FoldBack(([], []), (x, (a1, a2)) => if (x is StateDecl.RegionSequence as x) (x :: a1, a2) else (a1, x :: a2));
+      //  def sep = region_sep.Map(x => StateNode.Region(x.StateDecls.Head[0].StartPos));
+      //  def err = sep.Map(x => StateNode.Error(x.pos, x));
+      //  (err, decls)
+      //}
       match (reg)
       {
-        | RegionsParseTree.Regions.Region(RegionsParseTree.OneRegion.ParseTree(a, _, n, p, _, d, _), and_regs) =>
+        | RegionsParseTree.Regions.AmbiguousOrMissingNode => None()
+        | _ => 
             def pos = reg.Location.StartPos;
-            def (err, decls) = get_separator_err(d);
-            def state = CreateState(reg, n, p, a, decls, StateType.SubRegion());
+            //def (err, decls) = get_separator_err(d);
+            def and_regs = reg.AndSubRegionsData;
+            def parent = if (reg.ParentOptData is Some(p)) GetParent(p) else None();
+            def attr = reg.AttributesOptData.MapDefault(GetAttribute, []);
+            def state = CreateState(reg.Location.StartPos, attr, reg.AnyIdentifier.GetText(), reg.StateDeclsData, StateType.SubRegion(), parent);
             def (init, pseudo) = state.pseudo_states.Partition(x => x.node is PseudoStateModelNode.Initial);
-            def reg = StateNode.State(pos, null, null, [], [], [], [], [], [], state.sub_states, init, StateType.SubRegion(), err);
+            //def reg = StateNode.State(pos, null, null, [], [], [], [], [], [], state.sub_states, init, StateType.SubRegion(), err);
             
           
             def create_and_regions(x, (a1, a2) as a)
@@ -351,12 +370,12 @@ namespace Nemerle.Statechart
             def state = StateNode.State(pos, state.name, state.parent, state.attributes, en, ex, trans, do_act, defer, states, pseudo, StateType.Region(), err);
             Some(state)
           
-           | RegionsParseTree.Regions.Empty(RegionsParseTree.OneRegion.ParseTree(a, _, n, p, _, d, _) as t) => 
-               def (err, decls) = get_separator_err(d);
-               def state = CreateState(t, n, p, a, decls, StateType.Region(), err);
-               Some(state)
+           //| RegionsParseTree.Regions.Empty(RegionsParseTree.OneRegion.ParseTree(a, _, n, p, _, d, _) as t) => 
+           //    def (err, decls) = get_separator_err(d);
+           //    def state = CreateState(t, n, p, a, decls, StateType.Region(), err);
+           //    Some(state)
              
-           | _ => None()
+           //| _ => None()
          }
     }
     
