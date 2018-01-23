@@ -190,12 +190,12 @@ namespace Nemerle.Statechart
     
     GetAttribute(attr : BaseParseTree.Attributes) : list[StateAttribute]
     {
-      | BaseParseTree.Attributes.ParseTree(_, (a, _), _) => 
+      | BaseParseTree.Attributes(IdentifiersData = (a, _)) => 
       
         def pos = attr.Location.StartPos;
         def check_attr(x)
         {
-          if (x is BaseParseTree.Identifier.ParseTree as x) 
+          if (x is BaseParseTree.Identifier as x) 
             match (x.GetText())
             {
               | "Initial" => StateAttribute.Initial(pos)
@@ -208,15 +208,17 @@ namespace Nemerle.Statechart
       | _ => []
     }
     
-    CreateState(st : StateDecl.State, decls : list[MainParseTree.StateDecl], type : StateType) : StateNode.State
+    CreateState(st : StateDecl.State, decls : list[list[MainParseTree.StateDecl]], type : StateType) : StateNode.State
     {
-      match (st)
-      {
-        | StateDecl.State(a, _, n, p, _, d, _) as t => CreateState(t, n, p, a, decls ?? d, type)
-      }
+      def regions = st.RegionSequence.StateDeclsesData[0];
+      CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, decls ?? regions, type)
+      //match (st)
+      //{
+      //  | StateDecl.State(a, _, n, p, _, d, _) as t => 
+      //}
     }
 
-    CreateState(ast : Nitra.ParseTree, name : BaseParseTree.AnyIdentifier, parent : option[MainParseTree.Parent], attr : option[BaseParseTree.Attributes], decls : list[MainParseTree.StateDecl], type : StateType, err : list[StateNode.Error] = null) : StateNode.State
+    CreateState(ast : Nitra.ParseTree, name : BaseParseTree.AnyIdentifier, parent : option[MainParseTree.Parent], attr : option[BaseParseTree.Attributes], decls : list[list[StateDecl]], type : StateType, err : list[StateNode.Error] = null) : StateNode.State
     {
       def name = name.GetText();
       def parent = if (parent is Some(p)) GetParent(p) else None();
