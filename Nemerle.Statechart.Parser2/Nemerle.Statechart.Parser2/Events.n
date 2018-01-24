@@ -11,14 +11,14 @@ namespace Nemerle.Statechart
 {
 
   using Nemerle.Statechart.Grammar;
-  using Nemerle.Statechart.Grammar.MainAst;
-  using Nemerle.Statechart.Grammar.BaseAst;
-  using Nemerle.Statechart.Grammar.PseudoStatesAst;
-  using Nemerle.Statechart.Grammar.TransitionsAst;
-  using Nemerle.Statechart.Grammar.TargetsAst;
-  using Nemerle.Statechart.Grammar.TransitionsAst.Guard;
-  using Nemerle.Statechart.Grammar.MainAst.StateMachine.StateMachineDecl;
-  using Nemerle.Statechart.Grammar.EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr.Nested;
+  using Nemerle.Statechart.Grammar.MainParseTree;
+  using Nemerle.Statechart.Grammar.BaseParseTree;
+  using Nemerle.Statechart.Grammar.PseudoStatesParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree;
+  using Nemerle.Statechart.Grammar.TargetsParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree.Guard;
+  using Nemerle.Statechart.Grammar.MainParseTree.StateMachine.Nested.StateMachineDecl;
+  using Nemerle.Statechart.Grammar.EventsParseTree.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr.Nested;
 
   /// <summary>
   /// Description of Events.
@@ -46,9 +46,9 @@ namespace Nemerle.Statechart
       }
     }
 
-    GetTimeExpr(expr : EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr) : TimedExpr
+    GetTimeExpr(expr : EventsParseTree.SingleEvent.TimedEvent.Nested.TimeExpr) : TimedExpr
     {
-      | EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr.FullTimeExpr as e =>
+      | EventsParseTree.SingleEvent.TimedEvent.Nested.TimeExpr.FullTimeExpr as e =>
           try
           {
             def time = TimeSpan.Parse(e.GetText());
@@ -60,15 +60,15 @@ namespace Nemerle.Statechart
             | OverflowException => TimedExpr.Error(TimedErrorType.Overflow())
           }
 
-      | EventsAst.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr(e) => 
+      | EventsParseTree.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr(SData = e) => 
 
           def get_errors((n, x), (a1, a2))
           {
             match (x)
             {
-              | UnitDecl.Error as x => (x :: a1, a2)
-              | UnitDecl.Units(u)   => (a1, (n, u) :: a2)
-              | _                   => (a1, a2)
+              | UnitDecl.Error as x       => (x :: a1, a2)
+              | UnitDecl.Units(Units = u) => (a1, (n, u) :: a2)
+              | _                         => (a1, a2)
             }
           }
           
@@ -131,34 +131,33 @@ namespace Nemerle.Statechart
       | _ => TimedExpr.Error(TimedErrorType.InvalidValue())
     }
 
-    GetEvents(evt : EventsAst.Events) : list[TransitionEvent]
+    GetEvents(evt : EventsParseTree.Events) : list[TransitionEvent]
     {
-      | EventsAst.Events.Ast((e, _)) => 
+      | EventsParseTree.Events.AmbiguousOrMissingNode => []
+      | EventsParseTree.Events(SingleEventsData = (e, _)) => 
 
         def get_event(x, a)
         {
           def pos = x.Location.StartPos;
           match (x)
           {
-            | EventsAst.SingleEvent.SimpleEvent(BaseAst.EventIdentifier.Ast as n, p) => 
+            | EventsParseTree.SingleEvent.SimpleEvent(EventIdentifier = n, ParmsOptData = p) => 
                 def name = n.GetText();
                 def parms = match (p)
                 {
-                  | Some(EventsAst.SingleEvent.SimpleEvent.Nested.Parms.Ast(_, (p, _), _)) => GetIdentifierText(p)
-                  | _                                                                      => []
+                  | Some(p) => GetLocatedText(p.AnyIdentifiersData[0])
+                  | _       => []
                 }
-                TransitionEvent.Normal(x.Location.StartPos, name, parms) :: a
-            | EventsAst.SingleEvent.Completion => TransitionEvent.Completion(pos) :: a
-            | EventsAst.SingleEvent.TimedEvent(_, _, e, _) => 
-              def expr = GetTimeExpr(e);
-              TransitionEvent.Timed(pos, expr) :: a
+                TransitionEvent.Normal(x.Location.StartPos, name, parms.NToList()) :: a
+            | EventsParseTree.SingleEvent.Completion => TransitionEvent.Completion(pos) :: a
+            | EventsParseTree.SingleEvent.TimedEvent as e => def expr = GetTimeExpr(e.TimeExpr);
+                                                             TransitionEvent.Timed(pos, expr) :: a
             | _ => a
           }
 
         }
 
         e.FoldBack([], get_event)
-      | _ => []
     }
 
   }

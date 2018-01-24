@@ -18,8 +18,8 @@ namespace Nemerle.Statechart
   using Nemerle.Statechart.Grammar.TargetsParseTree;
   using Nemerle.Statechart.Grammar.TransitionsParseTree.Guard;
   using Nemerle.Statechart.Grammar.TransitionsParseTree.Guard.Nested;
-  using Nemerle.Statechart.Grammar.MainParseTree.StateMachine.StateMachineDecl;
-  using Nemerle.Statechart.Grammar.ActionsParseTree.ActionList.Action;
+  using Nemerle.Statechart.Grammar.MainParseTree.StateMachine.Nested.StateMachineDecl;
+  using Nemerle.Statechart.Grammar.ActionsParseTree.ActionList.Nested.Action;
   using Nemerle.Statechart.Grammar.TransitionsParseTree.Transition.RelocateTransition.Nested.RelocateTranBody;
   using Nemerle.Statechart.Grammar.EventsParseTree.SingleEvent.TimedEvent.Nested.TimeExpr.SimpleExpr.Nested;
 
@@ -38,10 +38,10 @@ namespace Nemerle.Statechart
     GetGuard(g : TransitionsParseTree.Guard) : GuardNode
     {
       def pos = g.Location.StartPos;
-      match (g)
+      //match (g)
       {
-        | TransitionsParseTree.Guard(GuardDecl = g) => 
-            match (g)
+        //| TransitionsParseTree.Guard(GuardDecl = g) => 
+            match (g.GuardDecl)
             {
               | GuardDecl.Else                                                       => GuardNode.Else(pos)
               | GuardDecl.LongGuardExpr(LongGuardExpr = TransitionsParseTree.LongGuardExpr(Expr = e))
@@ -50,7 +50,7 @@ namespace Nemerle.Statechart
                     parse_guard_expr(pos, text)
               | _ => GuardNode.Empty(-1)
             }
-        | _ => GuardNode.Empty(-1)
+        //| _ => GuardNode.Empty(-1)
       }
     }
 
@@ -100,10 +100,10 @@ namespace Nemerle.Statechart
       | TargetsParseTree.PseudoTarget.History(History = h) =>
         match (h)
         {
-          | TargetsParseTree.PseudoTarget.History.Nested.History with type = HistoryType.None
           | TargetsParseTree.PseudoTarget.History.Nested.History.Deep with type = HistoryType.Deep
-          | TargetsParseTree.PseudoTarget.History.Nested.History.Shallow with type = HistoryType.Shallow => def pos = p.Location.StartPos;
-                                                                                                            Some(TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, type, None())))
+          | TargetsParseTree.PseudoTarget.History.Nested.History.Shallow with type = HistoryType.Shallow => //| TargetsParseTree.PseudoTarget.History.Nested.History with type = HistoryType.None 
+                                                                                                 def pos = p.Location.StartPos;
+                                                                                                 Some(TargetType.PseudoState(pos, PseudoStateModelNode.History(pos, type, None())))
           | _ => None()
         }
       
@@ -201,6 +201,7 @@ namespace Nemerle.Statechart
       {
         match (x)
         {
+          | JunctionBody.AmbiguousOrMissingNode => a
           | JunctionBody.Nested.JuncTranBody(JunctionGuardOptData = g, ActionListOptData = act, TransitionTarget = t) => 
               match (GetTarget(t))
               {
@@ -231,6 +232,7 @@ namespace Nemerle.Statechart
 
     GetEntryPointTran(tran : TransitionsParseTree.EntryPointTransition) : option[StateNode.Transition]
     {
+      | TransitionsParseTree.EntryPointTransition.AmbiguousOrMissingNode => None()
       | TransitionsParseTree.EntryPointTransition(ActionListOptData = act, TransitionTarget = tar) => 
       
         def pos = tran.Location.StartPos;
@@ -241,11 +243,12 @@ namespace Nemerle.Statechart
                         Some(tran)
           | _        => None()
         }
-      | _ => None()
+      
     }
 
     GetDefaultTran(tr : TransitionsParseTree.DefaultTransition) : option[StateNode.Transition]
     {
+      | TransitionsParseTree.DefaultTransition.AmbiguousOrMissingNode => None()
       | TransitionsParseTree.DefaultTransition(ActionListOptData = a, SimpleTarget = t) => 
           match (GetSimpleTarget(t))
           {
@@ -256,8 +259,6 @@ namespace Nemerle.Statechart
                 Some(tran)
             | _ => None()
           }
-
-      | _ => None()
     }
 
     GetExtTran(tr : TransitionsParseTree.ExtTransition) : option[StateNode.Transition]

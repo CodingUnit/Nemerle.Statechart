@@ -19,8 +19,8 @@ namespace Nemerle.Statechart
   using Nemerle.Statechart.Grammar.TransitionsParseTree;
   using Nemerle.Statechart.Grammar.TargetsParseTree;
   using Nemerle.Statechart.Grammar.TransitionsParseTree.Guard;
-  using Nemerle.Statechart.Grammar.MainParseTree.StateMachine.StateMachineDecl;
-  using Nemerle.Statechart.Grammar.ActionsParseTree.ActionList.Action;
+  using Nemerle.Statechart.Grammar.MainParseTree.StateMachine.Nested.StateMachineDecl;
+  using Nemerle.Statechart.Grammar.ActionsParseTree.ActionList.Nested.Action;
   using Nemerle.Statechart.Grammar.ActionsParseTree;
   /// <summary>
   /// Description of Parser.
@@ -190,22 +190,21 @@ namespace Nemerle.Statechart
     
     GetAttribute(attr : BaseParseTree.Attributes) : list[StateAttribute]
     {
+      | BaseParseTree.Attributes.AmbiguousOrMissingNode => []
       | BaseParseTree.Attributes(IdentifiersData = (a, _)) => 
       
         def pos = attr.Location.StartPos;
         def check_attr(x)
         {
-          if (x is BaseParseTree.Identifier as x) 
+          if (x is BaseParseTree.Identifier.AmbiguousOrMissingNode) StateAttribute.Unknown(pos, null) else
             match (x.GetText())
             {
               | "Initial" => StateAttribute.Initial(pos)
               | str       => StateAttribute.Unknown(pos, str)
             }
-           else StateAttribute.Unknown(pos, null)
         }
         
         a.Map(check_attr)
-      | _ => []
     }
     
     CreateState(st : StateDecl.State, decls : list[list[MainParseTree.StateDecl]], type : StateType) : StateNode.State
@@ -235,7 +234,7 @@ namespace Nemerle.Statechart
     //}
    
     
-    CreateState(ast : Nitra.ParseTree, name : BaseParseTree.AnyIdentifier, parent : option[MainParseTree.Parent], attr : option[BaseParseTree.Attributes], decls : list[list[StateDecl]], type : StateType, err : list[StateNode.Error] = null) : StateNode.State
+    CreateState(ast : Nitra.ParseTree, name : BaseParseTree.AnyIdentifier, parent : option[MainParseTree.Parent], attr : option[BaseParseTree.Attributes], decls : list[list[MainParseTree.StateDecl]], type : StateType, err : list[StateNode.Error] = null) : StateNode.State
     {
       def name = name.GetText();
       def parent = if (parent is Some(p)) GetParent(p) else None();
@@ -263,6 +262,7 @@ namespace Nemerle.Statechart
       //def decls = decls.FoldBack([], (x, a) => if (x is MainParseTree.StateDecl.Sequence(h, t)) (h :: t) + a else x :: a);
       foreach (d in decls)
         {
+          | MainParseTree.StateDecl.AmbiguousOrMissingNode => ()
           | StateDecl.DeferrableEvent(DeferrableEvent = EventsParseTree.DeferrableEvent.Deferrable(SimpleEventList = e))
           | StateDecl.DeferrableEvent(DeferrableEvent = EventsParseTree.DeferrableEvent.Deferred(SimpleEventList = e)) =>
               def lst = e.EventIdentifiersData[0].Map(x => TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []));
@@ -311,7 +311,7 @@ namespace Nemerle.Statechart
                | _       => ()
              }
           | StateDecl.StateConcurrent(StateConcurrent = st) => def decls = st.StateDeclsData :: st.AndSubRegionsData.Map(x => x.StateDeclsData);
-                                                               def st = CreateState(st, decls);
+                                                               def st = CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, decls, StateType.Region());
                                                                states ::= st
           | _ => ()
         }
