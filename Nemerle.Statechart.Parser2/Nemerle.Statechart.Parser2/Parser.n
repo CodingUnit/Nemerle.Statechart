@@ -30,19 +30,43 @@ namespace Nemerle.Statechart
 
     parse_action(pos : int, text : string) : Actions
     {
-      def expr = parse_expr(text);
-      def act = FsmAction.Expr(pos, expr);
-      Actions(pos, act :: [])
+      match (text.SplitToList(','))
+      {
+        | []  => Actions(pos, [])
+        | [_] => def expr = parse_expr(text);
+                 def act = match (expr)
+                 {
+                   | <[ $(n : usesite) ]> => FsmAction.Normal(pos, n, [])
+                   | _                    => FsmAction.Expr(pos, expr)
+                 }
+                 Actions(pos, act :: [])
+        | lst => 
+                 def conv_expr(e)
+                 {
+                   regexp match (e)
+                   {
+                     | @"\s*(?<name>\w+)(\(\s*\))?" => Some(FsmAction.Normal(pos, name, []))
+                     | _                            => None()
+                   }
+                 }
+                 def act = match (lst.MapOpt(conv_expr))
+                 {
+                   | Some(lst) => lst
+                   | _         => FsmAction.Expr(pos, parse_expr(text)) :: []
+                 }
+                 Actions(pos, act)
+      }
+      
     }
 
     GetActions(lst : ActionsParseTree.ActionList) : Actions
     {
       match (lst.Action)
       {
-        | SimpleAction(SimpleAction = ActionsParseTree.SimpleAction.Empty)                                      => Actions(lst.Location.StartPos, [])
-        | SimpleAction(SimpleAction = ActionsParseTree.SimpleAction.List(SData = (a, _))) => 
-            def act = a.Map((x, _) => FsmAction.Normal(x.Location.StartPos, x.GetText(), []));
-            Actions(lst.Location.StartPos, act)
+        //| SimpleAction(SimpleAction = ActionsParseTree.SimpleAction.Empty)                                      => Actions(lst.Location.StartPos, [])
+        //| SimpleAction(SimpleAction = ActionsParseTree.SimpleAction.List(SData = (a, _))) => 
+        //    def act = a.Map((x, _) => FsmAction.Normal(x.Location.StartPos, x.GetText(), []));
+        //    Actions(lst.Location.StartPos, act)
                 
         | SimpleExpr(SimpleExpr = ActionsParseTree.SimpleExpr(Expr = e))            
         | BraceExpr(BraceExpr = ActionsParseTree.BraceExpr(Exprs = e)) =>
