@@ -111,70 +111,62 @@ namespace Nemerle.Statechart
       }
     }
     
-    PrintFsm(tree : StateNode, file : string) : void
+    PrintTree[T](tree : T, childs : T -> IEnumerable[T], print_elem : T -> string, file : string) : void
     {
-      def loop(st, indent, acc)
+      
+      def indent((text, depth), (acc, prev_depth))
       {
-        match (st)
-        {
-          | StateNode.StateMachine as st => loop(st.state, indent, acc)
-          | StateNode.State as st => 
-              //def (parent, pacc, acc) = match (parent)
-              //          {
-              //            | StateNode.StateMachine                                   => (st, pacc, acc)
-              //            | StateNode.State as par when !par.sub_states.Contains(st) => match (pacc.Find(x => x.sub_states.Contains(st)))
-              //                                                                          {
-              //                                                                            | Some(p) => (p, pacc, "" :: acc)
-              //                                                                            | _       => (parent, pacc, "" :: acc)
-              //                                                                          }
-              //            | _                                                        => (parent, pacc, acc)
-              //          }
-              def ind = string(' ', indent);
-              def str = $"$ind$(st.name):, Type: $(st.type)";
-              def str = if (st.parent is Some(p)) str + $", Parent:$p" else str;
-              def sub_states = st.sub_states;
-              def names = sub_states.Select(_.name);
-              def str = if (sub_states.IsEmpty()) str else str + $", Sub:..$(names)";
-              def acc = str :: acc;
-              def acc = sub_states.Fold(acc, (x, a) => loop(x, indent + 2, a));
-              "" :: acc
-              //foreach (s in sub_states)
-              //{
-              //  loop(s, delim + 1, st, acc)
-              //}
-              
-          | _ => acc
-        }
+        def ind = string(' ', depth * 2); // create indentation from depth
+        def text = $"$ind$text"; // indent text
+        // if depth lower than previous append empty line for beauty
+        def text = if (depth < prev_depth) text :: "" :: acc else text :: acc;
+        (text, depth)
       }
       
-      //def get_childs(t)
-      //{
-      //  | StateNode.StateMachine as t => t.state :: []
-      //  | StateNode.Sequence as t     => t.lst
-      //  | StateNode.State as t        => t.sub_states
-      //  | _                           => []
-      //}
+      // get pre order iterator and preorde depth function of elements
+      def res = TreeUtils.GetPreOrderEnumerable(tree, childs).Map(print_elem); // map iterator to list of lines of printed text
+      def depth = TreeUtils.GetPreOrderDepth(tree, childs).NToList();
+      def with_depth = res.Zip(depth); // zip print result and depth to list of tuple(text * depth)
+      def (res, _) = with_depth.Fold(([], 0), indent); // indent
+      System.IO.File.WriteAllLines(file, res.Rev().ToArray()) // write to file
+    }
+    
+    PrintFsm(tree : StateNode, file : string) : void
+    {
+      def print(st)
+      {
+        | StateNode.State as st => def str = $"$(st.name):, Type: $(st.type)";
+                                   def str = if (st.parent is Some(p)) str + $", Parent:$p" else str;
+                                   def sub_states = st.sub_states;
+                                   def names = sub_states.Select(_.name);
+                                   def str = if (sub_states.IsEmpty()) str else $"$str, Sub:..$(names)";
+                                   str
+        | _                     => ""
+      }
+     
+      def get_childs(t)
+      {
+        | StateNode.StateMachine as t => t.state :: []
+        | StateNode.Sequence as t     => t.lst
+        | StateNode.State as t        => t.sub_states
+        | _                           => []
+      }
       
-      def res = loop(tree, 0, []); 
-      def res = "FsmState:" :: res.Rev();
-      System.IO.File.WriteAllLines(file, res.ToArray())
+      PrintTree(tree, get_childs, print, file)
     }
     
     PrintFsmState(tree : FsmState, file : string) : void
     {
       //def file = System.IO.File.CreateText();
       
-      def loop(st, (t, acc))
+      def print(st)
       {
-        def acc = if (st.hierarchy_pos != t.hierarchy_pos && st.Super != t) "" :: acc else acc;
         def str = $<#$(st.Name):, Type: $(st.type)#>;
         def str = if (st.sub_states.IsEmpty()) str else str + $", Sub:..$(st.sub_states)";
-        (st, str :: acc)
+        str
       }
       
-      def (_, res) = tree.GetBreadthFirstEnumerable().Fold((tree, []), loop); 
-      def res = "FsmState:" :: res.Rev();
-      System.IO.File.WriteAllLines(file, res.ToArray())
+      PrintTree(tree, _.sub_states, print, file)
     }
     
     public Analyse() : void
