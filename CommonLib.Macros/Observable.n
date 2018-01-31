@@ -1,0 +1,82 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.ComponentModel;
+using System.Reactive;
+using System.Reactive.Linq;
+using System.Threading;
+
+namespace CommonLib.Macros
+{
+  /// <summary>
+  /// Description of Observable.
+  /// </summary>
+  public module ObservableUtils
+  {
+    public FromProperty[T](this obj : INotifyPropertyChanged, name : string, getter : void -> T) : IObservable[T]
+    {
+      ObservablePropertyContainer(obj, name, getter)
+    }
+    
+    public WhenChange[T](this src : IObservable[T], pre_cond : T -> bool, changed : T * T -> bool) : IObservable[T]
+    {
+      ChangeObservable(src, pre_cond, changed)
+    }
+
+    public WhenChange[T](this src : IObservable[T], changed : T * T -> bool) : IObservable[T]
+    {
+      ChangeObservable(src, null, changed)
+    }
+
+    public WhenChange[T](this src : IObservable[T]) : IObservable[T]
+    {
+      ChangeObservable(src, null, null)
+    }
+    
+    public WhenChange[T](this src : IObservable[T], pre_cond : Func[T, bool], changed : Func[T, T, bool]) : IObservable[T]
+    {
+      ChangeObservable(src, pre_cond, changed)
+    }
+
+    public WhenChange[T](this src : IObservable[T], changed : Func[T, T, bool]) : IObservable[T]
+    {
+      ChangeObservable(src, null, changed)
+    }
+
+    public WaitFor[T](this obs : IObservable.[T], evt : EventWaitHandle) : IObservable.[T] 
+    {
+      Observable.Create(x => 
+          obs.Subscribe(y => 
+            {
+                _  = evt.WaitOne();
+                x.OnNext(y)
+            }, _ => x.OnCompleted())
+        )
+    }
+
+    public WaitFor[T, T2](this obs : IObservable.[T], evt : IObservable.[T2]) : IObservable.[T] 
+    {
+      Observable.Create(x => obs.Subscribe(y =>   
+              {
+                _ = evt.First();
+                x.OnNext(y)
+              }, _ => x.OnCompleted()))
+    }
+
+    public WaitFor[T](this obs : IObservable[T], evt : SignalObservable) : IObservable.[T] 
+    {
+      WaitFor(obs, evt.Evt)
+    }
+   
+    public AfterUnsubscribe[T](this src : IObservable[T], action : Action) : IObservable[T] 
+    {
+      AfterUnsubscribeObservable(src, action)
+    }
+        
+  }
+}

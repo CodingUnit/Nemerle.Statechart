@@ -24,24 +24,46 @@ namespace Nemerle.Statechart.Tests {
       printer.GenerateOutput($"$name.log");
     }
     
-    Start(name : string, fsm : string, test : string) : void
+    Start(name : string, fsm : string) : void
     {
+      
       def assembly = Assembly.LoadFrom(name);
-      def type = assembly.GetType(fsm);
-      def obj = Activator.CreateInstance(type);
-      match (obj)
+      def type = if (fsm == null) 
       {
-        | ITestStateMachine as m => Run(m, test)
-        | _                      => Console.WriteLine($<#Type $fsm must implement ITestStateMachine interface, use "testing" flag in statemachine#>);
-      }      
+        def types = assembly.GetTypes();
+        types.FirstOrDefault(x => x.GetInterfaces().Exists(x => x == typeof(ITestStateMachine)));
+      } else assembly.GetType(fsm);
+      match (type)
+      {
+        | null when fsm == null => Console.WriteLine($<#Cannot find type implemented ITestStateMachine in assembly "$name", type must be public and testing flag must be set#>);
+        | null => Console.WriteLine($<#Cannot find type "$fsm" in assembly "$name", type must be public and not have namespace#>);
+        | type => 
+            def obj = Activator.CreateInstance(type);
+            match (obj)
+            {
+              | ITestStateMachine as m => Run(m, type.Name)
+              | _                      => Console.WriteLine($<#Type $fsm must implement ITestStateMachine interface, use "testing" flag in statemachine#>);
+            }      
+      }
     }
     
     public Main(pars : array[string]) : void
     {
       match (pars.NToList())
       {
-        | name :: fsm :: test :: flags :: [] when flags == "-debug" => assert2(false);Start(name, fsm, test)
-        | name :: fsm :: test :: []                                 => Start(name, fsm, test)
+        | name :: tail => def (flags, other) = tail.Partition(x => x.StartsWith("-"));
+                          when (flags.Contains("-debug")) assert2(false);
+                          def fsm = match (other)
+                          {
+                            | []        => null
+                            | head :: _ => head
+                          }
+                          Start(name, fsm)
+                          //Start()
+                            // when flags == "-debug"
+                                         //
+                                         //when ()
+                                         //Start(name, fsm, test)
         | _                                                         => Console.WriteLine("Usage: fsmtest.exe [assembly] [fsm_type] [out_file_name] [flags]");
       }
     }

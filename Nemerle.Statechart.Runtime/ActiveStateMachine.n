@@ -8,22 +8,20 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Collections.Concurrent;
 using System.Threading;
+using CommonLib.Macros;
+using System.Reactive.Linq;
 //using System.Threading.Tasks;
 
 namespace Nemerle.Statechart
 {
   public class CompletionEvent : HsmEvent
   {
-    mutable static instance : HsmEvent;
+    static instance : HsmEvent = CompletionEvent();
 
-    public static New : HsmEvent
+    public static Instance : HsmEvent
     {
       get
       {
-        when (instance == null) 
-        {
-          instance = CompletionEvent();
-        }
         instance
       }
     }
@@ -51,7 +49,7 @@ namespace Nemerle.Statechart
     public name  : string;
     public parms : list[string];
   }
-  
+
   /// <summary>
   /// Description of Implementation.
   /// </summary>
@@ -60,8 +58,9 @@ namespace Nemerle.Statechart
 
     public this()
     {
-      queue_thread = Thread(QueueThread);
-      queue_thread.IsBackground = true;
+      
+      //Thread(QueueThread);
+      //queue_thread.IsBackground = true;
     }
 
     public abstract Events : IEnumerable[EventInfo] {get;}
@@ -75,64 +74,91 @@ namespace Nemerle.Statechart
 
     protected virtual Unsubscribe() : void
     {
-      Messenger.Unsubscribe(this)
+      Messenger.Unsubscribe(this);
+      _disp.Dispose();
     }
 
     public Initiate() : void
     {
       _ = work_event.Reset();
       TrySwitch(Initial());
-      queue_thread.Start();
+      _queue_disp = work_event.Subscribe(_ => QueueThread());
+      //queue_thread.Start();
       Subscribe();
     }
 
     queue : ConcurrentQueue[HsmEvent] = ConcurrentQueue();
 
-    mutable queue_thread : Thread;
+    mutable _queue_disp : IDisposable;
 
-    work_event : ManualResetEvent = ManualResetEvent(false);
+    //queue_thread_cancel : CancellationTokenSource = CancellationTokenSource();
+    work_event : SignalObservable = SignalObservable();
 
+    _disp : ListDisposable = ListDisposable();
+    
     public abstract PostEvent(evt : string) : void;
 
     public PostEvent(evt : HsmEvent) : void
     {
       queue.Enqueue(evt);
-      _ = work_event.Set();
+      work_event.Signal();
     }
 
+    public BindSignal[T](obs : IObservable[T], evt : HsmEvent) : void
+    {
+      _disp.Add(obs.Subscribe(_ => this.PostEvent(evt)))
+    }
+
+    public BindSignal[T](obs : IObservable[T], evt : T -> HsmEvent) : void
+    {
+      _disp.Add(obs.Subscribe(x => this.PostEvent(evt(x))))
+    }
+
+    public BindSignal[T](obs : IObservable[T], evt : void -> HsmEvent) : void
+    {
+      _disp.Add(obs.Subscribe(_ => this.PostEvent(evt())))
+    }
+    
     protected abstract DoActivityStop() : void;
 
-    public override Terminate() : void
+    public Terminate() : void
+    {
+      Dispose()
+    }
+    
+    public new Dispose() : void
     {
       Unsubscribe();
       DoActivityStop();
-      _ = work_event.Set();
 
-      base.Terminate();
-      queue_thread.Abort();
-      when (Thread.CurrentThread != this.queue_thread : object)
-      {
-        queue_thread.Join();
-      }
+      base.Dispose();
+      _queue_disp.Dispose();
+      _disp.Dispose();
+      //queue_thread_cancel.Cancel();
+      //work_event.Set();
+      //when (Thread.CurrentThread != this.queue_thread : object)
+      //{
+      //  queue_thread.Join();
+      //}
 
     }
 
-    protected Completion() : void
+    public Completion() : void
     {
       completion = true;
-      _ = work_event.Set();
+      work_event.Signal();
     }
-    
+
     CheckCompletion() : bool
     {
       if (completion) 
       {
         completion = false;
-        Dispatch(CompletionEvent.New);
+        Dispatch(CompletionEvent.Instance);
         true
       } else false
     }
-    
+
     CheckQueue(queue : ConcurrentQueue[HsmEvent]) : bool
     {
       mutable item;
@@ -142,27 +168,12 @@ namespace Nemerle.Statechart
         true
       } else false
     }
-    
+
     QueueThread() : void
     {
-      try 
-      {
-        while (true)
-        {
-          if (CheckCompletion()) () else
-          if (CheckQueue(queue)) ()
-          else
-          {
-            _ = work_event.Reset();
-            _ = work_event.WaitOne();
-          }
-        }
-      }
-      catch
-      {
-        | _ is ThreadAbortException => ()
-        | _                         => throw
-      }
+      if (CheckCompletion()) () else
+        if (CheckQueue(queue)) ()
+        else work_event.Reset();
     }
 
   }

@@ -1,0 +1,214 @@
+﻿using System;
+using System.Diagnostics;
+using Nemerle;
+using Nemerle.Macros;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Collections;
+using Nemerle.Text;
+//using Nemerle.Linq;
+using Nemerle.Utility;
+using System.ComponentModel;
+
+namespace CommonLib.Macros
+{
+  // TODO: поддержка внешних типов
+  // TODO: не работают определения type
+  [MacroUsage(MacroPhase.BeforeInheritance,MacroTargets.Method)]    
+  macro Visibility(ty : TypeBuilder,mb : ParsedMethod,params vis : list[PExpr])  
+  {
+    //Debugger.Break();
+    VisHelper.SetVisibility(ty,mb,vis);  
+  }
+  
+  [MacroUsage(MacroPhase.BeforeInheritance,MacroTargets.Field)]    
+  macro Visibility(ty : TypeBuilder,mb : ParsedField,params vis : list[PExpr])  
+  {
+    //Debugger.Break();
+    VisHelper.SetVisibility(ty,mb,vis);  
+  }
+
+  [MacroUsage(MacroPhase.BeforeInheritance,MacroTargets.Event)]    
+  macro Visibility(ty : TypeBuilder,mb : ParsedEvent,params vis : list[PExpr])  
+  {
+    //Debugger.Break();
+    VisHelper.SetVisibility(ty,mb,vis);  
+  }
+  
+  [MacroUsage(MacroPhase.BeforeInheritance,MacroTargets.Property)]    
+  macro Visibility(ty : TypeBuilder,mb : ParsedProperty,params vis : list[PExpr])  
+  {
+    //Debugger.Break();
+    VisHelper.SetVisibility(ty,mb,vis);  
+  }
+
+  //[MacroUsage(MacroPhase.WithTypedMembers,MacroTargets.Property)]    
+  //macro Visibility(ty : TypeBuilder,mb : PropertyBuilder,params vis : list[PExpr])  
+  //{
+  //  //Debugger.Break();
+  //  VisHelper.SetVisibility(ty,mb,vis);  
+  //}
+  
+
+  module VisHelper
+  {    
+     
+    /// <summary>
+    /// Поиск подсписка начинающегося с предиката
+    /// </summary>        
+    /// <param name="n">список</param>
+    /// <param name="pred">начальный элемент соотв предикату</param>
+    public FindSub[T](this n : list[T],pred : T -> bool) : option[list[T]]
+    {    
+      match (n)
+      {
+        | head :: tail => if (pred(head)) option.Some(n) else FindSub(tail,pred);          
+        |_ => option.None();
+      }
+    }   
+        
+    /// <summary>
+    /// Элементы до первого найденного, если не найден то возвращает весь лист
+    /// </summary>   
+    public FirstElems[T](this n : list[T],pred : T -> bool) : list[T]
+    {      
+      def loop(n,acc : list[T])
+      {
+        match (n)
+        {
+          | head :: tail => if (pred(head)) acc.Rev() else loop(tail,head :: acc);//FindList(tail,pred);          
+          |_ => acc.Rev()
+        }
+      
+      }
+      loop(n,[]);
+    }
+            
+    /// <summary>
+    /// Поиск подсписка начинающегося с первого и заканчивающегося вторым предикатом
+    /// </summary>        
+    /// <param name="n">список</param>
+    /// <param name="begin">начальный элемент соотв предикату</param>
+    /// <param name="end">конечный элемент соотв предикату</param>
+    public FindList[T](this n : list[T],begin : T -> bool,end : T -> bool) : option[list[T]]
+    {    
+      def lst=n.FindSub(begin);
+      if (lst.HasValue) 
+      {
+        def lst=lst.Value;
+        def find=FirstElems(lst.Tail,end);
+        option.Some(lst.Head :: find);
+      } else option.None();
+    }
+  
+    flag=NemerleAttributes.Public|NemerleAttributes.Private|NemerleAttributes.Internal|NemerleAttributes.Protected;
+        
+    public SetVisibility(ty : TypeBuilder,mb : ClassMember,vis : list[PExpr]) : void
+    {            
+      //Debugger.Break();
+      
+      def get_mems(x)
+      {
+        x.GetMembers();//.Filter(x => !(x is ClassMember.TypeDeclaration));
+      }
+      
+      def part=ty.AstParts.Find(x => 
+       {
+                                  def mems=get_mems(x);
+                                  def ex=mems.Exists(x => x.ToString()==mb.ToString());
+                                  ex;
+       }).Value;
+      
+      def mems=get_mems(part);
+    
+      def process_vis(vis : PExpr)
+      {
+        match (vis)
+        {
+          | <[ Public ]> => NemerleAttributes.Public
+          | <[ Private ]> => NemerleAttributes.Private
+          | <[ Internal ]> => NemerleAttributes.Internal
+          | <[ Protected ]> =>  NemerleAttributes.Protected 
+          | <[ Ignore ]> => NemerleAttributes.None                   
+          | _ => Message.Error(vis.Location,"Неизвестное выражение видимости");
+              NemerleAttributes.None
+        }
+      }
+   
+      def mod(mod : ClassMember,newmod,explicit)
+      {        
+            
+        def have_attr()
+        {
+          (mod.Attributes & flag) != NemerleAttributes.None
+        }
+              
+        when (newmod!=NemerleAttributes.None) // если есть новые аттрибуты         
+        // если только неявные атрибуты и нет аттрибутов  или неявный режим не исп      
+          when (explicit && !have_attr() || !explicit)
+          {
+            def mods=mod.modifiers.mods & ~flag | newmod;  
+            //def attr=mod.Attributes & ~flag | newmod;            
+            match (mod)
+            {
+              //|ClassMember.TypeDeclaration(td) as typ => 
+              //   {
+              //       //Debugger.Break();
+              //    td.Attributes=attr;
+              //    td.modifiers.mods=mods;
+              //    td.TypeBuilder.Ast.Attributes=attr;
+              //    td.ParsedAttributsAndModifiers.mods=mods;                   
+              //    //ty.DefineNestedType(typ).Compile();
+              //   }
+              | _ => 
+                  mod.modifiers.mods=mods;
+                  //mod.ParsedAttributsAndModifiers.mods=mods;            
+                  //when (mod.Builder!=null) 
+                  //{
+                  //  mod.Builder.Attributes=attr;
+                  //  mod.Builder.Modifiers.mods=mods;                    
+                  //}
+                  //mod.Attributes=attr;
+
+            }
+          }
+          
+      }
+                  
+      def vis_macro(mem)
+      {        
+        if (mem.ParsedAttributsAndModifiers!=null && mem.ParsedAttributsAndModifiers.ParsedCustomAttributes!=null) 
+        {
+          def macros=mem.ParsedAttributsAndModifiers.ParsedCustomAttributes;
+          macros.Exists(x => 
+                          {
+                            | <[ Visibility($_); ]> => true
+                            |_ => false
+                          });            
+        } else false;
+      }
+            
+      if (vis.Length!=0) 
+      {
+        //Debugger.Break();
+        def explicit=if (vis.Length > 1) match (vis.Nth(1)) {| <[ Explicit ]> => true; | _ => false}; else false;
+        def newmod=process_vis(vis.Head);
+        
+        //def types=ty.DeclaredNestedTypes;
+        def after=mems.FindList(x => x.ToString()==mb.ToString(),vis_macro).Value;                
+        def filtered=after.Filter(x => !x.IsGenerated && !x.Location.IsGeneratedOrEmpty );
+        //def types=types.Filter(x => filtered.Exists(y => y.Name==x.Name));
+        filtered.Iter(mod(_,newmod,explicit));         
+//        types.Iter(x => mod(x,newmod,explicit));        
+        
+      } else  
+      {
+        Message.Error(mb.Location,"Необходимо задать выражение видимости");         
+      }
+      
+    }
+  
+  }
+  
+  
+}

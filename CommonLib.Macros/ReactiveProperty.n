@@ -1,0 +1,62 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reactive.Disposables;
+
+namespace CommonLib.Macros
+{
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Property)]
+  macro ReactiveProperty(typeBuilder : TypeBuilder, property : ClassMember.Property, expr : PExpr = null)
+  {
+    ReactivePropertyImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, property, expr)
+  }
+  
+  public module ReactivePropertyImpl
+  {
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, property : ClassMember.Property, expr : PExpr = null) : void
+    {
+      Macros.DefineCTX(typer);
+      
+      match (property.getter)
+      {
+        | Some(f) => 
+           match (property.setter)
+           {
+             | None => def name = property.Name;
+                       def field_name = Macros.NewSymbol(property.Name).Id;
+                       def set_name = $"set_$name";
+                       def type = property.returnType;
+                       def setter = <[decl: private $(set_name : usesite)(value : $type) : void
+                                      {
+                                        this.$(field_name : usesite) = value
+                                      }]>;
+                       property.setter = Some(setter);
+                       def field = if (expr != null) <[decl: mutable $(field_name : usesite) : $type = $expr ]> else <[decl: mutable $(field_name : usesite) : $type]>;
+                       typeBuilder.Define(field);
+                       def body = f.Body;
+                       f.Body = <[ $(field_name : usesite) ]>;
+                       def cur_disp = $"reactive_property_disposable_$name";
+                       def init = <[ $(cur_disp : usesite) = $body.Subscribe(x => $(name : usesite) = x); ]>;
+                       def disp_field = <[decl: $(cur_disp : usesite) : IDisposable ]>;
+                       typeBuilder.Define(disp_field);
+                       typeBuilder.InjectInCtors(init);
+                       when (typeBuilder.Implements(typer, <[IDisposable]>))
+                       {
+                         def disp_meth = typeBuilder.GetParsedMembers().Where(x => x is ClassMember.Function).First(x => x.Name == "Dispose") :> ClassMember.Function;
+                         disp_meth.Body = <[ $(disp_meth.Body); $(cur_disp : usesite).Dispose() ]>;
+                       } 
+             | Some => Message.Error("reactive property cannot have explicit setter")
+           }
+         | _ => Message.Error("reactive property must have getter with IObservable expression")
+      }
+    }
+  }
+}

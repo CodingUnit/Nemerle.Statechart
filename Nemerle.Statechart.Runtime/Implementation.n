@@ -7,11 +7,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.ComponentModel;
+using System.Reactive.Subjects;
 
 namespace Nemerle.Statechart
 {
 
-  public abstract class StateMachine[TState] : INotifyPropertyChanged where TState : HsmState
+  public abstract class StateMachine[TState] where TState : HsmState
   {
     [Accessor]
     protected mutable cur_state : TState;
@@ -35,6 +36,16 @@ namespace Nemerle.Statechart
       TrySwitch(DispatchEvent(evt))
     }
 
+    state_change : Subject[TState] = Subject();
+    
+    public States : IObservable[TState]
+    {
+      get
+      {
+        state_change
+      }
+    }
+    
     public override ToString() : string
     {
       if (cur_state != null) cur_state.ToString() else null
@@ -57,6 +68,7 @@ namespace Nemerle.Statechart
     protected Switch(st : TState) : void
     {
       cur_state = st;
+      state_change.OnNext(st);
       OnSwitch()
     }
 
@@ -73,12 +85,6 @@ namespace Nemerle.Statechart
 
     public event Terminated : EventHandler;
 
-    public event PropertyChanged : PropertyChangedEventHandler;
-
-    protected OnPropertyChanged(name : string) : void
-    {
-      PropertyChanged?.Invoke(this, PropertyChangedEventArgs(name))
-    }
   }
 
   public abstract class HsmEvent
@@ -100,7 +106,7 @@ namespace Nemerle.Statechart
   {
   }
   
-  public interface ITestStateMachine : INotifyPropertyChanged
+  public interface ITestStateMachine
   {
     Initiate()                : void;
     PostEvent(evt : string)   : void;

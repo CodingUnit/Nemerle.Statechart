@@ -1,0 +1,105 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Reactive.Linq;
+using System.Reactive.Disposables;
+using System.Reactive.Concurrency;
+using System.Reactive.Subjects;
+//using Rail;
+//using Rail.Utils;
+
+namespace CommonLib.Macros
+{
+  public class SignalObservable : IObservable[bool], IDisposable
+  {
+    public Evt : EventWaitHandle;
+    cancel : CancellationDisposable = CancellationDisposable();
+    _items : SubscriptionControlSubject[bool];
+    _disp : IDisposable;
+    
+    public this(evt : EventWaitHandle)
+    {
+      this.Evt = evt;
+      _items = SubscriptionControlSubject(Dispose);
+      _disp = DefaultScheduler.Instance.Schedule(Work)
+    }
+
+    public this(signaled : bool = false, auto : bool = false)
+    {
+      _items = SubscriptionControlSubject(Dispose);
+      Evt = if (auto) AutoResetEvent(signaled) else ManualResetEvent(signaled);
+      _disp = DefaultScheduler.Instance.Schedule(Work)
+    }
+
+    public WaitOne() : void 
+    {
+      _  = Evt.WaitOne()
+    }
+
+    public Signal() : void 
+    {
+      _  = Evt.Set()
+    }
+
+    public Reset() : void 
+    {
+      _  = Evt.Reset()
+    }
+
+    mutable complete : bool = false;
+    
+    Work() : void 
+    {
+      while (!cancel.Token.IsCancellationRequested) 
+      {
+        def res = Evt.WaitOne();
+        if (cancel.IsDisposed) () else
+        _items.OnNext(res)
+      }
+      complete = true;
+      _items.OnCompleted();
+    }
+
+    public Subscribe(observer : IObserver[bool]) : IDisposable
+    {
+      _items.Subscribe(observer)
+    }
+
+    public static CreateSignal(signaled : bool, auto : bool) : SignalObservable
+    {
+      SignalObservable(signaled, auto)
+    }
+
+    public static ToObservable(this evt : EventWaitHandle) : IObservable[bool]
+    {
+      SignalObservable(evt)
+    }
+    
+    public static FromSignal(evt : EventWaitHandle) : IObservable[bool]
+    {
+      SignalObservable(evt)
+    }
+
+    _lock : object = object();
+    
+    public Dispose() : void 
+    {
+      
+      lock (_lock)
+      {
+        when (!complete)
+        {
+          cancel.Dispose();
+          while (!complete)
+            Signal();
+          //_ = _items.Last();
+          _disp.Dispose();
+        }
+      }
+    }
+  }
+
+
+}

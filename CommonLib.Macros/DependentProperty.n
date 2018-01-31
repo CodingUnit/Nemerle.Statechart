@@ -1,0 +1,75 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+
+namespace CommonLib.Macros
+{
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Property)]
+  macro DependentProperty(typeBuilder : TypeBuilder, property : ClassMember.Property)
+  {
+    DependentPropertyImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, property)
+  }
+  
+  module DependentPropertyImpl
+  {
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, property : ClassMember.Property) : void
+    {
+      Macros.DefineCTX(typer);
+      //assert2(false);
+      match (property.getter)
+      {
+        | Some(f) => def body = f.Body;
+                     def name = property.Name;
+                     mutable ignore = [];
+                     mutable names  = [];
+                     
+                     def analyse(_, a, e)
+                     {
+                       
+                       if (a)
+                       {
+                         match (e)
+                         {
+                           | <[ $(n : usesite) ]> => names ::= n; e
+                           | _                    => e
+                         }
+                       } else
+                       {
+                         match (e)
+                         {
+                           | <[ $(n : usesite)(..$_)]> => ignore ::= n; null
+                           | _                       => null
+                         }
+                       }
+                     }
+                     
+                     _ = Macros.TraverseExprWithContext(None(), body, null, analyse);
+                     
+                     def res_names = names.Exclude(ignore);
+                     def props = typeBuilder.GetParsedMembers(true).Where(x => x is ClassMember.Property);
+                     def props = props.Filter(x => res_names.Exists(y => x.Name == y));
+                     
+                     //Message.Hint($"$name <- names : [..$res_names] dep : [..$props]");
+                     
+                     def create_expr(p)
+                     {
+                       <[ this.ChangeBind($(p.Name), _ => OnPropertyChanged($name)) ]>
+                     }
+                     
+                     def expr = props.Map(create_expr);
+                     typeBuilder.InjectInCtors(<[ {..$expr} ]>);
+          | _ => Message.Error("Dependent property need getter")
+                     
+      }
+    }
+  }
+}

@@ -1,0 +1,136 @@
+using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Statechart;
+using System.Reactive.Linq;
+//using Rail.Can;
+using CommonLib.Macros;
+
+namespace test {
+
+  /// <summary>
+  /// Description of SignalStateMachine.
+  /// </summary>
+  [statechart(<#
+  flags = auto_initial, auto_entry_exit;
+  flags testing;
+  //flags debug;
+
+  //event start_device(CanDriver);
+
+  state NotConnected
+  {
+    start_device / Connect() => Connected;
+  }
+
+  state Connected
+  {
+    disconnect => NotConnected;
+
+    0 => H;
+
+    (H) => SensorImitate;
+
+    state SensorImitate
+    {
+      state Imitate
+      {
+        file_load => FileSending;
+      }
+
+    }
+
+    state FileSending
+    {
+      send_complete, file_load => SensorImitate;
+    }
+
+  }
+
+  #>)]
+  public class example
+  {
+    //public Connect : Action[CanDriver] {get;set;}
+
+  }
+
+  module Test
+  {
+    Main() : void
+    {
+      def fsm = example();
+      def tester = fsm.GetTester();
+      tester.ConsoleTestInit();
+      tester.Initiate("NotConnected", "EntryNotConnected");
+      tester.Test("start_device", "Imitate", "ExitNotConnected", "Connect", "EntryConnected", "EntryConnectedInitial", "ExitConnectedInitial", "EntrySensorImitate", "EntryImitate");
+      tester.Test("disconnect", ["Imitate", "SensorImitate", "Connected"], ["NotConnected"]);
+      tester.Test("start_device", "Imitate", "ExitNotConnected", "Connect", "EntryConnected", "EntryConnectedInitial", "ExitConnectedInitial", "EntrySensorImitate", "EntryImitate");
+      tester.Test("file_load", ["Imitate", "SensorImitate"], ["FileSending"]);
+      tester.Test("disconnect", ["FileSending", "Connected"], ["NotConnected"]);
+      tester.Test("start_device", "FileSending", "ExitNotConnected", "Connect", "EntryConnected", "EntryConnectedInitial", "ExitConnectedInitial", "EntryFileSending");
+      fsm.Terminate();
+    }
+  }
+
+}
+
+/*
+BEGIN-OUTPUT
+EntryNotConnected
+[NotConnected]
+Ok
+Processing a 'start_device'
+ExitNotConnected
+Connect
+EntryConnected
+EntryConnectedInitial
+ExitConnectedInitial
+EntrySensorImitate
+EntryImitate
+[Imitate]
+Ok
+Processing a 'disconnect'
+ExitImitate
+ExitSensorImitate
+ExitConnected
+EntryNotConnected
+[NotConnected]
+Ok
+Processing a 'start_device'
+ExitNotConnected
+Connect
+EntryConnected
+EntryConnectedInitial
+ExitConnectedInitial
+EntrySensorImitate
+EntryImitate
+[Imitate]
+Ok
+Processing a 'file_load'
+ExitImitate
+ExitSensorImitate
+EntryFileSending
+[FileSending]
+Ok
+Processing a 'disconnect'
+ExitFileSending
+ExitConnected
+EntryNotConnected
+[NotConnected]
+Ok
+Processing a 'start_device'
+ExitNotConnected
+Connect
+EntryConnected
+EntryConnectedInitial
+ExitConnectedInitial
+EntryFileSending
+[FileSending]
+Ok
+END-OUTPUT
+*/

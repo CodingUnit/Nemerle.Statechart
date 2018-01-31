@@ -1,0 +1,141 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using CommonLib.Macros;
+
+namespace Nemerle.Statechart
+{
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Method)]
+  macro Entry(typeBuilder : TypeBuilder, method : ClassMember.Function, state : PExpr, fsm : PExpr = null)
+  {
+    EntryImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, method, state, fsm)
+  }
+
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Property)]
+  macro ChangeOnEntry(typeBuilder : TypeBuilder, method : ClassMember.Property, state : PExpr, fsm : PExpr = null)
+  {
+    EntryImpl.DoTransform2(Macros.ImplicitCTX(), typeBuilder, method, state, fsm)
+  }
+
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Property)]
+  macro ChangeOnExit(typeBuilder : TypeBuilder, method : ClassMember.Property, state : PExpr, fsm : PExpr = null)
+  {
+    EntryImpl.DoTransform3(Macros.ImplicitCTX(), typeBuilder, method, state, fsm)
+  }
+  
+  module FsmUtils
+  {
+    public GetFsmField(typer : Typer, typeBuilder : TypeBuilder, name : string = null) : ClassMember.Field
+    {
+      def fsm_type = typer.BindType(<[ StateMachine[_] ]>);
+
+      def is_fsm(f : ClassMember.Field) 
+      {
+        if (name != null)
+        {
+          f.Name == name
+        } else
+        {
+          def ty = typer.BindFixedType(f.ty);
+
+          ty.TryRequire(fsm_type)
+        }
+      }
+
+      def fields = typeBuilder.Ast.GetMembers().FilterType();
+      match (fields.Filter(is_fsm))
+      {
+        | []    => Message.Error("Cannot find state machine field");null
+        | [fsm] => fsm
+        | _     => Message.Error("There is several state machines in class, use explicit fsm field selection");null
+      }
+
+    }
+    
+    public FindFsmField(typer : Typer, typeBuilder : TypeBuilder) : PExpr
+    {
+      match (GetFsmField(typer, typeBuilder))
+      {
+        | null => null
+        | fsm  => <[ $(fsm.Name : usesite) ]>
+      }
+    }
+
+  }
+
+  module EntryImpl
+  {
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, method : ClassMember.Function, state : PExpr, fsm : PExpr = null) : void
+    {
+      Macros.DefineCTX(typer);
+
+      //assert2(false);
+
+
+      match (state)
+      {
+        | <[ $(n : usesite)]> => 
+          def evt = $"Entry$n";
+          def fsm = fsm ?? FsmUtils.FindFsmField(typer, typeBuilder);
+          when (fsm != null)
+          {
+            def call = <[ $fsm.$(evt : usesite) += $(method.Name : usesite) ]>;
+            typeBuilder.InjectInCtors(call);
+          }
+        | st                   => Message.Error(state.Location, $"Invalid expression for state $st");
+      }
+
+    }
+    
+    public DoTransform2(typer : Typer, typeBuilder : TypeBuilder, prop : ClassMember.Property, state : PExpr, fsm : PExpr = null) : void
+    {
+      Macros.DefineCTX(typer);
+
+      //assert2(false);
+      match (state)
+      {
+        | <[ $(n : usesite)]> => 
+            def evt = $"Entry$n";
+            def fsm = fsm ?? FsmUtils.FindFsmField(typer, typeBuilder);
+            def name = prop.Name;
+            when (fsm != null)
+            {
+              def call = <[ $fsm.$(evt : usesite) += _ => OnPropertyChanged($name) ]>;
+              typeBuilder.InjectInCtors(call);
+            }
+        | st                   => Message.Error(state.Location, $"Invalid expression for state $st");
+      }
+
+    }
+
+    public DoTransform3(typer : Typer, typeBuilder : TypeBuilder, prop : ClassMember.Property, state : PExpr, fsm : PExpr = null) : void
+    {
+      Macros.DefineCTX(typer);
+
+      //assert2(false);
+      match (state)
+      {
+        | <[ $(n : usesite)]> => 
+            def evt = $"Exit$n";
+            def fsm = fsm ?? FsmUtils.FindFsmField(typer, typeBuilder);
+            def name = prop.Name;
+            when (fsm != null)
+            {
+              def call = <[ $fsm.$(evt : usesite) += _ => OnPropertyChanged($name) ]>;
+              typeBuilder.InjectInCtors(call);
+            }
+        | st                   => Message.Error(state.Location, $"Invalid expression for state $st");
+      }
+
+    }
+    
+  }
+}

@@ -1,0 +1,83 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+using Nemerle.Text;
+using Nemerle.Utility;
+//using Nemerle.Statechart2;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace CommonLib.Macros
+{
+  
+  [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Field)]
+  macro UseSize(_ : TypeBuilder, _ : FieldBuilder, _size)
+  {
+  }
+
+  [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Class)]
+  macro BytesSerialize(typeBuilder : TypeBuilder)
+  {
+    GetBytesImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder)
+  }
+
+  [MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Class)]
+  macro BytesSerialize(typeBuilder : TypeBuilder)
+  {
+    GetBytesImpl.DoTransform1(Macros.ImplicitCTX(), typeBuilder)
+  }
+
+  module GetBytesImpl
+  {
+
+    public DoTransform1(typer : Typer, typeBuilder : TypeBuilder) : void
+    {
+      Macros.DefineCTX(typer);
+      //assert2(false);
+      typeBuilder.AddImplementedInterface(<[ IByteSerializable ]>);
+      _ = typeBuilder;
+    }
+
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder) : void
+    {
+      Macros.DefineCTX(typer);
+      //assert2(false);
+      def fields = typeBuilder.GetFields();
+
+      def def_ser_field(f)
+      {
+        match (f.GetMemType())
+        {
+          | type when (type.IsPrimitive) =>
+              match (type.TypeInfo.Size)
+              {
+                | _ when type.IsEnum => <[ lst.Add($(f.Name : usesite) :> byte) ]>
+                | 7
+                | 8                  => <[ lst.Add($(f.Name : usesite)) ]> 
+                | _                  => 
+                    def get_code = match (f.GetModifiers().ParsedCustomAttributes.Find(_ is <[ UseSize($_) ]>))
+                    {
+                      | Some(<[ UseSize($(s : int)) ]>) => <[ BitConverter.GetBytes($(f.Name : usesite)).Take($s).ToArray() ]>
+                      | _                               => <[ BitConverter.GetBytes($(f.Name : usesite)) ]>
+                    }
+                    <[ lst.AddRange($get_code) ]>
+              }
+          | FixedType.Array => <[ lst.AddRange($(f.Name : usesite)) ]>
+          | _               => throw InvalidOperationException("this type is not supported");
+        } 
+      }
+
+      def body = fields.RevMap(def_ser_field);
+      _ = typeBuilder.DefineWithSource(<[ decl: public GetBytes() : array[byte]
+        {
+          def lst = List();
+          { ..$body }
+          lst.ToArray()
+        } ]>);
+      _ = typeBuilder;
+    }
+  }
+}

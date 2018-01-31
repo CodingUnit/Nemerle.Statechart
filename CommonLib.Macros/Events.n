@@ -1,0 +1,154 @@
+﻿using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Diagnostics;
+using Nemerle;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+
+namespace CommonLib.Macros
+{ 
+  [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Event, Inherited=true)]    
+  macro EventCaller(ty : TypeBuilder, mb : EventBuilder, params flags : list[PExpr])
+  {
+    def typer=Macros.ImplicitCTX();      
+    EventHelper.CreateCaller(ty, typer, mb, flags)
+  }
+  
+  [MacroUsage(MacroPhase.WithTypedMembers,MacroTargets.Method,Inherited=true)]    
+  macro EventCaller(ty : TypeBuilder,mb : MethodBuilder,params flags : list[PExpr])    
+  {
+      //Debugger.Break();
+    EventHelper.CreateCaller(ty,mb,flags);
+  }
+  
+  macro event_call(body)
+  syntax ("event_call",body)
+  {
+    //Debugger.Break();
+    def typer=Macros.ImplicitCTX();      
+    EventHelper.CreateCall(typer,body);
+  }
+  
+  module EventHelper
+  {
+      
+    public CreateCaller(ty : TypeBuilder, typer : Typer, mb : EventBuilder, _flags : list[PExpr]) : void
+    {
+      
+      Macros.DefineCTX(typer);
+      
+      def define(par)
+      {
+        def create_par(p, (a, b))
+        {
+          //if (mb.GetMemType().TryUnify(<[ ttype: EventHandler ]>))
+          
+          match (p.Name)
+          {
+            | "sender" => (<[ this ]> :: a, b)
+            | _        => (<[ null ]> :: a, b)
+          }// else
+        //  if (mb.GetMemType().TryRequire(<[ ttype: Action ]>))
+        //  {
+        //  match (p.Name)
+        //  {
+        //    | "sender" => (<[ this ]> :: a, b)
+        //    | _        => (a, p :: b)
+        //  }
+        //} else
+        //match (p.Name)
+        //  {
+        //    | "sender" => (<[ this ]> :: a, b)
+        //    | _        => (<[ null ]> :: a, b)
+        //  }
+        }
+        
+        def (cpars, epars) = par.FoldRight(([], []), create_par);
+        _ = ty.Define(<[decl: $($"On$(mb.Name)" : usesite)(..$epars) : void { $(mb.Name : usesite)?.Invoke(..$cpars) } ]>)
+      }
+      
+      def type = mb.GetMemType();
+      def mems = type.TypeInfo.GetMembers();
+      def mems = mems.MapFiltered(x => x.Name == "Invoke", x => x :> IMethod);
+      def pars = mems.Map(x => x.GetParameters().Map(_.AsParsed()));
+      pars.Iter(define)
+    }
+    
+    public CreateCaller(ty : TypeBuilder,mb : MethodBuilder,flags : list[PExpr]) : void
+    {    
+      def fromName(name)
+      {
+        if (name.StartsWith("On")) name.Substring(2); else $"evt$(mb.Name)";
+      }
+    
+      def unknown(val)
+      {
+        Message.Error(val.Location,"Неизвестное выражение");
+      }
+    
+      def getName(val)
+      {    
+        | PExpr.Ref(name=n) => $"On$n"
+        | _ => unknown(val); ""  
+      }
+        
+      def names=match (flags) 
+                 {
+                   |[] => fromName(mb.Name) :: []
+                   |_ :: _ => flags.Map(getName)        
+                 }                           
+                 
+      foreach (name in names)
+      {
+      
+        def evt=ty.GetEvents().Find(x => x.Name==name);
+        def evt=if (evt.HasValue) evt.Value.GetMemType(); else
+                  ty.DefineWithSource(<[decl: public event $(name : usesite) : EventHandler; ]>).GetMemType();
+        mb.Body= <[ $(GetEventCallExpr(name,evt.TypeInfo)); 
+               $(mb.Body);
+               ]>;
+      }           
+    }
+    
+    GetEventCallExpr(name : string,ev : TypeInfo) : PExpr
+    { 
+      def default= <[ when ($(name : usesite)!=null) $(name : usesite)(this,null); ]> ;
+      if (ev==null) default; else
+        match (ev.FullName)
+        {
+          |"System.Action" => <[ when ($(name : usesite)!=null) $(name : usesite)(); ]>    
+          |"System.EventHandler"     
+          |_ => default
+        }
+    }
+    
+    public CreateCall(ty : Typer,body : PExpr) : PExpr
+    {
+      def cur= ty.CurrentType;  
+      match (body)
+      {
+        | PExpr.Ref(name=n) =>         
+            def evts=cur.GetEvents();            
+            def find=evts.Find(x => x.Name==n.Id);
+            if (find.IsNone) 
+            {     
+              GetEventCallExpr(n.Id,null);
+     //Message.Error($"Не найден идентификатор: $body");
+     //<[ () ]>;
+            } else
+            {    
+              GetEventCallExpr(n.Id,find.Value.GetMemType().TypeInfo);
+            }
+        |  _ => Message.Error($"Неизвестный идентификатор: $body");
+            <[ () ]>;
+      }
+  
+    }
+  
+  }
+
+}

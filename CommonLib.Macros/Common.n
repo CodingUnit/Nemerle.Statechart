@@ -1,0 +1,141 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+namespace CommonLib.Macros
+{
+  public module Bits
+  {
+        /// <summary>
+        /// Битовая Маска
+        /// </summary>    
+    Mask(bit : int) : int
+    {
+      1 << bit;
+    }
+
+    public ClrBit(val : int, bit : int) : int
+    {
+      val & ~Mask(bit);            
+    }
+
+    public SetBit(val : int, bit : int) : int
+    {
+      val | Mask(bit);            
+    }
+
+    public GetBit(val : int, bit : int) : bool
+    {
+      val %&& Mask(bit);
+            //(val & Mask(bit)) != 0;
+    }
+
+    public FillBits(bit : int) : int
+    {
+      Mask(bit) - 1;
+    }
+
+    public GetBits(val : int, bit : int, size : int) : int
+    {
+      val >> bit & FillBits(size);
+    }
+
+
+  }
+
+  public module Common
+  {
+
+    public LowByte(val : int) : byte
+    {
+      unchecked(val & 0xFF) :> byte;
+    }
+
+    public HighByte(val : int) : byte
+    {
+      unchecked(val >> 8 & 0xFF) :> byte;
+    }
+
+    public MakeShort(low : int, high : int) : short
+    {
+      unchecked(high << 8 | low) :> short;
+    }
+
+    public MakeByte(low : int, high : int) : byte
+    {
+      unchecked(high << 4 | low) :> byte;
+    }
+
+    public LowQuat(data : byte) : byte
+    {
+      data & 0xF
+    }
+
+    public HighQuat(data : byte) : byte
+    {
+      data >> 4
+    }
+
+    public Create7bitPackedLength(length : int) : IEnumerable[byte]
+    {        
+        
+      def cycle(len)
+      {
+        match (len)
+        {
+          | 0 => ()
+          | _ =>              
+              
+              def data =
+              {
+                         def cut = len & 0xFF;
+                         if (len >= 0x80) (cut | 0x80) else cut;
+              }
+                            
+              def nlen = len >> 7;
+              yield data :> byte;
+              cycle(nlen)
+        }
+      }
+      
+      cycle(length)
+    }
+
+    public Read7bitPackedLength(read_func : Func[byte]) : int
+    {
+    
+      def cycle(val : int, pos) : int
+      {
+        def cur = read_func();
+        def res = cur & 0x7f;
+        def nval = val | res << pos;
+        if (cur %&& 0x80) cycle(nval, pos + 7) else nval
+      }
+      
+      cycle(0, 0);
+    }
+
+    public Read7bitPackedLength(read_func : IEnumerable[byte]) : int
+    {
+      def en = read_func.GetEnumerator();
+      
+      def cycle(val : int, pos) : int
+      {
+        if (en.MoveNext())
+        {
+          def cur = en.Current;
+          def res = cur & 0x7f;
+          def nval = val | res << pos;
+          if (cur %&& 0x80) cycle(nval, pos + 7) else nval
+        } else val;
+      }
+      
+      cycle(0, 0)
+    }
+  }
+
+
+}

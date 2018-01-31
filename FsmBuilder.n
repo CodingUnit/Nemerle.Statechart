@@ -9,6 +9,7 @@ using System.Linq;
 using Nemerle.Compiler;
 using Nemerle.Compiler.Parsetree;
 using System.IO;
+using CommonLib.Macros;
 
 namespace Nemerle.Statechart
 {
@@ -49,15 +50,21 @@ namespace Nemerle.Statechart
     }
 
     [Memoized]
-    attribute : PExpr
+    attribute : option[PExpr]
     {
       get
       {
-        match (AttributesAndMods.ParsedCustomAttributes.Find(x => x is <[ statechart($_) ]>))
+        def find_func(x)
         {
-          | Some(<[ statechart($x) ]>) => x
-          | _                          => null
+          | <[ statechart(..$x) ]> => match (x)
+                                      {
+                                        | x :: _ => Some(x)
+                                        | _      => None()
+                                      }
+          | _                      => None()
         }
+        
+        AttributesAndMods.ParsedCustomAttributes.FindMap(find_func)
       }
     }
 
@@ -65,7 +72,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (attribute != null) attribute.Location else top.Location;
+        if (attribute is Some(a)) a.Location else top.Location;
       }
     }
 
@@ -76,8 +83,8 @@ namespace Nemerle.Statechart
       {
         match (attribute)
         {
-          | <[ $(str : string) ]> => str
-          | _                     => null
+          | Some(<[ $(str : string) ]>) => str
+          | _                           => null
         }
       }
     }
@@ -100,8 +107,17 @@ namespace Nemerle.Statechart
     
     public ConvLocation(location : Nitra.Location) : Location
     {
-      def nloc = Nemerle.Compiler.Location(location.Source.File.FullName, location.StartLineColumn.Line, location.StartLineColumn.Column, location.EndLineColumn.Line, location.EndLineColumn.Column);//Nitra.Util.ToNemerleLocation(location);
-      def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line - 1 + loc.Line, nloc.Column) else Location(nloc, nloc.Line, nloc.Column + loc.Column);
+  //    def nloc = Nitra.Util.ToNemerleLocation(location);
+      def startLineColumn = location.StartLineColumn;
+	    def startLine = startLineColumn.Line;
+	    def startCol = startLineColumn.Column;
+	    def endLineColumn = location.EndLineColumn;
+	    def endLine = endLineColumn.Line;
+	    def endCol = endLineColumn.Column;
+	    def nloc =  Location(location.Source.File.FullName, startLine, startCol, endLine, endCol);
+	    def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line + loc.Line - 1, nloc.Column, loc.Line + nloc.EndLine - 1, nloc.EndColumn) 
+	               else Location(nloc, nloc.Line, nloc.Column + loc.Column, nloc.EndLine, nloc.EndColumn + loc.Column);
+      //def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line - 1 + nloc.Line, nloc.Column) else Location(nloc, nloc.Line, nloc.Column + loc.Column);
       nloc
     }
     
@@ -202,7 +218,7 @@ namespace Nemerle.Statechart
     
     public CheckBody() : void
     {
-      when (attribute != null && body == null) Message.Error(attr_loc, "Body expression must be a string");
+      when (attribute is Some() && body == null) Message.Error(attr_loc, "Body expression must be a string");
     }
     
     public Build() : void

@@ -1,0 +1,177 @@
+﻿using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Compiler.Parsetree;
+
+namespace CommonLib.Macros
+{
+   // TODO: сделать более короткий символ с поиском 
+  macro @ifval(first,second)  
+  syntax ("ifval","(",first,")",second)
+  {
+      //Debugger.Break();      
+    ValueHelper.IfVal(first,second)
+  }
+  
+  macro @ifvalue(first,second,third)  
+  syntax ("ifvalue","(",first,")",second,"else",third)
+  //syntax (second,"ifval",first)
+  {
+    //Debugger.Break();              
+    //assert2(false);
+    ValueHelper.IfValue(first,second,third)
+  }
+
+  partial module ValueHelper
+  {
+            
+    //public Add[T](this opt : option[T],opt2 : option[T]) : option[T]
+    //{        
+    //  if (opt.HasValue) opt else
+    //    if (opt2.HasValue) opt2 else option.None()
+    //}
+    
+    //public Add[T](this opt : option[T],opt2 : option[option[T]]) : option[T]
+    //{
+    //  if (opt.HasValue) opt else
+    //    if (opt2.HasValue) opt2.Value else option.None()
+    //}
+    
+    //public Add[T](this opt : option[T],opt2 : list[option[T]]) : option[T]
+    //{        
+    //  def val=opt2.Find(x => x.HasValue);
+    //  if (opt.HasValue) opt else
+    //    if (val.HasValue) val.Value else option.None()
+    //}
+    
+    public IfVal(first : PExpr,second : PExpr) : PExpr
+    {
+      def (expr,simp)=ValueHelper.GetExpr(first,second);
+      if (simp)
+    <[ when ($first.HasValue) 
+    {
+        $expr
+    }
+     ]> 
+      else 
+     <[ 
+     {
+     def value = $first; // кэшируем результат для сложных выражений
+     when (value.HasValue) $expr
+     }
+     ]>          
+        
+    }
+    
+    public IfValue(first : PExpr,second : PExpr,third : PExpr) : PExpr
+    {
+      def (expr,simp)=ValueHelper.GetExpr(first,second);
+      if (simp)
+    <[ if ($first.HasValue) 
+    {
+        $expr
+    } else $third 
+     ]> 
+      else 
+     <[ 
+     {
+     def value = $first;
+     if (value.HasValue) $expr else $third
+     }
+    ]>        
+    }
+    
+    
+    public GetExpr(first : PExpr,second : PExpr) : PExpr * bool
+    {     
+      def loop_first(first)
+      {
+        | PExpr.Ref
+        | Member(_ is PExpr.Ref,_ is Splicable.Name) => true // для простого обращения к полю
+        | _ => false
+      }
+      
+      def simple=loop_first(first);  // получаем простое ли выражение
+      
+      def get_first_expr()
+      {
+        if (simple) <[ $first ]> else <[ value ]>
+      }
+      
+      def loop(func,second)
+      {
+          
+        match (second)
+        {
+          | <[ {..$lst} ]> => <[ {..$(lst.Map(loop(func,_)))} ]>//PExpr.Sequence(lst.Map(loop(func,_)))
+          | <[ $f(..$p) ]> => PExpr.Call(loop(func,f),p.Map(loop(func,_)))
+          | <[ $obj.$mem]> => <[ $(loop(func,obj)).$mem]>// PExpr.Member(,mem)
+          | <[ def $pat = $val]> => <[ def $pat = $(loop(func,val)) ]> //Define(pat,val) =>
+          | <[ _ ]> => func()
+          | <[ match ($exp) {..$cases}]> => def cases= cases.Map(x => <[ case: | ..$(x.patterns) => $(loop(func,x.body))]>);
+                                            <[ match ($(loop(func,exp)))// PExpr.Match(loc,, //Match(exp,cases,loc)
+                                               {
+                                                 ..$cases  
+                                               }]>
+          | <[ $exp : $typ ]> => <[ $(loop(func,exp)) : $typ ]>
+          | Spliced(body) => PExpr.Spliced(loop(func,body))                                     
+          | <[ (..$args) ]> => <[ (..$(args.Map(loop(func,_)))) ]>
+          | Quoted(SyntaxElement.Expression(exp)) => PExpr.Quoted(SyntaxElement.Expression(loop(func,exp)))
+          | Quoted(SyntaxElement.MatchCase(body)) => 
+                   PExpr.Quoted(SyntaxElement.MatchCase(MatchCase(body.patterns.Map(loop(func,_)),loop(func,body.body))))                              
+          | MacroCall(name=n) when n.ToString()=="__" => <[ _ ]>
+          | MacroCall(name=n) when n.ToString()=="b_" => <[ $(get_first_expr()) ]>
+          | MacroCall(name=n,parms=p,ns=ns) => def p=p.Map(x => match (x)
+                                                            {
+                                                               | SyntaxElement.Expression(body) => SyntaxElement.Expression(loop(func,body)) 
+                                                               |_ => x
+                                                            });
+                                               PExpr.MacroCall(n,ns,p)
+          | _ => second
+        }
+      }
+      
+      // сканируем выражения и получаем простое выражение или сложное
+      
+      mutable num=0; 
+            
+      //def a=find_option(first);
+      def get_func_count(simple)
+      {
+        num++;
+        if (simple) <[ $first.Value ]> else <[ value.Value ]>
+      }
+            
+      def expr=loop(() => get_func_count(simple),second); // получаем                  
+      def expr=if (num > 1) 
+                {                  
+                   <[ 
+                   $(if (simple) 
+                    <[ def val= $first.Value ]> 
+                    else 
+                    <[ def val= value.Value; ]>);
+                   $(loop(() => <[ val ]>,second))
+                   ]>                    
+                } else expr;
+      (expr,simple)
+    }
+     
+  }
+  
+  //macro @wild(a,b)
+  //syntax ("__")  
+  //{
+  //    <[ _ ]>
+  //}
+
+  //macro @basewild(a,b)
+  //syntax ("b_")  
+  //{
+  //    <[ () ]>
+  //}
+  
+}

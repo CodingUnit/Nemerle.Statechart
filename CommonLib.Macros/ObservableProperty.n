@@ -1,0 +1,77 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.ComponentModel;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reactive.Linq;
+using System.Reactive.Disposables;
+
+namespace CommonLib.Macros
+{
+  [Record]
+  public class ObservablePropertyContainer[T] : IObservable[T]
+  {
+    _obj    : INotifyPropertyChanged;
+    _name   : string;
+    _getter : void -> T;
+    
+    OnChange(_obj : object, args : PropertyChangedEventArgs, obs : IObserver[T]) : void
+    {
+      when (args.PropertyName == _name) obs.OnNext(_getter());
+    }
+    
+    public Subscribe(obs : IObserver[T]) : IDisposable
+    {
+      def act = OnChange(_, _, obs);
+      _obj.PropertyChanged += act;
+      Disposable.Create(_ => _obj.PropertyChanged -= act)
+    }
+  }
+  
+  macro ObservableProperty(name)
+  {
+    ObservablePropertyImpl.DoTransform(Macros.ImplicitCTX(), name)
+  }
+  
+  macro WhenAny(params name : list[PExpr])
+  {
+    ObservablePropertyImpl.DoTransformWhenAny(Macros.ImplicitCTX(), name)
+  }
+  
+  module ObservablePropertyImpl
+  {
+    
+    public DoTransformWhenAny(typer : Typer, name : list[PExpr]) : PExpr
+    {
+      Macros.DefineCTX(typer);
+      
+      def create_expr(e, x)
+      {
+        //$(name.Map(x => ObservablePropertyContainer(this, $(n.ToString()), _ => this.$(n.ToString() : usesite)).Subscribe(_ => obs.OnNext())))
+        <[ ObservableProperty($e).Subscribe(_ => $x.OnNext(null)) ]>
+      }
+      
+      def expr = name.Map(create_expr(_, <[ obs ]>));
+      <[ Observable.Create(obs => CompositeDisposable(..$expr)) ]>
+      
+    }
+    
+    public DoTransform(typer : Typer, name : PExpr) : PExpr
+    {
+      Macros.DefineCTX(typer);
+      match (name)
+      {
+        | <[ $(n : usesite) ]> => <[ ObservablePropertyContainer(this, $n, _ => this.$(n : usesite)) : IObservable[_]]>
+        | _                    => Message.Error($"Invalid Expr $name"); 
+                                  <[]>
+      }
+    }
+  }
+}

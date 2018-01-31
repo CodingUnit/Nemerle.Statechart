@@ -1,0 +1,49 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using CommonLib.Macros;
+
+namespace Nemerle.Statechart
+{
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Method)]
+  macro Action(typeBuilder : TypeBuilder, method : ClassMember.Function, state : PExpr, fsm : PExpr = null)
+  {
+    ActionImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, method, state, fsm)
+  }
+  
+  module ActionImpl
+  {
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, method : ClassMember.Function, state : PExpr, fsm : PExpr = null) : void
+    {
+      Macros.DefineCTX(typer);
+      
+      //assert2(false);
+      
+      match (state)
+      {
+        | <[ $(n : usesite)]> => 
+           def evt = n;
+           def fsm = fsm ?? FsmUtils.FindFsmField(typer, typeBuilder);
+           when (fsm != null)
+           {
+             def cons = typeBuilder.GetParsedCtors();
+             def call = <[ $fsm.$(evt : usesite) += $(method.Name : usesite) ]>;
+             foreach (c in cons)
+             {
+               c.Body = <[ $(c.Body); $call ]>;
+             }
+           }
+        | st                   => Message.Error(state.Location, $"Invalid expression for state $st");
+      }
+      
+    }
+  }
+}

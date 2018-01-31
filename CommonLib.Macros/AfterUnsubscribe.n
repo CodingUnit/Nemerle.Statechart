@@ -1,0 +1,38 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Reactive.Linq;
+using System.Threading;
+using System.Reactive.Disposables;
+
+namespace CommonLib.Macros
+{
+  public class AfterUnsubscribeObservable[T] : IObservable.[T] 
+  {
+    _source : IObservable.[T];
+    _act : Action;
+    mutable _subscribers : int = 0;
+
+    public this(src : IObservable.[T], action : Action)
+    {
+      _source = src;
+      this._act = action
+    }
+
+    Unsubscribe() : void 
+    {
+      _ = Interlocked.Decrement(ref _subscribers);
+      when (_subscribers == 0) _act()
+    }
+
+    public Subscribe(observer : IObserver.[T]) : IDisposable
+    {
+      def disp = _source.Subscribe(observer);
+      _ = Interlocked.Increment(ref _subscribers);
+      Disposable.Create(_ => {_  = disp.Dispose(); Unsubscribe()})
+    }
+  }
+
+
+}
