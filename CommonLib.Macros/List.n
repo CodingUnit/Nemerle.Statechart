@@ -312,7 +312,7 @@ namespace CommonLib.Macros
         }
       }
 
-      lst.FoldBack([], loop)
+      lst.FoldRightO([], loop)
     }
 
     public FilterType[T, TRes](this lst : IEnumerable[T]) : IEnumerable[TRes]
@@ -354,6 +354,30 @@ namespace CommonLib.Macros
       loop()
     }
 
+    /// <summary>
+    /// Find first element corresponds to predicate and map to result type
+    /// </summary>
+    /// <param name = "lst">enumerable</param>
+    /// <returns>result if has</returns>
+    public FindMap[T, TRes](this lst : IEnumerable[T], func : T -> option[TRes]) : option[TRes]
+    {
+      def en = lst.GetEnumerator();
+      
+      def loop()
+      {
+        if (en.MoveNext())
+        {
+          match (func(en.Current)) 
+          {
+            | Some as r => r 
+            | _         => loop()
+          }
+        } else None()
+      }
+      
+      loop()
+    }
+    
     public FindTypeWhen[T, TRes](this lst : IEnumerable[T], func : TRes -> bool) : option[TRes]
     {
       def vals = lst.FilterType();
@@ -428,6 +452,27 @@ namespace CommonLib.Macros
     //lst.FoldLeft([], loop).Rev()
     } 
 
+    public MapOpt[T, T2](this lst : list[T], pred : T -> option[T2]) : option[list[T2]]
+    {
+      def loop(lst, res)
+      {
+        match (lst)
+        {
+          | []           => Some(res.Rev())
+          | head :: tail => if (pred(head) is Some(r))
+                            {
+                              loop(tail, r :: res)
+                            } else
+                            {
+                              None()
+                            }
+        }
+        
+      }
+
+      loop(lst, [])
+    }
+    
     public Map[T](this lst : IEnumerable, map : object -> T) : IEnumerable[T]
     {
       def en = lst.GetEnumerator();
@@ -537,30 +582,9 @@ namespace CommonLib.Macros
         }
       }
 
-      lst.FoldBack([], loop)
+      lst.FoldRightO([], loop)
     }
 
-    public MapOpt[T, T2](this lst : list[T], pred : T -> option[T2]) : option[list[T2]]
-    {
-      def loop(lst, res)
-      {
-        match (lst)
-        {
-          | []           => Some(res.Rev())
-          | head :: tail => if (pred(head) is Some(r))
-                            {
-                              loop(tail, r :: res)
-                            } else
-                            {
-                              None()
-                            }
-        }
-        
-      }
-
-      loop(lst, [])
-    }
-    
     public MapDefault[T, T2](this opt : option[T], conv : T -> T2, default : T2) : T2
     {
       match (opt)
@@ -837,7 +861,7 @@ namespace CommonLib.Macros
         if (pred(elem)) res else elem :: res;
       }
 
-      lst.FoldBack([], loop)
+      lst.FoldRightO([], loop)
     }
 
     public FindIndex[T](this lst : list[T], pred : T -> bool) : int
@@ -1065,7 +1089,7 @@ namespace CommonLib.Macros
       loop([], len)
     }
 
-    public FoldBack[T, TOut](this l : IEnumerable[T], acc : TOut, f : T * TOut -> TOut) : TOut 
+    public FoldRightO[T, TOut](this l : IEnumerable[T], acc : TOut, f : T * TOut -> TOut) : TOut 
     {
       def buffer = SCG.Stack();
       foreach (x in l) buffer.Push(x);
@@ -1250,7 +1274,7 @@ namespace CommonLib.Macros
         }
       }
 
-      sorted.FoldBack([], loop)
+      sorted.FoldRightO([], loop)
       //when (en.MoveNext()) loop(en.Current);
     }
 
