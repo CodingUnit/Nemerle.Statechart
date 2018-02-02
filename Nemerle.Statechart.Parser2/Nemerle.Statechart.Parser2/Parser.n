@@ -31,51 +31,34 @@ namespace Nemerle.Statechart
 
     parse_action(pos : int, text : string) : Actions
     {
-      match (text.SplitToList(','))
-      {
-        | []  => Actions(pos, [])
-        | [_] => def expr = parse_expr(text);
-                 def act = match (expr)
-                 {
-                   | <[ $(n : usesite)(..$p) ]> => def p = p.Map(_.ToString()); 
-                                                   FsmAction.Normal(pos, n, p)
-                   | <[ $(n : usesite) ]>       => FsmAction.Normal(pos, n, [])
-                   | _                          => FsmAction.Expr(pos, expr)
-                 }
-                 Actions(pos, act :: [])
-        | lst => 
-                 def conv_expr(e)
-                 {
-                   regexp match (e)
-                   {
-                     | @"\s*(?<name>\w+)(\(\s*\))?" => Some(FsmAction.Normal(pos, name, []))
-                     | _                            => None()
-                   }
-                 }
-                 def act = match (lst.MapOpt(conv_expr))
-                 {
-                   | Some(lst) => lst
-                   | _         => FsmAction.Expr(pos, parse_expr(text)) :: []
-                 }
-                 Actions(pos, act)
-      }
-      
+      Actions(pos, FsmAction.Expr(pos, parse_expr(text)) :: [])
     }
 
     GetActions(lst : ActionsParseTree.ActionList) : Actions
     {
       match (lst.Action)
       {
-        //| SimpleAction(SimpleAction = ActionsParseTree.SimpleAction.Empty)                                      => Actions(lst.Location.StartPos, [])
-        //| SimpleAction(SimpleAction = ActionsParseTree.SimpleAction.List(SData = (a, _))) => 
-        //    def act = a.Map((x, _) => FsmAction.Normal(x.Location.StartPos, x.GetText(), []));
-        //    Actions(lst.Location.StartPos, act)
+        | SimpleAction(SimpleAction = a) => 
+        
+            def conv_simple(x, a)
+            {
+              match (x)
+              {
+                | ActionsParseTree.SimpleAction.AmbiguousOrMissingNode    => a
+                | ActionsParseTree.SimpleAction.Nested.Action.Empty       => FsmAction.Empty :: a
+                | ActionsParseTree.SimpleAction.Nested.Action.Simple(AnyIdentifier = n) as f with p = [] 
+                | ActionsParseTree.SimpleAction.Nested.Action.Full(AnyIdentifier = n, AnyIdentifiersData = (p, _)) as f => 
+                    FsmAction.Normal(f.Location.StartPos, n.IdentifierBodyData, p.Map(_.IdentifierBodyData)) :: a
+                | _ => a
+              }
+            }
+            def act = a.ActionsData[0].FoldRightO([], conv_simple);
+            Actions(lst.Location.StartPos, act)
                 
         | SimpleExpr(SimpleExpr = ActionsParseTree.SimpleExpr(Expr = e))            
         | BraceExpr(BraceExpr = ActionsParseTree.BraceExpr(Exprs = e)) =>
             def text = e.GetText();
             parse_action(e.Location.StartPos, text);
-        //| Expr(ActionsParseTree.ActionList.Action.Expr.Nested.Expr.BraceExpr(ActionsParseTree.BraceExpr.ParseTree(_, e, _))) => 
             
               
         | _ => Actions(lst.Location.StartPos, [])
