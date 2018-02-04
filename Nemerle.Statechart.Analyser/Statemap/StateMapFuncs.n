@@ -122,9 +122,16 @@ namespace Nemerle.Statechart
       // src - примерное начало
       def from = if (tran != null) tran.From else null;
       // TODO: разрешение с помощью супер состояний
-      def (states, pseudo) = if (par != null) (par.sub_states, par.pseudo_states) else 
-         //if (from != null && tran.Local) (from.AllSubStates.Concat(from.super_states), from.AllPseudo)
-         (States, PseudoStates);
+      def (states, pseudo) = match (par)
+                             {
+                               | null => (States, PseudoStates)
+                               | FsmState(type = StateType.Region) => def pseudo = par.sub_states.SelectMany(x => x.pseudo_states).NToList();
+                                                                      def sub_states = par.sub_states.SelectMany(x => x.sub_states).NToList() + par.sub_states;
+                                                                      (sub_states, pseudo)
+                               | _                                 => (par.sub_states, par.pseudo_states)
+                             }
+                                 //if (from != null && tran.Local) (from.AllSubStates.Concat(from.super_states), from.AllPseudo)
+                                 
       def src = par ?? from ?? src;
       mutable err = [];
       match (Get(src, n, states, x => err ::= x))
