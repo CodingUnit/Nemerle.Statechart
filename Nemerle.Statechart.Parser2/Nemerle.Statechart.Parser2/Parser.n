@@ -246,7 +246,7 @@ namespace Nemerle.Statechart
     
     CreateState(ast : Nitra.ParseTree, name : BaseParseTree.AnyIdentifier, parent : option[MainParseTree.Parent], attr : option[BaseParseTree.Attributes], decls : list[list[MainParseTree.StateDecl]], type : StateType, err : list[StateNode.Error] = null) : StateNode.State
     {
-      def name = name.GetText();
+      def name = name?.GetText();
       def parent = if (parent is Some(p)) GetParent(p) else None();
       def attr = attr.MapDefault(GetAttribute, []);
       
@@ -260,6 +260,17 @@ namespace Nemerle.Statechart
       //
     }
     
+    GetConcurrentDecls(decls : list[list[RegionsParseTree.StateConcDecl]]) : list[list[MainParseTree.StateDecl]] * list[StateNode.Error]
+    {
+      def decls = decls.Map(x => x.Partition(x => x is RegionsParseTree.StateConcDecl.DelimiterErr));
+      def reg_err = decls.Map(x => x[0]).Flatten();
+      def decls = decls.Map(x => x[1].Map(x => (x :> RegionsParseTree.StateConcDecl.StateDecl).StateDecl));
+      def reg_err = reg_err.Map(x => StateNode.Error(x.Location.StartPos, StateNode.Region(x.Location.StartPos)));
+      (decls, reg_err)
+    }
+    
+    
+                                                               
     CreateState(pos : int, attr : list[StateAttribute], name : string, decls : list[MainParseTree.StateDecl], type : StateType, parent : option[string], errors : list[StateNode.Error] = null) : StateNode.State
     {
       mutable defer  = [];
@@ -292,7 +303,8 @@ namespace Nemerle.Statechart
                                           | Some(p) => pseudo ::= p
                                           | _       => ()
                                         }
-          | StateDecl.Regions as r => def st = CreateRegion(r.Regions);
+          | StateDecl.Regions as r => def (st, e) = CreateRegion(r.Regions);
+                                      err += e;
                                       states += st
           
           | StateDecl.State as t => def state = CreateState(t, StateType.State()); 
@@ -321,7 +333,8 @@ namespace Nemerle.Statechart
                             }
                | _       => ()
              }
-          | StateDecl.StateConcurrent(StateConcurrent = st) => def decls = st.StateDeclsData :: st.AndSubRegionsData.Map(x => x.StateDeclsData);
+          | StateDecl.StateConcurrent(StateConcurrent = st) => def (decls, reg_err) = GetConcurrentDecls(st.StateConcDeclsData :: st.AndSubRegionsData.Map(x => x.StateConcDeclsData));
+                                                               err += reg_err;
                                                                def st = CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, decls, StateType.Region());
                                                                states ::= st
           | _ => ()
@@ -329,7 +342,7 @@ namespace Nemerle.Statechart
       StateNode.State(pos, name, parent, attr, entry.Rev(), exit.Rev(), tran.Rev(), do_act.Rev(), defer.Rev(), states.Rev(), pseudo.Rev(), type, err.Rev())
     }
 
-    CreateRegion(reg : RegionsParseTree.Regions) : list[StateNode.State]
+    CreateRegion(reg : RegionsParseTree.Regions) : list[StateNode.State] * list[StateNode.Error]
     {
       //def get_separator_err(d)
       //{
@@ -340,11 +353,13 @@ namespace Nemerle.Statechart
       //}
       match (reg)
       {
-        | RegionsParseTree.Regions.AmbiguousOrMissingNode => []
+        | RegionsParseTree.Regions.AmbiguousOrMissingNode => ([], [])
         | _ => 
             //def (err, decls) = get_separator_err(d);
-            def and_regs = reg.AndSubRegionsData.Map(x => CreateState(x, null, None(), None(), [x.StateDeclsData], StateType.SubRegion()));
-            def state = CreateState(reg, null, None(), reg.AttributesOptData, [reg.StateDeclsData], StateType.SubRegion());
+            def decls = reg.StateConcDeclsData :: reg.AndSubRegionsData.Map(x => x.StateConcDeclsData);
+            def (decls, err) = GetConcurrentDecls(decls);
+            def state = decls.Map(x => CreateState(reg, null, None(), reg.AttributesOptData, [x], StateType.SubRegion()));
+            (state, err)
             //def (init, pseudo) = state.pseudo_states.Partition(x => x.node is PseudoStateModelNode.Initial);
             //def reg = StateNode.State(pos, null, null, [], [], [], [], [], [], state.sub_states, init, StateType.SubRegion(), err);
             
@@ -366,7 +381,7 @@ namespace Nemerle.Statechart
           
             //def (and_regs, decls) = and_regs.FoldRightO(([], []), create_and_regions);
           
-            state :: and_regs
+            //state :: and_regs
             //def states = reg :: and_regs;
           
             //def en = decls.SelectMany(_.entry).NToList();
