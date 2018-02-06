@@ -8,7 +8,7 @@ using Nemerle.Statechart;
 
 using System.Collections.Generic;
 using System.Linq;
-
+using System.Threading;
   /// <summary>
   /// Description of junction_example.
   /// </summary>
@@ -16,57 +16,30 @@ using System.Linq;
   <#
   flags testing;
 
-  name "concurrent and withing transitions";
-  //flags debug;
+  // flags debug;
 
-   state_conc J
+  name "do activity and completion transitions";
+  
+   state A
    {
-
-     state_conc A
-     {
-       state B
-       {
-         a => C;
-         b => C;
-       }
-
-       state C
-       {
-         a => B;
-         b => B;
-       }
-
-     } and
-     {
-       state D
-       {
-         a => F;
-         c => F;
-       }
-
-       state F
-       {
-         a => D;
-         c => D;
-       }
-     }
-
-   } and
+     do / act1;
+     _ => B;
+   }
+   
+   state B
    {
-
-     state K
-     {
-       a => L;
-     }
-
-     state L
-     {
-       a => K;
-     }
+     a => A;
    }
   #>)]
   public class example
   {
+    act1(_ : CancellationToken) : void
+    {
+      foreach (elem in NList.Range(10))
+      {
+        Console.WriteLine(elem)
+      }
+    }
   }
 
 
@@ -78,155 +51,45 @@ module Test
     def fsm = example();
     def tester = fsm.GetTester();
     tester.ConsoleTestInit();
-    tester.Initiate("B|D|K", ["J", "A", "K", "B", "D"]);
-    tester.Test("b", "C|D|K", ["B"], ["C"]);
-    tester.Test("b", "B|D|K", ["C"], ["B"]);
-    tester.Test("c", "B|F|K", ["D"], ["F"]);
-    tester.Test("c", "B|D|K", ["F"], ["D"]);
-    tester.Test("a", "C|F|L", ["B", "D", "K"], ["L", "C", "F"]);
-    tester.Test("c", "C|D|L", ["F"], ["D"]);
-    tester.Test("a", "B|F|K", ["C", "D", "L"], ["K", "B", "F"]);
-    tester.Test("b", "C|F|K", ["B"], ["C"]);
-    tester.Test("a", "B|D|L", ["C", "F", "K"], ["L", "B", "D"]);
-    tester.Test("c", "B|F|L", ["D"], ["F"]);
-    tester.Test("a", "C|D|K", ["B", "F", "L"], ["K", "C", "D"]);
-    tester.Test("c", "C|F|K", ["D"], ["F"]);
-    tester.Test("a", "B|D|L", ["C", "F", "K"], ["L", "B", "D"]);
-    tester.Test("b", "C|D|L", ["B"], ["C"]);
-    tester.Test("a", "B|F|K", ["C", "D", "L"], ["K", "B", "F"]);
-    tester.Test("b", "C|F|K", ["B"], ["C"]);
-    tester.Test("c", "C|D|K", ["F"], ["D"]);
-    tester.Test("a", "B|F|L", ["C", "D", "K"], ["L", "B", "F"]);
+    tester.Initiate("B", 500, "EntryA", "ExitA", "EntryB");
+    tester.TestWait("a", 500, "B", "ExitB", "EntryA", "ExitA", "EntryB");
     fsm.Terminate();
   }
 }
 
 /*
 BEGIN-OUTPUT
-EntryJ
 EntryA
-EntryK
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+ExitA
 EntryB
-EntryD
-[B|D|K]
-Ok
-Processing a 'b' 
-ExitB
-EntryC
-[C|D|K]
-Ok
-Processing a 'b' 
-ExitC
-EntryB
-[B|D|K]
-Ok
-Processing a 'c' 
-ExitD
-EntryF
-[B|F|K]
-Ok
-Processing a 'c' 
-ExitF
-EntryD
-[B|D|K]
+[B]
 Ok
 Processing a 'a' 
 ExitB
-ExitD
-ExitK
-EntryL
-EntryC
-EntryF
-[C|F|L]
-Ok
-Processing a 'c' 
-ExitF
-EntryD
-[C|D|L]
-Ok
-Processing a 'a' 
-ExitC
-ExitD
-ExitL
-EntryK
+EntryA
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+ExitA
 EntryB
-EntryF
-[B|F|K]
-Ok
-Processing a 'b' 
-ExitB
-EntryC
-[C|F|K]
-Ok
-Processing a 'a' 
-ExitC
-ExitF
-ExitK
-EntryL
-EntryB
-EntryD
-[B|D|L]
-Ok
-Processing a 'c' 
-ExitD
-EntryF
-[B|F|L]
-Ok
-Processing a 'a' 
-ExitB
-ExitF
-ExitL
-EntryK
-EntryC
-EntryD
-[C|D|K]
-Ok
-Processing a 'c' 
-ExitD
-EntryF
-[C|F|K]
-Ok
-Processing a 'a' 
-ExitC
-ExitF
-ExitK
-EntryL
-EntryB
-EntryD
-[B|D|L]
-Ok
-Processing a 'b' 
-ExitB
-EntryC
-[C|D|L]
-Ok
-Processing a 'a' 
-ExitC
-ExitD
-ExitL
-EntryK
-EntryB
-EntryF
-[B|F|K]
-Ok
-Processing a 'b' 
-ExitB
-EntryC
-[C|F|K]
-Ok
-Processing a 'c' 
-ExitF
-EntryD
-[C|D|K]
-Ok
-Processing a 'a' 
-ExitC
-ExitD
-ExitK
-EntryL
-EntryB
-EntryF
-[B|F|L]
+[B]
 Ok
 END-OUTPUT
 */

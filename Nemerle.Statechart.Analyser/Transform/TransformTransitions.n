@@ -98,29 +98,47 @@ namespace Nemerle.Statechart
 
       def create_final_state(start, end)
       {
-        if (start == end) () else
+        //if (start == end) () else
+        if (start == null) () else
         {
-          when (!start.Super.HaveFinal)
+          when (!start.IsTopState)
+          when (!start.HaveFinal && start.IsComposite)
           {
             def final = FsmState(this, StateType.Final());
-            start.Super.Add(final);
-            def tran = StateTransition(start, TransitionTarget.Final(final), TransitionKind.External);
-            start.transitions += [tran];
-            create_final_state(start.Super, end)
+            start.Add(final);
+            //def tran = StateTransition(start, TransitionTarget.Final(final), TransitionKind.External);
+            //start.transitions += [tran];
+            //create_final_state(start.Super, end)
           }
-          create_final_state(start.Super, end)
+          //when (!start.Super.HaveFinal)
+          //when (!start.Super.HaveFinal)
+          //{
+          //  def final = FsmState(this, StateType.Final());
+          //  start.Super.Add(final);
+          //  def tran = StateTransition(start, TransitionTarget.Final(final), TransitionKind.External);
+          //  start.transitions += [tran];
+          //  create_final_state(start.Super, end)
+          //}
+          //create_final_state(start.Super, end)
         }
       }
 
       foreach (st in States)
       {
-        when (st.IsSimple || st.HaveFinal)
+        //when (st.IsSimple || st.HaveFinal)
         {
-          def tran = st.SuperStatesInclude.SelectMany(_.CompletionTransitions);
+          //def tran = st.SuperStatesInclude.SelectMany(_.CompletionTransitions);
+          def tran = st.CompletionTransitions; // on each completion transition
           foreach (tr when tr.FromPseudo.IsNone in tran)
           {
             def from = tr.From;
-            create_final_state(st, from)
+            create_final_state(from, null); // try create final state in state from it's originates
+            when (from.IsSubRegion) // if it subregion
+            {
+              st.transitions = st.transitions.Remove(tr); // remove it from transitions
+              tr.From = from.Super; // change it begining to super state
+              from.Super.transitions ::= tr; // move transition to it
+            }
           }
         }
       }
