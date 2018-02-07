@@ -96,18 +96,20 @@ namespace Nemerle.Statechart
     CheckAndCreateCompletionTransitions() : void
     {
 
-      def create_final_state(start, end)
+      def create_final_state(start, transition)
       {
         //if (start == end) () else
         if (start == null) () else
         {
-          when (!start.IsTopState)
+          //when (!start.IsTopState)
+          def super = start.Super;
           when (!start.HaveFinal && start.IsComposite)
           {
             def final = FsmState(this, StateType.Final());
-            start.Add(final);
-            //def tran = StateTransition(start, TransitionTarget.Final(final), TransitionKind.External);
-            //start.transitions += [tran];
+            super.Add(final);
+            def tran = StateTransition(start, TransitionTarget.Final(final), TransitionKind.External);
+            start.transitions ::= tran;
+            start.transitions = start.transitions.Remove(transition)
             //create_final_state(start.Super, end)
           }
           //when (!start.Super.HaveFinal)
@@ -132,7 +134,8 @@ namespace Nemerle.Statechart
           foreach (tr when tr.FromPseudo.IsNone in tran)
           {
             def from = tr.From;
-            create_final_state(from, null); // try create final state in state from it's originates
+            when (tr.To is TransitionTarget.Final)
+              create_final_state(from, tr); // try create final state in state from it's originates
             when (from.IsSubRegion) // if it subregion
             {
               st.transitions = st.transitions.Remove(tr); // remove it from transitions

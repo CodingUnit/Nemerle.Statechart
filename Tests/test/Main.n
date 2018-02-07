@@ -8,7 +8,7 @@ using Nemerle.Statechart;
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
+
   /// <summary>
   /// Description of junction_example.
   /// </summary>
@@ -16,30 +16,65 @@ using System.Threading;
   <#
   flags testing;
 
-  // flags debug;
+  name "transitions within region, and normal states, with nested region";
+   flags debug;
 
-  name "do activity and completion transitions";
-  
-   state A
+   state_conc J
    {
-     do / act1;
-     _ => B;
-   }
-   
-   state B
+
+     state_conc A
+     {
+       a => I; // W: Transition "TransitionAToIBya" is overriden by \[TransitionDToFBya, TransitionKToLBya, TransitionBToCBya, TransitionLToKBya, TransitionFToDBya, TransitionCToBBya\], due to execute priority rules, because this transitions is always enabled
+       d => I;
+
+       state B
+       {
+         a => C;
+         b => C;
+       }
+
+       state C
+       {
+         a => B;
+         b => B;
+       }
+
+     } and
+     {
+       state D
+       {
+         a => F;
+         c => F;
+       }
+
+       state F
+       {
+         a => D;
+         c => D;
+       }
+     }
+
+     state I
+     {
+       a => A;
+     }
+
+   } and
    {
-     a => A;
+
+     state K
+     {
+       a => L;
+     }
+
+     state L
+     {
+       a => K;
+     }
    }
   #>)]
   public class example
   {
-    act1(_ : CancellationToken) : void
-    {
-      foreach (elem in NList.Range(10))
-      {
-        Console.WriteLine(elem)
-      }
-    }
   }
 
 
@@ -51,45 +86,101 @@ module Test
     def fsm = example();
     def tester = fsm.GetTester();
     tester.ConsoleTestInit();
-    tester.Initiate("B", 500, "EntryA", "ExitA", "EntryB");
-    tester.TestWait("a", 500, "B", "ExitB", "EntryA", "ExitA", "EntryB");
+    tester.Initiate("B|D|K", ["J", "A", "K", "B", "D"]);
+    tester.Test("a", "C|F|L", ["B", "D", "K"], ["L", "C", "F"]);
+    tester.Test("c", "C|D|L", ["F"], ["D"]);
+    tester.Test("b", "B|D|L", ["C"], ["B"]);
+    tester.Test("b", "C|D|L", ["B"], ["C"]);
+    tester.Test("c", "C|F|L", ["D"], ["F"]);
+    tester.Test("d", "I|L", ["F", "C", "A"], ["I"]);
+    tester.Test("a", "B|D|K", ["I", "L"], ["A", "K", "B", "D"]);
+    tester.Test("d", "I|K", ["D", "B", "A"], ["I"]);
+    tester.Test("a", "B|D|L", ["I", "K"], ["A", "L", "B", "D"]);
+    tester.Test("c", "B|F|L", ["D"], ["F"]);
+    tester.Test("b", "C|F|L", ["B"], ["C"]);
     fsm.Terminate();
   }
 }
 
 /*
 BEGIN-OUTPUT
+EntryJ
 EntryA
-0
-1
-2
-3
-4
-5
-6
-7
-8
-9
-ExitA
+EntryK
 EntryB
-[B]
+EntryD
+[B|D|K]
 Ok
-Processing a 'a' 
+Processing a 'a'
 ExitB
-EntryA
-0
-1
-2
-3
-4
-5
-6
-7
-8
-9
-ExitA
+ExitD
+ExitK
+EntryL
+EntryC
+EntryF
+[C|F|L]
+Ok
+Processing a 'c'
+ExitF
+EntryD
+[C|D|L]
+Ok
+Processing a 'b'
+ExitC
 EntryB
-[B]
+[B|D|L]
+Ok
+Processing a 'b'
+ExitB
+EntryC
+[C|D|L]
+Ok
+Processing a 'c'
+ExitD
+EntryF
+[C|F|L]
+Ok
+Processing a 'd'
+ExitF
+ExitC
+ExitA
+EntryI
+[I|L]
+Ok
+Processing a 'a'
+ExitI
+ExitL
+EntryA
+EntryK
+EntryB
+EntryD
+[B|D|K]
+Ok
+Processing a 'd'
+ExitD
+ExitB
+ExitA
+EntryI
+[I|K]
+Ok
+Processing a 'a'
+ExitI
+ExitK
+EntryA
+EntryL
+EntryB
+EntryD
+[B|D|L]
+Ok
+Processing a 'c'
+ExitD
+EntryF
+[B|F|L]
+Ok
+Processing a 'b'
+ExitB
+EntryC
+[C|F|L]
 Ok
 END-OUTPUT
 */
