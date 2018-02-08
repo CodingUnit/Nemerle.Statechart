@@ -8,73 +8,76 @@ using Nemerle.Statechart;
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Reactive.Linq;
 
   /// <summary>
   /// Description of junction_example.
   /// </summary>
   [statechart(
   <#
-  flags testing;
+  flags testing, auto_initial;
 
-  name "transitions within region, and normal states, with nested region";
-   //flags debug;
+  flags debug;
 
-   state_conc J
+  name "do activity and completion transitions";
+
+   state A
    {
+     do / act1;
+     _ / print_res => B;
+   }
 
-     state_conc A
-     {
-       a => I; // W: Transition "TransitionAToIBya" is overriden by \[TransitionDToFBya, TransitionKToLBya, TransitionBToCBya, TransitionLToKBya, TransitionFToDBya, TransitionCToBBya\], due to execute priority rules, because this transitions is always enabled
-       d => I;
-
-       state B
-       {
-         a => C;
-         b => C;
-       }
-
-       state C
-       {
-         a => B;
-         b => B;
-       }
-
-     } and
-     {
-       state D
-       {
-         a => F;
-         c => F;
-       }
-
-       state F
-       {
-         a => D;
-         c => D;
-       }
-     }
-
-     state I
-     {
-       a => A;
-     }
-
-   } and
+   state B
    {
+     _ / print_res => C;
 
-     state K
+     state D
      {
-       a => L;
+       state E
+       {
+         do / act2;
+         _ => $0;
+       }
      }
+   }
 
-     state L
-     {
-       a => K;
-     }
+   state C
+   {
+     a => A;
    }
   #>)]
   public class example
   {
+    mutable res : int;
+
+    print_res() : void
+    {
+      Console.WriteLine(res)
+    }
+
+    act1(_ : CancellationToken) : void
+    {
+      foreach (elem in NList.Range(10))
+      {
+        res += elem
+      }
+
+      //def res = Task.Delay(50).ContinueWith(_ => action());
+
+    }
+    
+    act2(_ : CancellationToken) : void
+    {
+      foreach (elem in NList.Range(10))
+      {
+        res -= elem
+      }
+
+      //def res = Task.Delay(50).ContinueWith(_ => action());
+
+    }
   }
 
 
@@ -86,101 +89,27 @@ module Test
     def fsm = example();
     def tester = fsm.GetTester();
     tester.ConsoleTestInit();
-    tester.Initiate("B|D|K", ["J", "A", "K", "B", "D"]);
-    tester.Test("a", "C|F|L", ["B", "D", "K"], ["L", "C", "F"]);
-    tester.Test("c", "C|D|L", ["F"], ["D"]);
-    tester.Test("b", "B|D|L", ["C"], ["B"]);
-    tester.Test("b", "C|D|L", ["B"], ["C"]);
-    tester.Test("c", "C|F|L", ["D"], ["F"]);
-    tester.Test("d", "I|L", ["F", "C", "A"], ["I"]);
-    tester.Test("a", "B|D|K", ["I", "L"], ["A", "K", "B", "D"]);
-    tester.Test("d", "I|K", ["D", "B", "A"], ["I"]);
-    tester.Test("a", "B|D|L", ["I", "K"], ["A", "L", "B", "D"]);
-    tester.Test("c", "B|F|L", ["D"], ["F"]);
-    tester.Test("b", "C|F|L", ["B"], ["C"]);
+    tester.Initiate("B", 500, "EntryA", "ExitA", "EntryB");
+    tester.TestWait("a", 500, "B", "ExitB", "EntryA", "ExitA", "EntryB");
     fsm.Terminate();
   }
 }
 
 /*
 BEGIN-OUTPUT
-EntryJ
 EntryA
-EntryK
-EntryB
-EntryD
-[B|D|K]
-Ok
-Processing a 'a'
-ExitB
-ExitD
-ExitK
-EntryL
-EntryC
-EntryF
-[C|F|L]
-Ok
-Processing a 'c'
-ExitF
-EntryD
-[C|D|L]
-Ok
-Processing a 'b'
-ExitC
-EntryB
-[B|D|L]
-Ok
-Processing a 'b'
-ExitB
-EntryC
-[C|D|L]
-Ok
-Processing a 'c'
-ExitD
-EntryF
-[C|F|L]
-Ok
-Processing a 'd'
-ExitF
-ExitC
 ExitA
-EntryI
-[I|L]
+45
+EntryB
+[B]
 Ok
 Processing a 'a'
-ExitI
-ExitL
-EntryA
-EntryK
-EntryB
-EntryD
-[B|D|K]
-Ok
-Processing a 'd'
-ExitD
 ExitB
+EntryA
 ExitA
-EntryI
-[I|K]
-Ok
-Processing a 'a'
-ExitI
-ExitK
-EntryA
-EntryL
+90
 EntryB
-EntryD
-[B|D|L]
-Ok
-Processing a 'c'
-ExitD
-EntryF
-[B|F|L]
-Ok
-Processing a 'b'
-ExitB
-EntryC
-[C|F|L]
+[B]
 Ok
 END-OUTPUT
 */
