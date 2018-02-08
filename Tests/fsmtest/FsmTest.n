@@ -9,6 +9,7 @@ using System.Linq;
 using System.ComponentModel;
 using System.Threading;
 using CommonLib.Macros;
+using System.Collections.Concurrent;
 
 namespace Nemerle.Statechart
 {
@@ -18,15 +19,15 @@ namespace Nemerle.Statechart
     [Accessor]
     fsm : ITestStateMachine;
     
-    queue : List[string] = List();
+    mutable queue : list[string] = [];
 
-    public queue_result : IEnumerable[string]
-    {
-      get
-      {
-        queue
-      }
-    }
+    //public queue_result : IEnumerable[string]
+    //{
+    //  get
+    //  {
+    //    queue.Reverse()
+    //  }
+    //}
     
     public SuppressPrint : bool {get;set;default false}
     
@@ -40,10 +41,32 @@ namespace Nemerle.Statechart
       FsmTester(fsm)
     }
 
+    AddQueue(str : string) : void
+    {
+      ThreadSafeUtils.LockFreeUpdate(ref queue, x => str :: x)
+    }
+    
+    public GetQueue() : list[string]
+    {
+      def remove(lst, rdata, res)
+      {
+        match (lst)
+        {
+          | []           => res.Rev()
+          | head :: tail => if (tail : object == rdata) (head :: res).Rev() else remove(tail, rdata, head :: res)
+        }
+      }
+      
+      def data = queue;
+      ThreadSafeUtils.LockFreeUpdate(ref queue, x => remove(x, data, []));
+      data.Rev()
+    }
+    
     public WriteCombined(str : string) : void
     {
       Console.WriteLine(str); 
-      queue.Add(str)
+      AddQueue(str)
+      //queue.Add(str)
     }
     
     // TODO: сделать без ActionExecuted и TransitionCompleted 
@@ -94,7 +117,7 @@ namespace Nemerle.Statechart
     public this(fsm : ITestStateMachine)
     {
       this.fsm = fsm;
-      fsm.ActionExecuted += queue.Add;
+      fsm.ActionExecuted += AddQueue;
     }
 
     public WaitForState(str : string, max : int = 10000) : void
@@ -137,7 +160,7 @@ namespace Nemerle.Statechart
     public prepare() : void
     {
       result_action = null;
-      queue.Clear();
+      //queue.Clear();
       wait_state = null;
       max_respond = 10000;
       _ = wait_signal.Reset();
@@ -155,7 +178,7 @@ namespace Nemerle.Statechart
     CheckResult(state : string, acts : array[string]) : bool
     {
       def acts = if (state != null) acts else Actions(acts);
-      def acts = if (acts.Length == queue.Count()) acts.ZipLazy(queue).All(_ == _) else false;
+      def acts = if (acts.Length == queue.Length) acts.ZipLazy(queue).All(_ == _) else false;
       unless (SuppressPrint) Console.WriteLine($"[$fsm]");
       def state = state == null || fsm.IsInState(state);
       state && acts
