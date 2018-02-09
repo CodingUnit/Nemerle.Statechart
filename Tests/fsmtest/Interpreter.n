@@ -117,6 +117,17 @@ namespace Nemerle.Statechart
       prop.GetValue(fsm, null)
     }
     
+    //mutable pos : int;
+    
+    //GetTextResult() : list[string]
+    //{
+    //  def len = output.Length - pos;
+    //  def res = this.output.ToString(pos, len);
+    //  pos += len;
+    //  def split = res.Split(array['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).NToList();
+    //  split
+    //}
+    
     AddHistory(act : ActionType) : void
     {
       def state = fsm.ToString();
@@ -229,35 +240,46 @@ namespace Nemerle.Statechart
       }
     }
     
+    [Record]
     class MultiWriter : TextWriter
     {
         _writers : list[TextWriter];
 
-        public this(writers : list[TextWriter])
-        {
-            _writers = writers;
-        }
-
         public override Write(value : char) : void
         {
-          foreach (i in _writers) 
-          i.Write(value)
+          _writers.Iter(_.Write(value))
             //_writers.ForEach(_ => _.Write(value));
         }
 
+        
+        public override WriteLine(value : string) : void
+        {
+          _writers.Iter(_.WriteLine(value))
+        }
+        
         public override Encoding : Encoding
         {
             get { Encoding.UTF8 }
         }
     }
 
+    mutable output : StringBuilder;
+    
+    public TextOutput : string
+    {
+      get
+      {
+        output.ToString()
+      }
+    }
+    
     public StartConsole() : void
     {
       canceled = false;
       Console.WriteLine($"Initiate state machine $type_name");
-      def sb = StringBuilder();
-      def out1 = Console.Out;
-      Console.SetOut(StringWriter(sb));
+      //pos = 0;
+      output = StringBuilder();
+      Console.SetOut(MultiWriter([StringWriter(output), Console.Out]));
       history = [];
       tester.ConsoleTestInit();
       fsm.Initiate();
