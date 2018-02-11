@@ -17,7 +17,7 @@ using System.Reactive.Linq;
   /// </summary>
   [statechart(
   <#
-  flags testing;
+  flags testing, auto_initial;
 
   // flags debug;
 
@@ -25,48 +25,18 @@ using System.Reactive.Linq;
 
    state A
    {
-     do / act1;
-     _ / print_res => C;
+     a => B;
    }
 
    state B
    {
-     state D
-     {
-       state E
-       {
-         do / act1;
-         _ / print_res => A;
-       }
-     }
-   }
-
-   state C
-   {
      $> / centry;
-     _ / completion_action => B;
+     _ / completion_action => A;
    }
 
   #>)]
   public class example
   {
-    mutable res : int;
-
-    print_res() : void
-    {
-      Console.WriteLine(res)
-    }
-
-    act1(_ : CancellationToken) : void
-    {
-      foreach (elem in NList.Range(10))
-      {
-        res += elem
-      }
-
-      //def res = Task.Delay(50).ContinueWith(_ => action());
-
-    }
   }
 
 
@@ -78,8 +48,8 @@ module Test
     def fsm = example();
     def tester = fsm.GetTester();
     tester.ConsoleTestInit();
-    tester.Initiate("B", 500, "EntryA", "ExitA", "EntryB");
-    tester.TestWait("a", 500, "B", "ExitB", "EntryA", "ExitA", "EntryB");
+    tester.Initiate("A", "EntryA");
+    tester.Test("a", "A", "ExitA", "centry", "EntryB", "ExitB", "completion_action", "EntryA");
     fsm.Terminate();
   }
 }
@@ -87,18 +57,16 @@ module Test
 /*
 BEGIN-OUTPUT
 EntryA
-ExitA
-45
-EntryB
-[B]
+[A]
 Ok
-Processing a 'a'
-ExitB
-EntryA
+Processing a 'a' 
 ExitA
-90
+centry
 EntryB
-[B]
+ExitB
+completion_action
+EntryA
+[A]
 Ok
 END-OUTPUT
 */

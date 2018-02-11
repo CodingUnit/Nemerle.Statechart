@@ -200,10 +200,139 @@ namespace CommonLib.Macros
         public T PeekRight () { return right.PeekRight(); }
  }
   */
+  [Record]
+  public variant Dequelette[T]
+  {
+    | One 
+    { 
+      item : T;
+      
+      public override Size : int { get { 1 } }
+      public override PeekLeft() : T {  item }
+      public override PeekRight() : T { item }
+      public override EnqueueLeft(t : T) : Dequelette[T]  { Two(t, item) }
+      public override EnqueueRight(t : T) : Dequelette[T] { Two(item, t) }
+      
+    }
+    | Two 
+      { 
+        item1 : T; 
+        item2 : T;
+        
+        public override Size : int { get { 2 } }
+        public override PeekLeft() : T {  item1 }
+        public override PeekRight() : T { item2 }
+        public override EnqueueLeft(t : T) : Dequelette[T]  { Three(t, item1, item2) }
+        public override EnqueueRight(t : T) : Dequelette[T] { Three(item1, item2, t) }
+        public override DequeueLeft() : Dequelette[T] { One(item2) }
+        public override DequeueRight() : Dequelette[T] { One(item1) }
+      }
+    | Three 
+    { 
+      item1 : T; 
+      item2 : T; 
+      item3 : T;
+      
+      public override Size : int { get { 3 } }
+      public override PeekLeft() : T {  item1 }
+      public override PeekRight() : T { item3 }
+      public override EnqueueLeft(t : T) : Dequelette[T]  { Four(t, item1, item2, item3) }
+      public override EnqueueRight(t : T) : Dequelette[T] { Four(item1, item2, item3, t) }
+      public override DequeueLeft() : Dequelette[T] { Two(item2, item3) }
+      public override DequeueRight() : Dequelette[T] { Two(item1, item2) }
+    }
+    | Four 
+    { 
+      item1 : T; 
+      item2 : T; 
+      item3 : T; 
+      item4 : T;
+  
+      public override Size : int { get { 4 } }
+      public override PeekLeft() : T {  item1 }
+      public override PeekRight() : T { item4 }
+      public override DequeueLeft() : Dequelette[T] { Three(item2, item3, item4) }
+      public override DequeueRight() : Dequelette[T] { Three(item1, item2, item3) }
+    }
+    
+    public abstract Size : int {get;}
+    public virtual Full : bool { get { false } }
+    public abstract PeekLeft() : T;
+    public abstract PeekRight() : T;
+    public virtual EnqueueLeft(_t : T) : Dequelette[T] { throw InvalidOperationException() }
+    public virtual EnqueueRight(_t : T) : Dequelette[T] {throw InvalidOperationException()}
+    public virtual DequeueLeft() : Dequelette[T] {throw InvalidOperationException()}
+    public virtual DequeueRight() : Dequelette[T] {throw InvalidOperationException()}
+  }
+  /*
+  */
   /// <summary>
   /// Description of Dequelette.
   /// </summary>
-  class Dequelette
+  [Record]
+  public variant Deque[T] : IEnumerable[T]
   {
+    | Empty
+      {
+        public override PeekLeft() : T { throw InvalidOperationException() }
+        public override PeekRight() : T { throw InvalidOperationException() }
+        public override EnqueueLeft(t : T) : Deque[T] { Single(t) }
+        public override EnqueueRight(t : T) : Deque[T] { Single(t)}
+        public override DequeueLeft() : Deque[T] { throw InvalidOperationException() }
+        public override DequeueRight() : Deque[T] { throw InvalidOperationException() }
+      }
+    | Single 
+      { 
+        item : T;
+        
+        public override PeekLeft() : T { item }
+        public override PeekRight() : T { item }
+        public override EnqueueLeft(t : T) : Deque[T] { Comb(Dequelette.One(t), Deque.Empty(), Dequelette.One(item)) }
+        public override EnqueueRight(t : T) : Deque[T] {  Comb(Dequelette.One(item), Deque.Empty(), Dequelette.One(t)) }
+        public override DequeueLeft() : Deque[T] { Empty() }
+        public override DequeueRight() : Deque[T] { Empty() }
+      }
+    | Comb
+      {
+        left   : Dequelette[T];
+        middle : Deque[Dequelette[T]];
+        right  : Dequelette[T];
+        
+        public override PeekLeft() : T { left.PeekLeft() }
+        public override PeekRight() : T { right.PeekRight() }
+        public override EnqueueLeft(t : T) : Deque[T] 
+        { 
+          if (!left.Full)
+              Comb(left.EnqueueLeft(t), middle, right)
+          else
+              Comb(Dequelette.Two(t, left.PeekLeft()), middle.EnqueueLeft(left.DequeueLeft()), right);
+        }
+        
+        public override EnqueueRight(t : T) : Deque[T] 
+        {  
+          if (!right.Full) Comb(left, middle, right.EnqueueRight(t))
+          else Comb(left, middle.EnqueueRight(right.DequeueRight()), Dequelette.Two(right.PeekRight(), t));
+        }
+        public override DequeueLeft() : Deque[T] { Empty() }
+        public override DequeueRight() : Deque[T] { Empty() }
+      }
+      
+      GetEnumerable() : IEnumerable[T]
+      {
+        null
+      }
+      
+      public GetEnumerator() : IEnumerator[T]
+      {
+        null
+      }
+      //public abstract Size : int {get;}
+      public IsEmpty : bool { get { true; } }
+      public abstract PeekLeft() : T;
+      public abstract PeekRight() : T;
+      public abstract EnqueueLeft(_t : T) : Deque[T] { throw InvalidOperationException() }
+      public abstract EnqueueRight(_t : T) : Deque[T] {throw InvalidOperationException()}
+      public abstract DequeueLeft() : Deque[T] {throw InvalidOperationException()}
+      public abstract DequeueRight() : Deque[T] {throw InvalidOperationException()}
   }
 }
