@@ -1,0 +1,50 @@
+﻿
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Reactive.Disposables;
+using Nemerle;
+using Nemerle.Collections;
+
+namespace CommonLib.Macros
+{
+    public class ListDisposable : IDisposable
+    {
+        mutable _lst : list[IDisposable] = [];
+
+        public this()
+        {
+
+        }
+
+        public this(params lst : array[IDisposable])
+        {
+          _lst = lst.NToList()
+        }
+
+        public Add(disp : IDisposable) : void
+        {
+          ThreadSafeUtils.LockFreeUpdate(ref _lst, disp :: _)
+        }
+
+        public Remove(disp : IDisposable) : void
+        {
+          ThreadSafeUtils.LockFreeUpdate(ref _lst, x => x.Remove(disp))
+        }
+        
+        public Dispose() : void
+        {
+            foreach (item in _lst)
+            {
+              item.Dispose();
+            }
+        }
+
+        public static @+(disp : ListDisposable, elem : IDisposable) : ListDisposable
+        {
+            disp.Add(elem);
+            disp;
+        }
+    }
+}

@@ -1,0 +1,104 @@
+using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using Nemerle.Statechart;
+
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Reactive.Linq;
+
+  /// <summary>
+  /// Description of junction_example.
+  /// </summary>
+  [statechart(
+  <#
+  flags testing;
+
+  // flags debug;
+
+  name "do activity and completion transitions";
+
+   state A
+   {
+     do / act1;
+     _ / print_res => C;
+   }
+
+   state B
+   {
+     state D
+     {
+       state E
+       {
+         do / act1;
+         _ / print_res => A;
+       }
+     }
+   }
+
+   state C
+   {
+     $> / centry;
+     _ / completion_action => B;
+   }
+
+  #>)]
+  public class example
+  {
+    mutable res : int;
+
+    print_res() : void
+    {
+      Console.WriteLine(res)
+    }
+
+    act1(_ : CancellationToken) : void
+    {
+      foreach (elem in NList.Range(10))
+      {
+        res += elem
+      }
+
+      //def res = Task.Delay(50).ContinueWith(_ => action());
+
+    }
+  }
+
+
+
+module Test
+{
+  Main() : void
+  {
+    def fsm = example();
+    def tester = fsm.GetTester();
+    tester.ConsoleTestInit();
+    tester.Initiate("B", 500, "EntryA", "ExitA", "EntryB");
+    tester.TestWait("a", 500, "B", "ExitB", "EntryA", "ExitA", "EntryB");
+    fsm.Terminate();
+  }
+}
+
+/*
+BEGIN-OUTPUT
+EntryA
+ExitA
+45
+EntryB
+[B]
+Ok
+Processing a 'a'
+ExitB
+EntryA
+ExitA
+90
+EntryB
+[B]
+Ok
+END-OUTPUT
+*/

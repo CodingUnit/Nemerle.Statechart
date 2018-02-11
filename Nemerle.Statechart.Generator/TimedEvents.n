@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Timers;
 using Nemerle.Compiler.Parsetree;
+using CommonLib.Macros;
 
 namespace Nemerle.Statechart
 {
@@ -79,13 +80,16 @@ namespace Nemerle.Statechart
 
     EmitEvents() : void
     {
-      def ty = gen.DefineNested(event_decl);
-      foreach (evt in original_evt)
+      when (!original_evt.IsEmpty())
       {
-        evt.EventDecl(ty);
-        evt.Emit();
+        def ty = gen.DefineNested(event_decl);
+        foreach (evt in original_evt)
+        {
+          evt.EventDecl(ty);
+          evt.Emit();
+        }
+        ty.Compile();
       }
-      ty.Compile();
     }
 
     Prepare(tran : list[Transition]) : void
@@ -191,7 +195,7 @@ namespace Nemerle.Statechart
         {
           def old_path = node.path.TranPath;
           def states = node.path.TranPath.Exclude(x => x.kind == PathKind.Action).Map(_.state).Distinct();
-          def path = old_path.FoldBack([], modify_path(tr, _, tr.Source, tar, _));
+          def path = old_path.FoldRightO([], modify_path(tr, _, tr.Source, tar, _));
           def path = if (tar != null)
           {
             match (event_gen.Filter(x => x.Source : object == tar))

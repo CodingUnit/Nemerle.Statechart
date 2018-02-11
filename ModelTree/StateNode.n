@@ -10,6 +10,7 @@ using System.Linq;
 using Nemerle.Statechart;
 using SCG = System.Collections.Generic;
 using Nemerle.Compiler;
+using CommonLib.Macros;
 
 namespace Nemerle.Statechart
 {
@@ -23,6 +24,18 @@ namespace Nemerle.Statechart
     | SubMachine { type : string; unresolved : bool }
     | SubRegion
     | Region
+    
+    public override ToString() : string
+    {
+      match (this)
+      {
+        | State            => "State"
+        | Final            => "Final"
+        | SubMachine(t, _) => $"SubMachine_$t"
+        | SubRegion        => "SubRegion"
+        | Region           => "Region"
+      }
+    }
   }
 
   public enum TransitionKind
@@ -68,10 +81,11 @@ namespace Nemerle.Statechart
         usings : list[Using] = [];
         event_decls : list[EventDecl] = [];
         event_classes : list[EventClassDecl] = [];
+        errors : list[Error];
         
         GetErrors() : IEnumerable[Error]
         {
-          TreeUtils.Fold(state, [], _.sub_states, (x, a) => a.Concat(x.errors));
+          TreeUtils.Fold(state, [], _.sub_states, (x, a) => a.Concat(x.errors)).Concat(errors)
           //StateParts.SelectMany(_.errors)
         }
       }
@@ -85,14 +99,20 @@ namespace Nemerle.Statechart
         attributes    : list[StateAttribute] = [];
         entry         : list[Entry] = [];
         exit          : list[Exit] = [];
+        [NeedChange]
         transitions   : list[Transition] = [];
         do_activity   : list[DoActivity] = [];
         defer         : list[Defer] = [];
+        [NeedChange]
         sub_states    : list[State] = [];
         pseudo_states : list[PseudoState] = [];
         type          : StateType;
         errors        : list[Error] = [];
 
+        public override ToString() : string
+        {
+          $"StateNode.State $name"
+        }
       }
 
     | Entry

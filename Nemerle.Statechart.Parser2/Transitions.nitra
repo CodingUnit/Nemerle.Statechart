@@ -1,0 +1,81 @@
+﻿namespace Nemerle.Statechart.Grammar
+{
+  syntax module Transitions
+  {
+    using Nitra.Core;
+    using Main;
+    using Targets;
+    using Actions;
+    using Events;
+    using Base;
+
+    syntax Guard = '[' GuardDecl ']'
+    {
+      /*syntax GuardDecl
+      {
+        | Else = "else"
+        | SimpleExpr = (!']' !'{' !'}' Any)+
+				| BraceExpr
+        //| LongGuardExpr
+      }*/
+    }
+
+    regex ExtGoto   = "=>" | ")=>";
+    regex AnyGoto   = ExtGoto | "(=>";
+
+    syntax GuardDecl
+    {
+      | Else = "else"
+      | SimpleExpr = !"else" (!AfterTokens Any)+
+        {
+          regex AfterTokens = "=>" | '/' | '}' | '{' | ']';
+        }
+      | BraceExpr
+    }
+
+    /*syntax LongGuardExpr = "${" Expr "$}"
+    {
+      token Expr = (!"$}" Any)+;
+    }*/
+
+    alias PseudoTran = EntryPointTransition;
+
+    syntax DefaultTransition = ActionList? "=>" SimpleTarget;
+
+    syntax EntryPointTransition = ActionList? "=>" TransitionTarget;
+
+    syntax TransitionPart = Guard? ActionList? "=>" TransitionTarget;
+
+    syntax ExtTransition = Events Guard? ActionList? ExtGoto TransitionTarget;
+
+    syntax NormalTransition 
+    {
+      | LocalTransition    = Events Guard? ActionList? "(=>" TransitionTarget;
+      | InternalTransition = !DeferrableEvent Events Guard? ActList;
+      | Transition         = ExtTransition
+    }
+
+    syntax Transition
+    {
+      | NormalTransition
+      | RelocateTransition = '@' RelocateTranBody
+        {
+          syntax RelocateTranBody
+          {
+            | Combined = FullyQualified ':' '{' NormalTransition* '}'
+            | Join     = JoinRelocateTran
+              {
+                syntax JoinRelocateTran
+                {
+                  | Main = '(' (FullyQualified; ',')+ ')' ':' ExtTransition
+                  | Alt  = FullyQualified '(' (AnyIdentifier; ',')+ ')' ':' ExtTransition
+                }
+              }
+            | State    = FullyQualified ':' NormalTransition
+            | Pseudo   = FullyQualified ':' PseudoTran
+          }
+        }
+    }
+
+  }
+}

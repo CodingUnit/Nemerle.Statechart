@@ -9,12 +9,13 @@ using System.Linq;
 using Nemerle.Compiler;
 using Nemerle.Compiler.Parsetree;
 using System.IO;
+using CommonLib.Macros;
 
 namespace Nemerle.Statechart
 {
   class FsmBuilder
   {
-    parser : FsmParser;
+    parser : Parser;
     ty : TypeBuilder;
     top : TopDeclaration;
     locator : Locator;
@@ -24,8 +25,8 @@ namespace Nemerle.Statechart
     {
       this(ty, typer, top);
       this.fsm = fsm;
-      parser = FsmParser();
-      locator = Locator(parser, loc);
+      parser = Parser();
+      locator = Locator(parser, loc, this);
     }
 
     public this(ty : TypeBuilder, typer : Typer, top : TopDeclaration)
@@ -33,8 +34,8 @@ namespace Nemerle.Statechart
       this.ty = ty;
       this.top = top;
       this.typer = typer;
-      parser = FsmParser();
-      locator = Locator(parser, loc);
+      parser = Parser();
+      locator = Locator(parser, loc, this);
     }
 
     [Accessor]
@@ -49,15 +50,21 @@ namespace Nemerle.Statechart
     }
 
     [Memoized]
-    attribute : PExpr
+    attribute : option[PExpr]
     {
       get
       {
-        match (AttributesAndMods.ParsedCustomAttributes.Find(x => x is <[ statechart($_) ]>))
+        def find_func(x)
         {
-          | Some(<[ statechart($x) ]>) => x
-          | _                          => null
+          | <[ statechart(..$x) ]> => match (x)
+                                      {
+                                        | x :: _ => Some(x)
+                                        | _      => None()
+                                      }
+          | _                      => None()
         }
+        
+        AttributesAndMods.ParsedCustomAttributes.FindMap(find_func)
       }
     }
 
@@ -65,7 +72,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (attribute != null) attribute.Location else top.Location;
+        if (attribute is Some(a)) a.Location else top.Location;
       }
     }
 
@@ -76,8 +83,8 @@ namespace Nemerle.Statechart
       {
         match (attribute)
         {
-          | <[ $(str : string) ]> => str
-          | _                     => null
+          | Some(<[ $(str : string) ]>) => str
+          | _                           => null
         }
       }
     }
@@ -98,34 +105,44 @@ namespace Nemerle.Statechart
       }
     }
     
+    public ConvLocation(location : Nitra.Location) : Location
+    {
+  //    def nloc = Nitra.Util.ToNemerleLocation(location);
+      def startLineColumn = location.StartLineColumn;
+	    def startLine = startLineColumn.Line;
+	    def startCol = startLineColumn.Column;
+	    def endLineColumn = location.EndLineColumn;
+	    def endLine = endLineColumn.Line;
+	    def endCol = endLineColumn.Column;
+	    def nloc =  Location(location.Source.File.FullName, startLine, startCol, endLine, endCol);
+	    def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line + loc.Line - 1, nloc.Column, loc.Line + nloc.EndLine - 1, nloc.EndColumn) 
+	               else Location(nloc, nloc.Line, nloc.Column + loc.Column, nloc.EndLine, nloc.EndColumn + loc.Column);
+      //def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line - 1 + nloc.Line, nloc.Column) else Location(nloc, nloc.Line, nloc.Column + loc.Column);
+      nloc
+    }
+    
     Parse() : void
     {
       parser.flags_map = Hashtable(FsmAnalyser.Flags);
       parser.env = env;
       CheckBody();
-      def body = body ?? "";
-      def text = body.Trim();
-      //assert2(false);
+      def text = body ?? "";
       fsm = if (!text.IsEmpty()) 
              {
-               def (pos, ast) = parser.TryParse(body);
-               if (pos > 0) 
+               //when (loc.File == "AlarmClockInternals.n") assert2(false);
+               //assert2(false);
+               def (ast, err) = parser.Parse(loc, text);
+               if (ast == null)
                {
-                 def len = body.Length;
-                 when (pos < len)
+                 foreach (err in err)
                  {
-                   def loc = locator.GetLoc(pos);
-                   Message.Error(loc, $"Not full text is parsed, parsing stopped at $(loc.Line):$(loc.Column).");
+                   def nloc = ConvLocation(err.Location);
+                   def line = nloc.Line;
+                   def col  = nloc.Column;
+                   Message.Error(nloc, $"Error in input at $(line):$(col): $(err.Text)");
                  }
-                 ast
-               }
-               else
-               {
-                 def (pos,  ids)  =  parser.GetMaxRollbackPosAndNames();
-                 def loc = locator.GetLoc(pos);
-                 Message.Error(loc, $"Error in input at $(loc.Line):$(loc.Column). Expected: ..$(ids;\r\n    )");
                  null
-               }
+               } else ast
              } else null;
        when (fsm != null) locator.Locate(fsm);
     }
@@ -201,7 +218,7 @@ namespace Nemerle.Statechart
     
     public CheckBody() : void
     {
-      when (attribute != null && body == null) Message.Error(attr_loc, "Body expression must be a string");
+      when (attribute is Some() && body == null) Message.Error(attr_loc, "Body expression must be a string");
     }
     
     public Build() : void
@@ -239,7 +256,6 @@ namespace Nemerle.Statechart
             when (fsm.flags.Logging) Console.WriteLine($"Starting generate fsm $(ty.Name)...");
             def active = analyser.ActiveStates.Where(_.Used).NToList();
             def gen = StaticGenerator(active, analyser.FsmFlags, analyser.InitialTransition, analyser.StatesId, analyser.LoadedMachines, ty);
-            // active ActiveStates.Where(Used)
             gen.Generate();
             when (fsm.flags.Logging) Console.WriteLine($"Finish generating $(ty.Name)");
             ty.UserData[FsmBuilder.key] = true;
@@ -292,9 +308,8 @@ namespace Nemerle.Statechart
         def bname = b.name ?? "";
         def name = if (aname.Length > bname.Length) aname else bname;
         def state = merge_states(a.state, b.state);
-        StateNode.StateMachine(pos, flags, name, state, a.usings + b.usings, a.event_decls + b.event_decls, a.event_classes + b.event_classes);
+        StateNode.StateMachine(pos, flags, name, state, a.usings + b.usings, a.event_decls + b.event_decls, a.event_classes + b.event_classes, a.errors + b.errors);
       }
-
 
       fsm.Reduce(merge)
     }

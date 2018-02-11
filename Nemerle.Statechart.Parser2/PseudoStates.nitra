@@ -1,0 +1,94 @@
+﻿namespace Nemerle.Statechart.Grammar
+{
+  syntax module PseudoStates
+  {
+    using Nitra.Core;
+    using Targets;
+    using Transitions;
+    using Base;
+    using Actions;
+    
+    syntax JunctionBody = '{' JuncTranBody+ '}'
+    {
+      syntax JuncTranBody = GuardDecl? ActionList? "=>" TransitionTarget;
+    }
+
+    syntax HistoryEnd
+    {
+      | Tran =  DefaultTransition ';'
+      | End  = ';'
+    }
+
+    syntax History
+    {
+      | HistoryLong    = "history" ':' Type DefaultTransition? ';'
+      {
+        syntax Type
+        {
+          | Deep
+          {
+            regex Deep = "Deep" | "deep";
+          }
+          | Shallow
+          {
+            regex Shallow = "Shallow" | "shallow";
+          }
+        }
+      }
+      | HistoryDeep    = "(H*)" HistoryEnd?
+      | HistoryShallow = "(H)" HistoryEnd?
+    }
+
+    syntax EntryPoint = EntryPointHead EntryPointTransition
+    {
+      syntax EntryPointHead
+      {
+        | Ver1 = "entry:" AnyIdentifier 
+        | Ver2 = AnyIdentifier ':'
+        | Ver3 = '(' AnyIdentifier ')'
+      }
+    }
+
+    alias ExitPointTransition = EntryPointTransition;
+
+    syntax ExitPointDecl = ExitPointKey AnyIdentifier
+    {
+      regex ExitPointKey = "exit:" | "(X)" | "(x)";
+    }
+
+    syntax ExitPoint = ExitPointDecl ExitPointEnd
+    {
+      syntax ExitPointEnd 
+      {
+        | End = ";"
+        | Tran = ExitPointTransition
+      }
+    }
+
+    regex TerminateKey = "terminate" | 'X' | 'x';
+
+    syntax PseudoState 
+    {
+      | Initial = InitialKeyword Guard? ActionList? "=>" InitialTarget
+        {
+          regex InitialKeyword = "initial" | "0";
+
+          syntax InitialTarget 
+          {
+            | Simple   = SimpleTarget ';'
+            | JunctionTarget
+          }
+        }
+      | History
+      | EntryPoint
+      | ExitPoint
+      | Terminate = TerminateKey ';'
+      | Join     = "join"     AnyIdentifier TransitionPart
+      | Junction = "junction" AnyIdentifier JunctionBody
+      | Choice   = "choice"   AnyIdentifier '$'? JunctionBody
+      | Merge    = "merge"    AnyIdentifier TransitionPart;
+    }
+
+    
+  }
+}

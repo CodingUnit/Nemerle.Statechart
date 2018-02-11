@@ -6,7 +6,7 @@ using Nemerle.Compiler.Parsetree;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
+using CommonLib.Macros;
 
 
 namespace Nemerle.Statechart
@@ -116,6 +116,14 @@ namespace Nemerle.Statechart
       {
         | FsmAction.Expr(e)     => Evaluate(e) 
         | Normal(name = null)   => <[ () ]>
+        | Normal(name = n, parameters = p :: _) => 
+           match (n)
+           {
+             | "send_other" => gen.gen_events.SendOtherCode(p)
+             | "send_all"   => gen.gen_events.SendAllCode(p)
+             | "send"       => gen.gen_events.SendEventCode(p)
+             | _            => null
+           }
         | _                     => null
       }
     }
@@ -125,7 +133,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (TryEvaluate())
+        match (InternalAction)
         {
           | null                  => <[ $(ExecName : usesite)(..$Params) ]>
           | e                     => e
@@ -138,7 +146,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        match (TryEvaluate())
+        match (InternalAction)
         {
           | null                  => <[ $(DeclName : usesite)(..$Params); ]>
           | e                     => e
@@ -170,14 +178,23 @@ namespace Nemerle.Statechart
       }
     }
 
+    public InternalAction : PExpr
+    {
+      [Memoize]
+      get
+      {
+        TryEvaluate()
+      }
+    }
+  
     public BodyFunc : PExpr -> PExpr {get;set;}
 
     public Define() : void
     {
-      when (!IsDeclared && !IsExpr)
+      when (!IsDeclared && !IsExpr && InternalAction == null)
       {
         def body = if (BodyFunc != null) BodyFunc(EventActionCall) else EventActionCall;
-        gen.Define(<[decl: public event $(DeclName: usesite) : System.Action;]>);
+        gen.Define(<[decl: public event $(DeclName: usesite) : System.Action ]>);
         gen.Define(<[decl: $(ExecName : usesite)() : void 
                             {
                               $body

@@ -1,0 +1,410 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nitra;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Statechart.Grammar;
+using CommonLib.Macros;
+
+namespace Nemerle.Statechart
+{
+  using Nemerle.Statechart.Grammar.MainParseTree;
+  using Nemerle.Statechart.Grammar.BaseParseTree;
+  using Nemerle.Statechart.Grammar.PseudoStatesParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree;
+  using Nemerle.Statechart.Grammar.TargetsParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree.Guard;
+  using Nemerle.Statechart.Grammar.MainParseTree.StateMachine.Nested.StateMachineDecl;
+  using Nemerle.Statechart.Grammar.ActionsParseTree.ActionList.Nested.Action;
+  using Nemerle.Statechart.Grammar.ActionsParseTree;
+  /// <summary>
+  /// Description of Parser.
+  /// </summary>
+  partial public class Parser
+  {
+
+    parse_action(pos : int, text : string) : Actions
+    {
+      Actions(pos, FsmAction.Expr(pos, parse_expr(text)) :: [])
+    }
+
+    GetActions(lst : ActionsParseTree.ActionList) : Actions
+    {
+      match (lst.Action)
+      {
+        | SimpleAction(SimpleAction = a) => 
+        
+            def conv_simple(x, a)
+            {
+              match (x)
+              {
+                | ActionsParseTree.SimpleAction.AmbiguousOrMissingNode    => a
+                | ActionsParseTree.SimpleAction.Nested.Action.Empty       => FsmAction.Empty :: a
+                | ActionsParseTree.SimpleAction.Nested.Action.Simple(AnyIdentifier = n) as f with p = [] 
+                | ActionsParseTree.SimpleAction.Nested.Action.Full(AnyIdentifier = n, AnyIdentifiersData = (p, _)) as f => 
+                    FsmAction.Normal(f.Location.StartPos, n.IdentifierBodyData, p.Map(_.IdentifierBodyData)) :: a
+                | _ => a
+              }
+            }
+            def act = a.ActionsData[0].FoldRightO([], conv_simple);
+            Actions(lst.Location.StartPos, act)
+                
+        | SimpleExpr(SimpleExpr = ActionsParseTree.SimpleExpr(Expr = e))            
+        | BraceExpr(BraceExpr = ActionsParseTree.BraceExpr(Exprs = e)) =>
+            def text = e.GetText();
+            parse_action(e.Location.StartPos, text);
+            
+              
+        | _ => Actions(lst.Location.StartPos, [])
+      }
+      //| _ => Actions(lst.Location.StartPos, [])
+    }
+    
+    GetActions(lst : ActionsParseTree.ActList) : Actions
+    {
+      | Simple(ActionList = a) => GetActions(a)
+      | BraceAction(BraceExpr = ActionsParseTree.BraceExpr(Exprs = e)) =>
+          def text = e.GetText();
+          parse_action(e.Location.StartPos, text);
+      | _ => Actions(lst.Location.StartPos, [])
+    }
+    
+    CreatePseudo(p : PseudoStatesParseTree.PseudoState) : option[StateNode.PseudoState]
+    {
+      def pos = p.Location.StartPos;
+      def pseudo = match (p)
+      {
+        | PseudoState.Choice(AnyIdentifier = n, JunctionBody = b) => 
+            def nodes = GetNodes(b);
+            def name = n.GetText();
+            PseudoStateModelNode.Junction(p.Location.StartPos, name, nodes, JunctionType.Choice)
+            
+        | PseudoState.EntryPoint(EntryPoint = PseudoStatesParseTree.EntryPoint(EntryPointHead = n, EntryPointTransition = tr)) => 
+            match (GetEntryPointTran(tr))
+            {
+              | Some(tr) => 
+                  match (n)
+                  {
+                    | PseudoStatesParseTree.EntryPoint.Nested.EntryPointHead.Ver1(AnyIdentifier = n)
+                    | PseudoStatesParseTree.EntryPoint.Nested.EntryPointHead.Ver2(AnyIdentifier = n)
+                    | PseudoStatesParseTree.EntryPoint.Nested.EntryPointHead.Ver3(AnyIdentifier = n) => 
+                        def name = n.GetText();
+                        PseudoStateModelNode.EntryPoint(pos, name, tr)
+                    | _ => null
+                  }
+              | _ => null
+                                
+            }
+        | PseudoState.ExitPoint(ExitPoint = PseudoStatesParseTree.ExitPoint(ExitPointDecl = PseudoStatesParseTree.ExitPointDecl(AnyIdentifier = n), ExitPointEnd = e)) => 
+            def name = n.GetText();
+            def tran = match (e)
+            {
+              | PseudoStatesParseTree.ExitPoint.Nested.ExitPointEnd.Tran(ExitPointTransition = tr) => GetEntryPointTran(tr)
+              | _                                                                                  => None()
+            }
+            PseudoStateModelNode.ExitPoint(pos, name, tran)
+            
+        | PseudoState.History(History = PseudoStatesParseTree.History.HistoryDeep(HistoryEndOptData = t))    with type = HistoryType.Deep
+        | PseudoState.History(History = PseudoStatesParseTree.History.HistoryShallow(HistoryEndOptData = t)) with type = HistoryType.Shallow => 
+            def tran = match (t)
+                       {
+                         | Some(PseudoStatesParseTree.HistoryEnd.Tran(DefaultTransition = t)) => GetDefaultTran(t)
+                         | _                                                                  => None()
+                       }
+            PseudoStateModelNode.History(pos, type, tran)
+            
+        | PseudoState.History(History = PseudoStatesParseTree.History.HistoryLong(Type = type, DefaultTransitionOptData = t)) => 
+            match (type)
+            {
+              | PseudoStatesParseTree.History.HistoryLong.Nested.Type.Deep    with type = HistoryType.Deep
+              | PseudoStatesParseTree.History.HistoryLong.Nested.Type.Shallow with type = HistoryType.Shallow =>
+                 def tran = match (t)
+                      {
+                        | Some(t) => GetDefaultTran(t)
+                        | _       => None()
+                      }
+                 PseudoStateModelNode.History(pos, type, tran)
+              | _                                                       => null
+            }
+            
+        | PseudoState.Initial(GuardOptData = g, ActionListOptData = a, InitialTarget = t) => 
+            def act = a.Map(GetActions);
+            def guard = g.MapDefault(GetGuard, GuardNode.Empty(-1));
+            def tar = match (t)
+            {
+              | PseudoState.Initial.Nested.InitialTarget.Simple(SimpleTarget = t)                                       => 
+                 match (GetSimpleTarget(t))
+                 {
+                   | Some(t) => StateNode.Transition(pos, TargetType.NoTarget(-1), [], guard, act, t, TransitionKind.Local) :: []
+                   | _       => []
+                 }
+               
+               
+              | PseudoState.Initial.Nested.InitialTarget.JunctionTarget(JunctionTarget = t) => 
+                 match (GetJunctionTarget(t, JunctionType.Junction))
+                 {
+                   | Some(TargetType.PseudoState(PseudoStateModelNode.Junction as j)) => 
+                       j.nodes.Map(x => StateNode.Transition(x.pos, TargetType.NoTarget(-1), [], x.guard, x.action, x.to, TransitionKind.Local))
+                   | _ => []
+                 }
+              | _ => []
+            }
+          
+            match (tar)
+            {
+              | []  => null
+              | lst => PseudoStateModelNode.Initial(pos, lst)
+            }
+        | PseudoState.Join(AnyIdentifier = n, TransitionPart = TransitionsParseTree.TransitionPart(GuardOptData = g, ActionListOptData = a, TransitionTarget = t)) => 
+           def name = n.GetText();
+           match (GetTran(p, None(), g, a, t, TransitionKind.External))
+           {
+             | Some(t) => PseudoStateModelNode.Join(pos, name, [], t)
+             | _       => null
+           }
+           
+        | PseudoState.Junction(AnyIdentifier = n, JunctionBody = b) => 
+           def name = n.GetText();
+           def nodes = GetNodes(b);
+           PseudoStateModelNode.Junction(pos, name, nodes, JunctionType.Junction)
+           
+        | PseudoState.Merge(AnyIdentifier = n, TransitionPart = TransitionsParseTree.TransitionPart(GuardOptData = g, ActionListOptData = a, TransitionTarget = t)) =>
+           def name = n.GetText();
+           match (GetTran(p, None(), g, a, t, TransitionKind.External))
+           {
+             | Some(t) => def node = JunctionNode(pos, t.guard, t.action, t.to);
+                          PseudoStateModelNode.Junction(pos, name, node :: [], JunctionType.Merge)
+             | _       => null
+           }
+           
+        | PseudoState.Terminate => PseudoStateModelNode.Terminate(pos)
+        | _ => null
+      }
+      if (pseudo != null) Some(StateNode.PseudoState(pos, pseudo)) else None()
+    }
+
+    GetParent(par : MainParseTree.Parent) : option[string]
+    {
+      | MainParseTree.Parent(ParentIdentifier = MainParseTree.Parent.Nested.ParentIdentifier.RegionReference(RegionReference = r)) =>
+          def parent = r.GetText();
+          Some(parent)
+      | MainParseTree.Parent(ParentIdentifier = MainParseTree.Parent.Nested.ParentIdentifier.FullyQualified(FullyQualified = FullyQualified(QualifiedIdentifiersData = (id, _)))) => Some($<#..$(id; ".")#>)
+      | _ => None()
+    }
+    
+    GetAttribute(attr : BaseParseTree.Attributes) : list[StateAttribute]
+    {
+      | BaseParseTree.Attributes.AmbiguousOrMissingNode => []
+      | BaseParseTree.Attributes(IdentifiersData = (a, _)) => 
+      
+        def pos = attr.Location.StartPos;
+        def check_attr(x)
+        {
+          if (x is BaseParseTree.Identifier.AmbiguousOrMissingNode) StateAttribute.Unknown(pos, null) else
+            match (x.GetText())
+            {
+              | "Initial" => StateAttribute.Initial(pos)
+              | str       => StateAttribute.Unknown(pos, str)
+            }
+        }
+        
+        a.Map(check_attr)
+    }
+    
+    CreateState(st : StateDecl.State, type : StateType) : StateNode.State
+    {
+      //if (decls != null)
+      //{
+      //  CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, decls, type)
+      //} else
+      {
+        //def regions = st.RegionSequence.StateDeclsesData[0];
+        //def st_regions = regions.Map(x => CreateState(st, null, None(), None(), x, StateType.SubRegion())); // concurrent and regions
+        CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, st.RegionSequence.StateDeclsesData[0], type)
+        //CreateRegionFromSequence(st, regions)
+      }
+      //match (st)
+      //{
+      //  | StateDecl.State(a, _, n, p, _, d, _) as t => 
+      //}
+    }
+
+    //CreateState(ast : Nitra.ParseTree, name : BaseParseTree.AnyIdentifier, parent : option[MainParseTree.Parent], attr : option[BaseParseTree.Attributes], decls : list[StateDecl], type : StateType, err : list[StateNode.Error] = null) : StateNode.State
+    //{
+    //  def name = name.GetText();
+    //  def parent = if (parent is Some(p)) GetParent(p) else None();
+    //  def attr = attr.MapDefault(GetAttribute, []);
+    //  CreateState(ast.Location.StartPos, attr, name, decls, type, parent, err);
+    //}
+   
+    
+    CreateState(ast : Nitra.ParseTree, name : BaseParseTree.AnyIdentifier, parent : option[MainParseTree.Parent], attr : option[BaseParseTree.Attributes], decls : list[list[MainParseTree.StateDecl]], type : StateType, err : list[StateNode.Error] = null) : StateNode.State
+    {
+      def name = name?.GetText();
+      def parent = if (parent is Some(p)) GetParent(p) else None();
+      def attr = attr.MapDefault(GetAttribute, []);
+      
+      match (decls)
+      {
+        | [] with decls = []
+        | [decls] => CreateState(ast.Location.StartPos, attr, name, decls, type, parent) 
+        | r       => def regs = r.Map(x => CreateState(ast.Location.StartPos, [], null, x, StateType.SubRegion(), None()));
+                     StateNode.State(ast.Location.StartPos, name, parent, attr, [], [], [], [], [], regs, [], StateType.Region(), err ?? []);
+      }
+      //
+    }
+    
+    GetConcurrentDecls(decls : list[list[RegionsParseTree.StateConcDecl]]) : list[list[MainParseTree.StateDecl]] * list[StateNode.Error]
+    {
+      def decls = decls.Map(x => x.Partition(x => x is RegionsParseTree.StateConcDecl.DelimiterErr));
+      def reg_err = decls.Map(x => x[0]).Flatten();
+      def decls = decls.Map(x => x[1].Map(x => (x :> RegionsParseTree.StateConcDecl.StateDecl).StateDecl));
+      def reg_err = reg_err.Map(x => StateNode.Error(x.Location.StartPos, StateNode.Region(x.Location.StartPos)));
+      (decls, reg_err)
+    }
+    
+    
+                                                               
+    CreateState(pos : int, attr : list[StateAttribute], name : string, decls : list[MainParseTree.StateDecl], type : StateType, parent : option[string], errors : list[StateNode.Error] = null) : StateNode.State
+    {
+      mutable defer  = [];
+      mutable do_act = [];
+      mutable entry  = [];
+      mutable exit   = [];
+      mutable pseudo = [];
+      mutable states = [];
+      mutable tran   = [];
+      mutable err    = errors ?? [];
+      //def decls = decls.FoldRightO([], (x, a) => if (x is MainParseTree.StateDecl.Sequence(h, t)) (h :: t) + a else x :: a);
+      foreach (d in decls)
+        {
+          | MainParseTree.StateDecl.AmbiguousOrMissingNode => ()
+          | StateDecl.DeferrableEvent(DeferrableEvent = EventsParseTree.DeferrableEvent.Deferrable(SimpleEventList = e))
+          | StateDecl.DeferrableEvent(DeferrableEvent = EventsParseTree.DeferrableEvent.Deferred(SimpleEventList = e)) =>
+              def lst = e.EventIdentifiersData[0].Map(x => TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []));
+              defer ::= StateNode.Defer(d.Location.StartPos, lst)
+          | StateDecl.DoActivity as d => 
+              def act = GetActions(d.ActList);
+              do_act ::= StateNode.DoActivity(d.Location.StartPos, act, ActivityFlag.None);
+          | StateDecl.Entry as e => 
+              def act = GetActions(e.Entry.ActList);
+              entry ::= StateNode.Entry(d.Location.StartPos, ActionFlags.None, act)
+          | StateDecl.Exit as e => 
+              def act = GetActions(e.Exit.ActList);
+              exit ::= StateNode.Exit(d.Location.StartPos, ActionFlags.None, act)
+          | StateDecl.PseudoState as p => match (CreatePseudo(p.PseudoState))
+                                        {
+                                          | Some(p) => pseudo ::= p
+                                          | _       => ()
+                                        }
+          | StateDecl.Regions as r => def (st, e) = CreateRegion(r.Regions);
+                                      err += e;
+                                      states += st
+          
+          | StateDecl.State as t => def state = CreateState(t, StateType.State()); 
+                                    states ::= state;
+              
+          | StateDecl.SubMachine as st => //(a, _, n, t, p, _, d, _) as st
+             def type = st.TypeDeclOptData.MapDefault(x => x.AnyIdentifier.GetText(), null);
+             def state = CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, st.RegionSequence.StateDeclsesData[0], StateType.SubMachine(type, true));
+             states ::= state;
+             
+          | StateDecl.Transition(Transition = TransitionsParseTree.Transition.NormalTransition as t) => 
+             match (CreateTransition(t.NormalTransition))
+             {
+               | Some(t) => tran ::= t
+               | _       => ()
+             }
+          | StateDecl.Transition(Transition = TransitionsParseTree.Transition.RelocateTransition as t) => 
+             match (CreateRelocateTran(t))
+             {
+               | Some(t) => match (t)
+                            {
+                              | StateNode.Sequence(tr)     => def tr = tr.Map(x => x :> StateNode.Transition);
+                                                              tran += tr;
+                              | StateNode.Transition as tr => tran ::= tr
+                              | _                          => () // others not supported yet
+                            }
+               | _       => ()
+             }
+          | StateDecl.StateConcurrent(StateConcurrent = st) => def (decls, reg_err) = GetConcurrentDecls(st.StateConcDeclsData :: st.AndSubRegionsData.Map(x => x.StateConcDeclsData));
+                                                               err += reg_err;
+                                                               def st = CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, decls, StateType.Region());
+                                                               states ::= st
+          | _ => ()
+        }
+      StateNode.State(pos, name, parent, attr, entry.Rev(), exit.Rev(), tran.Rev(), do_act.Rev(), defer.Rev(), states.Rev(), pseudo.Rev(), type, err.Rev())
+    }
+
+    CreateRegion(reg : RegionsParseTree.Regions) : list[StateNode.State] * list[StateNode.Error]
+    {
+      //def get_separator_err(d)
+      //{
+      //  def (region_sep, decls) = d.FoldRightO(([], []), (x, (a1, a2)) => if (x is StateDecl.RegionSequence as x) (x :: a1, a2) else (a1, x :: a2));
+      //  def sep = region_sep.Map(x => StateNode.Region(x.StateDecls.Head[0].StartPos));
+      //  def err = sep.Map(x => StateNode.Error(x.pos, x));
+      //  (err, decls)
+      //}
+      match (reg)
+      {
+        | RegionsParseTree.Regions.AmbiguousOrMissingNode => ([], [])
+        | _ => 
+            //def (err, decls) = get_separator_err(d);
+            def decls = reg.StateConcDeclsData :: reg.AndSubRegionsData.Map(x => x.StateConcDeclsData);
+            def (decls, err) = GetConcurrentDecls(decls);
+            def state = decls.Map(x => CreateState(reg, null, None(), reg.AttributesOptData, [x], StateType.SubRegion()));
+            (state, err)
+            //def (init, pseudo) = state.pseudo_states.Partition(x => x.node is PseudoStateModelNode.Initial);
+            //def reg = StateNode.State(pos, null, null, [], [], [], [], [], [], state.sub_states, init, StateType.SubRegion(), err);
+            
+          
+            //def create_and_regions(x, (a1, a2) as a)
+            //{
+            //  match (x)
+            //  {
+            //    | RegionsParseTree.Regions.Nested.AndSubRegion.AmbiguousOrMissingNode => a
+            //    | RegionsParseTree.Regions.Nested.AndSubRegion as a => //Am (tok, _, and_regs, _)
+            //       def (err, decls) = get_separator_err(and_regs);
+            //       def state = CreateState(tok.StartPos, [], null, decls, StateType.SubRegion(), None());
+            //       def st = StateNode.State(state.pos, null, state.parent, [], [], [], [], [], [], state.sub_states, state.pseudo_states.Filter(x => x is StateNode.PseudoState(PseudoStateModelNode.Initial)), state.type, state.errors + err);
+            //       (st :: a1, state :: a2)
+            //    | _ => a
+            //  }
+            //}
+          
+          
+            //def (and_regs, decls) = and_regs.FoldRightO(([], []), create_and_regions);
+          
+            //state :: and_regs
+            //def states = reg :: and_regs;
+          
+            //def en = decls.SelectMany(_.entry).NToList();
+            //def ex = decls.SelectMany(_.exit).NToList();
+            //def trans = decls.SelectMany(_.transitions).NToList();
+            //def defer = decls.SelectMany(_.defer).NToList();
+            //def do_act = decls.SelectMany(_.do_activity).NToList();
+            //def pseudo = decls.SelectMany(x => x.pseudo_states.Exclude(x => x is StateNode.PseudoState(PseudoStateModelNode.Initial))).Concat(pseudo).NToList();
+            //def err = decls.SelectMany(_.errors).NToList();
+          
+            //def state = StateNode.State(pos, state.name, state.parent, state.attributes, en, ex, trans, do_act, defer, states, pseudo, StateType.Region(), err);
+            //Some(state)
+          
+           //| RegionsParseTree.Regions.Empty(RegionsParseTree.OneRegion.ParseTree(a, _, n, p, _, d, _) as t) => 
+           //    def (err, decls) = get_separator_err(d);
+           //    def state = CreateState(t, n, p, a, decls, StateType.Region(), err);
+           //    Some(state)
+             
+           //| _ => None()
+         }
+    }
+    
+    
+    
+  }
+}

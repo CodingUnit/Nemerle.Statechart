@@ -1,0 +1,156 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nitra;
+using System.Globalization;
+using CommonLib.Macros;
+
+namespace Nemerle.Statechart
+{
+  using Nemerle.Statechart.Grammar;
+  using Nemerle.Statechart.Grammar.MainParseTree;
+  using Nemerle.Statechart.Grammar.BaseParseTree;
+  using Nemerle.Statechart.Grammar.PseudoStatesParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree;
+  using Nemerle.Statechart.Grammar.TargetsParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree.Guard;
+  using Nemerle.Statechart.Grammar.MainParseTree.StateMachine.Nested.StateMachineDecl;
+  using Nemerle.Statechart.Grammar.ActionsParseTree.ActionList.Nested.Action;
+
+  /// <summary>
+  /// Description of Base.
+  /// </summary>
+  partial public class Parser
+  {
+    public flags_map : Hashtable[string, MachineFlag] {get;set;}
+    public env : GlobalEnv {get;set;}
+
+    [Accessor]
+    mutable result : Nitra.IParseResult;
+    
+    [Accessor]
+    mutable source : SourceSnapshot;
+    
+    public Parse(loc : Nemerle.Compiler.Location, text : string) : StateNode.StateMachine * list[ProjectSystem.CompilerMessage]
+    {
+      def msg = Nitra.ProjectSystem.CompilerMessageList();
+      def parserHost = ParseSession(Main.StateMachine, compilerMessages = msg);
+      
+      if (string.IsNullOrWhiteSpace(text)) (null, []) else
+      {
+        source = SourceSnapshot(text, loc.File);
+        result = parserHost.Parse(source);//Main.StateMachine(source, parserHost);
+        def ast = result.CreateParseTree();
+        if (result.IsSuccess) 
+        {
+          match (ast)
+          {
+            | MainParseTree.StateMachine as a => def res = ConvertTree(a);
+                                                 (res, [])
+            | _                               => (null, [])
+          }
+
+           
+        } else 
+        {
+          (null, msg.GetMessages().NToList())
+        }
+        //    def (line, col) = error.Location.StartLineColumn;
+        //    WriteLine($<#$line:$col: $(error.Message)#>);
+      }
+
+    }
+
+    GetFloatNum(ast : Nitra.ParseTree) : double
+    {
+      def text = ast.GetText();
+      mutable res;
+      if (double.TryParse(text, NumberStyles.Float, CultureInfo.CreateSpecificCulture("en-US"), out res))
+      {
+        res
+      } else
+      {
+        double.NaN
+      }
+      
+    }
+    
+    GetLongNum(ast : Nitra.ParseTree) : option[long]
+    {
+      def text = ast.GetText();
+      mutable res;
+      if (long.TryParse(text, out res))
+      {
+        Some(res)
+      } else
+      {
+        None()
+      }      
+    }
+    
+    GetNameIdentifier(fully : FullyQualifiedAny) : NameIdentifier
+    {
+      def id = fully.AnyIdentifiersData[0];
+      def pos = fully.Location.StartPos;
+      match (id)
+      {
+        | _ :: []   => def text = $<#..$(id; ".")#>;
+                       NameIdentifier.Name(pos, text)
+        | lst       => def lst = GetLocatedText(lst).NToList();
+                       def (last, lst) = lst.SplitLast();
+                       NameIdentifier.QualifiedName(pos, last, lst)
+      }      
+    }
+    
+    GetNameIdentifier(fully : FullyQualified): NameIdentifier
+    {
+      def id = fully.QualifiedIdentifiersData[0];
+      def pos = fully.Location.StartPos;
+      match (id)
+      {
+        | _ :: []   => def text = $<#..$(id; ".")#>;
+                       NameIdentifier.Name(pos, text)
+        | lst       => def lst = GetLocatedText(lst).NToList();
+                       def (last, lst) = lst.SplitLast();
+                       NameIdentifier.QualifiedName(pos, last, lst)
+      }
+
+    }
+
+    GetLocatedText(id : IEnumerable[Nitra.Located]) : IEnumerable[string]
+    {
+      //id.FoldRight([], (x, a) => if (!x.IsMissing) x.GetText() :: a else a);
+      id.Select(x => x.GetText());
+    }
+    
+    //GetIdentifierText(id : list[QualifiedIdentifier]) : list[string]
+    //{
+    //  id.Map(_.GetText());
+    //  //id.FoldRight([], (x, a) => if (x is QualifiedIdentifier.Ast) x.GetText() :: a else a);
+    //}
+    
+    //GetIdentifierText(id : list[AnyIdentifier]) : list[string]
+    //{
+    //  id.Map(_.GetText());
+    //  //id.FoldRight([], (x, a) => if (x is AnyIdentifier.Ast) x.GetText() :: a else a);
+    //}
+    
+    GetIdentifierData(id : list[AnyIdentifier]) : list[int * string]
+    {
+      id.Map(x => (x.Location.StartPos, x.GetText()));
+    }
+    
+    parse_expr(text : string) : PExpr
+    {
+      MainParser.ParseExpr(env, text);
+    }
+    
+  }
+}

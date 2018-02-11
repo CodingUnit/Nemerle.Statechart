@@ -6,6 +6,7 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CommonLib.Macros;
 
 namespace Nemerle.Statechart
 {
@@ -86,14 +87,66 @@ namespace Nemerle.Statechart
     /// </summary>
     CreateTransitions() : void
     {
+      CreateRegionTransitions();
       CheckAndCreateCompletionTransitions();
       ConvertEntryExitPoints();
       ConvertInitialTransitions();
       CreateTransitionsFromDeferred();
     }
 
+    CreateRegionTransitions() : void
+    {
+      foreach (st in States)
+      {
+        when (st.IsSubRegion)
+        {
+          def tran = st.transitions; // transitions of this sub regions
+          def super = st.Super; // super state
+          tran.Iter(x => {x.Source = super;x.From = super}); // originate from super state 
+          super.transitions += tran; // all transitions move to enclosed region
+          st.transitions = []; // empty transitions
+        }
+      }
+    }
+    
     CheckAndCreateCompletionTransitions() : void
     {
+/*
+A completion transition is a transition originating from a state or an exit point but which does not have an explicit trigger,
+although it may have a guard defined. A completion transition is implicitly triggered by a completion event. In case of a
+leaf state, a completion event is generated once the entry actions and the internal activities (“do” activities) have been
+completed. If no actions or activities exist, the completion event is generated upon entering the state. If the state is a
+composite state or a submachine state, a completion event is generated if either the submachine or the contained region
+has reached a final state and the state’s internal activities have been completed. This event is the implicit trigger for a
+UML Superstructure Specification, v2.1.1 571
+completion transition. The completion event is dispatched before any other events in the pool and has no associated
+parameters. For instance, a completion transition emanating from an orthogonal composite state will be taken
+automatically as soon as all the orthogonal regions have reached their final state.
+If multiple completion transitions are defined for a state, then they should have mutually exclusive guard conditions.
+*/
+      //def create_final_state(start, transition)
+      //{
+      //    def super = start.Super;
+      //    when (!super.HaveFinal && super.IsComposite)
+      //    {
+      //      def final = FsmState(this, StateType.Final()); // create final state
+      //      super.Add(final); // add to super state
+      //      def tran = StateTransition(start, TransitionTarget.Final(final), TransitionKind.External); // create transition from this state to final state
+      //      start.transitions ::= tran; // transition add to this state
+      //      when (transition != null) start.transitions = start.transitions.Remove(transition) // remove old transition
+      //    }
+      //    create_final_state(super, null)
+      //}
+
+      //foreach (st in States)
+      //{
+      //  def tran = st.CompletionTransitions; // on each completion transition
+      //  foreach (tr when tr.FromPseudo.IsNone in tran)
+      //  {
+      //    when (tr.To is TransitionTarget.Final) // transition to final state
+      //      create_final_state(tr.From, tr); // try create final state in state from it's originates            
+      //  }
+      //}
 
       def create_final_state(start, end)
       {
@@ -104,10 +157,11 @@ namespace Nemerle.Statechart
             def final = FsmState(this, StateType.Final());
             start.Super.Add(final);
             def tran = StateTransition(start, TransitionTarget.Final(final), TransitionKind.External);
-            start.transitions += [tran];
+            tran.trigger = StateEvent.Completion();
+            start.transitions ::= tran;
             create_final_state(start.Super, end)
           }
-          create_final_state(start.Super, end)
+          //create_final_state(start.Super, end)
         }
       }
 
@@ -115,7 +169,7 @@ namespace Nemerle.Statechart
       {
         when (st.IsSimple || st.HaveFinal)
         {
-          def tran = st.SuperStatesInclude.SelectMany(_.CompletionTransitions);
+          def tran = st.SuperStatesInclude.SelectMany(_.CompletionTransitions).ToArray();
           foreach (tr when tr.FromPseudo.IsNone in tran)
           {
             def from = tr.From;

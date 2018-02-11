@@ -1,0 +1,568 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+using SCG = System.Collections.Generic;
+
+namespace CommonLib.Macros
+{
+  public enum TreeTraversalType
+  {
+    | PreOrder
+    | PostOrder
+    | BreadthFirst
+  }
+  
+    
+    
+  public interface IGeneralTree[T]
+  {
+    ChildNodes : IEnumerable[IGeneralTree[T]] {get;}
+  }
+  
+  public abstract class IImmutableTree[T]
+  {
+    
+    public PreOrderEnumerable : IEnumerable[T]
+    {
+      [Memoize]
+      get
+      {
+        TreeUtils.GetPreOrderEnumerable(this)
+      }
+    }
+    
+    public PostOrderEnumerable : IEnumerable[IImmutableTree[T]]
+    {
+      [Memoize]
+      get
+      {
+        TreeUtils.GetPostOrderEnumerable(this)
+      }
+    }        
+    
+    public PostOrderEnumerableCached : IEnumerable[IImmutableTree[T]]
+    {
+      [Memoize]
+      get
+      {
+        TreeUtils.GetPostOrderEnumerable(this).ToArray()
+      }
+    }
+    
+    public BreadthFirstEnumerable : IEnumerable[T]
+    {
+      [Memoize]
+      get
+      {
+        TreeUtils.GetBreadthFirstEnumerable(this, _.ChildNodes).Select(_.Current)
+      }
+    }
+
+    public Parents(tree : IImmutableTree[T]) : list[T]
+    {
+      def loop(tree, par)
+      {
+        if (tree.ChildCount != 0)
+        {
+          def childs = tree.ChildNodes;
+          if (childs.ContainsRef(this)) tree.Current :: par else 
+          {
+            def par = tree.Current :: par;
+            childs.FindElem(x => loop(x, par))
+          }
+        } else null
+      }
+      
+      match (loop(tree, []))
+      {
+        | null => []
+        | p    => p
+      }
+    }
+    
+    public Current : T
+    {
+      [Memoize]
+      get
+      {
+        this :> T
+      }
+    }
+    
+    public ChildCount : int
+    {
+      [Memoize]
+      get
+      {
+        ChildNodes.Count()
+      }
+    }
+    
+    public virtual ListChildNodes : list[T]
+    {
+      [Memoize]
+      get
+      {
+        ChildNodes.Map(_.Current)
+      }
+    }
+    
+    public abstract ChildNodes : IEnumerable[IImmutableTree[T]] {get;}
+  }
+  
+  enum PostOrderState 
+    {
+      | TraverseStart
+      | Current
+      | End
+    } 
+    
+    class TreePostOrderEnumerator[T] : IEnumerator[T]
+    {
+      tree : T;            
+      child_func : T -> IEnumerable[T];
+      
+      mutable current : Node;
+      mutable state : PostOrderState;
+      
+      
+      public this(tree : T, func : T -> IEnumerable[T])
+      {
+        this.tree = tree;
+        child_func = func;
+        state = PostOrderState.TraverseStart;
+      }
+      
+      Top : Node
+      {
+        [Memoize]
+        get
+        {
+          Node(tree, Enumerable.Empty().GetEnumerator(), null, child_func)
+        }
+      }
+      
+      [Record]
+      class Node
+      {
+        public Elem : T; // element
+        public Iter : IEnumerator[T]; // neighbours iterator
+        public Up   : Node; // parent
+        child_func : T -> IEnumerable[T]; // func for get childs of this node
+        
+        public Child : Node
+        {
+          [Memoize] // memoize result for future to not recalc
+          get
+          {
+            def childs = child_func(Elem).GetEnumerator();
+            if (childs.MoveNext()) // if move next have childs
+            {
+              Node(childs.Current, childs, this, child_func) // create node with it as parent and its neighbours
+            } else
+            {
+              null // return null
+            }
+          }
+        }
+        
+        public Neighbour : Node
+        {
+          [Memoize]
+          get
+          {
+            if (Iter.MoveNext()) // get next elem from iterator
+            {
+              Node(Iter.Current, Iter, Up, child_func) // create neigbour node with current, iterator and parent
+            } else null // else return null
+          }
+        }
+      }
+      
+     
+      
+      public Dispose() : void{  }
+      
+      public MoveNext() : bool
+      { 
+        def traverse_below(cur)
+        {
+          if (cur.Child != null)
+            traverse_below(cur.Child) 
+          else cur;
+        }
+            
+        match (state)
+        {
+          | TraverseStart => current = traverse_below(Top);
+                             state = PostOrderState.Current;
+                             true
+          | Current       => match (current.Neighbour)
+                             {
+                               | null => match (current.Up)
+                                         {
+                                           | null => state = PostOrderState.End;
+                                                     false
+                                           | node => current = node;
+                                                     true
+                                         }
+                               | node => current = traverse_below(node);
+                                         true
+                             }
+          | End           => false
+             
+        }
+        /*
+        traverse_start: have_childs       => traverse_start(childs[0])
+        traverse_start: else, cur         => current
+        current: have_neighbour           => traverse_start(cur.next)
+        current: have_upper, cur.up       => current(cur.up)
+        current: else                     => end
+        */
+      }
+      
+      
+      
+      public Reset() : void{ state = PostOrderState.TraverseStart }
+      
+      public Current : T { get{ current.Elem } }
+      
+    }
+    
+  [Record]
+    public class TreePostOrderEnumerable[T] : IEnumerable[T]
+    {
+      tree : T;            
+      child_func : T -> IEnumerable[T];
+      
+      public GetEnumerator() : System.Collections.Generic.IEnumerator[T] { TreePostOrderEnumerator(tree, child_func) }
+        
+      public static Test() : bool
+      {
+        def map = Hashtable();
+        map['a'] = ['b', 'c', 'j'];
+        map['b'] = ['d', 'e'];
+        map['h'] = ['i'];
+        map['f'] = ['h', 'g'];
+        map['c'] = ['f'];
+        map['j'] = ['k'];
+        
+        
+        def it = TreePostOrderEnumerable('a', x => if (map.ContainsKey(x)) map[x] else Enumerable.Empty());
+        def res = it.NToList();
+        ListUtils.EqualsValue(res, ['d', 'e', 'b', 'i', 'h', 'g', 'f', 'c', 'k', 'j', 'a']);
+      }
+    }
+    
+  /// <summary>
+  /// Description of Tree.
+  /// </summary>
+  public module TreeUtils
+  {
+    
+    
+
+    
+    
+    public GetPreOrderEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T]
+    {
+      GetPreOrderEnumerable(tree, _.ChildNodes).Select(x => x :> T)
+    }
+    
+    public GetPostOrderEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T]
+    {
+      GetPostOrderEnumerable(tree, _.ChildNodes).Select(x => x :> T)
+    }
+
+    public GetPostOrderIter[T](this tree : IGeneralTree[T]) : IEnumerable[IGeneralTree[T]]
+    {
+      GetPostOrderEnumerable(tree, _.ChildNodes)
+    }
+    
+    public GetPostOrderIter[T](this tree : IImmutableTree[T]) : IEnumerable[IImmutableTree[T]]
+    {
+      GetPostOrderEnumerable(tree, _.ChildNodes)
+    }
+    
+    public GetPreOrderEnumerable[T](this tree : IImmutableTree[T]) : IEnumerable[T]
+    {
+      GetPreOrderEnumerable(tree, _.ChildNodes).Select(x => x :> T)
+    }
+    
+    public  GetBreadthFirstEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T]
+    {
+      GetBreadthFirstEnumerable(tree, _.ChildNodes).Select(x => x :> T)
+    }
+    
+    public GetEnumerable[T](tree : T, childs : T -> IEnumerable[T], TraversalType : TreeTraversalType) : IEnumerable[T]
+    {
+      match (TraversalType)
+      {
+        | TreeTraversalType.PreOrder     => GetPreOrderEnumerable(tree, childs)
+        | TreeTraversalType.BreadthFirst => GetBreadthFirstEnumerable(tree, childs)
+        | TreeTraversalType.PostOrder    => GetPostOrderEnumerable(tree, childs)
+      }
+    }
+
+    
+    public GetElemsEnumerable[T](this tree : IImmutableTree[T]) : list[T]
+    {
+      tree.Fold([], (x, a) => x :: a)
+    }
+
+    public GetElemsEnumerable[T](this tree : IImmutableTree[T], childs : Func[T, IEnumerable[T]]) : list[T] where T : IImmutableTree[T]
+    {
+      Fold(tree, [], x => childs(x.Current), (x, a) => x.Current :: a)
+    }
+    
+    public GetPreOrderEnumerable[T](tree : T, childs : T -> IEnumerable[T]) : IEnumerable[T]
+    {
+      def stack = SCG.Stack();
+      stack.Push(tree);
+
+      def loop()
+      {
+        if (stack.Count != 0)
+        {
+          def current = stack.Pop();
+          def childs = childs(current);
+          foreach (c in childs)
+          {
+            stack.Push(c)
+          }
+          yield current;
+          loop()
+        } else ()
+      }
+
+      loop()
+    }
+
+    public GetPostOrderEnumerable[T](tree : T, childs : T -> IEnumerable[T]) : IEnumerable[T]
+    {
+      TreePostOrderEnumerable(tree, childs)
+    }
+
+    public GetPostOrderEnumerable[T](this tree : IImmutableTree[T]) : IEnumerable[IImmutableTree[T]]
+    {
+      TreePostOrderEnumerable(tree, _.ChildNodes)
+    }
+    
+    // перечисление дерева, с глубиной
+    public GetPreOrderDepth[T](tree : T, childs : T -> IEnumerable[T]) : IEnumerable[int]
+    {
+      def stack = SCG.Stack();
+      stack.Push(tree, 0);
+
+      def loop()
+      {
+        if (stack.Count != 0)
+        {
+          def (current, depth) = stack.Pop();
+          def childs = childs(current);
+          def nd = depth + 1;
+          foreach (c in childs)
+          {
+            stack.Push(c, nd)
+          }
+          yield depth;
+          loop()
+        } else ()
+      }
+
+      loop()
+    }
+      
+    public GetBreadthFirstEnumerable[T](tree : T, childs : T -> IEnumerable[T]) : IEnumerable[T]
+    {
+      def queue = SCG.Queue();
+      queue.Enqueue(tree);
+
+      while (queue.Count != 0)
+      {
+        def node = queue.Dequeue();
+        yield node;
+        def childs = childs(node);
+        foreach (s in childs) queue.Enqueue(s)
+      }
+    }
+
+    public Fold[T, TAcc](this node : IGeneralTree[T], init : TAcc, folder : T * TAcc -> TAcc) : TAcc
+    {
+      Fold(node, init, x => x.ChildNodes, (x, a) => folder(x :> T, a))
+    }
+    
+    public Fold[T, TAcc](node : T, init : TAcc, childs : T -> IEnumerable[T], folder : T * TAcc -> TAcc) : TAcc
+    {
+      def fold(n, acc)
+      {
+        folder(n, acc)// :: tail
+      }
+
+      GetPostOrderEnumerable(node, childs).FoldLeft(init, fold)
+    }
+    
+    //public Fold[T, TAcc](node : T, init : TAcc, childs : T -> IEnumerable[T], folder : T * TAcc -> TAcc) : TAcc
+    //{
+    //  def fold(x, a)
+    //  {
+    //    def child = childs(x);
+    //    def acc = child.FoldLeft(a, fold);
+    //    folder(x, acc)
+    //  }
+      
+    //  fold(node, init)
+    //}
+    
+    public Fold[T, TAcc](this node : IImmutableTree[T], init : TAcc, folder : T * TAcc -> TAcc) : TAcc
+    {
+      def fold(x, a)
+      {
+        def child = x.ChildNodes;
+        def acc = child.FoldLeft(a, fold);
+        folder(x.Current, acc)
+      }
+      
+      fold(node, init)
+    }
+    
+    public FoldTree[T, TAcc](this node : IImmutableTree[T], init : TAcc, folder : T * list[TAcc] -> TAcc) : TAcc
+    {
+      def fold(x, a)
+      {
+        def child = x.ChildNodes;
+        def acc = child.Map(fold(_, a));
+        folder(x.Current, acc)
+      }
+      
+      fold(node, init)
+    }
+    
+    public FoldTree[T, TAcc](this node : IGeneralTree[T], init : TAcc, folder : T * IEnumerable[TAcc] -> TAcc) : TAcc
+    {
+      FoldTree(node, init, x => x.ChildNodes, (x, a) => folder(x :> T, a))
+    }
+    
+    public FoldTree[T, TAcc](node : T, init : TAcc, childs : T -> IEnumerable[T], folder : T * IEnumerable[TAcc] -> TAcc) : TAcc
+    {
+      def loop(n, acc)
+      {
+        def (chacc, tail) = acc.PopRev(childs(n).Count());
+        folder(n, chacc) :: tail;
+      }
+      
+      GetPostOrderEnumerable(node, childs).FoldLeft([init], loop).Head
+    }
+    
+    public Reduce[T](this tree : IGeneralTree[T], folder : T * list[T] -> T) : T
+    {
+      def fold_func(x, chacc)
+      {
+        def len = x.ChildNodes.Count();
+        def (child, lst) = chacc.PopRev(len);
+        def acc = folder(x :> T, child);
+        acc :: lst
+      }
+
+      tree.GetPostOrderIter().FoldLeft([], fold_func).Head
+    }
+    
+    public ReduceInf[T](this tree : IImmutableTree[T], folder : T * list[T] -> T) : T where T : class, IImmutableTree[T]
+    {
+      def fold_func(x, chacc)
+      {
+        def len = x.ChildCount;
+        def (child, lst, ch) = chacc.PopRevFold(false, len, x => x[0], ((_, ch), a) => if (ch) true else a);
+        def cur = x.Current;
+        def child = if (ch) child else x.ListChildNodes;
+        def acc = folder(cur, child);
+        def changed = acc != cur : object;
+        (acc, changed) :: lst
+      }
+
+      def (tree, _) = tree.PostOrderEnumerable.FoldLeft([], fold_func).Head;
+      tree
+    }
+
+    public Reduce[T](this tree : IImmutableTree[T], folder : T * list[T] -> T) : T where T : class, IImmutableTree[T]
+    {
+      def fold_func(x)
+      {
+        if (x.ChildCount != 0) 
+        {
+          def child = x.ListChildNodes;
+          def child = child.MapChange(fold_func);
+          folder(x.Current, child)
+        } else 
+        {
+          folder(x.Current, [])
+        }
+      }
+
+      fold_func(tree)
+    }
+
+    public Reduce[T](this tree : IImmutableTree[T], childs : T -> list[T], folder : T * list[T] -> T) : T where T : class, IImmutableTree[T]
+    {
+      def fold_func(x : IImmutableTree[_])
+      {
+        def child = childs(x.Current);
+        if (child.Length != 0) 
+        {
+          def child = child.MapChange(fold_func);
+          folder(x.Current, child)
+        } else 
+        {
+          folder(x.Current, [])
+        }
+      }
+
+      fold_func(tree)
+    }
+    
+    public ReduceInf[T](tree : T, childs : T -> IEnumerable[T], folder : T * IEnumerable[T] -> T) : T
+    {
+      def fold_func(x, chacc)
+      {
+        def len = childs(x).Count();
+        def (child, lst) = chacc.PopRev(len);
+        def acc = folder(x, child);
+        acc :: lst
+      }
+
+      GetPostOrderEnumerable(tree, childs).FoldLeft([], fold_func).Head
+    }
+
+    // rewrite tree, but if element not changed, not create new element, need class object
+    public ReduceC[T](tree : T, childs : T -> list[T], folder : T * list[T] -> T) : T where T : class
+    {
+      def fold_func(x)
+      {
+        def childs = childs(x).MapChange(fold_func);
+        folder(x, childs)
+      }
+
+      fold_func(tree)
+    }
+    
+    public Reduce[T](tree : T, childs : T -> IEnumerable[T], folder : T * IEnumerable[T] -> T) : T
+    {
+      def fold_func(x)
+      {
+        def childs = childs(x).Map(fold_func);
+        folder(x, childs)
+      }
+
+      fold_func(tree)
+    }
+
+    
+    
+  }
+}

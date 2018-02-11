@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nemerle.Compiler;
+using CommonLib.Macros;
 
 namespace Nemerle.Statechart
 {
@@ -15,13 +16,15 @@ namespace Nemerle.Statechart
   /// </summary>
   class Locator
   {
-    parser : FsmParser;
+    parser : Parser;
     loc    : Location;
+    builder : FsmBuilder;
     
-    public this(parser : FsmParser, loc : Location)
+    public this(parser : Parser, loc : Location, builder : FsmBuilder)
     {
       this.parser = parser;
       this.loc = loc;
+      this.builder = builder;
     }
     
     public GetLoc(pos : int) : Location
@@ -31,11 +34,10 @@ namespace Nemerle.Statechart
         loc
       } else
       {
-        def line = parser.ParsingSource.GetSourceLine(pos);
-        def (lin, _) = line.StartLineColumn;
-        def col = pos - line.StartPos + 1;
-        def line = loc.Line + lin - 1;
-        Location(loc, line, col);
+        def loc = parser.Source.GetSourceLine(pos);
+        def offs = pos - loc.StartPos;
+        def loc = Nitra.Location(loc.Source, loc.StartPos + offs, loc.EndPos);
+        builder.ConvLocation(loc)
       }
     }
     
@@ -61,7 +63,8 @@ namespace Nemerle.Statechart
         | PseudoStateModelNode.Join(_, _, t)         => LocateTran(t)
         | PseudoStateModelNode.Junction(nodes = n)   => foreach (n in n)
                                                         {
-                                                          | JunctionNode(g, a, t) => Locate(g);
+                                                          | JunctionNode(g, a, t) => Locate(n);
+                                                                                     Locate(g);
                                                                                      when (a is Some(a))
                                                                                      {
                                                                                        Locate(a);
@@ -112,6 +115,10 @@ namespace Nemerle.Statechart
       Locate(fsm.usings);
       Locate(fsm.event_classes);
       Locate(fsm.event_decls);
+      foreach (StateNode.Error(n) in fsm.errors)
+      {
+        Locate(n)
+      }
       
       def iter = TreeUtils.GetBreadthFirstEnumerable(fsm.state, _.sub_states);
       

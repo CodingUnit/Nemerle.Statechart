@@ -11,6 +11,8 @@ using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Threading;
 using Nemerle.Compiler;
+using CommonLib.Macros;
+using System.Reactive.Linq;
 
 namespace Nemerle.Statechart
 {
@@ -25,7 +27,7 @@ namespace Nemerle.Statechart
       def events = Events.Map(GenEvent.fsm_event_declaration);
       
       def cons_expr = constructor.MapDefault(x  => <[ $(x : usesite)(); ]>, <[ () ]>);
-      def prop_st_change_expr = if (FsmFlags.PropertyStateChanged) <[ OnPropertyChanged("CurState") ]> else <[ () ]>;
+      //def prop_st_change_expr = if (FsmFlags.PropertyStateChanged) <[ OnPropertyChanged("CurState") ]> else <[ () ]>;
       when (HasDeferedEvents || FsmFlags.PropertyStateChanged)
       {
         def defer_check = if (HasDeferedEvents) DeferrableEvents.CheckCode() else <[]>;
@@ -33,7 +35,7 @@ namespace Nemerle.Statechart
                       // define method for changing state
                     protected override OnSwitch() : void
                     {
-                        $prop_st_change_expr;
+                        //$prop_st_change_expr;
                         $defer_check;
                     }
                    ]>;
@@ -47,13 +49,13 @@ namespace Nemerle.Statechart
                     // define constructor
                     public this()
                     {
-                        //$base_ctor;
                         // constructor body
                         {..$init_exprs}
                         $cons_expr;
-                        //events = $events_expr;
                     }
                     
+                    
+
                     public static events : array[EventInfo] = array[..$events];
                     
                     public override Events : IEnumerable[EventInfo]
@@ -68,10 +70,6 @@ namespace Nemerle.Statechart
                     {
                       $initial
                     }
-
-                    //public static ContainsStates : array[string] = array[..$states];
-                    //public static ProcessEvents  : array[string] = array[..$events];
-                    //public static ExecActions    : array[string] = array[..$actions];
 
                   }
 
@@ -107,21 +105,29 @@ namespace Nemerle.Statechart
 
     DefineIsInState() : void
     {
-      def create_comp_expr()
+      def create_comp_expr(st_id)
       {
         def comp = ListUtils.Init(StatesId.Length, i => <[ cur_id.$($"id$i" : usesite) & id.$($"id$i" : usesite) == id.$($"id$i" : usesite) ]>);
         def expr = MergeExpr(comp, (x, y) => <[ $x && $y ]>);
         <[
+          def id = $st_id;
           def cur_id = cur_state.get_id();
           $expr
         ]>
       }
 
-      def get_body()
+      def get_body(st_id)
       {
         if (StatesId.IsSimple)
         {
-           <[ cur_state.get_id() & id == id ]>
+          match (st_id)
+          {
+            | <[ $(_ : usesite) ]> => <[ cur_state.get_id() & id == id ]>
+            | _ => <[
+                      def id = $st_id;
+                      cur_state.get_id() & id  == id 
+                  ]>
+          }
         } else
         {
           def ids = StatesId;
@@ -138,42 +144,55 @@ namespace Nemerle.Statechart
                        def ids = ctor :: ids;
                         <[decl: struct LongId
                           {
-                            ..$ids
+                          ..$ids
                           } ]>
                      } else
                      {
                        def ids = names.Map(x => <[decl: public mutable $(x : usesite) : uint; ]>);
                         <[decl: class LongId
                           {
-                            ..$ids
+                          ..$ids
                           }
                         ]>
                      }
           DefineNested(mem).Compile();
-          create_comp_expr();
+          create_comp_expr(st_id);
         }
       }
       def is_in_state = <[decl:
-                public IsInState(st : State) : bool
+                public override IsInState(st : State) : bool
                 {
-                  def id = st.get_id();
-                  $(get_body())
+                  IsInState(st.get_id())
                 }
             ]>;
-      def st_is_in_state = <[decl: static IsInState(cur_state : State, st : State) : bool
+      def id_type = StateIdType;
+      def is_in_state2 = <[decl:
+                public IsInState(id : $id_type) : bool
+                {
+                  $(get_body(<[ id ]>))
+                }
+            ]>;
+      def st_is_in_state = <[decl: public static IsInState(cur_state : State, st : State) : bool
                             {
-                              def id = st.get_id();
-                              $(get_body())
+                              $(get_body(<[ st.get_id() ]>))
                             }
                             ]>;
 
       def body = gen_states.IsInStateFromStrBody;
-      def str_is_in_state = <[decl: public IsInState(st : string) : bool
+      def st_is_in_state3 = <[decl: public static IsInState(cur_state : State, st : string) : bool
+                            {
+                              def id = match (st) { ..$body };
+                              IsInState(cur_state, id)
+                            }
+                            ]>;
+                            
+      
+      def str_is_in_state = <[decl: public override IsInState(st : string) : bool
                               {
-                                def st = match (st) { ..$body };
-                                IsInState(st)
+                                def id = match (st) { ..$body };
+                                IsInState(id)
                               } ]>;
-      Define([is_in_state, st_is_in_state, str_is_in_state]);
+      Define([is_in_state, is_in_state2, st_is_in_state, str_is_in_state, st_is_in_state3]);
     }
 
 

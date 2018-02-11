@@ -38,35 +38,41 @@ namespace Nemerle.Statechart
 
     stateMachine(nodes : List[StateNode]) : StateNode.StateMachine
     {
-      def merge_flags(x : StateNode.Flags, a : MachineFlags)
+      def merge_flags(x : StateNode.Flags, (a, err : list[StateNode.Flags]))
       {
         match (x)
         {
-          | StateNode.Flags(MachineFlags(f, e)) => def flags = (a.flags | f);
-                                                  def err = a.errors.Concat(e).NToList();
-                                                  MachineFlags(flags, err)
+          | StateNode.Flags(MachineFlags(f, e)) => def flags = (a | f);
+                                                   
+                                                   def err = if (e.IsEmpty()) err else
+                                                             {
+                                                               def e = StateNode.Flags(x.pos, MachineFlags(MachineFlag.None, e.NToList()));
+                                                               e :: err
+                                                             }
+                                                   (flags, err)
         }
 
       }
 
       def (seq, nodes) = nodes.PartitionType();
       def nodes = seq.SelectMany(x : StateNode.Sequence => x.lst).Concat(nodes).NToList();
-      def (flags, nodes) = nodes.PartitionType();
+      def (flags : list[StateNode.Flags], nodes) = nodes.PartitionType();
       def (ev_class, nodes) = nodes.PartitionType();
-      def (name, nodes) = nodes.PartitionType();
+      def (name : list[StateNode.Name], nodes) = nodes.PartitionType();
       def (usings, nodes) = nodes.PartitionType();
       def (event_decls, nodes) = nodes.PartitionType();
       def pos = if (nodes.IsEmpty()) 0 else nodes.First().pos;
       def state = CreateState(pos, null, [], nodes, StateType.State(), None());
 
-
-      def flags = flags.FoldLeft(MachineFlags(MachineFlag.None, []), merge_flags);
-      def name = match (name.NToList())
+      def (flags, errs) = flags.FoldLeft((MachineFlag.None, []), merge_flags);
+      def (name, err) = match (name)
                   {
-                    | StateNode.Name as n :: _ => n.name
-                    | _                        => null
+                    | n :: tail => (n.name, tail.Map(_ : StateNode))
+                    | _         => (null, [])
                   }
-      StateNode.StateMachine(pos, flags, name, state, usings.NToList(), event_decls.NToList(), ev_class)
+      def err = err + errs.Map(_ : StateNode);
+      def err = err.Map(x => StateNode.Error(x.pos, x));
+      StateNode.StateMachine(pos, MachineFlags(flags, []), name, state, usings.NToList(), event_decls.NToList(), ev_class, err)
     }
 
     state(attr : option[List[StateAttribute]], tok : NToken, name : NToken, parent : option[NameIdentifier], _ : NToken, nodes : List[StateNode], _ : NToken) : StateNode.State

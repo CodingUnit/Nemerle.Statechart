@@ -1,0 +1,77 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using CommonLib.Macros;
+
+
+namespace Nemerle.Statechart
+{
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Property)]
+  macro InStateProperty(typeBuilder : TypeBuilder, property : ClassMember.Property, name : PExpr = null, fsm : PExpr = null)
+  {
+    InStatePropertyImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, property, name, fsm)
+  }
+  
+  //[MacroUsage(MacroPhase.BeforeInheritance, MacroTargets.Property)]
+  //macro InStateProperty(_typeBuilder : TypeBuilder, property : ClassMember.Property)//, name : PExpr = null, fsm : PExpr = null)
+  //{
+  //  assert2(false);
+    
+  //  //InStatePropertyImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, property, name, fsm)
+  //}
+  
+  module InStatePropertyImpl
+  {
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, property : ClassMember.Property, name : PExpr, fsm : PExpr) : void
+    {
+      Macros.DefineCTX(typer);
+      //assert2(false);
+      def fsm = match (fsm)
+                {
+                  | null with fsm = null
+                  | <[ $(n : usesite)]> with fsm = n => FsmUtils.GetFsmField(typer, typeBuilder, fsm)
+                  | _                                => Message.Error($"Invalid fsm field $fsm"); null
+                }
+      when (fsm != null)
+      {
+        def name_str = match (name)
+        {
+          | null                 => property.Name;
+          | <[ $(n : usesite) ]> => n
+          | _                    => null
+        }
+        
+        if (name_str != null)
+        {
+          def type = fsm.ParsedType;
+          def type_expr = <[ $type.$($"State$name_str" : usesite) ]>;
+          def body = <[ $(fsm.Name : usesite).WhenStateChange($type_expr) ]>;
+          match (property.getter)
+          {
+            | Some(g) => g.Body = body
+            | _       => def name = property.Name;
+                         def getter = <[decl: $($"get_$name" : usesite)() : bool
+                                              {
+                                                $body
+                                              }]>;
+                         property.getter = Some(getter)
+          }
+          property.setter = None();
+          ReactivePropertyImpl.DoTransform(typer, typeBuilder, property);
+        } else
+        {
+          Message.Error(name.Location, $"Invalid expression for state name $name");
+        }
+      }
+      _ = typeBuilder; _ = property; _ = name;
+    }
+  }
+}

@@ -8,22 +8,24 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Reactive.Linq;
+using System.Reactive.Concurrency;
 
 namespace Nemerle.Statechart
 {
   public class DoActivity
   {
-    protected mutable task : Task;
+    protected mutable _task : IDisposable;
     
-    public action       : Action;
-    public continuation : Action[Task];
+    action       : Action;
+    continuation : Action;
     
     public this(action : Action)
     {
       this.action = action;
     }
     
-    public this(action : Action, cont : Action[Task])
+    public this(action : Action, cont : Action)
     {
       this(action);
       continuation = cont
@@ -31,33 +33,36 @@ namespace Nemerle.Statechart
     
     public virtual Start() : void
     {
-      task = Task.Factory.StartNew(action)
+      _task = Observable.Start(action).Subscribe();
+      //task = Task.Factory.StartNew(action)
     }
     
     public virtual StartContinued() : void
     {
-      task = Task.Factory.StartNew(action).ContinueWith(continuation)
+      _task = Observable.Start(action).Subscribe(_ => continuation());
+      //task = Task.Factory.StartNew(action).ContinueWith(continuation)
     }
     
     public virtual Stop() : void
     {
+      _task.Dispose()
     }
     
   }
   
   public class CancelableDoActivity
   {
-    protected mutable task : Task;
+    protected mutable _task : IDisposable;
     mutable cancel_source : CancellationTokenSource;
-    public action : Action[CancellationToken];
-    public continuation : Action[Task];
+    action : Action[CancellationToken];
+    continuation : Action;
     
     public this(action : Action[CancellationToken])
     {
       this.action = action;
     }
     
-    public this(action : Action[CancellationToken], cont : Action[Task])
+    public this(action : Action[CancellationToken], cont : Action)
     {
       this(action);
       continuation = cont;
@@ -71,26 +76,19 @@ namespace Nemerle.Statechart
     public Start() : void
     {
       cancel_source = System.Threading.CancellationTokenSource();
-      task = Task.Factory.StartNew(Run, cancel_source.Token)
+      _task = Observable.Start(Run).Subscribe()
     }
     
     public StartContinued() : void
     {
       cancel_source = System.Threading.CancellationTokenSource();
-      task = Task.Factory.StartNew(Run, cancel_source.Token).ContinueWith(continuation)
+      _task = Observable.Start(Run).Subscribe(_ => if (cancel_source.IsCancellationRequested) () else continuation())
     }
     
     public Stop() : void
     {
-      try
-      {
-        cancel_source?.Cancel();
-        task?.Wait();
-      }
-      catch
-      {
-        |_ is AggregateException => ()
-      }
+      cancel_source?.Cancel();
+      _task?.Dispose()
     }
     
   }

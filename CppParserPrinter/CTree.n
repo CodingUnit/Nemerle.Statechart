@@ -1,0 +1,245 @@
+﻿using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace CppParserPrinter
+{
+    public enum CMod
+    {
+        | mod_private
+        | mod_public
+        | mod_protected
+    };
+    
+  // class содержимое
+  public variant CTypeDecl
+  {
+      | Type { type : CComplexType }
+      | Func { func : CTree.Func }
+      | Modifier { mod : CMod; }
+      | Decl { var : CTree.Decl }
+  }
+  
+  // typedef, enum, union, storage class auto, register, static, extern
+  // type qualif const, volatile, restrict
+  // function qualif inline, noreturn
+  
+  // тип переменных и параметров функции
+  public variant CType
+  {
+      | Void
+      | ComplexTypeDecl { type : CComplexType; }
+      | Class { name : string; }
+      | Enum  { name : string; }
+      | Short
+      | Byte
+      | Char
+      | UShort
+      | UByte
+      | UChar
+      | Int
+      | UInt
+      | Long
+      | ULong
+      | Float
+      | Double
+      | LongLong
+      | ULongLong
+      | Pointer { type : CType; rank : list[int] }
+      | Reference { type : CType }
+      | Array { type : CType; rank : list[int]}
+  }
+
+  public class CEnumDecl
+  {
+      public name : string;
+      public val  : option[CConstExpr];
+  }
+  
+  public class CUnionDecl
+  {
+      public name : string;
+      public val  : option[CConstExpr];
+  }
+  
+  public variant CComplexType
+  {
+      | Class { base_class : list[CMod * Class]; decls : list[CTypeDecl]; }
+      | Struct { decls : list[CTypeDecl]; }
+      | Enum { decls : list[CEnumDecl]}
+      | Union { decls : list[CUnionDecl] }
+      
+      name : option[string];
+  }
+  
+  public variant CTree
+  {
+      | Compound {decls : list[CTree] }
+      | NameSpace { name : string; decls : list[CTree]}
+      | Type { type : CComplexType;}
+      | Func { ret_type : CType; name : string; parms : list[CType]; body : list[CStatement] }
+      | Decl { specifiers : list[CSpec]; type : CType; decls : list[CDecl] }
+  }
+  
+  public variant CSpec
+  {
+      | Typedef
+      | Auto
+      | Register
+      | Static
+      | Extern
+      | ThreadLocal
+      | Const
+      | Volatile
+      | Restrict
+      | Inline
+      | Noreturn
+  }
+  
+  public variant CDecl
+  {
+      | Id
+      | Pointer
+      | Array
+      | Function
+      
+      name : string;
+      init : option[ CConstExpr ]
+  }
+  
+  public class COper
+  {
+  }
+  
+  public variant CUnaryOper : COper
+  {
+      | PostInc
+      | PreInc
+      | PostDec
+      | PreDec
+      | PointerDereference
+      | AddresGet
+      | Not
+      | Invert
+      | Plus
+      | Minus
+      | Sizeof
+      
+      expr : CExpr;
+  }
+  
+  public variant CReadOnlyOper : COper
+  {
+      | Not { expr : CConstExpr }
+      | Invert {expr : CConstExpr }
+      | Plus { expr : CConstExpr }
+      | Minus { expr : CConstExpr }
+      | Sizeof { expr : CConstExpr }     
+      | Binary { bin : CBinaryOper }
+  }
+  
+  public variant CBinaryOper : COper
+  {
+      | Mul
+      | Div
+      | Add
+      | Sub
+      | Mod
+      | LogicAnd
+      | LogicOr
+      | Xor
+      | And
+      | Or
+      | LShift
+      | RShift
+      | CondOper { cond : CExpr } // ? : 
+      | Assign 
+      | AddAssign
+      | SubAssign
+      | MulAssign
+      | DivAssign
+      | ModAssign
+      | AndAssign
+      | OrAssign
+      | XorAssign
+      | LShiftAssign
+      | RShfiftAssign
+      | Equal
+      | NotEqual
+      | Greater
+      | Lower
+      | GreaterEqual
+      | LowerEqual
+      | ArrayIndex
+      | MemberPointerAccess
+      | MemberAccess
+      | SeqOp // ,
+      | CallFunc // a(...)
+      | TypeConv // (type)expr
+      
+      left : CExpr;
+      right : CExpr;
+  }
+  
+  public variant CConstExpr
+  {
+      | Compound { expr : list[CConstExpr] }
+      | Int { val : int }
+      | Enum { val : string }
+      | Oper { oper : CReadOnlyOper }
+      | Char { val : Char }
+      | Float { val : double }
+      | Sizeof { expr : CExpr }
+  }
+  
+  public variant CStatement
+  {
+      | Compound { body : list[CStatement]}
+      | Empty
+      | Null // ;
+      | Decl { type: CTree.Decl; } 
+      | Expression { expr : CExpr }
+      | Return {ret : option[CExpr]}
+      | Break
+      | Continue
+      | Goto { label : string; }
+      | Label { label : string; body : CStatement }
+      | Switch { cond : CExpr; cases : list[CSwitchCase]}
+      | If { cond : CExpr; body : CStatement; else_body : option[CStatement]}
+      | While { cond : CExpr; body : CStatement }
+      | DoWhile { body : CStatement; cond : CExpr } 
+      | For { init : option[CInitExpr]; cond : option[CExpr]; iter : option[CExpr]; body : CStatement }
+  }
+  
+  public variant CSwitchCase
+  {
+      | Default { body : CStatement }
+      | Case { expr : CConstExpr; body : CStatement } 
+  }
+  
+  public variant CInitExpr
+  {
+      | Decl { decl : CStatement.Decl }
+      | Expr { expr : CExpr }
+  }
+  
+  public variant CConstant
+  {
+      | Int { val : int}
+      | Float { val : float }
+      | String { str : string }
+  }
+  
+  public variant CExpr
+  {
+      | Compound { expr : list[CExpr]}
+      | Id { name : string }
+      | Constant { lit : CConstant } 
+      | Operator { op : COper }
+      
+  }
+}

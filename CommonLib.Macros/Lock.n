@@ -1,0 +1,44 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+
+namespace CommonLib.Macros
+{
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Method)]
+  macro Lock(typeBuilder : TypeBuilder, meth : ClassMember.Function, parm : PExpr = null)
+  {
+    LockImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, meth, parm)
+  }
+  
+  public module LockImpl
+  {
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, meth : ClassMember.Function, name : PExpr) : void
+    {
+      Macros.DefineCTX(typer);
+    
+      def fields = typeBuilder.GetParsedMembers(true).FilterType();
+      def name = match (name)
+                 {
+                   | <[ $(n : usesite) ]> => n
+                   | _                    => null
+                 }
+      def name = name ?? "_this_lock";
+      when (!fields.Exists(x : ClassMember.Field => x.Name == name)) typeBuilder.Define(<[decl: $(name : usesite) : object = object() ]>);
+      
+      meth.Body = <[ lock ($(name : usesite))
+                     {
+                       $(meth.Body)
+                     } ]>;
+    }
+  }
+}
+

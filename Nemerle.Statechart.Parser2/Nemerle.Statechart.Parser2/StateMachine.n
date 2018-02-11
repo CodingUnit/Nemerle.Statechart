@@ -1,0 +1,100 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nemerle.Statechart
+{
+  using Nemerle.Statechart.Grammar;
+  using Nemerle.Statechart.Grammar.MainParseTree;
+  using Nemerle.Statechart.Grammar.BaseParseTree;
+  using Nemerle.Statechart.Grammar.PseudoStatesParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree;
+  using Nemerle.Statechart.Grammar.TargetsParseTree;
+  using Nemerle.Statechart.Grammar.TransitionsParseTree.Guard;
+  using Nemerle.Statechart.Grammar.MainParseTree.StateMachine.Nested.StateMachineDecl;
+  using Nemerle.Statechart.Grammar.ActionsParseTree.ActionList.Nested.Action;
+  
+  /// <summary>
+  /// Description of StateMachine.
+  /// </summary>
+  partial public class Parser
+  {
+    
+    GetFlags(str : list[string]) : MachineFlags
+    {
+      def err = List();
+      def proc_tok(str, a)
+      {
+        def flag = if (flags_map.ContainsKey(str)) flags_map[str] else 
+                   {
+                     err.Add(str);
+                     MachineFlag.None
+                   }
+        flag | a
+      }
+
+      def flags = str.FoldLeft(MachineFlag.None, proc_tok);
+      MachineFlags(flags, err.NToList());
+    }
+    
+    ConvertTree(ast : MainParseTree.StateMachine) : StateNode.StateMachine
+    {
+      mutable flags = MachineFlag.None;
+      mutable event_class = [];
+      mutable event_decls = [];
+      mutable names = [];
+      mutable usings = [];
+      mutable st_decl = [];
+      mutable err = [];
+      def decls = ast.StateMachineDecls;
+      foreach (d in decls)
+        {
+          | Flags(AnyIdentifiersData = (a, _))                                                         => def data = GetLocatedText(a);
+                                                                                                          def fl = GetFlags(data.NToList());
+                                                                                                          when (fl.ParseDebug) assert2(false);
+                                                                                                          unless (fl.errors.IsEmpty()) err ::= StateNode.Flags(d.Location.StartPos, fl);
+                                                                                                          flags |= fl.flags;
+          | EventClass(EventClass = EventsParseTree.EventClass(FullyQualifiedAny = f, EventListOptData = o)) => 
+                                                                                                          def n = GetNameIdentifier(f);
+                                                                                                          def evt = match (o)
+                                                                                                                    {
+                                                                                                                      | Some(EventsParseTree.EventClass.Nested.EventList(EventIdentifiersData = (e, _))) => GetLocatedText(e)
+                                                                                                                      | _                                                                                => []
+                                                                                                                    }
+                                                                                                          event_class ::= StateNode.EventClassDecl(d.Location.StartPos, n, evt.NToList())
+          | EventDecl(EventDecl = EventsParseTree.EventDecl(EventIdentifier = a, AnyIdentifiersData = (t, _)))          => 
+                                                                                                          def name = a.GetText();
+                                                                                                          def lst = GetLocatedText(t).NToList();
+                                                                                                          event_decls ::= StateNode.EventDecl(d.Location.StartPos, name, lst);
+          | Name(NameIdentifier = n)                                                                         => 
+              match (n)
+              {
+                | Name.Nested.NameIdentifier.CommaIdentifier(SData = i) => names ::= StateNode.Name(d.Location.StartPos, i);
+                | Name.Nested.NameIdentifier.AnyIdentifier(AnyIdentifier = i) => 
+                    def name = i.GetText();
+                    names ::= StateNode.Name(d.Location.StartPos, name);
+                | _                                                          => ();
+              }
+          | Using(FullyQualifiedAny =  f)                                                                => def data = GetNameIdentifier(f);
+                                                                                                            usings ::= StateNode.Using(d.Location.StartPos, data.FullName)
+          | StateDecl as d                                                                               => st_decl ::= d.StateDecl;
+          | _                                                                                            => ()
+        }
+      def st = CreateState(ast.Location.StartPos, [], null, st_decl.Rev(), StateType.State(), None());
+      def (name, error) = if (names.IsEmpty()) (null, []) else 
+      {
+        def name = names.Rev();
+        (name.Head, name.Tail);
+      }
+      def error = error.Map(_ : StateNode) + err;
+      def error = error.Map(x => StateNode.Error(x.pos, x));
+      StateNode.StateMachine(ast.Location.StartPos, MachineFlags(flags, []), name?.name, st, usings.Rev(), event_decls.Rev(), event_class.Rev(), error.Rev())
+    }
+
+  }
+}

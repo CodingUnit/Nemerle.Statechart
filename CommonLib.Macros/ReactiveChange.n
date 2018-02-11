@@ -1,0 +1,63 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using ReactiveUI;
+
+namespace CommonLib.Macros
+{
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Property)]
+  macro ReactiveChange(typeBuilder : TypeBuilder, property : ClassMember.Property)
+  {
+    ReactiveChangeImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, property)
+  }
+  
+  module ReactiveChangeImpl
+  {
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, property : ClassMember.Property) : void
+    {
+      //assert2(false);
+      Macros.DefineCTX(typer);
+      
+      if (property.IsAuto())
+      {
+        def getter = property.getter.Value;
+        
+        
+        def name = Macros.NewSymbol(property.Name);
+        getter.Body = <[ $(name : name) ]>;
+        def type = property.returnType;
+        def field = match (property.initializer)
+                    {
+                      | Some(i) => property.initializer = None();
+                                  <[ decl: mutable $(name : name) : $type = $i ]>
+                      | _       => <[ decl: mutable $(name : name) : $type = default($type) ]>
+                    }
+        match (property.setter)
+        {
+          | Some(s) => s.Body = <[ 
+                                  _ = RaiseAndSetIfChanged(x => x.$(property.Name : usesite), $("value" : dyn) )
+                                ]>;
+          | _       => ()              
+        }
+        typeBuilder.Define(field);
+      } else
+      {
+        match (property.setter)
+        {
+          | Some(s) => s.Body = <[
+                                  _ = RaiseAndSetIfChanged(x => x.$(property.Name : usesite), $("value" : dyn))
+                                ]>
+          | _ => ()
+        }
+      }
+    }
+  }
+}

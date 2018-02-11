@@ -1,0 +1,50 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using Nemerle.Compiler.Typedtree;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+
+namespace CommonLib.Macros
+{
+  [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Field)]
+  macro Publish(typeBuilder : TypeBuilder, field : ClassMember.Field, result_type : PExpr = null)
+  {
+    PublishImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, field, result_type)
+  }
+  
+  module PublishImpl
+  {
+    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, field : ClassMember.Field, result_type : PExpr) : void
+    {
+      Macros.DefineCTX(typer);
+      
+      //assert2(false);
+      def infer()
+      {
+        match (field.ParsedType)
+        {
+          | <[ Subject[$t] ]> => <[ IObservable[$t] ]>
+          | _                 => throw InvalidOperationException("unknown type")
+        }
+      }
+      
+      def name = field.Name.TrimStart('_').ToCamel();
+      def res_type = result_type ?? infer();
+      def prop = <[decl: public $(name : usesite) : $res_type
+                         {
+                           get
+                           {
+                             $(field.Name : usesite)
+                           }
+                         }]>;
+      typeBuilder.Define(prop);
+    }
+  }
+}

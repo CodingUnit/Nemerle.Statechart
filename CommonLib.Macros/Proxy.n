@@ -1,0 +1,103 @@
+﻿using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+using Nemerle.Compiler;
+using Nemerle.Compiler.Parsetree;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace CommonLib.Macros
+{
+  /// <summary>
+  /// Description of Proxy.
+  /// </summary>
+  [Nemerle.MacroUsage (Nemerle.MacroPhase.WithTypedMembers,
+                       Nemerle.MacroTargets.Field)]
+  macro ProxyAllPublicMembers (t : TypeBuilder, f : FieldBuilder, params options : list [PExpr])
+  {
+    //assert2(false);
+    ProxyHelper.CreateProxy(t,f,options);
+    
+  }
+
+  module ProxyHelper
+  {
+    
+    
+       
+    public CreateProxy(t : TypeBuilder, f : FieldBuilder,options : list [PExpr]) : void
+    {
+      def filter_options()
+      {
+        match (options)
+        {
+          | [] => (null,options)    
+          |_ =>
+              match (options.Head)
+              {
+                | <[ Super = [..$names] ]> => 
+                    def retnames=names.Map(_.ToString());
+                    (retnames,options.Tail)                  
+                |_ => (null,options)
+              }        
+        }           
+      }
+    
+      def filter_members(mems,super)
+      {    
+        mems.Filter(x => super.Exists(y => y.FullName==x.DeclaringType.FullName));
+      }
+    
+      def select_super(super,superstr)
+      {    
+        super.Filter(x : TypeInfo => superstr.Exists(y => x.FullName.Contains(y)));
+      }
+    
+      def (superstr,_)=filter_options();
+    //def inclusion_regexs = MacrosHelper.AnalyseNameInclusionPatterns (options);
+      def ftype = f.GetMemType();
+      def fobj = <[ this.$(f.Name : dyn) ]>;
+    
+      def classty = match (ftype) {
+                      | FixedType.Class (typeinfo, _) => typeinfo
+                      | _ => Message.FatalError ("expected simple class type")
+                    }
+      def super=classty :: MacroUtils.GetSuperTypes(classty);
+      def selsuper=select_super(super,superstr);
+      def allmems=classty.GetMembers (BindingFlags.Instance | BindingFlags.Public);
+      def selmems=filter_members(allmems,selsuper);
+      foreach (mem in selmems)
+      {
+      // create Name object for name of created object
+        def member_name = t.ParsedName.NewName (mem.Name);
+      
+        def subst = ftype.ConstructSubstForTypeInfo (mem.DeclaringType);
+       
+        when (!mem.Name.Equals (".ctor"))// && MacrosHelper.NameMatchesPatterns (mem.Name, inclusion_regexs))
+          match (mem) {
+            | meth is IMethod
+          // we must avoid property method here, a little bit hacking solution
+          when meth.Attributes & NemerleAttributes.SpecialName == 0 =>
+     
+                def mods = NemerleAttributes.Virtual %| NemerleAttributes.Public;
+                def parse_tr = meth.GetHeader ().CreateAliasMethod (mods, fobj, subst);
+                t.Define (parse_tr);
+          
+            | prop is IProperty when prop.GetGetter() != null && !prop.IsIndexer =>
+                t.Define (<[ decl:
+            public virtual $(member_name : name) : $(ftype.TypeOfMember (prop) : typed) {
+              get { 
+                this.$(f.Name : dyn).$(member_name : name)
+              }
+            }
+          ]>)
+
+            | _ => ()
+            
+          }
+      }
+  
+    }
+  }
+}

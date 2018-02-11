@@ -18,10 +18,10 @@ namespace Nemerle.Statechart
     | ParsingError { err : ParseError; }
     //| Sequence {seq : IEnumerable[FsmError];}
     //| UnknownState {state : FsmState;name : FsmState;tran : StateTransition;}
-    | StateNotFound { tr : StateTransition; state : string;}
+    | StateNotFound { tr : TranType; state : string;}
     | ParentStateNotFound {state : FsmState; parent : string;}
     | SeveralState { states : string;}
-    | DuplicateStateTarget { tran : StateTransition; state : string; }
+    | DuplicateStateTarget { tran : TranType; state : string; }
     | DuplicateTransition {tran : Transition;}
     | DuplicateHistory {history : PseudoStateNode.History;}
     | RegionMustContainInitial {reg : FsmState;tran : StateTransition;}
@@ -29,7 +29,7 @@ namespace Nemerle.Statechart
     | UnknownTerminateTransition {node : StateTransition;}
     | ForkMustGoToSeparateRegion {fork : StateTransition;}
     | ForkMustHaveAtLeastTwoTargets { fork : StateTransition; }
-    | UnknownNode {tran : StateTransition; name : string; }
+    | UnknownNode {tran : TranType; name : string; }
     | JoinTransitionMustHaveSameTrigger {tran : list[StateTransition]; join : PseudoStateNode.Join; }
     | JoinTransitionCannotHaveGuardsOrActions { tran : StateTransition; }
     | JoinTransitionMustLeaveRegion { join : PseudoStateNode.Join; }
@@ -45,7 +45,7 @@ namespace Nemerle.Statechart
     | EmptyChoice {junction : PseudoStateNode;}
     //| ChoiceActionMaybeLast {junction : PseudoStateNode;action : list[Actions];}
     //| SubMachineStateNotFound {fsm : FsmState.SubMachine;state : string;}
-    | UnknownTarget {tran : StateTransition; target : TransitionTarget;}
+    | UnknownTarget {tran : TranType; target : TransitionTarget;}
     | InitialPseudoStateAtMostOne { init : PseudoStateNode.Initial; }
     | InitialTransitionMustGoToState { init : PseudoStateNode.Initial; }
     | InitialTransitionToHistoryMustHaveDefaultTran { init : PseudoStateNode.Initial; hist : PseudoStateNode.History; }
@@ -130,7 +130,7 @@ namespace Nemerle.Statechart
           | SubRegionsMustContainInitial(sreg)                       => $<#Sub regions "..$sreg" must contain initial pseudostates to default state#>
           | UnknownTerminateTransition(tran)                         => $<#Unknown terminate transition target of "$tran", there is several terminate pseudostates, specify full name#>                  
           | ForkMustGoToSeparateRegion(f)                            => $<#Transition originated from fork pseudostate "$f" must target state in different concurrent sub regions of same region#>
-          | UnknownNode(tran, n)                                     => $<#Unknown node "$n" used in target of "$tran" transition #>
+          | UnknownNode(tran, n)                                     => $<#Unknown node "$n" used in target of "$tran" transition#>
           | JoinTransitionMustHaveSameTrigger(tran, _)               => $<#Transitions targeting join $tran must have same event trigger#>
           | JoinTransitionMustLeaveRegion(j)                         => $<#Transitions targeting join "$j" must leave states in distinct sub regions of same orthogonal region#>
           //| TransitionCrossOrthogonalBoundaryOfSameRegion(tran)      => $<#Transition "$tran" is cross orthogonal boundary of same region, this is not allowed#>
@@ -144,7 +144,7 @@ namespace Nemerle.Statechart
       //| ChoiceElseMustBeLast(j)                                  => $<#Else node in choice "$(j.state).$j" must be the last alternative node#>
       //| ChoiceActionMaybeLast(j, a)                              => $<#Choice action "$a" in "$(j.state).$j" maybe single in node or last#>
       //| ChoiceElseMustAfterAnotherGuard(j)                       => $<#Choice else node in "$(j.state).$j" must have preceded another GuardNode#>
-          | EmptyChoice(j)                                           => $<#There is a empty node in choice "$(j.state).$j"#>
+          | EmptyChoice(j)                                           => $<#There is an empty node in choice "$(j.state).$j"#>
           | DuplicateStateTarget(tr, st)                             => $<#Ambiguous target "$st" of transition "$tr". There is more than one states of this name#>
           | SeveralState(st)                                         => $<#There is several duplicate states of name $st in target of transition #>
           | ParentStateNotFound(s, p)                                => $<#Parent state "$p" for state "$s" not found#>
@@ -222,7 +222,7 @@ namespace Nemerle.Statechart
           | TransitionNotUsed(tran)                                               => $<#Transition "$tran" is not used in fsm life history#>
           | RegionNotUsed(reg)                                                    => $<#Concurrent region "$reg" is not used in fsm life history#>
           | NoConcurrentActivity(act)                                             => $<#There is no other activities in do activity node $act. Flag is no meaning, concurrent activity means that several activities may run concurently in do activity region of state.#>
-          | TransitionOverriden(tran, by)                                         => $<#Transition "$(tran)" is overriden by $(by), due to execute priority rules, because this transitions is always enabled#>
+          | TransitionOverriden(tran, by)                                         => $<#Transition "$(tran)" is overriden by $(by), due to priority rules, because these transitions are always enabled#>
           | DeferIsAlwaysOverriden(defer, tr)                                     => $<#Deferrable event "$defer" is always overriden by $tr#>
           | x                                                                     => $"Unknown Warning $x"
         }
@@ -234,12 +234,14 @@ namespace Nemerle.Statechart
   {
     | DuplicateActivity {node : StateNode.DoActivity;}
     | UnknownElement { node : StateNode; }
-    | UnknownMachineFlag {flag : string;}
+    | UnknownMachineFlag {node : StateNode.Flags; flag : string;}
     | TimedEventValueOverflow { evt : TransitionEvent; }
     | TimedEventUnknownUnit { evt : TransitionEvent; unit : string; }
     | TimedEventInvalidValue { evt : TransitionEvent; } 
     | TimedEventDuplicateUnit { evt : TransitionEvent; unit : string; }
     | RegionSeparatorNotAllowedInRegions { node : StateNode; }
+    | Sequence { lst : list[ParseError]; }
+    | NameMustSpecifiedOnce { node : StateNode.Name; }
     
     public Location : Location
     {
@@ -249,9 +251,11 @@ namespace Nemerle.Statechart
         {
           | DuplicateActivity(a)
           | UnknownElement(a)
+          | NameMustSpecifiedOnce(a)
           | TimedEventValueOverflow(a)
           | TimedEventInvalidValue(a)
           | TimedEventDuplicateUnit(a, _)
+          | UnknownMachineFlag(a, _)
           | RegionSeparatorNotAllowedInRegions(a)
           | TimedEventUnknownUnit(a, _)   => a.Location
           | _                             => Location.Default
@@ -267,12 +271,14 @@ namespace Nemerle.Statechart
         {
           | DuplicateActivity(act)                => $<#Duplicate do activity $act, state may have only one do activity node#>
           | UnknownElement(node)                  => $<#Unknown parse node $node #>
-          | UnknownMachineFlag(f)                 => $<#Unknown state machine flag "$f" #>
+          | UnknownMachineFlag(_, f)              => $<#Unknown state machine flag "$f" #>
           | TimedEventValueOverflow               => <#Overflow in value of timed event#>
           | TimedEventUnknownUnit(_, u)           => $<#Unknown unit "$u" of time used in timed event#>
           | TimedEventInvalidValue                => <#Invalid value used in timed event#>
           | TimedEventDuplicateUnit(_, u)         => $<#Duplicate unit "$u" used in timed event#>
           | RegionSeparatorNotAllowedInRegions    => <#Region separator not allowed in 'region' syntax#>
+          | NameMustSpecifiedOnce                 => <#Name cannot be specified more than once#>
+          | _                                     => throw InvalidOperationException("Parse Error not handled")
         }
       }
     }
