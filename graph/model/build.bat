@@ -1,0 +1,1 @@
+..\bin\grgen root.grg

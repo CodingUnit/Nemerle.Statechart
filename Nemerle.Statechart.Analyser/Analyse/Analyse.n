@@ -181,25 +181,30 @@ namespace Nemerle.Statechart
         match (x)
         {
           | StateNode.StateMachine(name = n) => 
-              def st_node = graph.CreateNodeState(n); // create graph node
+              def st_node = graph.CreateNodeState(); // create graph node
+              st_node.name = n;
               childs.Iter(x => _ = graph.CreateEdgeSubstate(st_node, x)); // link it to sub state through edge for each substate
               st_node
           | State(name = n) as st => 
-              def st_node = graph.CreateNodeState(n);
+              def st_node = graph.CreateNodeState();
+              st_node.name = n;
                // link it to sub state through edge for each substate
               childs.Iter(x => _ = graph.CreateEdgeSubstate(st_node, x));
               foreach (p in st.pseudo_states)
               {
                 match (p.node)
                 {
-                   | PseudoStateModelNode.EntryPoint as e => graph.CreateNodeEntryPoint(e.name) // entry point needs transition pass
+                   | PseudoStateModelNode.EntryPoint as e => _ = graph.CreateNodeEntryPoint(e.name) // entry point needs transition pass
+                   | _                                    => ()
                 }
                                                      
               }
               st_node
+           | _ => null
         }
       }
       def root = Fsm.MapTree(create_nodes);
+      Porter.Export(graph, [$"graph$(Name).gxl"].ToList());
       //def state = 
       //graph.CreateNodeState(Fsm.st);
     }
@@ -210,6 +215,7 @@ namespace Nemerle.Statechart
       {
         CheckParseErrors();
         PrintFsm(Fsm, $"$(Name)_statenode.txt");
+        CreateGraph();
         CreateStateMap();
         when (FsmFlags.Logging) PrintFsmState(TopState, $"$(Name)_after_created.txt");
         CheckHistoryStates(); // check for errors in history
