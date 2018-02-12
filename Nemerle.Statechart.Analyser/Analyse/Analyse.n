@@ -9,6 +9,8 @@ using System.Linq;
 using Nemerle.Statechart;
 using System.ComponentModel;
 using CommonLib.Macros;
+using de.unika.ipd.grGen.libGr;
+using de.unika.ipd.grGen.Model_StateMachine;
 
 namespace Nemerle.Statechart
 {
@@ -168,6 +170,38 @@ namespace Nemerle.Statechart
       }
       
       PrintTree(tree, _.sub_states, print, file)
+    }
+    
+    CreateGraph() : void
+    {
+      graph = StateMachineNamedGraph();
+      // check all states and create state nodes and substate relation edge
+      def create_nodes(x, childs)
+      {
+        match (x)
+        {
+          | StateNode.StateMachine(name = n) => 
+              def st_node = graph.CreateNodeState(n); // create graph node
+              childs.Iter(x => _ = graph.CreateEdgeSubstate(st_node, x)); // link it to sub state through edge for each substate
+              st_node
+          | State(name = n) as st => 
+              def st_node = graph.CreateNodeState(n);
+               // link it to sub state through edge for each substate
+              childs.Iter(x => _ = graph.CreateEdgeSubstate(st_node, x));
+              foreach (p in st.pseudo_states)
+              {
+                match (p.node)
+                {
+                   | PseudoStateModelNode.EntryPoint as e => graph.CreateNodeEntryPoint(e.name) // entry point needs transition pass
+                }
+                                                     
+              }
+              st_node
+        }
+      }
+      def root = Fsm.MapTree(create_nodes);
+      //def state = 
+      //graph.CreateNodeState(Fsm.st);
     }
     
     public Analyse() : void

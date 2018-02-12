@@ -451,26 +451,42 @@ namespace CommonLib.Macros
     
     public FoldTree[T, TAcc](node : T, init : TAcc, childs : T -> IEnumerable[T], folder : T * IEnumerable[TAcc] -> TAcc) : TAcc
     {
-      def loop(n, acc)
+      def fold(x, a)
       {
-        def (chacc, tail) = acc.PopRev(childs(n).Count());
-        folder(n, chacc) :: tail;
+        def child = childs(x);
+        def acc = child.Map(fold(_, a));
+        folder(x, acc)
       }
       
-      GetPostOrderEnumerable(node, childs).FoldLeft([init], loop).Head
+      fold(node, init)
+    }
+    
+    public MapTree[T, TAcc](this node : IGeneralTree[T], folder : T * IEnumerable[TAcc] -> TAcc) : TAcc
+    {
+      MapTree(node, x => x.ChildNodes, (x, a) => folder(x :> T, a))
+    }
+    
+    public MapTree[T, TAcc](node : T, childs : T -> IEnumerable[T], folder : T * IEnumerable[TAcc] -> TAcc) : TAcc
+    {
+      def fold(x)
+      {
+        def child = childs(x);
+        def acc = child.Select(fold);
+        folder(x, acc)
+      }
+      
+      fold(node)
     }
     
     public Reduce[T](this tree : IGeneralTree[T], folder : T * list[T] -> T) : T
     {
-      def fold_func(x, chacc)
+      def fold_func(x : IGeneralTree[_])
       {
-        def len = x.ChildNodes.Count();
-        def (child, lst) = chacc.PopRev(len);
-        def acc = folder(x :> T, child);
-        acc :: lst
+        def childs = x.ChildNodes.Map(fold_func);
+        folder(x :> T, childs)
       }
 
-      tree.GetPostOrderIter().FoldLeft([], fold_func).Head
+      fold_func(tree)
     }
     
     public ReduceInf[T](this tree : IImmutableTree[T], folder : T * list[T] -> T) : T where T : class, IImmutableTree[T]
