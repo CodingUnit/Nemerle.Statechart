@@ -175,40 +175,133 @@ namespace Nemerle.Statechart
     CreateGraph() : void
     {
       graph = StateMachineNamedGraph();
+      def map = Hashtable();
+      def stateid = Hashtable();
+      
+      mutable id_cntr = 0;
+      
+      def get_id()
+      {
+        def id = id_cntr;
+        id_cntr++;
+        id
+      }
+      
+      def create_name(n, cntr)
+      {
+        def n = n ?? "";
+        if (graph.GetNode(n) != null) 
+        {
+          def n = $"$n$cntr";
+          create_name(n, cntr + 1)
+        } else n
+      }
+      
+      def create_name = create_name(_, 1);
+      
       // check all states and create state nodes and substate relation edge
       def create_nodes(x, childs)
       {
+        def st_id = get_id();
+        stateid[st_id] = x;
         match (x)
         {
           | StateNode.StateMachine(name = n) => 
-              def st_node = graph.CreateNodeState(); // create graph node
+              def name = create_name(n);
+              def st_node = graph.CreateNodeState(name); // create graph node
               st_node.name = n;
-              childs.Iter(x => _ = graph.CreateEdgeSubstate(st_node, x)); // link it to sub state through edge for each substate
+              st_node.id = st_id;
+              def id = st_node.GetUniqueId();
+              map[st_id] = id;
+              _ = graph.CreateEdgeContains(st_node, childs.First()); // link it to sub state through edge for each substate
               st_node
-          | State(name = n) as st => 
-              def st_node = graph.CreateNodeState();
-              st_node.name = n;
+          | State(name = n, type = t) as st => 
+              def name = create_name(n);
+              def st_node = match (t)
+                            {
+                              | SubRegion
+                              | StateType.State => def node = graph.CreateNodeState(name);
+                                                   node.id = st_id;
+                                                   node.name = n;
+                                                   childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
+                                                   node
+                              | Region          => def node = graph.CreateNodeConcurrentState(name);
+                                                   node.id = st_id;
+                                                   node.name = n;
+                                                   childs.Iter(x => _ = graph.CreateEdgeRegion(node, x));
+                                                   node
+                              | Final           => def node = graph.CreateNodeFinalState();
+                                                   node.id = st_id;
+                                                   node
+                              | SubMachine      => def node = graph.CreateNodeSubMachineState(name);
+                                                   node.id = st_id;
+                                                   childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
+                                                   node
+                            }
+              def id = st_node.GetUniqueId();
+              map[st_id] = id;
                // link it to sub state through edge for each substate
-              childs.Iter(x => _ = graph.CreateEdgeSubstate(st_node, x));
+              
               foreach (p in st.pseudo_states)
               {
-                match (p.node)
+                def st_id = get_id();
+                def node = match (p.node)
                 {
-                   | PseudoStateModelNode.EntryPoint as e => _ = graph.CreateNodeEntryPoint(e.name) // entry point needs transition pass
-                   | _                                    => ()
+                   | PseudoStateModelNode.EntryPoint as e => def node = graph.CreateNodeEntryPoint(e.name);// entry point needs transition pass
+                                                             node.id = st_id;
+                                                             node
+                   | Initial                              => def node = graph.CreateNodeInitialState();
+                                                             node.id = st_id;
+                                                             node
+                   | History(type = HistoryType.Deep)     => def node = graph.CreateNodeDeepHistoryState();
+                                                             node.id = st_id;
+                                                             node
+                   | History(type = HistoryType.Shallow)  => def node = graph.CreateNodeShallowHistoryState();
+                                                             node.id = st_id;
+                                                             node
+                   | ExitPoint as e                       => def node = graph.CreateNodeExitPoint(e.name);
+                                                             node.id = st_id;
+                                                             node
+                   | Fork                                 => def node = graph.CreateNodeFork();
+                                                             node.id = st_id;
+                                                             node
+                   | Join as j                            => def node = graph.CreateNodeJoin(j.name);
+                                                             node.id = st_id;
+                                                             node
+                   | Junction(type = JunctionType.Junction) as j => def node = graph.CreateNodeJunction(j.name);
+                                                                    node.id = st_id;
+                                                                    node
+                   | Junction(type = JunctionType.Choice) as j  => def node = graph.CreateNodeChoice(j.name);
+                                                                   node.id = st_id;
+                                                                   node                                                                    
+                   | Junction(type = JunctionType.Merge) as j   => def node = graph.CreateNodeMerge(j.name);
+                                                                   node.id = st_id;
+                                                                   node 
+                   | Terminate                            => def node = graph.CreateNodeTerminate();
+                                                             node.id = st_id;
+                                                             node 
+                   | _                                    => null
                 }
-                                                     
+                when (node != null) 
+                {
+                  def id = node.GetUniqueId();
+                  map[st_id] = id;
+                  stateid[st_id] = p;
+                  _ = graph.CreateEdgeContains(st_node, node);
+                }
               }
               st_node
            | _ => null
         }
       }
       def root = Fsm.MapTree(create_nodes);
-      Porter.Export(graph, [$"graph$(Name).gxl"].ToList());
+      
+      //Porter.Export(graph, [$"graph$(Name).gxl"].ToList());
+      GRSExport.Export(graph, $"graph$(Name).grs");
       //def state = 
       //graph.CreateNodeState(Fsm.st);
     }
-    
+          
     public Analyse() : void
     {
       try
