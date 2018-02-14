@@ -11,6 +11,7 @@ using System.ComponentModel;
 using CommonLib.Macros;
 using de.unika.ipd.grGen.libGr;
 using de.unika.ipd.grGen.lgsp;
+using de.unika.ipd.grGen.Action_root;
 using de.unika.ipd.grGen.Model_StateMachine;
 
 namespace Nemerle.Statechart
@@ -173,10 +174,13 @@ namespace Nemerle.Statechart
       PrintTree(tree, _.sub_states, print, file)
     }
     
+    map : Hashtable[StateNode, LGSPNode] = Hashtable();
+    
     CreateGraph() : void
     {
       graph = StateMachineNamedGraph();
-      def map = Hashtable();
+      def actions = rootActions(graph);
+      def proc_env = LGSPGraphProcessingEnvironment(graph, actions);
       
       def create_name(n, cntr)
       {
@@ -227,23 +231,24 @@ namespace Nemerle.Statechart
               def st_node = st_node :> LGSPNode;
               map[st] = st_node;
                // link it to sub state through edge for each substate
+              def set_name = (n : INamedPseudoState, name) => {n.name = name; n;}
               
               foreach (p in st.pseudo_states)
               {
                 def st_id = p.Id;
                 def node = match (p.node)
                 {
-                   | PseudoStateModelNode.EntryPoint as e        => graph.CreateNodeEntryPoint(e.name);// entry point needs transition pass
-                   | ExitPoint as e                  => graph.CreateNodeExitPoint(e.name);
+                   | PseudoStateModelNode.EntryPoint as e        => graph.CreateNodeEntryPoint(create_name(e.name)) |> set_name(_, e.name);// entry point needs transition pass
+                   | ExitPoint as e                              => graph.CreateNodeExitPoint(create_name(e.name)) |> set_name(_, e.name)
                    | Initial                                     => graph.CreateNodeInitialState();
                    | History(type = HistoryType.None)            => graph.CreateNodeHistory();
                    | History(type = HistoryType.Deep)            => graph.CreateNodeDeepHistoryState();
                    | History(type = HistoryType.Shallow)         => graph.CreateNodeShallowHistoryState();
                    | Fork                                        => graph.CreateNodeFork();
-                   | Join as j                                   => graph.CreateNodeJoin(j.name);
-                   | Junction(type = JunctionType.Junction) as j => graph.CreateNodeJunction(j.name);
-                   | Junction(type = JunctionType.Choice) as j   => graph.CreateNodeChoice(j.name);
-                   | Junction(type = JunctionType.Merge) as j    => graph.CreateNodeMerge(j.name);
+                   | Join as j                                   => graph.CreateNodeJoin(create_name(j.name)) |> set_name(_, j.name)
+                   | Junction(type = JunctionType.Junction) as j => graph.CreateNodeJunction(create_name(j.name)) |> set_name(_, j.name)
+                   | Junction(type = JunctionType.Choice) as j   => graph.CreateNodeChoice(create_name(j.name)) |> set_name(_, j.name)
+                   | Junction(type = JunctionType.Merge) as j    => graph.CreateNodeMerge(create_name(j.name)) |> set_name(_, j.name)
                    | Terminate                                   => graph.CreateNodeTerminate();
                 }
                 when (node is IPseudoState as p) p.id = st_id;
@@ -259,52 +264,86 @@ namespace Nemerle.Statechart
       
       foreach (node in Fsm.GetPreOrderEnumerable())
       {
-        | StateNode.State(transitions = tr) as st => foreach (tr in tr)
-                                                     {
-                                                       //def src = match (tr.from)
-                                                       //{
-                                                       //  | TargetType.Named(n) => match (graph.GetNode(n))
-                                                       //                           {
-                                                       //                             | null => null
-                                                       //                             | node => node
-                                                       //                           }
-                                                       //  | PseudoState(p)       => null
-                                                       //  | Qualified as t       => match (graph.GetNode(t.parent))
-                                                       //                            {
-                                                       //                              | null => null
-                                                       //                              | p    => null // see all substates of p
-                                                       //                                         //def edges = p.GetExactOutgoing(EdgeType_Contains.typeVar);
-                                                       //                                        //edges.Find(x => (x.Target : de.unika.ipd.grGen.lgsp.LGSPNode).Name == "");
-                                                       //                            }
-                                                       //  | _                    => null                                                                                   null
-                                                       //}
-                                                       def src = map[node];
-                                                       def target = match (tr.to)
-                                                                    {
-                                                                      | TargetType.Named(n) => match (graph.GetNode(n))
-                                                                                               {
-                                                                                                 | null => null // this is error
-                                                                                                 | node => node :> LGSPNode
-                                                                                               }
-                                                                      | Final               => // search final in parent state
-                                                                                               def edges = src.GetExactIncoming(EdgeType_Substate.typeVar); // parent state
-                                                                                               match (edges.FirstOrDefault())
-                                                                                               {
-                                                                                                 | null   => null
-                                                                                                 | parent => match (parent.Source.GetExactOutgoing(EdgeType_Substate.typeVar) // first state final in substates
-                                                                                                                     .FindMap(x => if (x.Target.Type is NodeType_FinalState) x.Target |> Some else None()))
-                                                                                                             {
-                                                                                                               | Some(s) => s :> LGSPNode
-                                                                                                               | _       => null // need add final state
-                                                                                                             }
-                                                                                               }
-                                                                      | Self                => src // to self node
-                                                                      | PseudoState         => null //
-                                                                      | Qualified           => null // find in all substates of parent in parent.elem syntax
-                                                                    }
-                                                         when (src != null && target != null)
-                                                            _ = graph.CreateEdgeTransition(src, target);
-                                                     }
+        | StateNode.State(transitions = tr) as st => 
+          foreach (tr in tr)
+          {
+            //def src = match (tr.from) 
+            //{
+            //  | TargetType.Named(n) => match (graph.GetNode(n))
+            //                           {
+            //                             | null => null
+            //                             | node => node
+            //                           }
+            //  | PseudoState(p)       => null
+            //  | Qualified as t       => match (graph.GetNode(t.parent))
+            //                            {
+            //                              | null => null
+            //                              | p    => null // see all substates of p
+            //                                         //def edges = p.GetExactOutgoing(EdgeType_Contains.typeVar);
+            //                                        //edges.Find(x => (x.Target : de.unika.ipd.grGen.lgsp.LGSPNode).Name == "");
+            //                            }
+            //  | _                    => null                                                                                   null
+            //}
+            def src = map[node];
+            def target = match (tr.to)
+                        {
+                          | TargetType.Named(n) => match (graph.GetNode(n))
+                                                    {
+                                                      | null => null // this is error
+                                                      | node => node :> LGSPNode
+                                                    }
+                          | Final               => mutable final;
+                                                   if (actions.FindFinalState.Apply(proc_env, src :> IState, ref final))// search final in parent state
+                                                   {
+                                                     final :> LGSPNode
+                                                   } else
+                                                   {
+                                                     // not find final state
+                                                     null
+                                                   }
+                          //                          def edges = src.GetExactIncoming(EdgeType_Substate.typeVar); // parent state
+                          //                          match (edges.FirstOrDefault())
+                          //                          {
+                          //                            | null   => null
+                          //                            | parent => match (parent.Source.GetExactOutgoing(EdgeType_Substate.typeVar) // first state final in substates
+                          //                                                .FindMap(x => if (x.Target.Type is NodeType_FinalState) x.Target |> Some else None()))
+                          //                                        {
+                          //                                          | Some(s) => s :> LGSPNode
+                          //                                          | _       => null // need add final state
+                          //                                        }
+                          //                          }
+                                                    
+                          | Self                => src // to self node
+                          | PseudoState         => null //
+                          | Qualified as q      => mutable res;
+                                                   def target = match (q.target)
+                                                                {
+                                                                  | TargetType.Final => "final"
+                                                                  | Named as n       => n.name
+                                                                  | PseudoState(p)   => match (p)
+                                                                                        {
+                                                                                          | History(type = HistoryType.Deep) => "(H*)"
+                                                                                          | History(type = HistoryType.Shallow)
+                                                                                          | History(type = HistoryType.None) => "(H)"
+                                                                                          | _                                => null
+                                                                                        }
+                                                                  | Qualified(p, t) => null
+                                                                  | _               => null
+                                                                }
+                                                   if (actions.FindQualified.Apply(proc_env, q.parent, target, ref res))// search final in parent state
+                                                   {
+                                                     res :> LGSPNode
+                                                   } else
+                                                   {
+                                                     // not find final state
+                                                     null
+                                                   } // find in all substates of parent in parent.elem syntax
+                           | _ => null                        
+                        }
+              when (src != null && target != null)
+                _ = graph.CreateEdgeTransition(src, target);
+          }
+         | _ => ()
       }
       GRSExport.Export(graph, $"graph$(Name).grs");
       //def state = 
