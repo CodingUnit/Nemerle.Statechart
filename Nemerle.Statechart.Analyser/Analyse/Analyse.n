@@ -175,12 +175,14 @@ namespace Nemerle.Statechart
     }
     
     map : Hashtable[StateNode, LGSPNode] = Hashtable();
+    mutable graph_actions : rootActions;
     
     CreateGraph() : void
     {
       graph = StateMachineNamedGraph();
-      def actions = rootActions(graph);
-      def proc_env = LGSPGraphProcessingEnvironment(graph, actions);
+      graph_actions = rootActions(graph);
+      
+      def proc_env = LGSPGraphProcessingEnvironment(graph, graph_actions);
       
       def create_name(n, cntr)
       {
@@ -262,6 +264,23 @@ namespace Nemerle.Statechart
       }
       _ = Fsm.MapTree(create_nodes);
       
+      def find_path(q)
+      {
+          def loop(t, res)
+          {
+            match (t)
+            {
+              | TargetType.Qualified(p, t) => loop(t, p :: res)
+              | _                          => (res.Rev(), t)
+            }
+          }
+        
+        loop(q.target, [])
+        
+      }
+      
+      def find_named(x) {mutable res; if (graph_actions.FindNamed.Apply(proc_env, x, ref res)) Some(res) else None()}
+      //graph_actions.FindQualifiedNode.Apply(proc_env, p, sub, ref res)
       foreach (node in Fsm.GetPreOrderEnumerable())
       {
         | StateNode.State(transitions = tr) as st => 
@@ -283,17 +302,20 @@ namespace Nemerle.Statechart
             //                                        //edges.Find(x => (x.Target : de.unika.ipd.grGen.lgsp.LGSPNode).Name == "");
             //                            }
             //  | _                    => null                                                                                   null
-            //}
+            //} 
             def src = map[node];
             def target = match (tr.to)
                         {
-                          | TargetType.Named(n) => match (graph.GetNode(n))
-                                                    {
-                                                      | null => null // this is error
-                                                      | node => node :> LGSPNode
-                                                    }
+                          | TargetType.Named(n) => mutable res;
+                                                   if (graph_actions.FindNamed.Apply(proc_env, n, ref res)) // search for named node with name as target
+                                                   {
+                                                     res :> LGSPNode
+                                                   } else
+                                                   {
+                                                     null // error
+                                                   }
                           | Final               => mutable final;
-                                                   if (actions.FindFinalState.Apply(proc_env, src :> IState, ref final))// search final in parent state
+                                                   if (graph_actions.FindFinalState.Apply(proc_env, src :> IState, ref final))// search final in parent state
                                                    {
                                                      final :> LGSPNode
                                                    } else
@@ -301,43 +323,55 @@ namespace Nemerle.Statechart
                                                      // not find final state
                                                      null
                                                    }
-                          //                          def edges = src.GetExactIncoming(EdgeType_Substate.typeVar); // parent state
-                          //                          match (edges.FirstOrDefault())
-                          //                          {
-                          //                            | null   => null
-                          //                            | parent => match (parent.Source.GetExactOutgoing(EdgeType_Substate.typeVar) // first state final in substates
-                          //                                                .FindMap(x => if (x.Target.Type is NodeType_FinalState) x.Target |> Some else None()))
-                          //                                        {
-                          //                                          | Some(s) => s :> LGSPNode
-                          //                                          | _       => null // need add final state
-                          //                                        }
-                          //                          }
-                                                    
                           | Self                => src // to self node
                           | PseudoState         => null //
-                          | Qualified as q      => mutable res;
-                                                   def target = match (q.target)
-                                                                {
-                                                                  | TargetType.Final => "final"
-                                                                  | Named as n       => n.name
-                                                                  | PseudoState(p)   => match (p)
-                                                                                        {
-                                                                                          | History(type = HistoryType.Deep) => "(H*)"
-                                                                                          | History(type = HistoryType.Shallow)
-                                                                                          | History(type = HistoryType.None) => "(H)"
-                                                                                          | _                                => null
-                                                                                        }
-                                                                  | Qualified(p, t) => null
-                                                                  | _               => null
-                                                                }
-                                                   if (actions.FindQualified.Apply(proc_env, q.parent, target, ref res))// search final in parent state
+                          | Qualified as q      => def (path, t) = find_path(q);                                                                                                      
+                                                   def (head :: path) = path;
+                                                   mutable parent;
+                                                   if (graph_actions.FindNamed.Apply(proc_env, head, ref parent))// search final in parent state
                                                    {
-                                                     res :> LGSPNode
+                                                     
+                                                     def find_all_path_nodes(parent, path)
+                                                     {
+                                                        | (_, []) => parent
+                                                        | (IState as p, sub :: tail) => 
+                                                             mutable res;
+                                                             if (graph_actions.FindQualifiedNode.Apply(proc_env, p, sub, ref res))// search final in parent state
+                                                             {
+                                                               find_all_path_nodes(res, tail)
+                                                             } else
+                                                             {
+                                                               null
+                                                             } // find in all substates of parent in parent.elem syntax
+                                                        | _ => null
+                                                     }
+                                                   
+                                                     match (find_all_path_nodes(parent, path))
+                                                     {
+                                                       | null => null
+                                                       | IState as node => match (t)
+                                                                            {
+                                                                              | TargetType.Final => null // error
+                                                                              | Named as n       => null // todo
+                                                                              | PseudoState(p)   => def type = match (p)
+                                                                                                    {
+                                                                                                      | History(type = HistoryType.Deep)    => DeepHistoryState.TypeInstance
+                                                                                                      | History(type = HistoryType.Shallow) => ShallowHistoryState.TypeInstance
+                                                                                                      | History(type = HistoryType.None)    => History.TypeInstance
+                                                                                                      | _                                   => null
+                                                                                                    }
+                                                                                                    null // todo
+                                                                              | _               => null // other not supported
+                                                                            }
+                                                     }
+                                                     null
                                                    } else
                                                    {
-                                                     // not find final state
+                                                      // not find final state
                                                      null
                                                    } // find in all substates of parent in parent.elem syntax
+                                                         
+                                                   
                            | _ => null                        
                         }
               when (src != null && target != null)
