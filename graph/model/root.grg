@@ -4,15 +4,28 @@
 #using "StateMachine.gm"
 
 // find final state in parent of this node
-rule FindFinalState(state : State) : (FinalState)
+test FindFinalState(state : State) : (FinalState)
 {
-	final:FinalState <-:Contains- parent:State -:Contains-> state;
-	//parent -:Contains-> final:FinalState;
+	parent:State -:Contains-> state;
+	parent -:Contains-> final:FinalState;
 	hom(parent, state);
-	//hom(parent, final);
+	
+	return (final);	 				
+}
+
+rule CreateFinalState(state : State) : (FinalState)
+{
+	parent:State -:Contains-> state;	
+	hom(parent, state);
+	
+	negative
+	{
+		parent -:Contains-> :FinalState;		
+	}	
+	
 	modify
 	{
-	  parent -:Contains-> final;
+	  parent -:Contains-> final:FinalState;
 	  return (final);
 	}	
 }
@@ -29,6 +42,30 @@ test FindQualified(var state : string, var tar : string) : (StateMachineNode)
 }
 
 // find qualified target state.substate or state.pseudo syntax
+test FindQualifiedPath(ref tar : array<string>, var sz : int) : (StateMachineNode)
+{
+  st:State -:Contains-> t:NamedNode;    
+  hom(st, t);  
+  iterated
+  {	
+    if { st.name == tar[0] && t.name == tar[1];}  
+	
+    :QualifiedRec(t, tar, 2, sz);
+	
+  }
+  return (t);
+}
+
+pattern QualifiedRec(state : NamedNode, ref tar : array<string>, var idx : int, var sz : int)
+{
+	optional
+	{
+		state -:Contains-> t:NamedNode;		
+		if { idx != tar.size() && t.name == tar[idx];}  
+		:QualifiedRec(t, tar, idx + 1, sz);
+	}
+}
+// find qualified target state.substate or state.pseudo syntax
 test FindQualifiedNode(state : State, var tar : string) : (StateMachineNode)
 {
   state -:Contains-> t:NamedNode;  
@@ -39,20 +76,18 @@ test FindQualifiedNode(state : State, var tar : string) : (StateMachineNode)
   return (t);  
 }
 
-/*
+
 // find qualified target state.substate or state.pseudo syntax
-test FindQualified(var state : string, var tar : tpseudo) : (StateMachineNode)
+test FindQualifiedType(var state : string, tar : StateMachineNode) : (StateMachineNode)
 {
-  st:State -:Contains-> t:StateMachineNode;
-  st -:Contains-> tnamed:NamedNode;
-  hom(st, t);
-  hom(st, tnamed);
+  st:State -:Contains-> t:typeof(tar);  
+  hom(st, t);  
   
-  if { nameof(st) == state; }
-  if { nameof(t) == tar || tnamed.name == tar;}
+  if { st.name == state; }
+  //if { typeof(t) == typeof(tar);}
    
   return (t);  
-}*/
+}
 
 // find qualified target state.substate or state.pseudo syntax
 test FindNamed(var name : string) : (NamedNode)
