@@ -38,38 +38,38 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
+
     internal CreateEvent(evt : TransitionEvent) : StateEvent
     {
       | TransitionEvent.Normal(n, _)   => match (EventClasses.Find(x => if (x is EventClass.External(evt_name = n2) when n != null) n2 == n.ToUpperFirst() else false))
-                                          {
-                                            | Some(e) => StateEvent.Normal(evt.Location, n, GetEventParms(evt), e)
-                                            | _       => StateEvent.Normal(evt.Location, n, GetEventParms(evt), EventClass.Internal())
-                                          }
+          {
+            | Some(e) => StateEvent.Normal(evt.Location, n, GetEventParms(evt), e)
+            | _       => StateEvent.Normal(evt.Location, n, GetEventParms(evt), EventClass.Internal())
+          }
       | Completion as e                => StateEvent.Completion(e.Location)
       | Timed(TimedExpr.Expr(ex)) as e => StateEvent.Timed(e.Location, ex)
       | _                              => throw InvalidOperationException("invalid event")
     }
-    
+
     internal GetEventParms(evt : TransitionEvent) : list[string * string]
     {
       def (name, parms) = if (evt is TransitionEvent.Normal as n) (n.name, n.parms) else (null, []);
       if (parms.IsEmpty()) [] else
-      match (EventDecls.Find(x => x.name == name))
-      {
-        | Some(e) => def types = e.parms_type;
-                     if (types.Length != parms.Length)
-                     {
-                       messager.AddError(FsmError.EventDeclarationNumberOfParamsNotEqual(e, evt));
-                       []
-                     } else
-                     {
-                       parms.Zip(types)
-                     }
-       | _        => messager.AddError(FsmError.EventDeclarationNotFound(evt));[]
-      }
+        match (EventDecls.Find(x => x.name == name))
+        {
+          | Some(e) => def types = e.parms_type;
+                    if (types.Length != parms.Length)
+                    {
+                      messager.AddError(FsmError.EventDeclarationNumberOfParamsNotEqual(e, evt));
+                      []
+                    } else
+                    {
+                      parms.Zip(types)
+                    }
+          | _        => messager.AddError(FsmError.EventDeclarationNotFound(evt));[]
+        }
     }
-    
+
     actions : list[FsmAction]
     {
       [Memoize]
@@ -81,7 +81,7 @@ namespace Nemerle.Statechart
         tran.Concat(st).Concat(pseudo).NToList()
       }
     }
-    
+
     CheckActivities() : void 
     {
       def do_act = States.SelectMany(x => x.do_activity.Select(y => (x, y)));
@@ -95,10 +95,10 @@ namespace Nemerle.Statechart
           | _       => ()
         }
       }
-      
+
       def sm = do_act.Filter((x : FsmState, _) => x.PartOfStateMachine.HasValue);
       def do_act = sm.GroupBy((x : FsmState, _) => x.PartOfStateMachine.Value.SubMachineType);
-      
+
       foreach (group in do_act)
       {
         foreach (st in group.GroupBy((x, _) => x.name))
@@ -115,10 +115,10 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
+
     PrintTree[T](tree : T, childs : T -> IEnumerable[T], print_elem : T -> string, file : string) : void
     {
-      
+
       def indent((text, depth), (acc, prev_depth))
       {
         def ind = string(' ', depth * 2); // create indentation from depth
@@ -127,7 +127,7 @@ namespace Nemerle.Statechart
         def text = if (depth < prev_depth) text :: "" :: acc else text :: acc;
         (text, depth)
       }
-      
+
       // get pre order iterator and preorde depth function of elements
       def res = TreeUtils.GetPreOrderEnumerable(tree, childs).Map(print_elem); // map iterator to list of lines of printed text
       def depth = TreeUtils.GetPreOrderDepth(tree, childs).NToList();
@@ -135,20 +135,20 @@ namespace Nemerle.Statechart
       def (res, _) = with_depth.Fold(([], 0), indent); // indent
       System.IO.File.WriteAllLines(file, res.Rev().ToArray()) // write to file
     }
-    
+
     PrintFsm(tree : StateNode, file : string) : void
     {
       def print(st)
       {
         | StateNode.State as st => def str = $"$(st.name):, Type: $(st.type)";
-                                   def str = if (st.parent is Some(p)) str + $", Parent:$p" else str;
-                                   def sub_states = st.sub_states;
-                                   def names = sub_states.Select(_.name);
-                                   def str = if (sub_states.IsEmpty()) str else $"$str, Sub:..$(names)";
-                                   str
+                                  def str = if (st.parent is Some(p)) str + $", Parent:$p" else str;
+                                  def sub_states = st.sub_states;
+                                  def names = sub_states.Select(_.name);
+                                  def str = if (sub_states.IsEmpty()) str else $"$str, Sub:..$(names)";
+                                  str
         | _                     => ""
       }
-     
+
       def get_childs(t)
       {
         | StateNode.StateMachine as t => t.state :: []
@@ -156,79 +156,89 @@ namespace Nemerle.Statechart
         | StateNode.State as t        => t.sub_states
         | _                           => []
       }
-      
+
       PrintTree(tree, get_childs, print, file)
     }
-    
+
     PrintFsmState(tree : FsmState, file : string) : void
     {
       //def file = System.IO.File.CreateText();
-      
+
       def print(st)
       {
         def str = $<#$(st.Name):, Type: $(st.type)#>;
         def str = if (st.sub_states.IsEmpty()) str else str + $", Sub:..$(st.sub_states)";
         str
       }
-      
+
       PrintTree(tree, _.sub_states, print, file)
     }
-    
+
     map : Hashtable[StateNode, LGSPNode] = Hashtable();
     mutable graph_actions : rootActions;
     mutable proc_env : LGSPGraphProcessingEnvironment;
-    
-    FindQualifed(parent : INamedNode, path : list[string], tar : TargetType) : LGSPNode
+
+    FindQualifiedNode(name : string, state : IState) : INamedNode
     {
-      def find_all_path_nodes(parent, path)
-      {
-        | (_, []) => parent
-        | (IState as p, sub :: tail) => 
-              mutable res;
-              if (graph_actions.FindQualifiedNode.Apply(proc_env, p, sub, ref res))// search final in parent state
-              {
-                find_all_path_nodes(res, tail)
-              } else
-              {
-                null
-              } // find in all substates of parent in parent.elem syntax
-        | _ => null
-      }
-                                                   
-      match (find_all_path_nodes(parent, path))
+      mutable res;
+      if (state == null) null else
+      if (graph_actions.FindQualifiedNode.Apply(proc_env, state, name, ref res)) res else null
+    }
+
+    FindQualifed(path : list[string], tar : TargetType) : LGSPNode
+    {
+      //def find_all_path_nodes(parent, path)
+      //{
+      //  | (_, []) => parent
+      //  | (IState as p, sub :: tail) => 
+      //        match (FindQualifiedNode(p, sub))
+      //        {
+      //          | null => null
+      //          | res  => find_all_path_nodes(res, tail)
+      //        } // find in all substates of parent in parent.elem syntax
+      //  | _ => null
+      //}
+
+      def (head :: path) = path;
+      def parent = {mutable res; if (graph_actions.FindNamed.Apply(proc_env, head, ref res)) res else null}// search first node in path
+      def node = path.FoldLeft(parent, (x, a) => if (a is IState as a) FindQualifiedNode(x, a) else null);
+      match (node)
       {
         | null => null
         | IState as node => match (tar)
                             {
                               | TargetType.Final => null // error
-                              | Named as n       => mutable res;
-                                                    if (graph_actions.FindQualifiedNode.Apply(proc_env, node, n.name, ref res)) // todo
-                                                    {
-                                                      res :> LGSPNode
-                                                    } else
-                                                    {
-                                                      null
-                                                    }
-                              | PseudoState(p)   => def type = match (p)
-                                                    {
-                                                      | History(type = HistoryType.Deep)    => def type = DeepHistoryState.TypeInstance; null
-                                                      | History(type = HistoryType.Shallow) => def type = ShallowHistoryState.TypeInstance; null
-                                                      | History(type = HistoryType.None)    => def type = History.TypeInstance; null
-                                                      | _                                   => null
-                                                    }
-                                                    null // todo
+                              | PseudoState(Join(name = n))
+                              | PseudoState(Junction(name = n))
+                              | PseudoState(EntryPoint(name = n))
+                              | PseudoState(ExitPoint(name = n))
+                              | Named(name = n)                   => FindQualifiedNode(n, node) :> LGSPNode
+                              | PseudoState(p)                    => match (p)
+                                                                      {
+                                                                        | History(type = HistoryType.Deep) with type = DeepHistory()
+                                                                        | History                          with type = History() => 
+                                                                            mutable res; 
+                                                                            if (graph_actions.FindQualifiedHistory.Apply(proc_env, node, type :> History, ref res)) 
+                                                                              res :> LGSPNode 
+                                                                            else null
+                                                                        //| Terminate                           => mutable res;
+                                                                        //                                         if (graph_actions.FindQualifiedType.Apply(proc_env, node, Terminate :> IStateMachineNode, ref res)) res :> LGSPNode else null
+                                                                        | _                                   => null // error node here
+                                                                      }
+                                                                      
                               | _               => null // other not supported
                             }
+        | _ => null
       }
     }
-    
+
     CreateGraph() : void
     {
       graph = StateMachineNamedGraph();
       graph_actions = rootActions(graph);
-      
+
       proc_env = LGSPGraphProcessingEnvironment(graph, graph_actions);
-      
+
       def create_name(n, cntr)
       {
         def n = n ?? "";
@@ -238,24 +248,25 @@ namespace Nemerle.Statechart
           create_name(n, cntr + 1)
         } else n
       }
-      
+
       def create_name = create_name(_, 1);
       def set_name = (n : INamedNode, name) => {n.name = name; n;}
-      
+
       // check all states and create state nodes and substate relation edge
       def create_nodes(x, childs)
       {
-        
+
         match (x)
         {
           | StateNode.StateMachine(name = n) => 
+              def n = n ?? Name;
               def name = create_name(n);
               def st_node = graph.CreateNodeState(name); // create graph node
               def st_id = x.Id;
               st_node.name = n;
               st_node.id = st_id;
               map[x] = st_node;
-              _ = graph.CreateEdgeContains(st_node, childs.First()); // link it to sub state through edge for each substate
+              _ = graph.CreateEdgeTopState(st_node, childs.First()); // link it to sub state through edge for each substate
               st_node
           | State(name = n, type = t) as st => 
               def name = create_name(n);
@@ -264,40 +275,40 @@ namespace Nemerle.Statechart
                             {
                               | SubRegion
                               | StateType.State => def node = graph.CreateNodeState(name);
-                                                   childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
-                                                   node
+                                                  childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
+                                                  node
                               | Region          => def node = graph.CreateNodeConcurrentState(name);
-                                                   childs.Iter(x => _ = graph.CreateEdgeRegion(node, x));
-                                                   node
+                                                  childs.Iter(x => _ = graph.CreateEdgeRegion(node, x));
+                                                  node
                               | Final           => graph.CreateNodeFinalState();
                               | SubMachine      => def node = graph.CreateNodeSubMachineState(name);
-                                                   childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
-                                                   node
+                                                  childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
+                                                  node
                             }
               when (st_node is INamedNode as s) s.name = n;
-              when (st_node is IState as s) s.id = st_id;
+              when (st_node is IState as s) s.id = st_id;              
               def st_node = st_node :> LGSPNode;
               map[st] = st_node;
-               // link it to sub state through edge for each substate
-              
-              
+              // link it to sub state through edge for each substate
+
+
               foreach (p in st.pseudo_states)
               {
                 def st_id = p.Id;
                 def node = match (p.node)
                 {
-                   | PseudoStateModelNode.EntryPoint as e        => graph.CreateNodeEntryPoint(create_name(e.name)) |> set_name(_, e.name);// entry point needs transition pass
-                   | ExitPoint as e                              => graph.CreateNodeExitPoint(create_name(e.name)) |> set_name(_, e.name)
-                   | Initial                                     => graph.CreateNodeInitialState();
-                   | History(type = HistoryType.None)            => graph.CreateNodeHistory();
-                   | History(type = HistoryType.Deep)            => graph.CreateNodeDeepHistoryState();
-                   | History(type = HistoryType.Shallow)         => graph.CreateNodeShallowHistoryState();
-                   | Fork                                        => graph.CreateNodeFork();
-                   | Join as j                                   => graph.CreateNodeJoin(create_name(j.name)) |> set_name(_, j.name)
-                   | Junction(type = JunctionType.Junction) as j => graph.CreateNodeJunction(create_name(j.name)) |> set_name(_, j.name)
-                   | Junction(type = JunctionType.Choice) as j   => graph.CreateNodeChoice(create_name(j.name)) |> set_name(_, j.name)
-                   | Junction(type = JunctionType.Merge) as j    => graph.CreateNodeMerge(create_name(j.name)) |> set_name(_, j.name)
-                   | Terminate                                   => graph.CreateNodeTerminate();
+                  | PseudoStateModelNode.EntryPoint as e        => graph.CreateNodeEntryPoint(create_name(e.name)) |> set_name(_, e.name);// entry point needs transition pass
+                  | ExitPoint as e                              => graph.CreateNodeExitPoint(create_name(e.name)) |> set_name(_, e.name)
+                  | Initial                                     => graph.CreateNodeInitialState();
+                  | History(type = HistoryType.None)            => graph.CreateNodeHistory();
+                  | History(type = HistoryType.Deep)            => graph.CreateNodeDeepHistory();
+                  | History(type = HistoryType.Shallow)         => graph.CreateNodeShallowHistory();
+                  | Fork                                        => graph.CreateNodeFork();
+                  | Join as j                                   => graph.CreateNodeJoin(create_name(j.name)) |> set_name(_, j.name)
+                  | Junction(type = JunctionType.Junction) as j => graph.CreateNodeJunction(create_name(j.name)) |> set_name(_, j.name)
+                  | Junction(type = JunctionType.Choice) as j   => graph.CreateNodeChoice(create_name(j.name)) |> set_name(_, j.name)
+                  | Junction(type = JunctionType.Merge) as j    => graph.CreateNodeMerge(create_name(j.name)) |> set_name(_, j.name)
+                  | Terminate                                   => graph.CreateNodeTerminate();
                 }
                 when (node is IPseudoState as p) p.id = st_id;
                 def node = node :> LGSPNode;
@@ -305,10 +316,32 @@ namespace Nemerle.Statechart
                 _ = graph.CreateEdgeContains(st_node, node);
               }
               st_node
-           | _ => null
+          | _ => null
         }
       }
-      _ = Fsm.MapTree(create_nodes);
+      def top : LGSPNode = Fsm.MapTree(create_nodes);
+      def top = top :> IState;
+      
+      mutable max_id = StateNode.GetMaxId();
+
+      def get_id() { def m = max_id; max_id++; m}
+
+      def create_node(n, parent, func : string -> INamedNode)
+      {
+        def node = func(n);
+        node.name = n;
+        _ = graph.CreateEdgeContains(parent :> LGSPNode, node :> LGSPNode);
+        node.id = get_id();
+        node
+      }
+
+      def create_node2(n, parent, func : string -> IStateMachineNode)
+      {
+        def node = func(n);
+        _ = graph.CreateEdgeContains(parent :> LGSPNode, node :> LGSPNode);
+        node.id = get_id();
+        node
+      }
       
       def find_path(q)
       {
@@ -320,88 +353,97 @@ namespace Nemerle.Statechart
               | _                          => (res.Rev(), t)
             }
           }
-        
-        loop(q.target, q.parent :: [])
-        
+
+        loop(q, [])
       }
-      
-      def find_named(x) {mutable res; if (graph_actions.FindNamed.Apply(proc_env, x, ref res)) Some(res) else None()}
+
+      def find_named(x) {mutable res; if (graph_actions.FindNamed.Apply(proc_env, x, ref res)) res else null}
+
       //graph_actions.FindQualifiedNode.Apply(proc_env, p, sub, ref res)
       foreach (node in Fsm.GetPreOrderEnumerable())
-      {
-        | StateNode.State(transitions = tr) as st => 
-          foreach (tr in tr)
-          {
-            //def src = match (tr.from) 
-            //{
-            //  | TargetType.Named(n) => match (graph.GetNode(n))
-            //                           {
-            //                             | null => null
-            //                             | node => node
-            //                           }
-            //  | PseudoState(p)       => null
-            //  | Qualified as t       => match (graph.GetNode(t.parent))
-            //                            {
-            //                              | null => null
-            //                              | p    => null // see all substates of p
-            //                                         //def edges = p.GetExactOutgoing(EdgeType_Contains.typeVar);
-            //                                        //edges.Find(x => (x.Target : de.unika.ipd.grGen.lgsp.LGSPNode).Name == "");
-            //                            }
-            //  | _                    => null                                                                                   null
-            //} 
-            def src = map[node];
-            def target = match (tr.to)
-                        {
-                          | TargetType.Named(n) => mutable res;
-                                                   if (graph_actions.FindNamed.Apply(proc_env, n, ref res)) // search for named node with name as target
-                                                   {
-                                                     res :> LGSPNode
-                                                   } else
-                                                   {
-                                                     null // error
-                                                   }
-                          | Final               => mutable final;
-                                                   if (graph_actions.FindFinalState.Apply(proc_env, src :> IState, ref final))// search final in parent state
-                                                   {
-                                                     final :> LGSPNode
-                                                   } else
-                                                   {
-                                                     // not find final state
-                                                     if (graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final))
-                                                     {
-                                                       final :> LGSPNode
-                                                     } else
-                                                     {
-                                                        null
-                                                     }
-                                                   }
-                          | Self                => src // to self node
-                          | PseudoState         => null //
-                          | Qualified as q      => def (path, t) = find_path(q);                                                                                                      
-                                                   def (head :: path) = path;
-                                                   mutable parent;
-                                                   def target = if (graph_actions.FindNamed.Apply(proc_env, head, ref parent))// search final in parent state
-                                                   {
-                                                     FindQualifed(parent, path, t)
-                                                   } else
-                                                   {
-                                                      // not find final state
-                                                     null
-                                                   } // find in all substates of parent in parent.elem syntax
-                                                   target      
-                                                   
-                           | _ => null                        
-                        }
-              when (src != null && target != null)
-                _ = graph.CreateEdgeTransition(src, target);
-          }
-         | _ => ()
-      }
+        {
+          | StateNode.State(transitions = tran) as st => 
+              
+              def src = map[node];
+              def parent = {mutable res; if (graph_actions.ParentOf.Apply(proc_env, src, ref res)) res else null }
+              match (st.parent)
+              {
+                | Some(p) => match (find_named(p))
+                             {
+                               | null => ()
+                               | p    => _ = graph.CreateEdgeParent(src, p :> LGSPNode)
+                             }
+                | _       => ()
+              }
+              foreach (tr in tran)
+              {
+                def target : LGSPNode = match (tr.to)
+                              {
+                                | TargetType.Named(n) => find_named(n) :> LGSPNode// search for named node with name as target
+                                | Final               => mutable final;
+                                                  // search final in parent state
+                                                  when (!graph_actions.FindFinalState.Apply(proc_env, src :> IState, ref final)) 
+                                                  {
+                                                    _ = graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final);
+                                                    when (final.id == 0) final.id = get_id();
+                                                  }
+                                                  final :> LGSPNode
+                                | Self                => src // to self node
+                                | PseudoState(Junction(name = null, type = t)) => // unnamed junction
+                                                    // create unnamed junction node in graph
+                                                    def func = match (t)
+                                                    {
+                                                      | JunctionType.Choice   => graph.CreateNodeChoice
+                                                      | JunctionType.Junction => graph.CreateNodeJunction
+                                                      | JunctionType.Merge    => graph.CreateNodeMerge
+                                                    }
+                                                    create_node(PseudoStateNode.Junction.GetUnnamedName(this, t), parent, func) :> LGSPNode;
+                                | PseudoState(Join(name = n))
+                                | PseudoState(Junction(name = n))
+                                | PseudoState(EntryPoint(name = n))
+                                | PseudoState(ExitPoint(name = n)) => find_named(n) :> LGSPNode
+                                | PseudoState(p) => match (p)
+                                    {
+                                      | History(type = t) => def type : IStateMachineNode = match (t)
+                                                                                              {
+                                                                                                | HistoryType.Deep => DeepHistory()
+                                                                                                | _                => History()
+                                                                                              }
+                                                             {mutable res; if (graph_actions.FindQualifiedHistory.Apply(proc_env, parent, type :> History, ref res)) res :> LGSPNode else null}
+                                                                                              //if (graph_actions.FindQualifiedType.Apply(proc_env, node, type :> IStateMachineNode, ref res)) res :> LGSPNode else null
+                                      | Fork              => create_node2(create_name("Fork"), parent, graph.CreateNodeFork) :> LGSPNode
+                                      | Terminate         => mutable term;
+                                                             when (!graph_actions.FindTerminate.Apply(proc_env, ref term))
+                                                             {
+                                                               _ = graph_actions.CreateTerminate.Apply(proc_env, ref term)//create_node2(create_name("Terminate"), parent, graph.CreateNodeTerminate) :> LGSPNode
+                                                             }
+                                                             term :> LGSPNode
+                                      | _                 => null
+                                    }
+                                | Qualified as q      => // create path and last node                                                                                                     
+                                                         FindQualifed(find_path(q)) // find other nodes recursive
+
+                                | _ => null                        
+                              }
+                match (src, target)
+                {
+                  | (_, null)
+                  | (null, _)     => ()
+                  | (src, target) => def tran = graph.CreateEdgeTransition(src, target);
+                                     tran.trigger = List(tr.evt.Select(_.ToString()));
+                                     tran.guard = tr.guard.ToString();
+                                     when (tr.action is Some(a))
+                                        tran.action = List(a.actions.Select(_.ToString()))
+                }
+
+              }
+          | _ => ()
+        }
       GRSExport.Export(graph, $"graph$(Name).grs");
       //def state = 
       //graph.CreateNodeState(Fsm.st);
     }
-          
+
     public Analyse() : void
     {
       try

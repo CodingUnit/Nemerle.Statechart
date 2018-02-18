@@ -3,16 +3,67 @@
 
 #using "StateMachine.gm"
 
+// create final state in parent of this node
+rule CreateFinalState(state : State) : (FinalState)
+{
+	parent:State -:Contains-> state; // parent of state		
+	hom(parent, state);
+	
+	negative
+	{
+	  parent -:Contains-> :FinalState; // if parent contains final state	  
+	}
+	// create another if has'nt
+	modify
+	{
+	  parent -:Contains-> final:FinalState;
+	  return (final);
+	}	
+}
+
+// find teminate in top state
+test FindTerminate() : (Terminate)
+{
+    -:TopState-> top:State;
+	top -:Contains-> term:Terminate;
+	
+	return (term);
+		
+}
+// create final state in parent of this node
+rule CreateTerminate() : (Terminate)
+{	
+	-:TopState-> top:State;
+	
+	negative
+	{
+	  :Terminate; // if top contains teminate
+	}
+	// create new if has'nt
+	modify
+	{
+	  top -:Contains-> term:Terminate;
+	  return (term);
+	}	
+}
+
 // find final state in parent of this node
 test FindFinalState(state : State) : (FinalState)
 {
-	parent:State -:Contains-> state;
-	parent -:Contains-> final:FinalState;
+	parent:State -:Contains-> state; // parent of state		
+	parent -:Contains-> final:FinalState; // if parent contains final state	  
 	hom(parent, state);
-	
-	return (final);	 				
+		
+	return (final);
 }
 
+test ParentOf(elem : Node) : (State)
+{
+  parent:State -:Contains-> elem;
+  
+  return (parent);
+}
+/*
 rule CreateFinalState(state : State) : (FinalState)
 {
 	parent:State -:Contains-> state;	
@@ -28,7 +79,7 @@ rule CreateFinalState(state : State) : (FinalState)
 	  parent -:Contains-> final:FinalState;
 	  return (final);
 	}	
-}
+}*/
 
 // find qualified target state.substate or state.pseudo syntax
 test FindQualified(var state : string, var tar : string) : (StateMachineNode)
@@ -78,15 +129,20 @@ test FindQualifiedNode(state : State, var tar : string) : (StateMachineNode)
 
 
 // find qualified target state.substate or state.pseudo syntax
-test FindQualifiedType(var state : string, tar : StateMachineNode) : (StateMachineNode)
+test FindQualifiedType(state : State, tar : StateMachineNode) : (StateMachineNode)
 {
-  st:State -:Contains-> t:typeof(tar);  
-  hom(st, t);  
-  
-  if { st.name == state; }
-  //if { typeof(t) == typeof(tar);}
-   
+  state -:Contains-> t:typeof(tar);
+  hom(state, t);  
   return (t);  
+}
+
+// find qualified target state.substate or state.pseudo syntax
+test FindQualifiedHistory(state : State, tar : History) : (History)
+{
+  state -:Contains-> h:History;
+  if {typeof(tar) <= typeof(h);}
+      
+  return (h);  
 }
 
 // find qualified target state.substate or state.pseudo syntax
