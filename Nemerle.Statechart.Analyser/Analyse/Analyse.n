@@ -271,8 +271,15 @@ namespace Nemerle.Statechart
       }
 
       def create_name = create_name(_, 1);
+      
       def set_name = (n : INamedNode, name) => {n.name = name; n;}
-
+      
+      def create_named(func : string -> INamedNode, n) : INamedNode
+      {
+        def node = func(create_name(n));
+        set_name(node, n);
+      }
+      
       // check all states and create state nodes and substate relation edge
       def create_nodes(x, childs)
       {
@@ -296,15 +303,15 @@ namespace Nemerle.Statechart
                             {
                               | SubRegion
                               | StateType.State => def node = graph.CreateNodeState(name);
-                                                  childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
-                                                  node
+                                                   childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
+                                                   node
                               | Region          => def node = graph.CreateNodeConcurrentState(name);
-                                                  childs.Iter(x => _ = graph.CreateEdgeRegion(node, x));
-                                                  node
+                                                   childs.Iter(x => _ = graph.CreateEdgeRegion(node, x));
+                                                   node
                               | Final           => graph.CreateNodeFinalState();
                               | SubMachine      => def node = graph.CreateNodeSubMachineState(name);
-                                                  childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
-                                                  node
+                                                   childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
+                                                   node
                             }
               when (st_node is INamedNode as s) s.name = n;
               when (st_node is IState as s) s.id = st_id;              
@@ -312,23 +319,22 @@ namespace Nemerle.Statechart
               map[st] = st_node;
               // link it to sub state through edge for each substate
 
-
               foreach (p in st.pseudo_states)
               {
                 def st_id = p.Id;
                 def node = match (p.node)
                 {
-                  | PseudoStateModelNode.EntryPoint as e        => graph.CreateNodeEntryPoint(create_name(e.name)) |> set_name(_, e.name);// entry point needs transition pass
-                  | ExitPoint as e                              => graph.CreateNodeExitPoint(create_name(e.name)) |> set_name(_, e.name)
+                  | PseudoStateModelNode.EntryPoint as e        => create_named(graph.CreateNodeEntryPoint, e.name)// entry point needs transition pass
+                  | ExitPoint as e                              => create_named(graph.CreateNodeExitPoint, e.name)
                   | Initial                                     => graph.CreateNodeInitialState();
                   | History(type = HistoryType.None)            => graph.CreateNodeHistory();
                   | History(type = HistoryType.Deep)            => graph.CreateNodeDeepHistory();
                   | History(type = HistoryType.Shallow)         => graph.CreateNodeShallowHistory();
                   | Fork                                        => graph.CreateNodeFork();
-                  | Join as j                                   => graph.CreateNodeJoin(create_name(j.name)) |> set_name(_, j.name)
-                  | Junction(type = JunctionType.Junction) as j => graph.CreateNodeJunction(create_name(j.name)) |> set_name(_, j.name)
-                  | Junction(type = JunctionType.Choice) as j   => graph.CreateNodeChoice(create_name(j.name)) |> set_name(_, j.name)
-                  | Junction(type = JunctionType.Merge) as j    => graph.CreateNodeMerge(create_name(j.name)) |> set_name(_, j.name)
+                  | Join as j                                   => create_named(graph.CreateNodeJoin, j.name)
+                  | Junction(type = JunctionType.Junction) as j => create_named(graph.CreateNodeJunction, j.name)
+                  | Junction(type = JunctionType.Choice) as j   => create_named(graph.CreateNodeChoice, j.name)
+                  | Junction(type = JunctionType.Merge) as j    => create_named(graph.CreateNodeMerge, j.name)
                   | Terminate                                   => graph.CreateNodeTerminate();
                 }
                 when (node is IPseudoState as p) p.id = st_id;
@@ -389,18 +395,23 @@ namespace Nemerle.Statechart
               def parent = ParentOf(src);//{mutable res; if (graph_actions.ParentOf.Apply(proc_env, src, ref res)) res else null }
               match (st.parent)
               {
-                | Some(p) => match (find_named(p))
+                | Some(p) => def parent = match (find_named(p))
                              {
-                               | null => ()
-                               | p    => _ = graph.CreateEdgeParent(src, p :> LGSPNode)
+                               | null => graph.CreateNodeUnresolved(p)
+                               | p    => p
                              }
+                              _ = graph.CreateEdgeParent(src, parent :> LGSPNode)
                 | _       => ()
               }
               foreach (tr in tran)
               {
                 def target = match (tr.to)
                               {
-                                | TargetType.Named(n) => find_named(n)// search for named node with name as target
+                                | TargetType.Named(n) => match (find_named(n))// search for named node with name as target
+                                                         {
+                                                           | null => graph.CreateNodeUnresolved(n)// not found, create new unresolved node
+                                                           | node => node           
+                                                         }
                                 | Final               =>  // search final in parent state
                                                           match (GetContained(parent, FinalState.TypeInstance))
                                                           {
@@ -433,10 +444,17 @@ namespace Nemerle.Statechart
                                                                                                 | HistoryType.Deep => DeepHistory()
                                                                                                 | _                => History()
                                                                                               }
-                                                             def possible = GraphHelper.Reachable(src, Contains.TypeInstance, type.Type);
-                                                             if (possible.IsEmpty()) null else
+                                                             def possible = GraphHelper.ReachableIncoming(src, Contains.TypeInstance, type.Type).Map(x => x.Key);
+                                                             def possible = match (GetContained(src, type.Type))
                                                              {
-                                                               possible.First().Key
+                                                               | History as h    => h :: possible
+                                                               | _               => possible
+                                                             }
+                                                             //possible[src] SetValueType()
+                                                             match (possible) 
+                                                             {
+                                                               | head :: _ => head
+                                                               | _         => graph.CreateNodeUnknown(create_name($"History$t"))
                                                              }
                                                              //possible.FirstOrDefault()?.Key :> LGSPNode
                                                              //{mutable res; if (graph_actions.FindQualifiedHistory.Apply(proc_env, parent, type :> History, ref res)) res :> LGSPNode else null}
@@ -451,12 +469,19 @@ namespace Nemerle.Statechart
                                                                | term => term
                                                              } 
                                                              
-                                      | _                 => null
+                                      | t                 => graph.CreateNodeUnknown(create_name($"Pseudo_$t"))
                                     }
                                 | Qualified as q      => // create path and last node                                                                                                     
-                                                         FindQualifed(find_path(q)) // find other nodes recursive
+                                                         def path = find_path(q);
+                                                         match (FindQualifed(path)) // find other nodes recursive
+                                                         {
+                                                           | null => def (p, t) = path;
+                                                                     def name = $<#..$(p;".").$t#>;
+                                                                     graph.CreateNodeUnresolved(name)
+                                                           | q    => q
+                                                         }
 
-                                | _ => null                        
+                                | t => graph.CreateNodeUnknown(create_name($"Target_$t"))
                               }
                 match (src, target)
                 {
