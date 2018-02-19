@@ -215,12 +215,15 @@ namespace Nemerle.Statechart
                               | Named(name = n)                   => FindQualifiedNode(n, node) :> LGSPNode
                               | PseudoState(p)                    => match (p)
                                                                       {
-                                                                        | History(type = HistoryType.Deep) with type = DeepHistory()
-                                                                        | History                          with type = History() => 
-                                                                            mutable res; 
-                                                                            if (graph_actions.FindQualifiedHistory.Apply(proc_env, node, type :> History, ref res)) 
-                                                                              res :> LGSPNode 
-                                                                            else null
+                                                                        | History(type = HistoryType.Deep) with type = DeepHistory.TypeInstance
+                                                                        | History                          with type = History().Type =>
+                                                                            //mutable res; 
+                                                                            def hist = GraphHelper.AdjacentOutgoing(node, Contains.TypeInstance, type);
+                                                                            if (hist.IsEmpty()) null else
+                                                                             hist.FirstOrDefault().Key :> LGSPNode
+                                                                            //if (graph_actions.FindQualifiedHistory.Apply(proc_env, node, type :> History, ref res)) 
+                                                                              //res :> LGSPNode 
+                                                                            //else null
                                                                         //| Terminate                           => mutable res;
                                                                         //                                         if (graph_actions.FindQualifiedType.Apply(proc_env, node, Terminate :> IStateMachineNode, ref res)) res :> LGSPNode else null
                                                                         | _                                   => null // error node here
@@ -232,6 +235,24 @@ namespace Nemerle.Statechart
       }
     }
 
+    ParentOf(node : LGSPNode) : IState
+    {
+      def nodes = GraphHelper.AdjacentIncoming(node, Contains.TypeInstance, State.TypeInstance);
+      if (nodes.IsEmpty()) null else
+      {
+        nodes.First().Key :> IState
+      }
+    }
+    
+    GetContained(src : INode, node_type : NodeType) : IStateMachineNode
+    {
+      def nodes = GraphHelper.AdjacentOutgoing(src, Contains.TypeInstance, node_type);
+      if (nodes.IsEmpty()) null else
+      {
+        nodes.First().Key :> IStateMachineNode
+      }
+    }
+    
     CreateGraph() : void
     {
       graph = StateMachineNamedGraph();
@@ -365,7 +386,7 @@ namespace Nemerle.Statechart
           | StateNode.State(transitions = tran) as st => 
               
               def src = map[node];
-              def parent = {mutable res; if (graph_actions.ParentOf.Apply(proc_env, src, ref res)) res else null }
+              def parent = ParentOf(src);//{mutable res; if (graph_actions.ParentOf.Apply(proc_env, src, ref res)) res else null }
               match (st.parent)
               {
                 | Some(p) => match (find_named(p))
@@ -380,14 +401,17 @@ namespace Nemerle.Statechart
                 def target : LGSPNode = match (tr.to)
                               {
                                 | TargetType.Named(n) => find_named(n) :> LGSPNode// search for named node with name as target
-                                | Final               => mutable final;
-                                                  // search final in parent state
-                                                  when (!graph_actions.FindFinalState.Apply(proc_env, src :> IState, ref final)) 
-                                                  {
-                                                    _ = graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final);
-                                                    when (final.id == 0) final.id = get_id();
-                                                  }
-                                                  final :> LGSPNode
+                                | Final               =>  // search final in parent state
+                                                          match (GetContained(parent, FinalState.TypeInstance))
+                                                          {
+                                                            | null => 
+                                                              mutable final;
+                                                              _ = graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final);
+                                                              when (final.id == 0) final.id = get_id();
+                                                              final :> LGSPNode
+                                                            | final => final :> LGSPNode
+                                                          }
+                                                          
                                 | Self                => src // to self node
                                 | PseudoState(Junction(name = null, type = t)) => // unnamed junction
                                                     // create unnamed junction node in graph
@@ -409,15 +433,24 @@ namespace Nemerle.Statechart
                                                                                                 | HistoryType.Deep => DeepHistory()
                                                                                                 | _                => History()
                                                                                               }
-                                                             {mutable res; if (graph_actions.FindQualifiedHistory.Apply(proc_env, parent, type :> History, ref res)) res :> LGSPNode else null}
+                                                             def possible = GraphHelper.Reachable(src, Contains.TypeInstance, type.Type);
+                                                             if (possible.IsEmpty()) null else
+                                                             {
+                                                               possible.First().Key :> LGSPNode
+                                                             }
+                                                             //possible.FirstOrDefault()?.Key :> LGSPNode
+                                                             //{mutable res; if (graph_actions.FindQualifiedHistory.Apply(proc_env, parent, type :> History, ref res)) res :> LGSPNode else null}
                                                                                               //if (graph_actions.FindQualifiedType.Apply(proc_env, node, type :> IStateMachineNode, ref res)) res :> LGSPNode else null
                                       | Fork              => create_node2(create_name("Fork"), parent, graph.CreateNodeFork) :> LGSPNode
-                                      | Terminate         => mutable term;
-                                                             when (!graph_actions.FindTerminate.Apply(proc_env, ref term))
+                                      | Terminate         => match (GetContained(top, Terminate.TypeInstance))
                                                              {
-                                                               _ = graph_actions.CreateTerminate.Apply(proc_env, ref term)//create_node2(create_name("Terminate"), parent, graph.CreateNodeTerminate) :> LGSPNode
-                                                             }
-                                                             term :> LGSPNode
+                                                               | null =>
+                                                                   mutable term;
+                                                                   _ = graph_actions.CreateTerminate.Apply(proc_env, ref term);
+                                                                   term :> LGSPNode
+                                                               | term => term :> LGSPNode
+                                                             } 
+                                                             
                                       | _                 => null
                                     }
                                 | Qualified as q      => // create path and last node                                                                                                     
@@ -429,11 +462,17 @@ namespace Nemerle.Statechart
                 {
                   | (_, null)
                   | (null, _)     => ()
-                  | (src, target) => def tran = graph.CreateEdgeTransition(src, target);
-                                     tran.trigger = List(tr.evt.Select(_.ToString()));
-                                     tran.guard = tr.guard.ToString();
-                                     when (tr.action is Some(a))
-                                        tran.action = List(a.actions.Select(_.ToString()))
+                  | (src, target) => foreach (trig in tr.evt)
+                                     {
+                                       def tran = graph.CreateEdgeTransition(src, target);
+                                       tran.trigger = trig.ToString();
+                                       tran.guard = tr.guard.ToString();
+                                       when (tr.action is Some(a))
+                                       {
+                                         def act = a.actions.Select(_.ToString());
+                                         tran.action = $"..$act"
+                                       }
+                                     }
                 }
 
               }
