@@ -216,16 +216,7 @@ namespace Nemerle.Statechart
                               | PseudoState(p)                    => match (p)
                                                                       {
                                                                         | History(type = HistoryType.Deep) with type = DeepHistory.TypeInstance
-                                                                        | History                          with type = History().Type =>
-                                                                            //mutable res; 
-                                                                            def hist = GraphHelper.AdjacentOutgoing(node, Contains.TypeInstance, type);
-                                                                            if (hist.IsEmpty()) null else
-                                                                             hist.FirstOrDefault().Key
-                                                                            //if (graph_actions.FindQualifiedHistory.Apply(proc_env, node, type :> History, ref res)) 
-                                                                              //res :> LGSPNode 
-                                                                            //else null
-                                                                        //| Terminate                           => mutable res;
-                                                                        //                                         if (graph_actions.FindQualifiedType.Apply(proc_env, node, Terminate :> IStateMachineNode, ref res)) res :> LGSPNode else null
+                                                                        | History                          with type = History.TypeInstance => GetContained(node, type)
                                                                         | _                                   => null // error node here
                                                                       }
                                                                       
@@ -370,19 +361,7 @@ namespace Nemerle.Statechart
         node
       }
       
-      def find_path(q)
-      {
-          def loop(t, res)
-          {
-            match (t)
-            {
-              | TargetType.Qualified(p, t) => loop(t, p :: res)
-              | _                          => (res.Rev(), t)
-            }
-          }
-
-        loop(q, [])
-      }
+      
 
       def find_named(x) {mutable res; if (graph_actions.FindNamed.Apply(proc_env, x, ref res)) res else null}
 
@@ -397,7 +376,7 @@ namespace Nemerle.Statechart
               {
                 | Some(p) => def parent = match (find_named(p))
                              {
-                               | null => graph.CreateNodeUnresolved(p)
+                               | null => graph.CreateNodeUnresolved |> create_named(_, p)
                                | p    => p
                              }
                               _ = graph.CreateEdgeParent(src, parent :> LGSPNode)
@@ -409,7 +388,7 @@ namespace Nemerle.Statechart
                               {
                                 | TargetType.Named(n) => match (find_named(n))// search for named node with name as target
                                                          {
-                                                           | null => graph.CreateNodeUnresolved(n)// not found, create new unresolved node
+                                                           | null => graph.CreateNodeUnresolved |> create_named(_, n)// not found, create new unresolved node
                                                            | node => node           
                                                          }
                                 | Final               =>  // search final in parent state
@@ -462,16 +441,17 @@ namespace Nemerle.Statechart
                                       | t                 => graph.CreateNodeUnknown(create_name($"Pseudo_$t"))
                                     }
                                 | Qualified as q      => // create path and last node                                                                                                     
-                                                         def path = find_path(q);
+                                                         def path = q.Path;
                                                          match (FindQualifed(path)) // find other nodes recursive
                                                          {
                                                            | null => def (p, t) = path;
                                                                      def name = $<#..$(p;".").$t#>;
-                                                                     graph.CreateNodeUnresolved(name)
+                                                                     graph.CreateNodeUnresolved |> create_named(_, name)
                                                            | q    => q
                                                          }
 
-                                | t => graph.CreateNodeUnknown(create_name($"Target_$t"))
+                                | t => if (tr.kind == TransitionKind.Internal) src else
+                                       graph.CreateNodeUnknown(create_name($"Target_$t"))
                               }
                 match (src, target)
                 {
@@ -479,7 +459,11 @@ namespace Nemerle.Statechart
                   | (null, _)     => ()
                   | (src, LGSPNode as target) => foreach (trig in tr.evt)
                                      {
-                                       def tran = graph.CreateEdgeTransition(src, target);
+                                       def tran = match (tr.kind)
+                                                  {
+                                                    | TransitionKind.External => graph.CreateEdgeTransition(src, target);
+                                                    | Internal                => null
+                                                  }
                                        tran.trigger = trig.ToString();
                                        tran.guard = tr.guard.ToString();
                                        when (tr.action is Some(a))

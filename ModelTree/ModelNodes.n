@@ -347,7 +347,7 @@ namespace Nemerle.Statechart
         default : option[StateNode.Transition];
       }
 
-    | Fork {target : list[TargetType];}
+    | Fork { target : list[TargetType];}
     | Join { name : string; sources : list[NameIdentifier]; tran : StateNode.Transition; }
     | Junction
       {
@@ -398,10 +398,54 @@ namespace Nemerle.Statechart
         name : string;
       }
     //| SubMachine {machine : StateNode.State; state : string;}
-    | Qualified {parent : string; target : TargetType;}
+    | Qualified 
+      {
+        parent : string; 
+        target : TargetType;
+        
+        public Path : list[string] * TargetType
+        {
+          [Memoize]
+          get
+          {
+            def loop(t, res)
+            {
+              match (t)
+              {
+                | TargetType.Qualified(p, t) => loop(t, p :: res)
+                | _                          => (res.Rev(), t)
+              }
+            }
+
+            loop(this, [])
+          }
+        }
+      }
     | Self
     | NoTarget
 
+    str : string
+    {
+      [Memoize]
+      get
+      {
+        match (this)
+        {
+          | Final          => "Final"
+          | Named(n)       => n
+          | Qualified as q => def (p, t) = q.Path; 
+                              $<#..$(p;".").$t#>
+          | Self           => "Self"
+          | NoTarget       => "NoTarget"
+          | PseudoState(p) => $"$p"
+        }
+      }
+    }
+    
+    public override ToString() : string
+    {
+      str
+    }
   }
 
 }
