@@ -413,15 +413,15 @@ namespace Nemerle.Statechart
                                                            | node => node           
                                                          }
                                 | Final               =>  // search final in parent state
-                                                          match (GetContained(parent, FinalState.TypeInstance))
-                                                          {
-                                                            | null => 
-                                                                mutable final;
-                                                                _ = graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final);
-                                                                when (final.id == 0) final.id = get_id();
-                                                                final
-                                                            | final => final
-                                                          }
+                                                         match (GetContained(parent, FinalState.TypeInstance))
+                                                         {
+                                                           | null => 
+                                                              mutable final;
+                                                              _ = graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final);
+                                                              when (final.id == 0) final.id = get_id();
+                                                              final
+                                                           | final => final
+                                                         }
                                                           
                                 | Self                => src // to self node
                                 | PseudoState(Junction(name = null, type = t)) => // unnamed junction
@@ -444,17 +444,11 @@ namespace Nemerle.Statechart
                                                                                                 | HistoryType.Deep => DeepHistory()
                                                                                                 | _                => History()
                                                                                               }
-                                                             def possible = GraphHelper.ReachableIncoming(src, Contains.TypeInstance, type.Type).Map(x => x.Key);
-                                                             def possible = match (GetContained(src, type.Type))
-                                                             {
-                                                               | History as h    => h :: possible
-                                                               | _               => possible
-                                                             }
-                                                             match (possible) 
-                                                             {
-                                                               | head :: _ => head
-                                                               | _         => graph.CreateNodeUnknown(create_name($"History$t"))
-                                                             }
+                                                             def type = type.Type;
+                                                             def top_states = GraphHelper.ReachableIncoming(src, Contains.TypeInstance, State.TypeInstance, graph);
+                                                             def states = ListUtils.SingleElement(src).Concat(top_states);
+                                                             def hist = states.Select(GetContained(_, type)).Where(_ != null);
+                                                             if (hist.IsEmpty()) graph.CreateNodeUnknown(create_name($"History$t")) else hist.First()
                                       | Fork              => create_node2(create_name("Fork"), parent, graph.CreateNodeFork)
                                       | Terminate         => match (GetContained(top, Terminate.TypeInstance))
                                                              {
