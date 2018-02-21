@@ -244,32 +244,166 @@ namespace Nemerle.Statechart
       }
     }
     
-    CreateGraph() : void
+    create_name(n : string) : string
     {
-      graph = StateMachineNamedGraph();
-      graph_actions = rootActions(graph);
-
-      proc_env = LGSPGraphProcessingEnvironment(graph, graph_actions);
-
-      def create_name(n, cntr)
+      def loop(n, cntr)
       {
         def n = n ?? "";
         if (graph.GetNode(n) != null) 
         {
           def n = $"$n$cntr";
-          create_name(n, cntr + 1)
+          loop(n, cntr + 1)
         } else n
       }
+      
+      loop(n, 1)
+    }
+      
+    create_named(func : string -> INamedNode, n : string) : INamedNode
+    {
+      def node = func(create_name(n));
+      //set_name(node, n);
+      node.name = n;
+      node
+      //set_name = (n : INamedNode, name) => {n.name = name; n;}
+    }
+      
+    create_node(n : string, parent : IState, func : string -> INamedNode) : INamedNode
+    {
+      def node = func(n);
+      node.name = n;
+      _ = graph.CreateEdgeContains(parent :> LGSPNode, node :> LGSPNode);
+      node.id = get_id();
+      node
+    }
 
-      def create_name = create_name(_, 1);
+    create_node2(n : string, parent : IState, func : string -> IStateMachineNode) : IStateMachineNode
+    {
+      def node = func(n);
+      _ = graph.CreateEdgeContains(parent :> LGSPNode, node :> LGSPNode);
+      node.id = get_id();
+      node
+    }
+
+    find_named(x : string) : INamedNode
+    {
+      mutable res; 
+      if (graph_actions.FindNamed.Apply(proc_env, x, ref res)) res else null
+    }
       
-      def set_name = (n : INamedNode, name) => {n.name = name; n;}
-      
-      def create_named(func : string -> INamedNode, n) : INamedNode
+    GetTarget(src : LGSPNode, to : TargetType) : INode
+    {
+      def parent = ParentOf(src);
+      match (to)
+        {
+          | TargetType.Named(n) => match (find_named(n))// search for named node with name as target
+                                    {
+                                      | null => graph.CreateNodeUnresolved |> create_named(_, n)// not found, create new unresolved node
+                                      | node => node           
+                                    }
+          | Final               =>  // search final in parent state
+                                    match (GetContained(parent, FinalState.TypeInstance))
+                                    {
+                                      | null => 
+                                        mutable final;
+                                        _ = graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final);
+                                        when (final.id == 0) final.id = get_id();
+                                        final
+                                      | final => final
+                                    }
+                                                          
+                      
+          | PseudoState(Junction(name = null, type = t)) => // unnamed junction
+                              // create unnamed junction node in graph
+                              def func = match (t)
+                              {
+                                | JunctionType.Choice   => graph.CreateNodeChoice
+                                | JunctionType.Junction => graph.CreateNodeJunction
+                                | JunctionType.Merge    => graph.CreateNodeMerge
+                              }
+                              create_node(PseudoStateNode.Junction.GetUnnamedName(this, t), parent, func);
+          | PseudoState(Join(name = n))
+          | PseudoState(Junction(name = n))
+          | PseudoState(EntryPoint(name = n))
+          | PseudoState(ExitPoint(name = n)) => find_named(n)
+          | PseudoState(p) => match (p)
+              {
+                | History(type = t) => def type = match (t)
+                                                  {
+                                                    | HistoryType.Deep => DeepHistory.TypeInstance
+                                                    | _                => History.TypeInstance
+                                                  }
+                                        // get all states contained src, parents
+                                        def parents = GraphHelper.ReachableIncoming(src, Contains.TypeInstance, State.TypeInstance, graph);
+                                        def states = ListUtils.SingleElement(src).Concat(parents);// prepend src at start
+                                        def hist = states.Select(GetContained(_, type)).Where(_ != null); // search for history begin from src to parents
+                                        if (hist.IsEmpty()) graph.CreateNodeUnknown(create_name($"History$t")) else hist.First() // select first if not empty
+                | Fork              => create_node2(create_name("Fork"), parent, graph.CreateNodeFork)
+                | Terminate         => def top = graph.GetCompatibleEdges(TopState.TypeInstance).First().Target; // find top state
+                                        match (GetContained(top, Terminate.TypeInstance)) // search for terminate in it
+                                        {
+                                          | null =>
+                                              mutable term;
+                                              _ = graph_actions.CreateTerminate.Apply(proc_env, ref term);
+                                              term
+                                          | term => term
+                                        } 
+                | t                 => graph.CreateNodeUnknown(create_name($"Pseudo_$t"))
+              }
+          | Qualified as q      => // create path and last node                                                                                                     
+                                    def path = q.Path;
+                                    match (FindQualifed(path)) // find other nodes recursive
+                                    {
+                                      | null => def (p, t) = path;
+                                                def name = $<#..$(p;".").$t#>;
+                                                graph.CreateNodeUnresolved |> create_named(_, name)
+                                      | q    => q
+                                    }
+          | Self                
+          | NoTarget            => src // to self node
+          | t => graph.CreateNodeUnknown(create_name($"Target_$t"))
+        }
+    }
+    
+    CreateTransition(src : LGSPNode, tr : StateNode.Transition) : void
+    {
+      def target = GetTarget(src, tr.to);
+      match (src, target)
       {
-        def node = func(create_name(n));
-        set_name(node, n);
+        | (_, null)
+        | (null, _)     => ()
+        | (src, LGSPNode as target) => 
+            foreach (trig in tr.evt)
+            {
+              
+              def tran : IStateTransition = match (tr.kind)
+                                      {
+                                        | TransitionKind.External => graph.CreateEdgeStateTransition(src, target);
+                                        | Internal                => graph.CreateEdgeInternalTransition(src, target)
+                                        | Local                   => graph.CreateEdgeLocalTransition(src, target)
+                                      }
+              if (trig is TransitionEvent.Normal(name = null)) () else
+                tran.trigger = trig.ToString();
+              tran.guard = tr.guard.ToString();
+              when (tr.action is Some(a))
+              {
+                def act = a.actions.Select(_.ToString());
+                tran.action = $"..$act"
+              }
+            }
+        | _ => ()
       }
+    }
+    
+    mutable max_id : int;
+
+    get_id() : int { def m = max_id; max_id++; m}
+      
+    CreateGraph() : void
+    {
+      graph = StateMachineNamedGraph();
+      graph_actions = rootActions(graph);
+      proc_env = LGSPGraphProcessingEnvironment(graph, graph_actions);
       
       // check all states and create state nodes and substate relation edge
       def create_nodes(x, childs)
@@ -340,30 +474,10 @@ namespace Nemerle.Statechart
       def top : LGSPNode = Fsm.MapTree(create_nodes);
       def top = top :> IState;
       
-      mutable max_id = StateNode.GetMaxId();
+      max_id = StateNode.GetMaxId();
 
-      def get_id() { def m = max_id; max_id++; m}
-
-      def create_node(n, parent, func : string -> INamedNode)
-      {
-        def node = func(n);
-        node.name = n;
-        _ = graph.CreateEdgeContains(parent :> LGSPNode, node :> LGSPNode);
-        node.id = get_id();
-        node
-      }
-
-      def create_node2(n, parent, func : string -> IStateMachineNode)
-      {
-        def node = func(n);
-        _ = graph.CreateEdgeContains(parent :> LGSPNode, node :> LGSPNode);
-        node.id = get_id();
-        node
-      }
+      //def get_id() { def m = max_id; max_id++; m}
       
-      
-
-      def find_named(x) {mutable res; if (graph_actions.FindNamed.Apply(proc_env, x, ref res)) res else null}
 
       //graph_actions.FindQualifiedNode.Apply(proc_env, p, sub, ref res)
       foreach (node in Fsm.GetPreOrderEnumerable())
@@ -382,99 +496,25 @@ namespace Nemerle.Statechart
                               _ = graph.CreateEdgeParent(src, parent :> LGSPNode)
                 | _       => ()
               }
+              def pseudo = st.pseudo_states;
+              foreach (p in pseudo)
+              {
+                def src = map[p];
+                match (p.node)
+                {
+                  | EntryPoint(tran = t)
+                  | ExitPoint(tran = Some(t))
+                  
+                  | History(default = Some(t)) => def target = GetTarget(src, t.to);
+                  | Junction as j              => ()
+                  | Join() as j                => ()
+                  | Initial(tran = t)          => ()
+                  //| Fork as f                 => f.target.Map(GetTarget(src, ))
+                }
+              }
               foreach (tr in tran)
               {
-                def target = match (tr.to)
-                              {
-                                | TargetType.Named(n) => match (find_named(n))// search for named node with name as target
-                                                         {
-                                                           | null => graph.CreateNodeUnresolved |> create_named(_, n)// not found, create new unresolved node
-                                                           | node => node           
-                                                         }
-                                | Final               =>  // search final in parent state
-                                                         match (GetContained(parent, FinalState.TypeInstance))
-                                                         {
-                                                           | null => 
-                                                              mutable final;
-                                                              _ = graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final);
-                                                              when (final.id == 0) final.id = get_id();
-                                                              final
-                                                           | final => final
-                                                         }
-                                                          
-                                | Self                => src // to self node
-                                | PseudoState(Junction(name = null, type = t)) => // unnamed junction
-                                                    // create unnamed junction node in graph
-                                                    def func = match (t)
-                                                    {
-                                                      | JunctionType.Choice   => graph.CreateNodeChoice
-                                                      | JunctionType.Junction => graph.CreateNodeJunction
-                                                      | JunctionType.Merge    => graph.CreateNodeMerge
-                                                    }
-                                                    create_node(PseudoStateNode.Junction.GetUnnamedName(this, t), parent, func);
-                                | PseudoState(Join(name = n))
-                                | PseudoState(Junction(name = n))
-                                | PseudoState(EntryPoint(name = n))
-                                | PseudoState(ExitPoint(name = n)) => find_named(n)
-                                | PseudoState(p) => match (p)
-                                    {
-                                      | History(type = t) => def type : IStateMachineNode = match (t)
-                                                                                              {
-                                                                                                | HistoryType.Deep => DeepHistory()
-                                                                                                | _                => History()
-                                                                                              }
-                                                             def type = type.Type;
-                                                             def top_states = GraphHelper.ReachableIncoming(src, Contains.TypeInstance, State.TypeInstance, graph);
-                                                             def states = ListUtils.SingleElement(src).Concat(top_states);
-                                                             def hist = states.Select(GetContained(_, type)).Where(_ != null);
-                                                             if (hist.IsEmpty()) graph.CreateNodeUnknown(create_name($"History$t")) else hist.First()
-                                      | Fork              => create_node2(create_name("Fork"), parent, graph.CreateNodeFork)
-                                      | Terminate         => match (GetContained(top, Terminate.TypeInstance))
-                                                             {
-                                                               | null =>
-                                                                   mutable term;
-                                                                   _ = graph_actions.CreateTerminate.Apply(proc_env, ref term);
-                                                                   term
-                                                               | term => term
-                                                             } 
-                                                             
-                                      | t                 => graph.CreateNodeUnknown(create_name($"Pseudo_$t"))
-                                    }
-                                | Qualified as q      => // create path and last node                                                                                                     
-                                                         def path = q.Path;
-                                                         match (FindQualifed(path)) // find other nodes recursive
-                                                         {
-                                                           | null => def (p, t) = path;
-                                                                     def name = $<#..$(p;".").$t#>;
-                                                                     graph.CreateNodeUnresolved |> create_named(_, name)
-                                                           | q    => q
-                                                         }
-
-                                | t => if (tr.kind == TransitionKind.Internal) src else
-                                       graph.CreateNodeUnknown(create_name($"Target_$t"))
-                              }
-                match (src, target)
-                {
-                  | (_, null)
-                  | (null, _)     => ()
-                  | (src, LGSPNode as target) => foreach (trig in tr.evt)
-                                     {
-                                       def tran = match (tr.kind)
-                                                  {
-                                                    | TransitionKind.External => graph.CreateEdgeTransition(src, target);
-                                                    | Internal                => null
-                                                  }
-                                       tran.trigger = trig.ToString();
-                                       tran.guard = tr.guard.ToString();
-                                       when (tr.action is Some(a))
-                                       {
-                                         def act = a.actions.Select(_.ToString());
-                                         tran.action = $"..$act"
-                                       }
-                                     }
-                  | _ => ()
-                }
-
+                CreateTransition(src, tr)
               }
           | _ => ()
         }
@@ -494,7 +534,7 @@ namespace Nemerle.Statechart
         when (FsmFlags.Logging) PrintFsmState(TopState, $"$(Name)_after_created.txt");
         CheckHistoryStates(); // check for errors in history
         CheckTransitions();
-        CheckInitialTransitions();
+        CheckInitialTransitions();  
         CreateTransitions();
         BreakIfError();
         TransformFsm();
