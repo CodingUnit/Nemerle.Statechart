@@ -216,10 +216,20 @@ namespace Nemerle.Statechart
     | Completion
     | Timed { time_expr : TimedExpr; }
 
+    public static None : TransitionEvent
+    {
+      [Memoize]
+      get
+      {
+        Normal(-1, null, [])
+      }
+    }
+    
     public override ToString() : string 
     { 
       match (this)
       {
+        | Normal(name = null)          => ""
         | Normal(name = n, parms = []) => n
         | Normal(name = n, parms = p)  => $"$n(..$p)"
         | Completion                   => "Completion"
@@ -400,6 +410,32 @@ namespace Nemerle.Statechart
       {
         parent : string; 
         target : TargetType;
+        
+        public FinalPath : list[string] * TargetType
+        {
+          [Memoize]
+          get
+          {
+            def loop(t, res)
+            {
+              match (t)
+              {
+                | TargetType.Qualified(p, t) => loop(t, p :: res)
+                | t                          => match (t)
+                                                {
+                                                  | PseudoState(Join(name = n))
+                                                  | PseudoState(Junction(name = n))
+                                                  | PseudoState(EntryPoint(name = n))
+                                                  | PseudoState(ExitPoint(name = n))
+                                                  | Named(name = n)                   => ((n :: res).Rev(), null)
+                                                  | _                                 => (res.Rev(), t)
+                                                }
+              }
+            }
+            
+            loop(this, [])
+          }
+        }
         
         public Path : list[string] * TargetType
         {

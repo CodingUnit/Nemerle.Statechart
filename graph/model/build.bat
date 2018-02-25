@@ -1,1 +1,1 @@
-..\bin\grgen root.grg
+..\bin\grgen root.grg -keep . -debug

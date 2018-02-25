@@ -13,10 +13,10 @@ rule FindOrCreate(parent : StateMachineNode, type : StateMachineNode) : (StateMa
 	{
 	  parent -:Contains-> t:typeof(type);
 	  hom(parent, t);
-	  eval
+	  modify
 	  {
-		yield n = t;
-	  }
+		  yield (n = t);
+      }
 	}
 	not_found
 	{
@@ -111,23 +111,17 @@ test ParentOf(elem : Node) : (State)
   
   return (parent);
 }
-/*
-rule CreateFinalState(state : State) : (FinalState)
+
+rule MoveSubstateToParent()
 {
-	parent:State -:Contains-> state;	
-	hom(parent, state);
-	
-	negative
-	{
-		parent -:Contains-> :FinalState;		
-	}	
-	
-	modify
-	{
-	  parent -:Contains-> final:FinalState;
-	  return (final);
-	}	
-}*/
+  state:State -p:Parent-> parent:State;
+  
+  modify
+  {
+    delete(p);
+    parent -:Substate-> state;
+  }
+}
 
 // find qualified target state.substate or state.pseudo syntax
 test FindQualified(var state : string, var tar : string) : (StateMachineNode)
@@ -141,40 +135,43 @@ test FindQualified(var state : string, var tar : string) : (StateMachineNode)
 }
 
 // find qualified target state.substate or state.pseudo syntax
-test FindQualifiedPath(ref tar : array<string>, var sz : int) : (StateMachineNode)
+test FindQualifiedPath(ref tar : array<string>) : (StateMachineNode)
 {
-  st:State -:Contains-> t:NamedNode;    
-  hom(st, t);  
-  iterated
-  {	
-    if { st.name == tar[0] && t.name == tar[1];}  
-	
-    :QualifiedRec(t, tar, 2, sz);
-	
-  }
-  return (t);
+  st:State;    
+  def n:StateMachineNode;  
+  
+  if { st.name == tar[0]; }  
+  yield { yield n = st; }
+  :QualifiedRec(st, tar, 1, yield n);  
+  return (n);
 }
 
-pattern QualifiedRec(state : NamedNode, ref tar : array<string>, var idx : int, var sz : int)
+pattern QualifiedRec(state : NamedNode, ref tar : array<string>, var idx : int, def ret : StateMachineNode)
 {
-	optional
+	alternative
 	{
-		state -:Contains-> t:NamedNode;		
-		if { idx != tar.size() && t.name == tar[idx];}  
-		:QualifiedRec(t, tar, idx + 1, sz);
+		next
+	    {
+			negative
+			{
+				if {idx == tar.size();}
+			}
+		
+			state -:Contains-> t:NamedNode;
+			
+			if { t.name == tar[idx];}
+			yield
+			{
+				yield ret = t;
+			}	
+		    :QualifiedRec(t, tar, idx + 1, yield ret);
+	    }
+	    end
+	    {
+			if {idx == tar.size();}         
+	    }	   
 	}
 }
-// find qualified target state.substate or state.pseudo syntax
-test FindQualifiedNode(state : State, var tar : string) : (StateMachineNode)
-{
-  state -:Contains-> t:NamedNode;  
-  hom(state, t);  
-  
-  if { t.name == tar;}
-   
-  return (t);  
-}
-
 
 // find qualified target state.substate or state.pseudo syntax
 test FindQualifiedType(state : State, tar : StateMachineNode) : (StateMachineNode)
@@ -185,14 +182,44 @@ test FindQualifiedType(state : State, tar : StateMachineNode) : (StateMachineNod
 }
 
 // find qualified target state.substate or state.pseudo syntax
-test FindQualifiedHistory(state : State, tar : History) : (History)
+test FindHistory(state : State, hist : History) : (History)
 {
-  state -:Contains-> h:History;
-  if {typeof(tar) <= typeof(h);}
-      
-  return (h);  
+  def ret : History;
+  
+  :HistoryFindRec(state, hist, yield ret);
+  return(ret);    
 }
 
+pattern HistoryFindRec(state : State, hist : History, def ret : History)
+{
+	alternative
+	{
+	  found
+	  {
+	    state -:Contains-> h:History; // search for history in state
+		
+		if {typeof(h) >= typeof(hist);} // if type is above or equal to external type
+		
+		yield
+		{
+			yield ret = h; // yield to output
+		}					
+		
+	  }
+	  not_found
+	  {
+	    parent:State -:Contains-> state; // get parent of state
+		
+	    negative
+		{
+			state -:Contains-> h:History; // it does not contain history
+		}
+		
+		
+		:HistoryFindRec(parent, hist, yield ret); // recursive search for history in parent
+	  }
+	}
+}
 // find qualified target state.substate or state.pseudo syntax
 test FindNamed(var name : string) : (NamedNode)
 {

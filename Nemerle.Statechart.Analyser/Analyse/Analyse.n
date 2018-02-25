@@ -178,40 +178,20 @@ namespace Nemerle.Statechart
     mutable graph_actions : rootActions;
     mutable proc_env : LGSPGraphProcessingEnvironment;
 
-    FindQualifiedNode(name : string, state : IState) : INamedNode
-    {
-      mutable res;
-      if (state == null) null else
-      if (graph_actions.FindQualifiedNode.Apply(proc_env, state, name, ref res)) res else null
-    }
-
     FindQualifed(path : list[string], tar : TargetType) : INode
     {
-      def (head :: path) = path;
-      def parent = {mutable res; if (graph_actions.FindNamed.Apply(proc_env, head, ref res)) res else null}// search first node in path
-      def node = path.FoldLeft(parent, (x, a) => if (a is IState as a) FindQualifiedNode(x, a) else null);
+      def node = {mutable res; if (graph_actions.FindQualifiedPath.Apply(proc_env, path.ToList(), ref res)) res else null};
       if (tar == null) node else
-      match (node)
+      if (node == null) null else
+      match (tar)
       {
-        | null => null
-        | IState as node => match (tar)
-                            {
-                              | TargetType.Final => null // error
-                              | PseudoState(Join(name = n))
-                              | PseudoState(Junction(name = n))
-                              | PseudoState(EntryPoint(name = n))
-                              | PseudoState(ExitPoint(name = n))
-                              | Named(name = n)                   => FindQualifiedNode(n, node)
-                              | PseudoState(p)                    => match (p)
-                                                                      {
-                                                                        | History(type = HistoryType.Deep) with type = DeepHistory.TypeInstance
-                                                                        | History                          with type = History.TypeInstance => GetContained(node, type)
-                                                                        | _                                   => null // error node here
-                                                                      }
-                                                                      
-                              | _               => null // other not supported
-                            }
-        | _ => null
+        | PseudoState(p) => match (p)
+                              {
+                                | History(type = HistoryType.Deep) with type = DeepHistory.TypeInstance
+                                | History                          with type = History.TypeInstance => GetContained(node, type)
+                                | _                                                                 => null // error node here
+                              }
+        | _              => null // other not supported
       }
     }
 
@@ -285,6 +265,10 @@ namespace Nemerle.Statechart
       def parent = ParentOf(src);
       def n = match (to)
         {
+          | PseudoState(Join(name = n))
+          | PseudoState(Junction(name = n))
+          | PseudoState(EntryPoint(name = n))
+          | PseudoState(ExitPoint(name = n))
           | TargetType.Named(n) => match (find_named(n))// search for named node with name as target
                                     {
                                       | null => graph.CreateNodeUnresolved |> create_named(_, n)// not found, create new unresolved node
@@ -302,7 +286,7 @@ namespace Nemerle.Statechart
                                     }
                                                           
                       
-          | PseudoState(Junction(name = null, type = t)) => // unnamed junction
+          | PseudoState(Junction(name = null, type = t) as j) => // unnamed junction
                               // create unnamed junction node in graph
                               def func = match (t)
                               {
@@ -310,24 +294,34 @@ namespace Nemerle.Statechart
                                 | JunctionType.Junction => graph.CreateNodeJunction
                                 | JunctionType.Merge    => graph.CreateNodeMerge
                               }
-                              create_node(PseudoStateNode.Junction.GetUnnamedName(this, t), parent, func);
-          | PseudoState(Join(name = n))
-          | PseudoState(Junction(name = n))
-          | PseudoState(EntryPoint(name = n))
-          | PseudoState(ExitPoint(name = n)) => find_named(n)
+                              def node = create_node(PseudoStateNode.Junction.GetUnnamedName(this, t), parent, func);
+                              ConnectJunction(j, node :> LGSPNode); // connect junction targets
+                              node
+         
           | PseudoState(p) => match (p)
               {
-                | History(type = t) => def type = match (t)
+                | History(type = t) => def type : IHistory = match (t)
                                                   {
-                                                    | HistoryType.Deep => DeepHistory.TypeInstance
-                                                    | _                => History.TypeInstance
+                                                    | HistoryType.Deep => DeepHistory()
+                                                    | _                => History()
                                                   }
-                                        // get all states contained src, parents
-                                        def parents = GraphHelper.ReachableIncoming(src, Contains.TypeInstance, State.TypeInstance, graph);
-                                        def states = ListUtils.SingleElement(src).Concat(parents);// prepend src at start
-                                        def hist = states.Select(GetContained(_, type)).Where(_ != null); // search for history begin from src to parents
-                                        if (hist.IsEmpty()) graph.CreateNodeUnknown(create_name($"History$t")) else hist.First() // select first if not empty
-                | Fork              => create_node2(create_name("Fork"), parent, graph.CreateNodeFork)
+                                       mutable res;
+                                       if (graph_actions.FindHistory.Apply(proc_env, src :> IState, type, ref res))
+                                       {
+                                         res
+                                       } else
+                                       {
+                                         graph.CreateNodeUnknown(create_name($"History$t"))
+                                       }
+                                       
+                | Fork as f         => def node = create_node2(create_name("Fork"), parent, graph.CreateNodeFork);
+                                       def target = f.target.Map(GetTarget(src, _)); // get target nodes of fork
+                                       foreach (t in target) // for each target
+                                       {
+                                         _ = graph.CreateEdgeTransition(src, t) // create edge from source to target node
+                                       }
+                                       node
+                                       
                 | Terminate         => def top = graph.GetCompatibleEdges(TopState.TypeInstance).First().Target; // find top state
                                         match (GetContained(top, Terminate.TypeInstance)) // search for terminate in it
                                         {
@@ -340,41 +334,55 @@ namespace Nemerle.Statechart
                 | t                 => graph.CreateNodeUnknown(create_name($"Pseudo_$t"))
               }
           | Qualified as q      => // create path and last node                                                                                                     
-                                    def path = q.Path;
+                                    def path = q.FinalPath;
                                     match (FindQualifed(path)) // find other nodes recursive
                                     {
                                       | null => def (p, t) = path;
-                                                def name = $<#..$(p;".").$t#>;
+                                                def name = if (t != null) $<#..$(p;".").$t#> else $<#..$(p;".")#>;
                                                 graph.CreateNodeUnresolved |> create_named(_, name)
                                       | q    => q
                                     }
           | Self                
           | NoTarget            => src // to self node
-          | t => graph.CreateNodeUnknown(create_name($"Target_$t"))
+          | t                   => graph.CreateNodeUnknown(create_name($"Target_$t"))
         }
         n :> LGSPNode
     }
     
-    
-    enum tran_type {| State | Pseudo | Link};
-    
-    CreateTransition(src : LGSPNode, tr : StateNode.Transition, type : tran_type) : void
+    enum TranType 
     {
+      | State 
+      | Pseudo 
+      | Link
+    };
+    
+    GetSource(src : LGSPNode, tr : StateNode.Transition) : LGSPNode
+    {
+      match (tr.from)
+      {
+        | PseudoState(PseudoStateModelNode.Join as j) => def node = (graph.CreateNodeJoin |> create_named(_, "Join")) :> LGSPNode;
+                                                         _ = graph.CreateEdgeContains(src, node);
+                                                         ConnectJoin(j, node);
+                                                         node
+        | _                                           => src
+      }
+    }
+    
+    CreateTransition(src : LGSPNode, tr : StateNode.Transition, type : TranType) : void
+    {
+      def src = GetSource(src, tr);
       def target = GetTarget(src, tr.to);
       match (target)
       {
-        | null               => ()
-        | LGSPNode as target => 
+        | null   => ()
+        | target => 
             match (type)
             {
               | Pseudo =>
                   def tran = graph.CreateEdgePseudoTransition(src, target);
                   tran.guard = tr.guard.ToString();
-                  when (tr.action is Some(a))
-                  {
-                    def act = a.actions.Select(_.ToString());
-                    tran.action = $"..$act"
-                  }
+                  tran.action = tr.action.MapDefault(_.ToString(), "");
+                  tran.out_str = tr.ExecStr(TransitionEvent.None);
                   
               | State => 
               
@@ -383,21 +391,19 @@ namespace Nemerle.Statechart
               
                 def tran : IStateTransition = match (tr.kind)
                                               {
-                                                | TransitionKind.External => graph.CreateEdgeExternalTransition(src, target);
                                                 | Internal                => graph.CreateEdgeInternalTransition(src, target)
                                                 | Local                   => graph.CreateEdgeLocalTransition(src, target)
+                                                | _                       => graph.CreateEdgeExternalTransition(src, target);
                                               }
                 if (trig is TransitionEvent.Normal(name = null)) () else
                   tran.trigger = trig.ToString();
                 tran.guard = tr.guard.ToString();
-                when (tr.action is Some(a))
-                {
-                  def act = a.actions.Select(_.ToString());
-                  tran.action = $"..$act"
-                }
+                tran.action = tr.action.MapDefault(_.ToString(), "");
+                tran.out_str = tr.ExecStr(trig);
               }
+              
+              | Link => _ = graph.CreateEdgeTransition(src, target);
             }
-        | _ => ()
       }
     }
     
@@ -408,26 +414,39 @@ namespace Nemerle.Statechart
     ConnectJunction(j : PseudoStateModelNode.Junction, src : LGSPNode) : void
     {
       // connect one src and its nodes
-      def loop_junc(src, nodes)
+      foreach (n in j.nodes)
       {
-        foreach (n in nodes)
+        def target = GetTarget(src, n.to); // get target of that node
+        when (target != null) // if correct and created
         {
-          def target = GetTarget(src, n.to); // get target of that node
-          when (target != null) // if correct and created
-          {
-            def tran = graph.CreateEdgePseudoTransition(src, target); // create edge
-            tran.guard = n.guard.ToString(); // set guard and actions
-            tran.action = n.action.MapDefault(_.ToString(), "");
-          }
-          match (n.to) // go further
-          {
-            | TargetType.PseudoState(Junction as j) => loop_junc(target, j.nodes) // loop
-            | _                                     => ()
-          }
+          def tran = graph.CreateEdgePseudoTransition(src, target); // create edge
+          tran.guard = n.guard.ToString(); // set guard and actions
+          tran.action = n.action.MapDefault(_.ToString(), "");
+        }
+        match (n.to) // go further
+        {
+          | TargetType.PseudoState(Junction as j) => ConnectJunction(j, target) // loop
+          | _                                     => ()
         }
       }
-                                                  
-      loop_junc(src, j.nodes);
+    }
+    
+    ConnectJoin(j : PseudoStateModelNode.Join, src : LGSPNode) : void
+    {
+      // for each of source   
+      foreach (from in j.sources)
+      {
+        // search for node of source path 
+        def from = match (FindQualifed(from.Parts, null))
+        {
+          // not found create unresolved
+          | null => graph.CreateNodeUnresolved |> create_named(_, from.FullName)
+          | node => node
+        }
+        // create edge from source to this Join node
+        _ = graph.CreateEdgeTransition(from :> LGSPNode, src)
+      }
+                                                        
     }
     
     CreateGraph() : void
@@ -435,12 +454,16 @@ namespace Nemerle.Statechart
       graph = StateMachineNamedGraph();
       graph_actions = rootActions(graph);
       proc_env = LGSPGraphProcessingEnvironment(graph, graph_actions);
-      
+      /*
+      1) For all states, in tree, create state and pseudo nodes
+      2) For all states, get all pseudo states and create edges connecting them
+      3) For all states, create transition edges from states to targets
+      */
       // check all states and create state nodes and substate relation edge
       def create_nodes(x, childs)
       {
 
-        match (x)
+        def node = match (x)
         {
           | StateNode.StateMachine(name = n) => 
               def n = n ?? Name;
@@ -501,9 +524,12 @@ namespace Nemerle.Statechart
               st_node
           | _ => null
         }
+          
+        node
       }
-      def top : LGSPNode = Fsm.MapTree(create_nodes);
-      def top = top :> IState;
+      //def top : LGSPNode 
+      _ = Fsm.MapTree(create_nodes);
+      //def top = top :> IState;
       
       max_id = StateNode.GetMaxId();
 
@@ -511,11 +537,13 @@ namespace Nemerle.Statechart
       
 
       //graph_actions.FindQualifiedNode.Apply(proc_env, p, sub, ref res)
-      foreach (node in Fsm.GetPreOrderEnumerable())
+      foreach (node in map)
+      {
+        def src = node.Value;
+        match (node.Key)
         {
           | StateNode.State(transitions = tran) as st => 
               
-              def src = map[node];
               //def parent = ParentOf(src);//{mutable res; if (graph_actions.ParentOf.Apply(proc_env, src, ref res)) res else null }
               match (st.parent)
               {
@@ -531,47 +559,31 @@ namespace Nemerle.Statechart
                // create all transition edges between state and targets
               foreach (tr in tran)
               {
-                CreateTransition(src, tr, tran_type.State)
+                CreateTransition(src, tr, TranType.State)
               }
               
               
-              foreach (p in st.pseudo_states)
+          | PseudoState(p) => 
+              match (p)
               {
-                def src = map[p];
-                match (p.node)
-                {
-                  | EntryPoint(tran = t)
-                  | ExitPoint(tran = Some(t))
-                  | History(default = Some(t)) => CreateTransition(src, t, tran_type.Pseudo)
-                  | Junction as j              => ConnectJunction(j, src)
-                  | Join as j                  => // for each of source   
-                                                  foreach (from in j.sources)
-                                                  {
-                                                    // search for node of source path 
-                                                    def from = match (FindQualifed(from.Parts, null))
-                                                    {
-                                                      // not found create unresolved
-                                                      | null => graph.CreateNodeUnresolved |> create_named(_, from.FullName)
-                                                      | node => node
-                                                    }
-                                                    // create edge from source to this Join node
-                                                    _ = graph.CreateEdgeTransition(from :> LGSPNode, src)
-                                                  }
+                | EntryPoint(tran = t)
+                | ExitPoint(tran = Some(t))
+                | History(default = Some(t)) => CreateTransition(src, t, TranType.Pseudo)
+                | Junction as j              => ConnectJunction(j, src)
+                | Join as j                  => ConnectJoin(j, src);
+                                                // create edge from join to target
+                                                CreateTransition(src, j.tran, TranType.State);
                                                   
-                                                  // create edge from join to target
-                                                  CreateTransition(src, j.tran, tran_type.State);
+                | Initial(tran = t)          => foreach (tr in t)
+                                                {
+                                                  CreateTransition(src, tr, TranType.Pseudo)
+                                                }
                                                   
-                  | Initial(tran = t)          => foreach (tr in t)
-                                                  {
-                                                    CreateTransition(src, tr, tran_type.Pseudo)
-                                                  }
-                                                  
-                  //| Fork as f                 => f.target.Map(GetTarget(src, ))
-                }
+                | _                         => ()    
               }
-              
           | _ => ()
         }
+      }
       GRSExport.Export(graph, $"$(Name).grs");
       //def state = 
       //graph.CreateNodeState(Fsm.st);
