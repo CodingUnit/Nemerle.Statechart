@@ -174,7 +174,7 @@ namespace Nemerle.Statechart
       PrintTree(tree, _.sub_states, print, file)
     }
 
-    //map : Hashtable[StateNode, LGSPNode] = Hashtable();
+    map : Hashtable[StateNode, LGSPNode] = Hashtable();
     mutable graph_actions : rootActions;
     mutable proc_env : LGSPGraphProcessingEnvironment;
 
@@ -460,6 +460,7 @@ namespace Nemerle.Statechart
       3) For all states, create transition edges from states to targets
       */
       def list_nodes = List();
+      def states = Fsm.GetPostOrderEnumerable().MapLazyFiltered(x => if (x is StateNode.State as x) (true, x) else (false, null)).ToArray();
       // check all states and create state nodes and substate relation edge
       def create_nodes(x, childs)
       {
@@ -470,15 +471,15 @@ namespace Nemerle.Statechart
               def n = n ?? Name;
               def name = create_name(n);
               def st_node = graph.CreateNodeState(name); // create graph node
-              def st_id = x.Id;
+              def st_id = get_id();
               st_node.name = n;
               st_node.id = st_id;
-              list_nodes.Add((x, st_node));
+              map[x] = st_node;
               _ = graph.CreateEdgeTopState(st_node, childs.First()); // link it to sub state through edge for each substate
               st_node
           | State(name = n, type = t) as st => 
               def name = create_name(n);
-              def st_id = st.Id;
+              def st_id = get_id();
               def st_node = match (t)
                             {
                               | SubRegion
@@ -489,31 +490,37 @@ namespace Nemerle.Statechart
                                                    childs.Iter(x => _ = graph.CreateEdgeRegion(node, x));
                                                    node
                               | Final           => graph.CreateNodeFinalState();
-                              | SubMachine(t, u) => def node = graph.CreateNodeSubMachineState(name);
-                                                    if (u)
+                              | SubMachine(t, u) => if (u)
                                                     {
+                                                      match (states.Find(x => x.name == t))
+                                                      {
+                                                        | Some(s) => null
+                                                        | _       => null
+                                                      }
                                                     } else
-                                                    when (LoadedMachines.Values.Find(x => x.name == t) is Some(loaded))
+                                                    if (LoadedMachines.Values.Find(x => x.name == t) is Some(loaded))
                                                     {
                                                         //def map = StateMap.CreateSub(analyser, loaded.state);
                                                         //def state = map.state_tree;
                                                         //state.AllStates.Iter(x => _ = Bind(x));
                                                         //Instantiate(st, state, i);
-                                                        def instance = loaded.MapTree(create_nodes);
-                                                        _ = graph.CreateEdgeSubMachineInstance(node, instance);
+                                                        //def node = graph.CreateNodeState(name);
+                                                        def st = st.Instantiate(loaded.state);
+                                                        st.MapTree(create_nodes);
+                                                    } else 
+                                                    {
+                                                      null
                                                     }
-                                                   
-                                                   node
                             }
               when (st_node is INamedNode as s) s.name = n;
               when (st_node is IState as s) s.id = st_id;              
               def st_node = st_node :> LGSPNode;
-              list_nodes.Add((x, st_node));
+              map[x] = st_node;
               // link it to sub state through edge for each substate
 
               foreach (p in st.pseudo_states)
               {
-                def st_id = p.Id;
+                def st_id = get_id();
                 def node = match (p.node)
                 {
                   | PseudoStateModelNode.EntryPoint as e        => create_named(graph.CreateNodeEntryPoint, e.name)// entry point needs transition pass
