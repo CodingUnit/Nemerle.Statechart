@@ -174,7 +174,7 @@ namespace Nemerle.Statechart
       PrintTree(tree, _.sub_states, print, file)
     }
 
-    map : Hashtable[StateNode, LGSPNode] = Hashtable();
+    //map : Hashtable[StateNode, LGSPNode] = Hashtable();
     mutable graph_actions : rootActions;
     mutable proc_env : LGSPGraphProcessingEnvironment;
 
@@ -459,6 +459,7 @@ namespace Nemerle.Statechart
       2) For all states, get all pseudo states and create edges connecting them
       3) For all states, create transition edges from states to targets
       */
+      def list_nodes = List();
       // check all states and create state nodes and substate relation edge
       def create_nodes(x, childs)
       {
@@ -472,7 +473,7 @@ namespace Nemerle.Statechart
               def st_id = x.Id;
               st_node.name = n;
               st_node.id = st_id;
-              map[x] = st_node;
+              list_nodes.Add((x, st_node));
               _ = graph.CreateEdgeTopState(st_node, childs.First()); // link it to sub state through edge for each substate
               st_node
           | State(name = n, type = t) as st => 
@@ -488,14 +489,26 @@ namespace Nemerle.Statechart
                                                    childs.Iter(x => _ = graph.CreateEdgeRegion(node, x));
                                                    node
                               | Final           => graph.CreateNodeFinalState();
-                              | SubMachine      => def node = graph.CreateNodeSubMachineState(name);
-                                                   childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
+                              | SubMachine(t, u) => def node = graph.CreateNodeSubMachineState(name);
+                                                    if (u)
+                                                    {
+                                                    } else
+                                                    when (LoadedMachines.Values.Find(x => x.name == t) is Some(loaded))
+                                                    {
+                                                        //def map = StateMap.CreateSub(analyser, loaded.state);
+                                                        //def state = map.state_tree;
+                                                        //state.AllStates.Iter(x => _ = Bind(x));
+                                                        //Instantiate(st, state, i);
+                                                        def instance = loaded.MapTree(create_nodes);
+                                                        _ = graph.CreateEdgeSubMachineInstance(node, instance);
+                                                    }
+                                                   
                                                    node
                             }
               when (st_node is INamedNode as s) s.name = n;
               when (st_node is IState as s) s.id = st_id;              
               def st_node = st_node :> LGSPNode;
-              map[st] = st_node;
+              list_nodes.Add((x, st_node));
               // link it to sub state through edge for each substate
 
               foreach (p in st.pseudo_states)
@@ -518,7 +531,7 @@ namespace Nemerle.Statechart
                 }
                 when (node is IPseudoState as p) p.id = st_id;
                 def node = node :> LGSPNode;
-                map[p] = node;
+                list_nodes.Add((x, node));
                 _ = graph.CreateEdgeContains(st_node, node);
               }
               st_node
@@ -534,34 +547,35 @@ namespace Nemerle.Statechart
       max_id = StateNode.GetMaxId();
 
       //def get_id() { def m = max_id; max_id++; m}
+      // create parent edges
+      foreach (node in Fsm.GetPreOrderEnumerable())
+      {
+        | StateNode.State(parent = Some(p)) => 
+              
+            def src = map[node];
+            def parent =  match (find_named(p))
+                          {
+                            | null => graph.CreateNodeUnresolved |> create_named(_, p)
+                            | p    => p
+                          }
+            _ = graph.CreateEdgeParent(src, parent :> LGSPNode)
+        | _ => ()
+      }
       
-
-      //graph_actions.FindQualifiedNode.Apply(proc_env, p, sub, ref res)
+      //_ = graph_actions.MoveSubstateToParent.Apply(proc_env);           
+        
       foreach (node in map)
       {
         def src = node.Value;
         match (node.Key)
         {
-          | StateNode.State(transitions = tran) as st => 
-              
-              //def parent = ParentOf(src);//{mutable res; if (graph_actions.ParentOf.Apply(proc_env, src, ref res)) res else null }
-              match (st.parent)
-              {
-                | Some(p) => def parent = match (find_named(p))
-                             {
-                               | null => graph.CreateNodeUnresolved |> create_named(_, p)
-                               | p    => p
-                             }
-                              _ = graph.CreateEdgeParent(src, parent :> LGSPNode)
-                | _       => ()
-              }
+          | StateNode.State(transitions = tran) => 
               
                // create all transition edges between state and targets
               foreach (tr in tran)
               {
                 CreateTransition(src, tr, TranType.State)
               }
-              
               
           | PseudoState(p) => 
               match (p)
@@ -595,8 +609,8 @@ namespace Nemerle.Statechart
       {
         CheckParseErrors();
         PrintFsm(Fsm, $"$(Name)_statenode.txt");
-        CreateGraph();
         CreateStateMap();
+        CreateGraph();
         when (FsmFlags.Logging) PrintFsmState(TopState, $"$(Name)_after_created.txt");
         CheckHistoryStates(); // check for errors in history
         CheckTransitions();
