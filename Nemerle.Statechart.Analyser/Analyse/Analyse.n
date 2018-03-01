@@ -560,14 +560,16 @@ namespace Nemerle.Statechart
         def st = node.Key;
         when (st is StateNode.State(parent = Some(p)))
         {
-            def parent = match (find_named(p))
-                         {
-                           | null => graph.CreateNodeUnresolved |> create_named(_, p)
-                           | p    => p
-                         }
-            _ = graph.CreateEdgeParent(src, parent :> LGSPNode)
+            _ = match (find_named(p))
+            {
+              | null => def node = graph.CreateNodeUnresolved |> create_named(_, p);
+                        graph.CreateEdgeParent(src, node :> LGSPNode);
+              | p    => graph.CreateEdgeSubstate(p :> LGSPNode, src)
+            }
+            
         }
       }
+      
       
       //_ = graph_actions.MoveSubstateToParent.ApplyStar(proc_env);
         
@@ -605,6 +607,28 @@ namespace Nemerle.Statechart
                 | _                         => ()    
               }
           | _ => ()
+        }
+      }
+      
+      foreach (node in map)
+      {
+        def src = node.Value;
+        def st = node.Key;
+        when (st is StateNode.State(type = StateType.SubMachine(_, true), name = n))
+        {
+            match (find_named(n))
+            {
+              | null => def node = graph.CreateNodeUnresolved |> create_named(_, n);
+                        _ = graph.CreateEdgeEdge(src, node :> LGSPNode);
+              | p    => def nodes = GraphHelper.ReachableOutgoing(p, Contains.TypeInstance, Node.TypeInstance);
+                        //def ngraph = ngraph.Clone("1");
+                        //def n = p.GetCompatibleIncoming(Contains.TypeInstance).First();
+                        def node = GraphHelper.InsertInduced(nodes, p, graph);
+                        //GraphHelper.Insert(ngraph, graph);
+                        //_ = graph.CreateEdgeContains(ParentOf(src) :> LGSPNode, node :> LGSPNode);
+                        
+            }
+            
         }
       }
       GRSExport.Export(graph, $"$(Name).grs");
