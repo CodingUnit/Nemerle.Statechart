@@ -229,17 +229,47 @@ test FindNamed(var name : string) : (NamedNode)
   return (t);
 }
 
-rule InstanceSubMachines()
+// resolve unresolved nodes
+rule TryResolveNames()
 {
-  parent:Node -e:Contains-> st:SubMachineState;
-  submachine : State;
+  st:Node -n:Edge-> not_resolved:Unresolved; // node that points to unresolved
+  resolved:NamedNode; // contain resolved node
+  hom(st, not_resolved);
   
-  if { st.name == submachine.name; }
+  if {not_resolved.name == resolved.name;} // with name that equal unresolved
   
   modify
   {
+	delete(not_resolved); // delete unresolved
+	st -:copy<n>-> resolved; // create edge to resolved
+  }
+}
+
+rule InstanceSubMachines()
+{
+  st:SubMachineState;
+  submachine : State;
+  
+  
+  if { st.name == submachine.name; }
+  
+  
+	
+  modify
+  {
+	//def res : Node;
+    eval
+    {
+	  def ref nodes : set<Node> = reachableOutgoing(submachine, Contains, Node);
+	  emitdebug("nodes:", nodes);
+	  emitdebug("sub:", submachine);
+	  (def instance : Node) = insertInduced(nodes, submachine);
+	  merge(instance, st);
+	  //yield res = instance;
+	}
+	
     //delete(st);
-	parent -e-> nst:typeof(submachine)<st>;
+	//:typeof(submachine)<res, st>;
     //parent -:Contains-> nst:copy<submachine>;
   }
 }
