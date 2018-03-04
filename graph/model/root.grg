@@ -4,9 +4,22 @@
 #using "StateMachine.gm"
 
 /*
-rule FindOrCreate(parent : StateMachineNode, type : StateMachineNode) : (StateMachineNode)
+rule FindOrCreate(parent : Node, type : Node) : (Node)
 {
-  def n:StateMachineNode;
+  
+  
+  
+  
+  modify
+  {	
+    def n:StateMachineNode;
+	:FindOrCreate(parent, type, yield n);	
+	return (n);
+  }
+}
+
+pattern FindOrCreate(parent : Node, type : Node, def ret : Node)
+{    
   alternative
   {
     found
@@ -15,8 +28,8 @@ rule FindOrCreate(parent : StateMachineNode, type : StateMachineNode) : (StateMa
 	  hom(parent, t);
 	  modify
 	  {
-		  yield (n = t);
-      }
+		eval { yield ret = t; }
+	  }
 	}
 	not_found
 	{
@@ -28,28 +41,11 @@ rule FindOrCreate(parent : StateMachineNode, type : StateMachineNode) : (StateMa
 	  modify
 	  {
 		parent -:Contains-> t:typeof(type);
-		eval
-		{
-			yield n = t;
-		}
+		eval { yield ret = t; }
 	  }
 	}
   }
-  // for (n:namednode in nodes(namednode))
-  // {
-    // if (n.name == name) return (n);
-  // }
-  // (def n:namednode) = add(namednode);
-  // return (n);
-  modify
-  {	
-	return (n);
-  }
 }*/
-
-// rule Create(parent : StateMachineNode, name : string, type : StateMachineNode) : StateMachineNode
-// {
-// }
 
 // create final state in parent of this node
 rule CreateFinalState(state : State) : (FinalState)
@@ -119,19 +115,8 @@ rule MoveSubstateToParent()
   modify
   {
     delete(p);
-    parent -:Substate-> state;
+    state <-:Substate- parent;
   }
-}
-
-// find qualified target state.substate or state.pseudo syntax
-test FindQualified(var state : string, var tar : string) : (StateMachineNode)
-{
-  st:State -:Contains-> t:NamedNode;  
-  hom(st, t);  
-  
-  if { nameof(st) == state && t.name == tar;}
-   
-  return (t);  
 }
 
 // find qualified target state.substate or state.pseudo syntax
@@ -214,8 +199,7 @@ pattern HistoryFindRec(state : State, hist : History, def ret : History)
 		{
 			state -:Contains-> h:History; // it does not contain history
 		}
-		
-		
+				
 		:HistoryFindRec(parent, hist, yield ret); // recursive search for history in parent
 	  }
 	}
@@ -245,31 +229,43 @@ rule TryResolveNames()
   }
 }
 
+procedure Replace(src : Node, target : Node)
+{
+	def ref nodes : set<Node> = reachableOutgoing(src, Contains);
+	(def instance : Node) = insertInduced(nodes, src);
+	merge(instance, target);
+	return;
+}
+
+rule InstanceSubMachinesInstance()
+{
+  st:SubMachineState <-e:SubMachineInstance- submachine:StateMachine;
+  
+  submachine -:TopState-> sub_machine_state:State;
+  //if { st.type == submachine.name; }
+  
+  modify
+  {
+    eval
+    {
+	  Replace(sub_machine_state, st);
+	}
+	delete(e);
+  }
+}
+
 rule InstanceSubMachines()
 {
   st:SubMachineState;
   submachine : State;
   
+  if { st.typename == submachine.name; }
   
-  if { st.name == submachine.name; }
-  
-  
-	
   modify
   {
-	//def res : Node;
     eval
     {
-	  def ref nodes : set<Node> = reachableOutgoing(submachine, Contains, Node);
-	  emitdebug("nodes:", nodes);
-	  emitdebug("sub:", submachine);
-	  (def instance : Node) = insertInduced(nodes, submachine);
-	  merge(instance, st);
-	  //yield res = instance;
+	  Replace(submachine, st);	  
 	}
-	
-    //delete(st);
-	//:typeof(submachine)<res, st>;
-    //parent -:Contains-> nst:copy<submachine>;
   }
 }

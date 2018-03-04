@@ -1,1 +1,0 @@
-xcopy *.grs ..\..\graph\model\ /Y

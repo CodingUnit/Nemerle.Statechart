@@ -197,12 +197,12 @@ namespace Nemerle.Statechart
       }
     }
 
-    ParentOf(node : LGSPNode) : IState
+    ParentOf(node : LGSPNode) : IStateMachineNode
     {
-      def nodes = GraphHelper.AdjacentIncoming(node, Contains.TypeInstance, State.TypeInstance);
+      def nodes = GraphHelper.AdjacentIncoming(node, Contains.TypeInstance, NodeType_StateMachineNode.typeVar);
       if (nodes.IsEmpty()) null else
       {
-        nodes.First().Key :> IState
+        nodes.First().Key :> IStateMachineNode
       }
     }
     
@@ -217,16 +217,6 @@ namespace Nemerle.Statechart
     
     create_name(n : string) : string
     {
-      //def loop(n, cntr)
-      //{
-      //  def n = n ?? "";
-      //  def name = $"$n$cntr";
-      //  if (graph.GetNode(name) != null) 
-      //  {
-      //    loop(n, cntr + 1)
-      //  } else name
-      //}
-      
       def str_enum = Enumerable.Range(1, int.MaxValue).Select(x => $"$n$x"); // lazy create names with number
       def it = ListUtils.SingleElement(n ?? "").Concat(str_enum); // create enumeration with normal name and with numbers
       it.First(x => graph.GetNode(x) == null) // find first than not exist in graph
@@ -241,19 +231,19 @@ namespace Nemerle.Statechart
       //set_name = (n : INamedNode, name) => {n.name = name; n;}
     }
       
-    create_node(n : string, parent : IState, func : string -> INamedNode) : INamedNode
+    create_node(n : string, parent : LGSPNode, func : string -> INamedNode) : INamedNode
     {
       def node = func(n);
       node.name = n;
-      _ = graph.CreateEdgeContains(parent :> LGSPNode, node :> LGSPNode);
+      _ = graph.CreateEdgeContains(parent, node :> LGSPNode);
       node.id = get_id();
       node
     }
 
-    create_node2(n : string, parent : IState, func : string -> IStateMachineNode) : IStateMachineNode
+    create_node2(n : string, parent : LGSPNode, func : string -> IStateMachineNode) : IStateMachineNode
     {
       def node = func(n);
-      _ = graph.CreateEdgeContains(parent :> LGSPNode, node :> LGSPNode);
+      _ = graph.CreateEdgeContains(parent, node :> LGSPNode);
       node.id = get_id();
       node
     }
@@ -277,7 +267,7 @@ namespace Nemerle.Statechart
                                 | JunctionType.Junction => graph.CreateNodeJunction
                                 | JunctionType.Merge    => graph.CreateNodeMerge
                               }
-                              def node = create_node(PseudoStateNode.Junction.GetUnnamedName(this, t), parent, func);
+                              def node = create_node(PseudoStateNode.Junction.GetUnnamedName(this, t), parent :> LGSPNode, func);
                               ConnectJunction(j, node :> LGSPNode); // connect junction targets
                               node
           | PseudoState(Join(name = n))
@@ -316,7 +306,7 @@ namespace Nemerle.Statechart
                                          graph.CreateNodeUnknown(create_name($"History$t"))
                                        }
                                        
-                | Fork as f         => def node = create_node2(create_name("Fork"), parent, graph.CreateNodeFork);
+                | Fork as f         => def node = create_node2(create_name("Fork"), parent :> LGSPNode, graph.CreateNodeFork);
                                        def target = f.target.Map(GetTarget(src, _)); // get target nodes of fork
                                        foreach (t in target) // for each target
                                        {
@@ -424,6 +414,7 @@ namespace Nemerle.Statechart
           def tran = graph.CreateEdgePseudoTransition(src, target); // create edge
           tran.guard = n.guard.ToString(); // set guard and actions
           tran.action = n.action.MapDefault(_.ToString(), "");
+          tran.out_str = n.ExecStr;
         }
         match (n.to) // go further
         {
@@ -474,8 +465,15 @@ namespace Nemerle.Statechart
           | _                            => x
         }
       }
-      //map_st = List();//Enumerable.Range(0, states.Length).Map(_ => null));
-      def fsm = Fsm.Reduce(create_id);
+      
+      def prepare(fsm)
+      {
+        def fsm = fsm.Reduce(create_id) :> StateNode.StateMachine;
+        def fsm = fsm.ChangeState(fsm.state.ChangeName($"TopState$(fsm.name)"));
+        fsm
+      }
+      
+      def fsm = Fsm |> prepare;
       // check all states and create state nodes and substate relation edge
       def create_nodes(x, childs)
       {
@@ -485,13 +483,14 @@ namespace Nemerle.Statechart
           | StateNode.StateMachine(name = n) => 
               def n = n ?? Name;
               def name = create_name(n);
-              def st_node = graph.CreateNodeState(name); // create graph node
+              def node = graph.CreateNodeStateMachine(name); // create graph node
               def st_id = x.Id;
-              st_node.name = n;
-              st_node.id = st_id;
-              map[x] = st_node;
-              _ = graph.CreateEdgeTopState(st_node, childs.First()); // link it to sub state through edge for each substate
-              st_node
+              node.name = n;
+              node.id = st_id;
+              map[x] = node;
+              def state =  childs.First() :> IState;
+              _ = graph.CreateEdgeTopState(node, state :> LGSPNode); // link it to sub state through edge for each substate
+              node
           | State(name = n, type = t, parent = p) as st => 
               def name = create_name(n);
               def st_id = st.Id;
@@ -510,16 +509,29 @@ namespace Nemerle.Statechart
                                                    }
                                                    node
                               | Final           => graph.CreateNodeFinalState();
-                              | SubMachine(null, _)  => graph.CreateNodeSubMachineState(name);
+                              | SubMachine(null, _) => def node = (graph.CreateNodeSubMachineState |> create_named(_, name)) :> ISubMachineState;
+                                                        node.typename = n;
+                                                        node
                               | SubMachine(t, _) => match (LoadedMachines.Values.Find(x => x.name == t))
-                                                        {
-                                                          | Some(sub) => def instance = st.Instantiate(sub.state);
-                                                                         def instance = instance.Reduce(create_id); // new id for each tree element
-                                                                         instance.MapTree(create_nodes);
-                                                          | _         => def node = graph.CreateNodeUnresolvedSubMachine(name); // type
-                                                                         node.type = t;
-                                                                         node
-                                                        }
+                                                    {
+                                                      | Some(sub) => def machines = graph.GetExactNodes(StateMachine.TypeInstance).Select(_ :> StateMachine);
+                                                                     def sub = match (machines.Find(x => x.name == t))
+                                                                               {
+                                                                                 | None    => def instance = prepare(sub); // new id for each tree element
+                                                                                              instance.MapTree(create_nodes)
+                                                                                 | Some(p) => p
+                                                                               }
+                                                                     def node = match (graph.CreateNodeSubMachineState |> create_named(_, name))
+                                                                                {
+                                                                                  | ISubMachineState as st => st.typename = t; st
+                                                                                  | x                      => x                      
+                                                                                }
+                                                                     _ = graph.CreateEdgeSubMachineInstance(sub, node :> LGSPNode);
+                                                                     node
+                                                      | _         => def node = graph.CreateNodeUnresolvedSubMachine(name); // type
+                                                                     node.typename = t;
+                                                                     node
+                                                    }
                               
                             }
                             
@@ -557,7 +569,7 @@ namespace Nemerle.Statechart
                 }
                 when (node is IPseudoState as p) p.id = st_id;
                 def node = node :> LGSPNode;
-                map[x] = st_node;
+                map[p] = node;
                 
                 _ = graph.CreateEdgeContains(st_node, node);
               }
@@ -624,7 +636,7 @@ namespace Nemerle.Statechart
                                                   CreateTransition(src, tr, TranType.Pseudo)
                                                 }
                                                   
-                | _                          => ()    
+                | _                          => ()
               }
           | _ => ()
         }
