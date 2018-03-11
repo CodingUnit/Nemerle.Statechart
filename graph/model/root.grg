@@ -6,20 +6,6 @@
 /*
 rule FindOrCreate(parent : Node, type : Node) : (Node)
 {
-  
-  
-  
-  
-  modify
-  {	
-    def n:StateMachineNode;
-	:FindOrCreate(parent, type, yield n);	
-	return (n);
-  }
-}
-
-pattern FindOrCreate(parent : Node, type : Node, def ret : Node)
-{    
   alternative
   {
     found
@@ -45,6 +31,20 @@ pattern FindOrCreate(parent : Node, type : Node, def ret : Node)
 	  }
 	}
   }
+  
+  
+  
+  modify
+  {	
+    def n:StateMachineNode;
+	:FindOrCreate(parent, type, yield n);	
+	return (n);
+  }
+}
+
+pattern FindOrCreate(parent : Node, type : Node, def ret : Node)
+{    
+  
 }*/
 
 // create final state in parent of this node
@@ -121,27 +121,35 @@ rule MoveSubstateToParent()
 
 // find qualified target state.substate or state.pseudo syntax
 test FindQualifiedPath(ref tar : array<string>) : (StateMachineNode)
-{
-  st:State;    
+{  
   def n:StateMachineNode;  
-  
-  if { st.name == tar[0]; }  
-  yield { yield n = st; }
-  :QualifiedRec(st, tar, 1, yield n);  
+  st : NamedNode;
+  :QualifiedRec(st, tar, 0, yield n);  
   return (n);
 }
 
 pattern QualifiedRec(state : NamedNode, ref tar : array<string>, var idx : int, def ret : StateMachineNode)
 {
 	alternative
-	{
+	{	   
+	    first
+		{
+		  st:State; 
+		  if { idx == 0; }
+          if { st.name == tar[0]; }
+		  
+		  yield
+   		  {
+			yield ret = t;
+		  }
+		  :QualifiedRec(st, tar, 1, yield ret);  
+		}
 		next
 	    {
 			negative
 			{
-				if {idx == tar.size();}
+			   if {idx == 0 || idx == tar.size();}
 			}
-		
 			state -:Contains-> t:NamedNode;
 			
 			if { t.name == tar[idx];}
@@ -215,17 +223,66 @@ test FindNamed(var name : string) : (NamedNode)
 
 // resolve unresolved nodes
 rule TryResolveNames()
-{
-  st:Node -n:Edge-> not_resolved:Unresolved; // node that points to unresolved
-  resolved:NamedNode; // contain resolved node
-  hom(st, not_resolved);
-  
-  if {not_resolved.name == resolved.name;} // with name that equal unresolved
-  
-  modify
+{  
+  alternative
   {
-	delete(not_resolved); // delete unresolved
-	st -:copy<n>-> resolved; // create edge to resolved
+    forward
+	{
+		resolved:NamedNode; // contain resolved node
+		st:Node -n:Edge-> not_resolved:Unresolved; // node that points to unresolved
+		hom(st, not_resolved);
+		
+		negative
+		{
+			if { not_resolved.name.indexOf(".") != -1; } // with name that equal unresolved
+		}
+		if {not_resolved.name == resolved.name;} // with name that equal unresolved
+		
+		modify
+		{
+			st -:copy<n>-> resolved; // create edge to resolved
+			delete(not_resolved);    // delete unresolved
+		}
+	}
+	back
+	{
+		resolved:NamedNode; // contain resolved node
+		st:Node <-n:Edge- not_resolved:Unresolved; // node that points to unresolved
+		hom(st, not_resolved);
+		negative
+		{
+			if { not_resolved.name.indexOf(".") != -1; } // with name that equal unresolved
+		}
+		if {not_resolved.name == resolved.name;} // with name that equal unresolved
+		
+		modify
+		{
+			st <-:copy<n>- resolved; // create edge to resolved
+			delete(not_resolved); // delete unresolved	
+		}
+	}
+	qualified
+	{
+	   //var ref path : array<string>;	   
+	   
+	   st:Node -n:Edge-> not_resolved:Unresolved; // node that points to unresolved
+	   hom(st, not_resolved);
+	   
+	   if { not_resolved.name.indexOf(".") != -1; } // with name that equal unresolved
+	   //yield { yield path = not_resolved.name.asArray("."); }
+	  	
+       def res:StateMachineNode;		
+	   :QualifiedRec(not_resolved, not_resolved.name.asArray("."), 0, yield res);
+			
+	   modify
+	   {
+	        //def resolved1:Node; // contain resolved node
+			//exec( (r) = FindQualifiedPath(path) ;> yield resolved1 = r );			
+			
+			st -:copy<n>-> res; // create edge to resolved
+			delete(not_resolved); // delete unresolved	
+	   }
+	}
   }
 }
 
@@ -237,35 +294,116 @@ procedure Replace(src : Node, target : Node)
 	return;
 }
 
+procedure Delete(src : Node)
+{
+	def ref nodes : set<Node> = reachableOutgoing(src, Contains);
+	//emitdebug(nodes);
+	for (n:Node in nodes)
+	{
+		rem(n);
+	}
+	rem(src);
+	return;
+}
+
+/*
 rule InstanceSubMachinesInstance()
 {
-  st:SubMachineState <-e:SubMachineInstance- submachine:StateMachine;
-  
-  submachine -:TopState-> sub_machine_state:State;
+  sub_machine_state:State -e:SubMachineInstance-> st:SubMachineState;
+  //submachine 		      -:TopState-> sub_machine_state:State;
+  //def sub_machine_state : State;
   //if { st.type == submachine.name; }
   
+  alternative
+  {
+    normal
+	{	
+	  st 				 <-:SubMachineInstance- submachine;	
+	  :SubMachineState   <-:SubMachineInstance- submachine;	  
+	  	
+      modify
+      {
+	  }	  
+	}
+    last
+	{	  
+	  
+	  negative
+	  {
+	    st 				 <-:SubMachineInstance- submachine;
+		:SubMachineState <-:SubMachineInstance- submachine;
+	  }
+	  
+	  modify
+	  {		
+	    delete(submachine);
+	  }
+	}
+  }  
+    
   modify
   {
-    eval
-    {
+	eval
+	{
 	  Replace(sub_machine_state, st);
 	}
 	delete(e);
   }
+}*/
+
+rule MarkSubMachines()
+{
+	st:SubMachineState;
+	submachine_type : State \ SubMachineState;
+	if { st.typename == submachine_type.name; }
+	
+    negative
+	{
+		submachine_type -:SubMachineInstance-> st;
+	}
+	
+	modify
+    {
+		submachine_type -:SubMachineInstance-> st;
+	}
 }
 
 rule InstanceSubMachines()
 {
-  st:SubMachineState;
-  submachine_type : State \ SubMachineState;
-  
-  if { st.typename == submachine_type.name; }
+  submachine_type:State -e:SubMachineInstance-> st:SubMachineState;
+	    
+  def var name : string;  
+  yield { yield name = st.name; }
   
   modify
   {
-    eval
-    {
+    
+    eval { emitdebug(name); }
+	eval
+	{
 	  Replace(submachine_type, st);	  
+	  st.name = name;
+	}	
+  }
+}
+
+rule DeleteSubMachineTypes()
+{
+  submachine:State;
+  
+  multiple
+  {
+    submachine -e:SubMachineInstance->;
+	
+	modify
+	{
+	  
 	}
+  }
+  
+  modify
+  {
+    eval { Delete(submachine); }
+	//delete(submachine_type);
   }
 }

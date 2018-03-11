@@ -469,11 +469,12 @@ namespace Nemerle.Statechart
       def prepare(fsm)
       {
         def fsm = fsm.Reduce(create_id) :> StateNode.StateMachine;
-        def fsm = fsm.ChangeState(fsm.state.ChangeName($"TopState$(fsm.name)"));
+        //def fsm = fsm.ChangeState(fsm.state.ChangeName($"TopState$(fsm.name)"));
         fsm
       }
       
       def fsm = Fsm |> prepare;
+      def machines = HashSet();
       // check all states and create state nodes and substate relation edge
       def create_nodes(x, childs)
       {
@@ -510,28 +511,31 @@ namespace Nemerle.Statechart
                                                    node
                               | Final           => graph.CreateNodeFinalState();
                               | SubMachine(null, _) => def node = (graph.CreateNodeSubMachineState |> create_named(_, name)) :> ISubMachineState;
-                                                        node.typename = n;
-                                                        node
-                              | SubMachine(t, _) => match (LoadedMachines.Values.Find(x => x.name == t))
+                                                       node.typename = n;
+                                                       node
+                              | SubMachine(t, _) =>  //def machines = graph.GetExactNodes(StateMachine.TypeInstance).Select(_ :> StateMachine);
+                                                    _ = machines.Add(t);
+                                                                    //{
+                                                                    //  machines[t]
+                                                                    //  //| None    => def instance = prepare(sub); // new id for each tree element
+                                                                    //  //             instance.MapTree(create_nodes)
+                                                                    //  //| Some(p) => p
+                                                                    //} else
+                                                          //{
+                                                          //  def instance = prepare(sub); // new id for each tree element
+                                                          //  def node = instance.MapTree(create_nodes);
+                                                          //  machines[t] = node;
+                                                          //  node
+                                                          //}
+                                                    //def sub = graph.CreateNodeUnresolved |> create_named(_, t);
+                                                    match (graph.CreateNodeSubMachineState |> create_named(_, name))
                                                     {
-                                                      | Some(sub) => def machines = graph.GetExactNodes(StateMachine.TypeInstance).Select(_ :> StateMachine);
-                                                                     def sub = match (machines.Find(x => x.name == t))
-                                                                               {
-                                                                                 | None    => def instance = prepare(sub); // new id for each tree element
-                                                                                              instance.MapTree(create_nodes)
-                                                                                 | Some(p) => p
-                                                                               }
-                                                                     def node = match (graph.CreateNodeSubMachineState |> create_named(_, name))
-                                                                                {
-                                                                                  | ISubMachineState as st => st.typename = t; st
-                                                                                  | x                      => x                      
-                                                                                }
-                                                                     _ = graph.CreateEdgeSubMachineInstance(sub, node :> LGSPNode);
-                                                                     node
-                                                      | _         => def node = graph.CreateNodeUnresolvedSubMachine(name); // type
-                                                                     node.typename = t;
-                                                                     node
+                                                      | ISubMachineState as st => st.typename = t; st
+                                                      | x                      => x                      
                                                     }
+                                                    //_ = graph.CreateEdgeSubMachineInstance(sub :> LGSPNode, node :> LGSPNode);
+                                                     
+                                                    
                               
                             }
                             
@@ -581,6 +585,23 @@ namespace Nemerle.Statechart
       }
       //def top : LGSPNode 
       _ = fsm.MapTree(create_nodes);
+      
+      // create sub machines types in graph
+      foreach (m in machines)
+      {
+        match (LoadedMachines.Values.Find(x => x.name == m))
+        {
+          | Some(sub) => def instance = prepare(sub); // new id for each tree element
+                         def st = instance.state.ChangeName(m);
+                         _ = st.MapTree(create_nodes);
+          | _         => def node = graph.CreateNodeUnresolvedSubMachine |> create_named(_, m); // type
+                         when (node is UnresolvedSubMachine as n)
+                         {
+                            n.typename = m;
+                         }
+        }
+      }
+      
       //def top = top :> IState;
       
       //_ = graph_actions.TryResolveNames.ApplyStar(proc_env);
