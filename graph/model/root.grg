@@ -123,8 +123,8 @@ rule MoveSubstateToParent()
 test FindQualifiedPath(ref tar : array<string>) : (StateMachineNode)
 {  
   def n:StateMachineNode;  
-  st : NamedNode;
-  :QualifiedRec(st, tar, 0, yield n);  
+  
+  :QualifiedRec(null, tar, 0, yield n);  
   return (n);
 }
 
@@ -132,36 +132,28 @@ pattern QualifiedRec(state : NamedNode, ref tar : array<string>, var idx : int, 
 {
 	alternative
 	{	   
-	    first
+	    first // first entry
 		{
-		  st:State; 
-		  if { idx == 0; }
-          if { st.name == tar[0]; }
-		  
-		  yield
-   		  {
-			yield ret = t;
-		  }
-		  :QualifiedRec(st, tar, 1, yield ret);  
+		    st:NamedNode; // search for named node
+		    if { idx == 0; } // at index 0 of path
+            if { st.name == tar[0]; } // name equal to this first name		  
+		    :QualifiedRec(st, tar, 1, yield ret);  // recursive call next index with that node
 		}
 		next
 	    {
 			negative
 			{
-			   if {idx == 0 || idx == tar.size();}
+			   if {idx == 0 || idx == tar.size();} // is not at 0 index or at end of array
 			}
-			state -:Contains-> t:NamedNode;
+			state -:Contains-> t:NamedNode; // find named node contained in state
+			if { t.name == tar[idx];} // if name of this child equal current path at index
 			
-			if { t.name == tar[idx];}
-			yield
-			{
-				yield ret = t;
-			}	
-		    :QualifiedRec(t, tar, idx + 1, yield ret);
+		    :QualifiedRec(t, tar, idx + 1, yield ret); // recursive search for path at next index
 	    }
 	    end
 	    {
-			if {idx == tar.size();}         
+			if {idx == tar.size();}        // index at end of array 
+			yield { yield ret = state; } // yield result
 	    }	   
 	}
 }
@@ -175,12 +167,52 @@ test FindQualifiedType(state : State, tar : StateMachineNode) : (StateMachineNod
 }
 
 // find qualified target state.substate or state.pseudo syntax
-test FindHistory(state : State, hist : History) : (History)
+test FindHistory(state : State, hist : History) : (StateMachineNode)
 {
-  def ret : History;
+  def ret : StateMachineNode;
   
-  :HistoryFindRec(state, hist, yield ret);
-  return(ret);    
+  :FindRecHierarchy(state, hist, null, yield ret);
+  return (ret);    
+}
+
+pattern FindRecHierarchy(state : State, type : StateMachineNode, var name : string, def ret : StateMachineNode)
+{
+	alternative
+	{
+	  found_hist
+	  {
+	    state -:Contains-> h:History; // search for history in state
+		
+		if {typeof(type) >= History;}
+		if {typeof(h) >= typeof(type);} // if type is above or equal to external type
+		
+		yield { yield ret = h; } // yield to output
+		
+	  }
+	  found
+	  {
+		negative
+		{
+			if {typeof(type) >= History;}
+		}
+		state -:Contains-> n:NamedNode; // search for history in state
+		if {typeof(n) == typeof(type);}
+		if {n.name == name;}
+		//if {typeof(n) >= typeof(hist);} // if type is above or equal to external type
+		
+		yield { yield ret = n; } // yield to output 
+	  }
+	  not_found
+	  {
+	    parent:State -:Contains-> state; // get parent of state	    
+			
+		negative
+		{
+		  state -:Contains-> n:typeof(type); // search for history in state
+		}
+		:FindRecHierarchy(parent, type, name, yield ret); // recursive search for history in parent
+	  }
+	}
 }
 
 pattern HistoryFindRec(state : State, hist : History, def ret : History)
@@ -221,6 +253,16 @@ test FindNamed(var name : string) : (NamedNode)
   return (t);
 }
 
+// find qualified target state.substate or state.pseudo syntax
+test FindNamedHierarchy(st : State, type : StateMachineNode, var name : string) : (StateMachineNode)
+{
+  def t:StateMachineNode;  
+  
+  //if { t.name == name; }   
+  :FindRecHierarchy(st, type, name, yield t);
+  return (t);
+}
+
 // resolve unresolved nodes
 rule TryResolveNames()
 {  
@@ -234,14 +276,14 @@ rule TryResolveNames()
 		
 		negative
 		{
-			if { not_resolved.name.indexOf(".") != -1; } // with name that equal unresolved
+			if { not_resolved.name.indexOf(".") != -1; } // it is not qualified
 		}
 		if {not_resolved.name == resolved.name;} // with name that equal unresolved
 		
 		modify
 		{
-			st -:copy<n>-> resolved; // create edge to resolved
-			delete(not_resolved);    // delete unresolved
+			st -:copy<n>-> resolved; // create edge to resolved			
+			delete(not_resolved); // delete unresolved	
 		}
 	}
 	back
@@ -251,34 +293,29 @@ rule TryResolveNames()
 		hom(st, not_resolved);
 		negative
 		{
-			if { not_resolved.name.indexOf(".") != -1; } // with name that equal unresolved
+			if { not_resolved.name.indexOf(".") != -1; } // it is not qualified
 		}
 		if {not_resolved.name == resolved.name;} // with name that equal unresolved
 		
 		modify
 		{
-			st <-:copy<n>- resolved; // create edge to resolved
-			delete(not_resolved); // delete unresolved	
+			st <-:copy<n>- resolved; // create edge to resolved		
+			delete(not_resolved); // delete unresolved				
 		}
 	}
 	qualified
 	{
-	   //var ref path : array<string>;	   
-	   
 	   st:Node -n:Edge-> not_resolved:Unresolved; // node that points to unresolved
 	   hom(st, not_resolved);
 	   
-	   if { not_resolved.name.indexOf(".") != -1; } // with name that equal unresolved
-	   //yield { yield path = not_resolved.name.asArray("."); }
+	   if { not_resolved.name.indexOf(".") != -1; } // if name is path with points eq name.sub.sub
 	  	
-       def res:StateMachineNode;		
-	   :QualifiedRec(not_resolved, not_resolved.name.asArray("."), 0, yield res);
-			
+	   // search for qualified path node, return last node of that path
+       def res:StateMachineNode;			   
+	   :QualifiedRec(null, not_resolved.name.asArray("."), 0, yield res);
+	   
 	   modify
-	   {
-	        //def resolved1:Node; // contain resolved node
-			//exec( (r) = FindQualifiedPath(path) ;> yield resolved1 = r );			
-			
+	   {	        
 			st -:copy<n>-> res; // create edge to resolved
 			delete(not_resolved); // delete unresolved	
 	   }
@@ -286,124 +323,72 @@ rule TryResolveNames()
   }
 }
 
-procedure Replace(src : Node, target : Node)
-{
-	def ref nodes : set<Node> = reachableOutgoing(src, Contains);
-	(def instance : Node) = insertInduced(nodes, src);
-	merge(instance, target);
+// replace target node with source with nested containment
+procedure Replace(src : NamedNode, target : NamedNode)
+{	    
+	(def instance : NamedNode) = insertInduced(reachableOutgoing(src, Contains), src);	 // create sub graph clone contained in src node
+	instance.name = target.name; // set instance name to target
+	merge(instance, target); // merge instance to target
 	return;
 }
 
+// delete node with nested containment
 procedure Delete(src : Node)
 {
-	def ref nodes : set<Node> = reachableOutgoing(src, Contains);
-	//emitdebug(nodes);
-	for (n:Node in nodes)
+	for (n:Node in reachableOutgoing(src, Contains)) // for all contained nodes
 	{
-		rem(n);
+		rem(n); // remove from graph
 	}
-	rem(src);
+	rem(src); // remove root
 	return;
 }
 
-/*
-rule InstanceSubMachinesInstance()
-{
-  sub_machine_state:State -e:SubMachineInstance-> st:SubMachineState;
-  //submachine 		      -:TopState-> sub_machine_state:State;
-  //def sub_machine_state : State;
-  //if { st.type == submachine.name; }
-  
-  alternative
-  {
-    normal
-	{	
-	  st 				 <-:SubMachineInstance- submachine;	
-	  :SubMachineState   <-:SubMachineInstance- submachine;	  
-	  	
-      modify
-      {
-	  }	  
-	}
-    last
-	{	  
-	  
-	  negative
-	  {
-	    st 				 <-:SubMachineInstance- submachine;
-		:SubMachineState <-:SubMachineInstance- submachine;
-	  }
-	  
-	  modify
-	  {		
-	    delete(submachine);
-	  }
-	}
-  }  
-    
-  modify
-  {
-	eval
-	{
-	  Replace(sub_machine_state, st);
-	}
-	delete(e);
-  }
-}*/
-
+// create instance edges for submachines
 rule MarkSubMachines()
 {
-	st:SubMachineState;
-	submachine_type : State \ SubMachineState;
-	if { st.typename == submachine_type.name; }
+	st:SubMachineState; // search for sub machine state
+	submachine_type : State \ SubMachineState; // some state except sub machine
+	if { st.typename == submachine_type.name; } // if typename equals submachine_type name
 	
     negative
 	{
-		submachine_type -:SubMachineInstance-> st;
+		submachine_type -:SubMachineInstance-> st; // not contained instance edge
 	}
 	
 	modify
     {
-		submachine_type -:SubMachineInstance-> st;
+		submachine_type -:SubMachineInstance-> st; // create instance edge
 	}
 }
 
+// instatiate sub machines
 rule InstanceSubMachines()
 {
-  submachine_type:State -e:SubMachineInstance-> st:SubMachineState;
-	    
-  def var name : string;  
-  yield { yield name = st.name; }
+  submachine_type:State -e:SubMachineInstance-> st:SubMachineState; // search for type and instances
   
   modify
-  {
-    
-    eval { emitdebug(name); }
+  {    
 	eval
 	{
-	  Replace(submachine_type, st);	  
-	  st.name = name;
+	  Replace(submachine_type, st);	  	  // instantiate from type, create copy	  
 	}	
   }
 }
 
+// delete sub machine types already instantiated
 rule DeleteSubMachineTypes()
 {
-  submachine:State;
+  submachine:State; // search for submachine
   
   multiple
   {
-    submachine -e:SubMachineInstance->;
+    submachine -e:SubMachineInstance->; // contained more than 0 instance edges
 	
-	modify
-	{
-	  
-	}
+	modify { }
   }
   
   modify
   {
-    eval { Delete(submachine); }
-	//delete(submachine_type);
+    eval { Delete(submachine); }	// delete it
   }
 }

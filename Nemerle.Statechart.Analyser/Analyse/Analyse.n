@@ -442,6 +442,46 @@ namespace Nemerle.Statechart
                                                         
     }
     
+    CreateTransitions(map : Hashtable[StateNode, LGSPNode]) : void
+    {
+      // create transition edges between states and pseudostates
+      foreach (node in map)
+      {
+        def src = node.Value;
+        def st = node.Key;
+        match (st)
+        {
+          | StateNode.State(transitions = tran) => 
+              
+               // create all transition edges between state and targets
+              foreach (tr in tran)
+              {
+                CreateTransition(src, tr, TranType.State)
+              }
+              
+          | PseudoState(p) => 
+              match (p)
+              {
+                | EntryPoint(tran = t)
+                | ExitPoint(tran = Some(t))
+                | History(default = Some(t)) => CreateTransition(src, t, TranType.Pseudo)
+                | Junction as j              => ConnectJunction(j, src)
+                | Join as j                  => ConnectJoin(j, src);
+                                                // create edge from join to target
+                                                CreateTransition(src, j.tran, TranType.State);
+                                                  
+                | Initial(tran = t)          => foreach (tr in t)
+                                                {
+                                                  CreateTransition(src, tr, TranType.Pseudo)
+                                                }
+                                                  
+                | _                          => ()
+              }
+          | _ => ()
+        }
+      }
+    }
+    
     CreateGraph() : void
     {
       graph = StateMachineNamedGraph();
@@ -513,21 +553,7 @@ namespace Nemerle.Statechart
                               | SubMachine(null, _) => def node = (graph.CreateNodeSubMachineState |> create_named(_, name)) :> ISubMachineState;
                                                        node.typename = n;
                                                        node
-                              | SubMachine(t, _) =>  //def machines = graph.GetExactNodes(StateMachine.TypeInstance).Select(_ :> StateMachine);
-                                                    _ = machines.Add(t);
-                                                                    //{
-                                                                    //  machines[t]
-                                                                    //  //| None    => def instance = prepare(sub); // new id for each tree element
-                                                                    //  //             instance.MapTree(create_nodes)
-                                                                    //  //| Some(p) => p
-                                                                    //} else
-                                                          //{
-                                                          //  def instance = prepare(sub); // new id for each tree element
-                                                          //  def node = instance.MapTree(create_nodes);
-                                                          //  machines[t] = node;
-                                                          //  node
-                                                          //}
-                                                    //def sub = graph.CreateNodeUnresolved |> create_named(_, t);
+                              | SubMachine(t, _) => _ = machines.Add(t);
                                                     match (graph.CreateNodeSubMachineState |> create_named(_, name))
                                                     {
                                                       | ISubMachineState as st => st.typename = t; st
@@ -602,6 +628,7 @@ namespace Nemerle.Statechart
         }
       }
       
+      CreateTransitions(map);
       //def top = top :> IState;
       
       //_ = graph_actions.TryResolveNames.ApplyStar(proc_env);
@@ -626,42 +653,7 @@ namespace Nemerle.Statechart
       
       //_ = graph_actions.MoveSubstateToParent.ApplyStar(proc_env);
         
-      // create transition edges between states and pseudostates
-      foreach (node in map)
-      {
-        def src = node.Value;
-        def st = node.Key;
-        match (st)
-        {
-          | StateNode.State(transitions = tran) => 
-              
-               // create all transition edges between state and targets
-              foreach (tr in tran)
-              {
-                CreateTransition(src, tr, TranType.State)
-              }
-              
-          | PseudoState(p) => 
-              match (p)
-              {
-                | EntryPoint(tran = t)
-                | ExitPoint(tran = Some(t))
-                | History(default = Some(t)) => CreateTransition(src, t, TranType.Pseudo)
-                | Junction as j              => ConnectJunction(j, src)
-                | Join as j                  => ConnectJoin(j, src);
-                                                // create edge from join to target
-                                                CreateTransition(src, j.tran, TranType.State);
-                                                  
-                | Initial(tran = t)          => foreach (tr in t)
-                                                {
-                                                  CreateTransition(src, tr, TranType.Pseudo)
-                                                }
-                                                  
-                | _                          => ()
-              }
-          | _ => ()
-        }
-      }
+      
       
       /*
       foreach (node in map)
