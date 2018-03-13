@@ -183,7 +183,7 @@ pattern FindRecHierarchy(state : State, type : StateMachineNode, var name : stri
 	  {
 	    state -:Contains-> h:History; // search for history in state
 		
-		if {typeof(type) >= History;}
+		//if {typeof(type) >= History;}
 		if {typeof(h) >= typeof(type);} // if type is above or equal to external type
 		
 		yield { yield ret = h; } // yield to output
@@ -335,7 +335,8 @@ procedure Replace(src : NamedNode, target : NamedNode)
 // delete node with nested containment
 procedure Delete(src : Node)
 {
-	for (n:Node in reachableOutgoing(src, Contains)) // for all contained nodes
+    def ref nodes : set<Node> = reachableOutgoing(src, Contains);
+	for (n:Node in nodes) // for all contained nodes
 	{
 		rem(n); // remove from graph
 	}
@@ -361,17 +362,54 @@ rule MarkSubMachines()
 	}
 }
 
+rule MergeSubmachine1()
+{
+	-:SubMachineInstance-> st:State; // search for type and instances  
+	
+	multiple
+	{
+		st -:Contains-> n1:ExitPoint;
+		st -:Contains-> n2:ExitPoint;
+
+		if {n1.name == n2.name;}
+
+		modify
+		{
+			st -:Contains-> :ExitPoint<n1, n2>;		 
+		}
+	}
+	
+}
+
+rule MergeSubmachine2()
+{
+	-:SubMachineInstance-> st:State; // search for type and instances  
+	
+	multiple
+	{
+		st -:Contains-> n1:EntryPoint;
+		st -:Contains-> n2:EntryPoint;
+
+		if {n1.name == n2.name;}
+
+		modify
+		{
+			st -:Contains-> :EntryPoint<n1, n2>;		 
+		}
+	}
+	
+}
 // instatiate sub machines
 rule InstanceSubMachines()
 {
-  submachine_type:State -e:SubMachineInstance-> st:SubMachineState; // search for type and instances
+  submachine_type:State -e:SubMachineInstance-> st:SubMachineState; // search for type and instances  
   
   modify
-  {    
+  {
 	eval
 	{
-	  Replace(submachine_type, st);	  	  // instantiate from type, create copy	  
-	}	
+	  Replace(submachine_type, st);	  	  // instantiate from type, create copy	  	  
+	}
   }
 }
 
