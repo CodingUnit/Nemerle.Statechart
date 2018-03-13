@@ -256,6 +256,18 @@ namespace Nemerle.Statechart
       
     GetTarget(src : LGSPNode, to : TargetType) : LGSPNode
     {
+      def create_named_hier(n, ty : IStateMachineNode, f)
+      {
+        def res = {mutable res; if (graph_actions.FindNamedHierarchy.Apply(proc_env, src :> IState, ty, n, ref res)) res else null }
+        match (res)
+        {
+          | null => def node = create_named(f, n);// not found, create new unresolved node
+                    _ = graph.CreateEdgeContains(src, node :> LGSPNode);
+                    node
+          | node => node
+        }
+      }
+      
       def parent = ParentOf(src);
       def n = match (to)
         {
@@ -270,10 +282,10 @@ namespace Nemerle.Statechart
                               def node = create_node(PseudoStateNode.Junction.GetUnnamedName(this, t), parent :> LGSPNode, func);
                               ConnectJunction(j, node :> LGSPNode); // connect junction targets
                               node
+          | PseudoState(EntryPoint(name = n)) => create_named_hier(n, EntryPoint(), graph.CreateNodeEntryPoint)
+          | PseudoState(ExitPoint(name = n))  => create_named_hier(n, ExitPoint(), graph.CreateNodeExitPoint)
           | PseudoState(Join(name = n))
           | PseudoState(Junction(name = n))
-          | PseudoState(EntryPoint(name = n))
-          | PseudoState(ExitPoint(name = n))
           | TargetType.Named(n) => match (find_named(n))// search for named node with name as target
                                     {
                                       | null => graph.CreateNodeUnresolved |> create_named(_, n)// not found, create new unresolved node
@@ -282,11 +294,10 @@ namespace Nemerle.Statechart
           | Final               =>  // search final in parent state
                                     match (GetContained(parent, FinalState.TypeInstance))
                                     {
-                                      | null => 
-                                        mutable final;
-                                        _ = graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final);
-                                        when (final.id == 0) final.id = get_id();
-                                        final
+                                      | null  => mutable final;
+                                                 _ = graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final);
+                                                 when (final.id == 0) final.id = get_id();
+                                                 final
                                       | final => final
                                     }
                                                           
