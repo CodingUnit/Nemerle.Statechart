@@ -3,7 +3,6 @@
 
 #using "StateMachine.gm"
 
-/*
 rule FindOrCreate(parent : Node, type : Node) : (Node)
 {
   alternative
@@ -32,20 +31,18 @@ rule FindOrCreate(parent : Node, type : Node) : (Node)
 	}
   }
   
-  
-  
   modify
   {	
-    def n:StateMachineNode;
-	:FindOrCreate(parent, type, yield n);	
-	return (n);
+    def ret:Node;
+	//:FindOrCreate(parent, type, yield n);	
+	return (ret);
   }
 }
 
 pattern FindOrCreate(parent : Node, type : Node, def ret : Node)
 {    
   
-}*/
+}
 
 // create final state in parent of this node
 rule CreateFinalState(state : State) : (FinalState)
@@ -418,15 +415,83 @@ rule DeleteSubMachineTypes()
 {
   submachine:State; // search for submachine
   
+  negative
+  {
+	-:Contains-> submachine;
+  }
+		  
   multiple
   {
-    submachine -e:SubMachineInstance->; // contained more than 0 instance edges
+	submachine -e:SubMachineInstance->; // contained more than 0 instance edges
 	
 	modify { }
   }
-  
+		   
   modify
   {
-    eval { Delete(submachine); }	// delete it
+	eval { Delete(submachine); }	// delete it
   }
+}
+
+rule ClearSubMachines()
+{  
+  submachine:State;
+  
+  multiple
+  {
+	submachine -e:SubMachineInstance->; // contained more than 0 instance edges
+	
+	modify { delete(e); }
+  }
+		   
+}
+
+rule CheckSelfTargets()
+{    	
+	alternative
+	{
+	  state
+	  {
+	    state:State -e:Edge-> t:SelfTarget;
+		
+		modify
+		{
+		  state -:copy<e>-> state;
+		  delete(t);
+		}
+	  }
+	  pseudo
+	  {
+		state:PseudoState -e:Edge-> t:SelfTarget;
+		def src : State;
+		
+		:FindSourceState(state, yield src);
+		
+		modify
+		{
+		  state -:copy<e>-> src;
+		  delete(t);
+		}
+	  }
+	}
+}
+
+pattern FindSourceState(st : PseudoState, def source : State) 
+{
+  alternative
+  {
+    found
+	{
+		state:State --> st;
+	   
+		yield { yield source = state; }
+	}
+	not_found
+	{
+		state:PseudoState --> st;		
+		
+		:FindSourceState(state, yield source);
+	}
+  }
+  
 }

@@ -292,14 +292,10 @@ namespace Nemerle.Statechart
                                       | node => node           
                                     }
           | Final               =>  // search final in parent state
-                                    match (GetContained(parent, FinalState.TypeInstance))
-                                    {
-                                      | null  => mutable final;
-                                                 _ = graph_actions.CreateFinalState.Apply(proc_env, src :> IState, ref final);
-                                                 when (final.id == 0) final.id = get_id();
-                                                 final
-                                      | final => final
-                                    }
+                                    mutable final;
+                                    _ = graph_actions.FindOrCreate.Apply(proc_env, parent, FinalState(), ref final);
+                                    when (final is FinalState as final) when (final.id == 0) final.id = get_id();
+                                    final
                                                           
           | PseudoState(p) => match (p)
               {
@@ -326,26 +322,28 @@ namespace Nemerle.Statechart
                                        node
                                        
                 | Terminate         => def top = graph.GetCompatibleEdges(TopState.TypeInstance).First().Target; // find top state
-                                        match (GetContained(top, Terminate.TypeInstance)) // search for terminate in it
-                                        {
-                                          | null =>
-                                              mutable term;
-                                              _ = graph_actions.CreateTerminate.Apply(proc_env, ref term);
-                                              term
-                                          | term => term
-                                        } 
+                                       mutable term;
+                                       _ = graph_actions.FindOrCreate.Apply(proc_env, top, Terminate(), ref term);
+                                       term
+                                    
+                                       //match (GetContained(top, Terminate.TypeInstance)) // search for terminate in it
+                                       //{
+                                       //  | null =>
+                                       //      mutable term;
+                                       //      _ = graph_actions.CreateTerminate.Apply(proc_env, ref term);
+                                       //      term
+                                       //  | term => term
+                                       //} 
                 | t                 => graph.CreateNodeUnknown(create_name($"Pseudo_$t"))
               }
           | Qualified as q      => // create path and last node                                                                                                     
                                     def path = q.FinalPath;
                                     match (FindQualifed(path)) // find other nodes recursive
                                     {
-                                      | null => def (p, t) = path;
-                                                def name = if (t != null) $<#..$(p;".").$t#> else $<#..$(p;".")#>;
-                                                graph.CreateNodeUnresolved |> create_named(_, name)
+                                      | null => graph.CreateNodeUnresolved |> create_named(_, q.ToString())
                                       | q    => q
                                     }
-          | Self                
+          | Self                => graph.CreateNodeSelfTarget()
           | NoTarget            => src // to self node
           | t                   => graph.CreateNodeUnknown(create_name($"Target_$t"))
         }
