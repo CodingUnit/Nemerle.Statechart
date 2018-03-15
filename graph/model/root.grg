@@ -3,16 +3,19 @@
 
 #using "StateMachine.gm"
 
+// find or create element in parent of type 
 rule FindOrCreate(parent : Node, type : Node) : (Node)
 {
   alternative
   {
     found
 	{
+	// search for parent contains node of that type
 	  parent -:Contains-> t:typeof(type);
 	  hom(parent, t);
 	  modify
 	  {
+	  // return to rhs part
 		eval { yield ret = t; }
 	  }
 	}
@@ -20,82 +23,61 @@ rule FindOrCreate(parent : Node, type : Node) : (Node)
 	{
 	  negative
 	  {
+	    // if not found
 		parent -:Contains-> t:typeof(type);
 		hom(parent, t);
 	  }
 	  modify
 	  {
+	   // create
 		parent -:Contains-> t:typeof(type);
-		eval { yield ret = t; }
+		eval { yield ret = t; } // return to rhs part
 	  }
 	}
   }
   
   modify
   {	
-    def ret:Node;
-	//:FindOrCreate(parent, type, yield n);	
-	return (ret);
+    def ret:Node;	
+	return (ret); 
   }
 }
 
-pattern FindOrCreate(parent : Node, type : Node, def ret : Node)
-{    
+rule CreateNode(parent : Node, type : Node, var name : string) : (Node)
+{
+  (
+      if { typeof(type) >= NamedNode; }
+	  
+	  modify
+	  {
+		parent -:Contains-> t:typeof(type);
+		
+		eval 
+		{ 
+			def named : NamedNode = (NamedNode)t; 
+			named.name = name; 
+			yield ret = t;
+		}
+	  } 
+	| 
+	
+	  negative { if {typeof(type) >= NamedNode;}  }
+	//t:Node<type>;
+	  
+	  modify
+	  {
+		parent -:Contains-> t:typeof(type);
+		
+		eval {yield ret = t;}
+	  }
+  )
   
-}
-
-// create final state in parent of this node
-rule CreateFinalState(state : State) : (FinalState)
-{
-	parent:State -:Contains-> state; // parent of state		
-	hom(parent, state);
-	
-	negative
-	{
-	  parent -:Contains-> :FinalState; // if parent contains final state	  
-	}
-	// create another if has'nt
-	modify
-	{
-	  parent -:Contains-> final:FinalState;
-	  return (final);
-	}	
-}
-
-// find teminate in top state
-test FindTerminate() : (Terminate)
-{
-    -:TopState-> top:State;
-	top -:Contains-> term:Terminate;
-	
-	return (term);
-		
-}
-// create final state in parent of this node
-rule CreateTerminate() : (Terminate)
-{	
-	-:TopState-> top:State;
-	
-	negative
-	{
-	  :Terminate; // if top contains teminate
-	}
-	// create new if has'nt
-	modify
-	{
-	  top -:Contains-> term:Terminate;
-	  return (term);
-	}	
-}
-
-// find final state in parent of this node
-test FindFinalState(state : State) : (FinalState)
-{
-	parent:State -:Contains-> state; // parent of state		
-	parent -:Contains-> final:FinalState; // if parent contains final state	  
-	hom(parent, state);
-		
-	return (final);
+  modify
+  {
+    def ret : Node;
+	return (ret);
+  }
+  
 }
 
 test ParentOf(elem : Node) : (State)
@@ -452,7 +434,7 @@ rule CheckSelfTargets()
 	{
 	  state
 	  {
-	    state:State -e:Edge-> t:SelfTarget;
+	    state:State -e:Transition-> t:SelfTarget;
 		
 		modify
 		{
@@ -462,7 +444,7 @@ rule CheckSelfTargets()
 	  }
 	  pseudo
 	  {
-		state:PseudoState -e:Edge-> t:SelfTarget;
+		state:PseudoState -e:Transition-> t:SelfTarget;
 		def src : State;
 		
 		:FindSourceState(state, yield src);
@@ -476,6 +458,85 @@ rule CheckSelfTargets()
 	}
 }
 
+//TODO: кэширование
+
+rule CreateDepth()
+{
+  -:TopState-> top:State;
+  
+  t:CreateDepthRec(top, 0);
+  
+  modify
+  {
+    t();
+  }
+  
+}
+
+pattern CreateDepthRec(n : StateMachineNode, var depth : int)
+{
+  iterated
+  {
+	n -:Contains-> child:StateMachineNode;
+	
+	t:CreateDepthRec(child, depth + 1);
+	
+	modify
+	{	  
+	  t();
+	}
+  }
+  
+  modify
+  {
+    eval { n.depth = depth; }
+  }
+}
+
+// procedure LCA(u : Node, v : Node) : (Node)
+// {
+	// var h1 : int = countReachableIncoming(u, Contains);
+	// var h2 : int = countReachableIncoming(v, Contains);
+	// return 
+// }
+
+pattern LCArec(u : Node, v : Node, var h1 : int, var h2 : int, def lca : Node)
+{	
+	(
+		 if { h1 == h2; }
+		 yield { yield lca = u; }
+	 
+	 | 
+	     if { h1 > h2;}
+		 parent:Node -:Contains-> u;
+		 :LCArec(parent, v, h1 - 1, h2, yield lca);
+	 | 
+	     if { h1 < h2;}
+		 parent:Node -:Contains-> v;
+		 :LCArec(u, parent, h1, h2 - 1, yield lca);
+	)
+	
+}
+
+/*
+Процедура LCA(u, v):
+    h1 := depth(u)          // depth(x) = глубина вершины x
+    h2 := depth(v)
+  
+    while h1 != h2:
+       if h1 > h2:
+          u := parent(u)
+          h1 := h1 - 1
+       else:
+          v := parent(v)
+          h2 := h2 - 1
+  
+    while u != v:
+       u := parent(u)       // parent(x) = непосредственный предок вершины x
+       v := parent(v)
+  
+    return u
+*/
 pattern FindSourceState(st : PseudoState, def source : State) 
 {
   alternative
