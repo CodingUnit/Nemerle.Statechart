@@ -145,6 +145,9 @@ test FindQualifiedType(state : State, tar : StateMachineNode) : (StateMachineNod
   return (t);  
 }
 
+rule ResolveTypes()
+{
+}
 // find qualified target state.substate or state.pseudo syntax
 test FindHistory(state : State, hist : History) : (StateMachineNode)
 {
@@ -152,6 +155,33 @@ test FindHistory(state : State, hist : History) : (StateMachineNode)
   
   :FindRecHierarchy(state, hist, null, yield ret);
   return (ret);    
+}
+
+pattern FindRecTypeHierarchy(state : State, type : StateMachineNode, def ret : StateMachineNode)
+{
+	alternative
+	{
+	  found
+	  {
+	    state -:Contains-> t:typeof(type); // search for history in state
+		
+		//if {typeof(type) >= History;}
+		//if {typeof(t) >= typeof(type);} // if type is above or equal to external type
+		
+		yield { yield ret = t; } // yield to output
+		
+	  }	  
+	  not_found
+	  {
+	    parent:State -:Contains-> state; // get parent of state	    
+			
+		negative
+		{
+		  state -:Contains-> n:typeof(type); // search for history in state
+		}
+		:FindRecTypeHierarchy(parent, type, yield ret); // recursive search for history in parent
+	  }
+	}
 }
 
 pattern FindRecHierarchy(state : State, type : StateMachineNode, var name : string, def ret : StateMachineNode)
@@ -500,20 +530,24 @@ pattern CreateDepthRec(n : StateMachineNode, var depth : int)
 	// return 
 // }
 
-pattern LCArec(u : Node, v : Node, var h1 : int, var h2 : int, def lca : Node)
+pattern LCArec(u : StateMachineNode, v : StateMachineNode,  def lca : Node)
 {	
 	(
-		 if { h1 == h2; }
+		 if { u == v; }
 		 yield { yield lca = u; }
 	 
-	 | 
-	     if { h1 > h2;}
+	 |   if { u.depth > v.depth;}
 		 parent:Node -:Contains-> u;
-		 :LCArec(parent, v, h1 - 1, h2, yield lca);
-	 | 
-	     if { h1 < h2;}
+		 :LCArec(parent, v, yield lca);
+	 |   if { u.depth < v.depth;}
 		 parent:Node -:Contains-> v;
-		 :LCArec(u, parent, h1, h2 - 1, yield lca);
+		 :LCArec(u, parent, yield lca);
+     |   
+		 if {u.depth == v.depth;}
+	     if {u != v;}
+		 parent1:Node -:Contains-> u;
+		 parent2:Node -:Contains-> v;
+		 :LCArec(parent1, parent2, yield lca);
 	)
 	
 }
