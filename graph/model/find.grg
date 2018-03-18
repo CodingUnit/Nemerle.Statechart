@@ -1,0 +1,392 @@
+// graph rewrite rule file, shows how to define a model to use, and how a rule looks like,
+// with the pattern to match and the rewrite to apply, with lhs and rhs elements being indentified by their name
+
+#using "StateMachine.gm"
+
+// find or create element in parent of type 
+pattern FindOrCreate(parent : Node, def type : Node) modify(def ret : Node)
+{
+  alternative
+  {
+    found
+	{
+	// search for parent contains node of that type
+	  parent -:Contains-> t:typeof(type);
+	  //if {typeof(t) == typeof(type);}
+	  
+	  //hom(parent, t);
+	  modify
+	  {
+	  // return to rhs part
+		eval { yield ret = t; }
+	  }
+	}
+	not_found
+	{	  
+	  negative
+	  {
+	    // if not found
+		parent -:Contains-> t:typeof(type);
+		
+		//if {typeof(t) == typeof(type);}
+	  }
+	  modify
+	  {
+	   // create
+		parent -:Contains-> t:typeof(type);
+		eval { yield ret = t; } // return to rhs part
+	  }
+	}
+	
+  }
+
+  modify
+  {
+  }  
+}
+
+// find or create element in parent of type 
+pattern FindOrCreateHierarchy(parent : Node, type : Node) modify(def ret : Node)
+{
+  alternative
+  {
+    found
+	{
+	// search for parent contains node of that type
+	  //def t : Node;
+	  t:FindRecTypeHierarchy(parent, type, yield ret);
+	  modify
+	  {
+	  // return to rhs part
+		//eval { yield ret = t; }
+	  }
+	}
+	not_found
+	{	  
+	  negative
+	  {
+	    // if not found
+		:FindRecTypeHierarchy(parent, type, yield ret);		
+	  }
+	  modify
+	  {
+	   // create
+		parent -:Contains-> t:typeof(type);
+		eval { yield ret = t; } // return to rhs part
+	  }
+	}
+	
+  }
+
+  modify
+  {
+  }  
+}
+
+test ParentOf(elem : Node) : (State)
+{
+  parent:State -:Contains-> elem;
+  
+  return (parent);
+}
+
+pattern FindContainedType(parent : Node, type : Node, def ret : Node)
+{
+  parent -:Contains-> type;
+  yield {yield ret = type;}
+}
+
+pattern FindQualified(ref tar : array<string>, def ret : StateMachineNode)
+{
+	:QualifiedRec(null, tar, 0, yield ret);
+}
+
+pattern QualifiedRec(state : NamedNode, ref tar : array<string>, var idx : int, def ret : StateMachineNode)
+{
+	alternative
+	{	   
+	    first // first entry
+		{
+		    st:NamedNode; // search for named node
+		    if { idx == 0; } // at index 0 of path
+            if { st.name == tar[0]; } // name equal to this first name		  
+		    :QualifiedRec(st, tar, 1, yield ret);  // recursive call next index with that node
+		}
+		next
+	    {
+			negative
+			{
+			   if {idx == 0 || idx == tar.size();} // is not at 0 index or at end of array
+			}
+			state -:Contains-> t:NamedNode; // find named node contained in state
+			if { t.name == tar[idx];} // if name of this child equal current path at index
+			
+		    :QualifiedRec(t, tar, idx + 1, yield ret); // recursive search for path at next index
+	    }
+	    end
+	    {
+			if {idx == tar.size();}        // index at end of array 
+			yield { yield ret = state; } // yield result
+	    }	   
+	}
+}
+
+pattern QualifiedRecType(state : NamedNode, ref tar : array<string>, var idx : int, type : Node, def ret : Node)
+{
+	alternative
+	{	   
+	    first // first entry
+		{
+		    st:NamedNode; // search for named node
+		    if { idx == 0; } // at index 0 of path
+            if { st.name == tar[0]; } // name equal to this first name		  
+		    :QualifiedRec(st, tar, 1, yield ret);  // recursive call next index with that node
+		}
+		next
+	    {
+			negative
+			{
+			   if {idx == 0 || idx == tar.size();} // is not at 0 index or at end of array
+			}
+			state -:Contains-> t:NamedNode; // find named node contained in state
+			if { t.name == tar[idx];} // if name of this child equal current path at index
+			
+		    :QualifiedRec(t, tar, idx + 1, yield ret); // recursive search for path at next index
+	    }
+	    end
+	    {
+			if {idx == tar.size();}        // index at end of array 
+			state -:Contains-> t:typeof(type);
+			yield { yield ret = t; } // yield result
+	    }	   
+	}
+}
+
+
+/*
+// find qualified target state.substate or state.pseudo syntax
+test FindHistory(state : State, hist : History) : (StateMachineNode)
+{
+  def ret : StateMachineNode;
+  
+  :FindRecHierarchy(state, hist, null, yield ret);
+  return (ret);    
+}*/
+
+pattern FindRecTypeHierarchy(state : Node, type : Node, def ret : Node)
+{
+	alternative
+	{
+	  found
+	  {
+	    state -:Contains-> t:typeof(type); // search for history in state
+		
+		//if {typeof(type) >= History;}
+		//if {typeof(t) >= typeof(type);} // if type is above or equal to external type
+		
+		yield { yield ret = t; } // yield to output
+		
+	  }	  
+	  not_found
+	  {
+	    parent:State -:Contains-> state; // get parent of state	    
+			
+		negative
+		{
+		  state -:Contains-> n:typeof(type); // search for history in state
+		}
+		:FindRecTypeHierarchy(parent, type, yield ret); // recursive search for history in parent
+	  }
+	}
+}
+
+/*
+pattern FindRecHierarchy(state : State, type : StateMachineNode, var name : string, def ret : StateMachineNode)
+{
+	alternative
+	{
+	  found_hist
+	  {
+	    state -:Contains-> h:History; // search for history in state
+		
+		//if {typeof(type) >= History;}
+		if {typeof(h) >= typeof(type);} // if type is above or equal to external type
+		
+		yield { yield ret = h; } // yield to output
+		
+	  }
+	  found
+	  {
+		negative
+		{
+			if {typeof(type) >= History;}
+		}
+		state -:Contains-> n:NamedNode; // search for history in state
+		if {typeof(n) == typeof(type);}
+		if {n.name == name;}
+		//if {typeof(n) >= typeof(hist);} // if type is above or equal to external type
+		
+		yield { yield ret = n; } // yield to output 
+	  }
+	  not_found
+	  {
+	    parent:State -:Contains-> state; // get parent of state	    
+			
+		negative
+		{
+		  state -:Contains-> n:typeof(type); // search for history in state
+		}
+		:FindRecHierarchy(parent, type, name, yield ret); // recursive search for history in parent
+	  }
+	}
+}
+
+*/
+
+pattern HistoryFindRec(state : State, var hist : history_type, def ret : History)
+{
+	alternative
+	{
+	  found
+	  {
+	    state -:Contains-> h:DeepHistory; // search for history in state
+		
+		if {hist == history_type::deep; }
+		//if {typeof(h) >= typeof(hist);} // if type is above or equal to external type
+		
+		yield
+		{
+			yield ret = h; // yield to output
+		}
+		
+	  }
+	  found_shallow
+	  {
+	    state -:Contains-> h:ShallowHistory; // search for history in state
+		
+		if {hist == history_type::shallow; }
+		//if {typeof(h) >= typeof(hist);} // if type is above or equal to external type
+		
+		yield
+		{
+			yield ret = h; // yield to output
+		}
+		
+	  }
+	  not_found
+	  {
+	    parent:State -:Contains-> state; // get parent of state
+		
+	    negative
+		{
+			state -:Contains-> h:ShallowHistory; // it does not contain history
+			if {hist == history_type::shallow; }
+		}
+				
+		negative
+		{
+			state -:Contains-> h:DeepHistory; // search for history in state
+		
+			if {hist == history_type::deep; }
+		}
+		:HistoryFindRec(parent, hist, yield ret); // recursive search for history in parent
+	  }
+	}
+}
+
+// find qualified target state.substate or state.pseudo syntax
+test FindNamed(var name : string) : (NamedNode)
+{
+  t:NamedNode;  
+  
+  if { t.name == name; }   
+  return (t);
+}
+
+/*
+// find qualified target state.substate or state.pseudo syntax
+test FindNamedHierarchy(st : State, type : StateMachineNode, var name : string) : (StateMachineNode)
+{
+  def t:StateMachineNode;  
+  
+  //if { t.name == name; }   
+  :FindRecHierarchy(st, type, name, yield t);
+  return (t);
+}*/
+
+// procedure LCA(u : Node, v : Node) : (Node)
+// {
+	// var h1 : int = countReachableIncoming(u, Contains);
+	// var h2 : int = countReachableIncoming(v, Contains);
+	// return 
+// }
+
+pattern LCArec(u : StateMachineNode, v : StateMachineNode,  def lca : Node)
+{	
+	(
+	     if { u.depth > v.depth;}
+	 
+		 parent:StateMachineNode -:Contains-> u;
+		 
+		 :LCArec(parent, v, yield lca);
+		 
+	 |   
+		 if { u.depth < v.depth;}
+	 
+		 parent:StateMachineNode -:Contains-> v;
+		 
+		 :LCArec(u, parent, yield lca);
+		 
+     |   
+		 if {u.depth == v.depth;}
+	     if {u != v;}
+		 
+		 parent1:StateMachineNode -:Contains-> u;
+		 parent2:StateMachineNode -:Contains-> v;
+		 
+		 :LCArec(parent1, parent2, yield lca);
+     | 
+	     if { u == v; }
+		 yield { yield lca = u; }
+	)
+	
+}
+
+/*
+Процедура LCA(u, v):
+    h1 := depth(u)          // depth(x) = глубина вершины x
+    h2 := depth(v)
+  
+    while h1 != h2:
+       if h1 > h2:
+          u := parent(u)
+          h1 := h1 - 1
+       else:
+          v := parent(v)
+          h2 := h2 - 1
+  
+    while u != v:
+       u := parent(u)       // parent(x) = непосредственный предок вершины x
+       v := parent(v)
+  
+    return u
+*/
+pattern FindSourceState(st : PseudoState, def source : State) 
+{
+  alternative
+  {
+    found
+	{
+		state:State --> st;
+	   
+		yield { yield source = state; }
+	}
+	not_found
+	{
+		state:PseudoState --> st;		
+		
+		:FindSourceState(state, yield source);
+	}
+  }
+  
+}
