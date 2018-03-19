@@ -4,7 +4,7 @@
 #using "StateMachine.gm"
 
 // find or create element in parent of type 
-pattern FindOrCreate(parent : Node, def type : Node) modify(def ret : Node)
+pattern FindOrCreate(parent : Node, type : Node) modify(def ret : Node)
 {
   alternative
   {
@@ -46,41 +46,59 @@ pattern FindOrCreate(parent : Node, def type : Node) modify(def ret : Node)
 }
 
 // find or create element in parent of type 
-pattern FindOrCreateHierarchy(parent : Node, type : Node) modify(def ret : Node)
+pattern FindHierarchy(parent : Node, type : Node, def ret : Node)
 {
-  alternative
-  {
-    found
-	{
+  (
+  
+  
 	// search for parent contains node of that type
 	  //def t : Node;
-	  t:FindRecTypeHierarchy(parent, type, yield ret);
-	  modify
-	  {
-	  // return to rhs part
-		//eval { yield ret = t; }
-	  }
-	}
-	not_found
-	{	  
+	  parent -:Contains-> t:typeof(type);
+	  yield {yield ret = t;}
+	  
+	|
+	
 	  negative
 	  {
 	    // if not found
-		:FindRecTypeHierarchy(parent, type, yield ret);		
-	  }
-	  modify
-	  {
-	   // create
 		parent -:Contains-> t:typeof(type);
-		eval { yield ret = t; } // return to rhs part
 	  }
-	}
+	  
+	  p:Node -:Contains-> parent;
+	  :FindHierarchy(p, type, yield ret);	  	
 	
-  }
+  )
 
-  modify
-  {
-  }  
+}
+
+// find or create element in parent of type 
+pattern FindNameHierarchy(parent : Node, type : Node, var name : string, def ret : Node)
+{
+  (
+  
+  
+	// search for parent contains node of that type
+	  //def t : Node;
+	  parent -:Contains-> t:NamedNode;
+	  
+	  if {typeof(t) >= typeof(type);}
+	  if {t.name == name;}
+	  
+	  yield {yield ret = t;}
+	  
+	|
+	
+	  negative
+	  {
+	    // if not found
+		parent -:Contains-> t:typeof(type);
+	  }
+	  
+	  p:Node -:Contains-> parent;
+	  :FindNameHierarchy(p, type, name, yield ret);	  	
+	
+  )
+
 }
 
 test ParentOf(elem : Node) : (State)
@@ -172,33 +190,6 @@ test FindHistory(state : State, hist : History) : (StateMachineNode)
   :FindRecHierarchy(state, hist, null, yield ret);
   return (ret);    
 }*/
-
-pattern FindRecTypeHierarchy(state : Node, type : Node, def ret : Node)
-{
-	alternative
-	{
-	  found
-	  {
-	    state -:Contains-> t:typeof(type); // search for history in state
-		
-		//if {typeof(type) >= History;}
-		//if {typeof(t) >= typeof(type);} // if type is above or equal to external type
-		
-		yield { yield ret = t; } // yield to output
-		
-	  }	  
-	  not_found
-	  {
-	    parent:State -:Contains-> state; // get parent of state	    
-			
-		negative
-		{
-		  state -:Contains-> n:typeof(type); // search for history in state
-		}
-		:FindRecTypeHierarchy(parent, type, yield ret); // recursive search for history in parent
-	  }
-	}
-}
 
 /*
 pattern FindRecHierarchy(state : State, type : StateMachineNode, var name : string, def ret : StateMachineNode)

@@ -63,120 +63,216 @@ test FindQualifiedPath(ref tar : array<string>) : (StateMachineNode)
   :QualifiedRec(null, tar, 0, yield n);  
   return (n);
 }*/
-
-rule ResolveTypes()
+rule ResolveHistory()
 {
-	parent:State -e:Contains-> t:NotResolved <-tran:Transition- n:Node;
+	n:Node -tran:Transition-> not_resolved:UnresolvedHistory;
+	def hist : Node;
 	
-	(
-		not_resolved:UnresolvedFinalState<t>;
-	  
-	    alternative
-		{
-		   found
-		   {
-			parent -:Contains-> final:FinalState;
-			
-			modify
-			{
-			  eval {yield ret = final;}
-			}
-			
-		   } 
-			
-		   not
-		   {
-			 negative
-			 {
-				parent -:Contains-> final:FinalState;
-			 }
-			
-			 modify
-			 {
-			   parent -:Contains-> final:FinalState;
-			  
-			   eval {yield ret = final;}
-			 }
-		   }
-		}		
-
-		modify
-		{			
-			delete(not_resolved);
-		}
-	
-	 | 
-	    //parent -e-> t:UnresolvedHistory <-tran:Transition- n:Node;
-		not_resolved:UnresolvedHistory<t>;		
-		
+	(	    
+		parent:Node -:Contains-> not_resolved;
 		if {not_resolved.name == null;}
 		
-		h:History;		
-		:HistoryFindRec(parent, h, yield ret);//not_resolved.type
-		modify
-		{            
-			delete(not_resolved);
-		}
+		if {not_resolved.type == history_type::deep;}
+		h:DeepHistory;				
+		:FindHierarchy(parent, h, yield hist);//not_resolved.type
+		modify {}
+	| 
+	    parent:Node -:Contains-> not_resolved;
+		if {not_resolved.name == null;}
 		
-	 | 
-	    //parent -e-> t:UnresolvedHistory <-tran:Transition- n:Node;		
-		not_resolved:UnresolvedHistory<t>;		
+		if {not_resolved.type == history_type::shallow;}
+		h:ShallowHistory;		
+		
+		:FindHierarchy(parent, h, yield hist);//not_resolved.type
+		modify {}
+	| 
+		parent:Node -:Contains-> not_resolved;
+		if {not_resolved.name == null;}
+		
+		if {not_resolved.type == history_type::any;}
+		h:History;		
+		:FindHierarchy(parent, h, yield hist);//not_resolved.type
+		modify {}
+	|			
 		
 		if {not_resolved.name != null;}
 		
-		def path : Node;
+		h:History;
+		:QualifiedRecType(null, not_resolved.name.asArray("."), 0, h, yield hist);
 		
-		:FindQualified(not_resolved.name.asArray("."), yield path);
-		
-		path -:Contains-> h:History;
-		
-		modify
-		{		     
-			eval {yield ret = h;}
-			delete(not_resolved);
-		}
-	  | 
-	     //parent -e-> t:UnresolvedTypeHierarchy <-tran:Transition- n:Node;
-		 not_resolved:UnresolvedExitPoint<t>;
-		 //if {typeof(t) == UnresolvedTypeHierarchy;}
-		 
-		 find:FindOrCreateHierarchy(parent, ExitPoint);
-		 modify
-		 {
-			find(yield ret);
-			delete(not_resolved);
-		 } 		
-   )
-    modify
-    {
-	    def ret : Node;
-		n -:copy<tran>-> ret;
-		//delete(t);
-    }
+		modify {}
+	)
+	
+	modify
+	{            
+		delete(not_resolved);
+		n -:copy<tran>-> hist;
+	}
 }
 
+rule ResolveFinal()
+{
+	parent:State -e:Contains-> not_resolved:UnresolvedFinalState <-tran:Transition- n:Node;
+	
+	alternative
+	{
+	   found
+	   {
+		 parent -:Contains-> final:FinalState;
+		
+		 modify
+		 {
+		   eval {yield ret = final;}
+		 }
+		
+	   } 
+		
+	   not
+	   {
+		 negative
+		 {
+			parent -:Contains-> final:FinalState;
+		 }
+		
+		 modify
+		 {
+		   parent -:Contains-> final:FinalState;
+		  
+		   eval {yield ret = final;}
+		 }
+	   }
+	}		
 
+	modify
+	{			
+		delete(not_resolved);
+		def ret : Node;
+		n -:copy<tran>-> ret;
+	}		
+}
+
+rule ResolveExitPoint()
+{	    
+	
+	
+	alternative
+	{
+	   found
+	   {
+	    parent:State -e:Contains-> not_resolved:UnresolvedExitPoint;
+		not_resolved <-tran:Transition- n:Node;	
+		ex:ExitPoint;
+		def r : Node;
+		:FindNameHierarchy(parent, ex, not_resolved.name, yield r);
+					
+		modify
+		{
+		  //eval {yield ret = r;}
+		  //delete(not_resolved);
+		  //def ret : Node;
+		  //n -:copy<tran>-> r;
+		}
+		
+	   } 
+		
+	   not
+	   {
+	     parent:State -e:Contains-> not_resolved:UnresolvedExitPoint;
+		 not_resolved <-tran:Transition- n:Node;
+		 
+		 negative
+		 {
+			def r : Node;
+			not_resolved <-:Transition- :Node;
+			:FindNameHierarchy(parent, ex, not_resolved.name, yield r);//not_resolved.name,
+		 }
+		
+		 modify
+		 {
+		   parent -:Contains-> ex:ExitPoint;
+		  
+		   //delete(not_resolved);
+		   //def ret : Node;
+		   //n -:copy<tran>-> ex;
+		   //eval {yield ret = ex;}
+		 }
+	   }
+	}	
+	 modify
+	 {			
+		
+	 } 
+}
+
+rule ResolveEntryPoint()
+{
+	alternative
+	{
+	   found
+	   {
+	    parent:State -e:Contains-> not_resolved:UnresolvedEntryPoint;
+		not_resolved <-tran:Transition- n:Node;	
+		ex:EntryPoint;
+		def r : Node;
+		:FindNameHierarchy(parent, ex, not_resolved.name, yield r);
+					
+		modify
+		{
+		  //eval {yield ret = r;}
+		  //delete(not_resolved);
+		  //def ret : Node;
+		  //n -:copy<tran>-> r;
+		}
+		
+	   } 
+		
+	   not
+	   {
+	     parent:State -e:Contains-> not_resolved:UnresolvedEntryPoint;
+		 not_resolved <-tran:Transition- n:Node;
+		 
+		 negative
+		 {
+			def r : Node;
+			not_resolved <-:Transition- :Node;
+			:FindNameHierarchy(parent, ex, not_resolved.name, yield r);//not_resolved.name,
+		 }
+		
+		 modify
+		 {
+		   parent -:Contains-> ex:EntryPoint;
+		  
+		   delete(not_resolved);
+		   //def ret : Node;
+		   n -:copy<tran>-> ex;
+		   //eval {yield ret = ex;}
+		 }
+	   }
+	}	
+	 modify
+	 {			
+		
+	 } 
+}
 
 // resolve unresolved nodes
 rule TryResolveNames()
-{  
-  
-	   
+{
   alternative
   {
     forward
 	{
-	   st:Node -n:Edge-> not_resolved:Unresolved; // node that points to unresolved
+	  st:Node -n:Edge-> not_resolved:Unresolved; // node that points to unresolved
 	
 	// search for qualified path node, return last node of that path
 	  def res:StateMachineNode;			   
 	  :FindQualified(not_resolved.name.asArray("."), yield res);	
 	  
-	   modify
-	   {	        
-			st -:copy<n>-> res; // create edge to resolved			
-			delete(not_resolved); // delete unresolved	
-	   }
+	  modify
+	  {	        
+		st -:copy<n>-> res; // create edge to resolved			
+		delete(not_resolved); // delete unresolved	
+	  }
 	}
 	back
 	{
@@ -188,8 +284,8 @@ rule TryResolveNames()
 	  
 	   modify
 	   {	        
-			st <-:copy<n>- res; // create edge to resolved
-			delete(not_resolved); // delete unresolved	
+		st <-:copy<n>- res; // create edge to resolved
+		delete(not_resolved); // delete unresolved	
 	   }
 	}
   }
@@ -197,24 +293,7 @@ rule TryResolveNames()
 	modify
 	{
 		
-	}
-	// qualified
-	// {
-	   // st:Node -n:Edge-> not_resolved:Unresolved; // node that points to unresolved
-	   // hom(st, not_resolved);
-	   
-	   // if { not_resolved.name.indexOf(".") != -1; } // if name is path with points eq name.sub.sub
-	  	
-	   // // search for qualified path node, return last node of that path
-       // def res:StateMachineNode;			   
-	   // :QualifiedRec(null, not_resolved.name.asArray("."), 0, yield res);
-	   
-	   // modify
-	   // {	        
-			// st -:copy<n>-> res; // create edge to resolved
-			// delete(not_resolved); // delete unresolved	
-	   // }
-	// }
+	}	
 }
 
 // replace target node with source with nested containment
