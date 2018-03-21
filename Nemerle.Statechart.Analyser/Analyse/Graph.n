@@ -137,6 +137,7 @@ namespace Nemerle.Statechart
       //}
 
       def parent = ParentOf(src);
+      def parent_or_src = parent ?? src;
       def n = match (to)
         {
           | PseudoState(Junction(name = null, type = t) as j) => // unnamed junction
@@ -150,16 +151,12 @@ namespace Nemerle.Statechart
                               def node = create_node(create_name(PseudoStateNode.Junction.GetUnnamedName(t)), parent, func);
                               ConnectJunction(j, node :> LGSPNode); // connect junction targets
                               node
-          | PseudoState(EntryPoint(name = n)) with ty = EntryPoint() => graph.CreateNodeUnresolvedEntryPoint
-                                                                      |> create_named(_, n) 
-                                                                      |> contains(parent ?? src, _)
-          | PseudoState(ExitPoint(name = n)) with ty = ExitPoint() => graph.CreateNodeUnresolvedExitPoint
-                                                                      |> create_named(_, n) 
-                                                                      |> contains(parent ?? src, _)
+          | PseudoState(EntryPoint(name = n)) => graph.CreateNodeUnresolvedEntryPoint(create_name(n)) |> set_attr(_, x => x.name = n) |> contains(parent_or_src, _)
+          | PseudoState(ExitPoint(name = n))  => graph.CreateNodeUnresolvedExitPoint(create_name(n)) |> set_attr(_, x => x.name = n) |> contains(parent_or_src, _)
           | PseudoState(Join(name = n))
           | PseudoState(Junction(name = n))
-          | TargetType.Named(n) => graph.CreateNodeUnresolved |> create_named(_, n) // create new unresolved node
-          | Final               => graph.CreateNodeUnresolvedFinalState() |> contains(parent, _)// search final in parent state
+          | TargetType.Named(n) => graph.CreateNodeUnresolved(create_name(n)) |> set_attr(_, x => x.name = n) |> contains(parent_or_src, _) // create new unresolved node
+          | Final               => graph.CreateNodeUnresolvedFinalState() |> contains(parent_or_src, _)// search final in parent state
                                     //mutable final;
                                     //_ = graph_actions.FindOrCreate.Apply(proc_env, parent, FinalState(), ref final);
                                     //when (final is FinalState as final) when (final.id == 0) final.id = get_id();
@@ -202,14 +199,14 @@ namespace Nemerle.Statechart
           //                         def path = q.FinalPath;
           //                         match (FindQualifed(path)) // find other nodes recursive
           //                         {
-                                     match (q.target)
+                                     (match (q.target)
                                      {
-                                      | TargetType.PseudoState(History) => graph.CreateNodeUnresolvedHistory |> create_named(_, q.PathName)
-                                      | _                               => graph.CreateNodeUnresolved        |> create_named(_, q.ToString())
-                                    }
+                                      | TargetType.PseudoState(History) => graph.CreateNodeUnresolvedHistory(create_name(q.PathName)) |> set_attr(_, x => x.name = q.PathName)
+                                      | _                               => graph.CreateNodeUnresolved(create_name(q.ToString()))  |> set_attr(_, x => x.name = q.ToString())
+                                    }) |> contains(parent_or_src, _)
                                    //  | q    => q
                                    //}
-          | Self                => graph.CreateNodeSelfTarget() |> contains(parent ?? src, _)//{mutable node; _ = graph_actions.CreateNode.Apply(proc_env, parent ?? src, SelfTarget(), "", ref node); node}
+          | Self                => graph.CreateNodeSelfTarget() |> contains(parent_or_src, _)//{mutable node; _ = graph_actions.CreateNode.Apply(proc_env, parent ?? src, SelfTarget(), "", ref node); node}
           | NoTarget            => src
           | t                   => graph.CreateNodeUnknown(create_name($"Target_$t"))
         }
@@ -303,7 +300,9 @@ namespace Nemerle.Statechart
       {
         // search for node of source path
         //def from = 
-        _ = graph.CreateNodeUnresolved |> create_named(_, from.FullName) |> graph.CreateEdgeTransition(_, src)
+        _ = graph.CreateNodeUnresolved(create_name(from.FullName)) |> contains(src, _)
+        |> set_attr(_, x => x.name = from.FullName) 
+        |> graph.CreateEdgeTransition(_, src)
         //match (FindQualifed(from.Parts, null))
         //{
         //  // not found create unresolved
@@ -435,8 +434,7 @@ namespace Nemerle.Statechart
 
               when (p is Some(p))
               {
-                def node = graph.CreateNodeUnresolved |> create_named(_, p);
-                _ = graph.CreateEdgeParent(st_node, node);
+                _ = graph.CreateNodeUnresolved(create_name(p)) |> set_attr(_, x => x.name = p) |> graph.CreateEdgeParent(st_node, _)
               }
               foreach (p in st.pseudo_states)
               {
@@ -482,7 +480,7 @@ namespace Nemerle.Statechart
           | Some(sub) => def instance = prepare(sub); // new id for each tree element
                          def st = instance.state.ChangeName(m);
                          _ = st.MapTree(create_nodes);
-          | _         => _ = graph.CreateNodeUnresolvedSubMachine |> create_named(_, m) |> set_attr(_, x : UnresolvedSubMachine => x.typename = m) // type
+                         | _         => _ = graph.CreateNodeUnresolvedSubMachine(create_name(m)) |> set_attr(_, x : UnresolvedSubMachine => {x.typename = m; x.name = m;}) // type
                          //when (node is UnresolvedSubMachine as n)
                          //{
                          //   n.typename = m;

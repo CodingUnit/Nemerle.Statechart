@@ -53,19 +53,19 @@ pattern FindHierarchy(parent : Node, type : Node, def ret : Node)
   
 	// search for parent contains node of that type
 	  //def t : Node;
-	  parent -:Contains-> t:typeof(type);
-	  yield {yield ret = t;}
+	  parent -:Contains-> type;
+	  yield {yield ret = type;}
 	  
 	|
 	
 	  negative
 	  {
 	    // if not found
-		parent -:Contains-> t:typeof(type);
+		parent -:Contains-> type;
 	  }
 	  
 	  p:Node -:Contains-> parent;
-	  :FindHierarchy(p, type, yield ret);	  	
+	  :FindHierarchy(p, type, yield ret);
 	
   )
 
@@ -123,18 +123,19 @@ pattern FindContainedType(parent : Node, type : Node, def ret : Node)
   yield {yield ret = type;}
 }
 
-pattern FindQualified(ref tar : array<string>, def ret : StateMachineNode)
+pattern FindQualifiedParent(st : Node, ref tar : array<string>, def ret : StateMachineNode)
 {
-	:QualifiedRec(null, tar, 0, yield ret);
+	n:NamedNode;
+	:QualifiedRecInParent(st, n, tar, 0, yield ret);
 }
 
-pattern QualifiedRec(state : DiagramNode, ref tar : array<string>, var idx : int, def ret : StateMachineNode)
+pattern QualifiedRec(state : NamedNode, ref tar : array<string>, var idx : int, def ret : StateMachineNode)
 {
 	alternative
 	{	   
 	    first // first entry
 		{
-		    st:DiagramNode; // search for named node
+		    st:NamedNode; // search for named node
 		    if { idx == 0; } // at index 0 of path
             if { st.name == tar[0]; } // name equal to this first name		  
 		    :QualifiedRec(st, tar, 1, yield ret);  // recursive call next index with that node
@@ -145,26 +146,26 @@ pattern QualifiedRec(state : DiagramNode, ref tar : array<string>, var idx : int
 			{
 			   if {idx == 0 || idx == tar.size();} // is not at 0 index or at end of array
 			}
-			state -:Contains-> t:DiagramNode; // find named node contained in state
+			state -:Contains-> t:NamedNode; // find named node contained in state
 			if { t.name == tar[idx];} // if name of this child equal current path at index
 			
 		    :QualifiedRec(t, tar, idx + 1, yield ret); // recursive search for path at next index
 	    }
 	    end
 	    {
-			if {idx == tar.size();}        // index at end of array 
+			if {idx == tar.size();}        // index at end of array 			
 			yield { yield ret = state; } // yield result
 	    }	   
 	}
 }
 
-pattern QualifiedRecType(state : DiagramNode, ref tar : array<string>, var idx : int, type : Node, def ret : Node)
+pattern QualifiedRecInParent(main_parent : Node, state : NamedNode, ref tar : array<string>, var idx : int, def ret : StateMachineNode)
 {
 	alternative
 	{	   
 	    first // first entry
 		{
-		    st:DiagramNode; // search for named node
+		    st:NamedNode; // search for named node
 		    if { idx == 0; } // at index 0 of path
             if { st.name == tar[0]; } // name equal to this first name		  
 		    :QualifiedRec(st, tar, 1, yield ret);  // recursive call next index with that node
@@ -174,18 +175,51 @@ pattern QualifiedRecType(state : DiagramNode, ref tar : array<string>, var idx :
 			negative
 			{
 			   if {idx == 0 || idx == tar.size();} // is not at 0 index or at end of array
+			   //if {state == null;}
 			}
-			state -:Contains-> t:DiagramNode; // find named node contained in state
+			state -:Contains-> t:NamedNode; // find named node contained in state
 			if { t.name == tar[idx];} // if name of this child equal current path at index
 			
 		    :QualifiedRec(t, tar, idx + 1, yield ret); // recursive search for path at next index
 	    }
 	    end
 	    {
-			if {idx == tar.size();}        // index at end of array 
-			state -:Contains-> t:typeof(type);
-			yield { yield ret = t; } // yield result
+			if {idx == tar.size();}        // index at end of array 		
+			if (isReachable(main_parent, state, Contains));
+			yield { yield ret = state; } // yield result
 	    }	   
+	}
+}
+
+pattern QualifiedRecType(state : NamedNode, ref tar : array<string>, var idx : int, type : Node, def ret : Node)
+{
+	alternative
+	{	   
+	    first // first entry
+		{
+		    st:NamedNode; // search for named node
+		    if { idx == 0; } // at index 0 of path
+            if { st.name == tar[0]; } // name equal to this first name		  
+		    :QualifiedRecType(st, tar, 1, type, yield ret);  // recursive call next index with that node
+		}
+		next
+	    {
+			negative
+			{
+			   if {idx == 0 || idx == tar.size();} // is not at 0 index or at end of array
+			}
+			state -:Contains-> t:NamedNode; // find named node contained in state
+			if { t.name == tar[idx];} // if name of this child equal current path at index
+			
+		    :QualifiedRecType(t, tar, idx + 1, type, yield ret); // recursive search for path at next index
+	    }
+	    end
+	    {
+			if {idx == tar.size();}        // index at end of array 
+			state -:Contains-> type;
+			//if {typeof(t) >= typeof(type);}
+			yield { yield ret = type; } // yield result
+	    }
 	}
 }
 
@@ -283,7 +317,7 @@ pattern HistoryFindRec(state : State, hist : History, def ret : History)//var hi
 // find qualified target state.substate or state.pseudo syntax
 test FindNamed(var name : string) : (NamedNode)
 {
-  t:DiagramNode;  
+  t:NamedNode;  
   
   if { t.name == name; }   
   return (t);

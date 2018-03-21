@@ -7,11 +7,15 @@
 rule CreateNode(parent : Node, type : Node, var name : string) : (Node)
 {
   (
-      if { typeof(type) >= NamedNode; }
+      :NamedNode<type>;
 	  
 	  modify
 	  {
-		parent -:Contains-> t:typeof(type);
+		def var uname : string;
+		//eval { uname = UniqueName(name); }
+		t:typeof(type)@($ = uname);
+		parent -:Contains-> t;
+		//n:N@($="foo", i=42, s="Hallo Welt");
 		
 		eval 
 		{ 
@@ -22,7 +26,7 @@ rule CreateNode(parent : Node, type : Node, var name : string) : (Node)
 	  } 
 	| 
 	
-	  negative { if {typeof(type) >= NamedNode;}  }
+	  negative {  :NamedNode<type>;  }
 	//t:Node<type>;
 	  
 	  modify
@@ -41,6 +45,30 @@ rule CreateNode(parent : Node, type : Node, var name : string) : (Node)
   
 }
 
+
+// pattern UniqueName(var name : string, def var ret : string)
+// {
+    // (
+		// @(name):Node;
+		
+		// :UniqueNameRec(name, yield ret)
+    // |
+	
+		// yield {yield ret = name;}
+	// )
+// }
+
+// pattern UniqueNameRec(var name : string, var idx : int, def var ret : string) : Node
+// {
+	 // (
+		// @(name + string(idx));
+		
+		// :UniqueNameRec(name, yield ret)
+    // |
+	
+		// yield {yield ret = name;}
+	// )
+// }
 
 rule MoveSubstateToParent()
 {
@@ -66,7 +94,7 @@ test FindQualifiedPath(ref tar : array<string>) : (StateMachineNode)
 rule ResolveHistory()
 {
 	n:Node -tran:Transition-> not_resolved:UnresolvedHistory;
-	parent:Node -:Contains-> not_resolved;
+	parent:NamedNode -:Contains-> not_resolved;
 	def hist : Node;
 	
 	(	    
@@ -98,17 +126,17 @@ rule ResolveHistory()
 	|			
 		
 		if {not_resolved.name != null;}
-		
+		//def ret : History;
 		h:History;
-		:QualifiedRecType(null, not_resolved.name.asArray("."), 0, h, yield hist);
+		:QualifiedRecType(parent, not_resolved.name.asArray("."), 0, h, yield hist);
 		
 		modify {delete(not_resolved);}
 	)
 	
 	modify
 	{            
-		
 		n -:copy<tran>-> hist;
+		
 	}
 }
 
@@ -268,39 +296,64 @@ rule ResolveEntryPoint()
 }
 
 // resolve unresolved nodes
-rule TryResolveNames()
+rule ResolveNames()
 {
   st:Node -e:Edge-> not_resolved:Unresolved; // node that points to unresolved
+  
+  if {typeof(e) != Contains;}
   //res:NamedNode \ Unresolved;
 	// search for qualified path node, return last node of that path
-  def res:StateMachineNode;			   
-  :FindQualified(not_resolved.name.asArray("."), yield res);	
-  //if {res.name == not_resolved.name;}
+  res:NamedNode;
+  //:FindQualifiedParent(st, not_resolved.name.asArray("."), yield res);	
+  
+  if {res.name == not_resolved.name;}
+  if (isReachable(st, res, Contains));
   
   modify
   {
-	//def res:StateMachineNode;
-	
 	st -:copy<e>-> res; // create edge to resolved			
 	delete(not_resolved); // delete unresolved	
   }
 }
 
-rule TryResolveNames2()
+// resolve unresolved nodes
+rule ResolveQualifiedNames()
+{
+  st:Node -e:Edge-> not_resolved:Unresolved; // node that points to unresolved
+  //res:NamedNode \ Unresolved;
+  if {typeof(e) != Contains;}
+	// search for qualified path node, return last node of that path 
+  if {not_resolved.name.indexOf(".") != -1;}
+  def res:StateMachineNode;
+  :FindQualifiedParent(st, not_resolved.name.asArray("."), yield res);	
+  
+  //if {res.name == not_resolved.name;}
+  
+  modify
+  {
+	st -:copy<e>-> res; // create edge to resolved			
+	delete(not_resolved); // delete unresolved	
+  }
+}
+
+rule ResolveNames2()
 {
  
-	  st:Node <-e:Edge- not_resolved:Unresolved; // node that points to unresolved
-	
+  st:Node <-e:Edge- not_resolved:Unresolved; // node that points to unresolved
+  //res:NamedNode \ Unresolved;
 	// search for qualified path node, return last node of that path
-	  def res:StateMachineNode;			   
-	  :FindQualified(not_resolved.name.asArray("."), yield res);	
-	  
-	   modify
-	   {	        
-			st <-:copy<e>- res; // create edge to resolved
-			delete(not_resolved); // delete unresolved	
-	   }
-
+  if {typeof(e) != Contains;}
+  res:NamedNode;
+  //:FindQualifiedParent(st, not_resolved.name.asArray("."), yield res);	
+  if {res.name == not_resolved.name;}
+  if (isReachable(st, res, Contains));
+  
+  
+  modify
+  {
+	st -:copy<e>-> res; // create edge to resolved			
+	delete(not_resolved); // delete unresolved	
+  }
 }
 // replace target node with source with nested containment
 procedure Replace(src : NamedNode, target : NamedNode)
