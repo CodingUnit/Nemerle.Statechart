@@ -45,38 +45,49 @@ rule CreateNode(parent : Node, type : Node, var name : string) : (Node)
   
 }
 
-
-// pattern UniqueName(var name : string, def var ret : string)
-// {
+ // pattern UniqueName(var name : string, def var ret : string)
+ // {
     // (
-		// @(name):Node;
+		// n:Node{@(name)};
 		
-		// :UniqueNameRec(name, yield ret)
+		// :UniqueNameRec(name, 0, yield ret);
     // |
-	
+	    // negative {n:Node{@(name)};}
 		// yield {yield ret = name;}
 	// )
 // }
 
-// pattern UniqueNameRec(var name : string, var idx : int, def var ret : string) : Node
-// {
-	 // (
-		// @(name + string(idx));
+ // pattern UniqueNameRec(var name : string, var idx : int, def var ret : string)
+ // {
+	// //def var nn : string;
+	// //yield {yield nn = name + (string)idx;}
+	// alternative
+	// {
+		// found
+		// {
+	     
+		 // //n:Node{@(name)};
+		 // if{ nodeByName(name) != null; }
 		
-		// :UniqueNameRec(name, yield ret)
-    // |
-	
-		// yield {yield ret = name;}
-	// )
-// }
+		 // :UniqueNameRec(name, idx + 1, yield ret);
+		// }
+		// not_found
+		// {
+	// //|
+	     // negative {if{ nodeByName(name) != null; }}
+		 // yield {yield ret = name;}
+		// }
+	// //)
+	// }
+ // }
 
 rule MoveSubstateToParent()
 {
   state:State -p:Parent-> parent:State;
   
-  modify
+  replace
   {
-    delete(p);
+    //delete(p);
     state <-:Substate- parent;
   }
 }
@@ -95,11 +106,13 @@ rule ResolveHistory()
 {
 	n:Node -tran:Transition-> not_resolved:UnresolvedHistory;
 	parent:NamedNode -:Contains-> not_resolved;
-	def hist : Node;
+	hom(n, parent);
+	
+	def hist : Node;	
 	
 	(	    
 		:UnresolvedDeepHistory<not_resolved>;
-		if {not_resolved.name == null;}
+		if {not_resolved.name == null || not_resolved.name.length() == 0;}
 		
 		//if {not_resolved.type == history_type::deep;}
 		h:DeepHistory;				
@@ -108,24 +121,25 @@ rule ResolveHistory()
 	| 
 	    //parent:Node -:Contains-> not_resolved;
 		:UnresolvedShallowHistory<not_resolved>;
-		if {not_resolved.name == null;}
+		if {not_resolved.name == null || not_resolved.name.length() == 0;}
 		
 		//if {not_resolved.type == history_type::shallow;}
 		h:ShallowHistory;				
 		:FindHierarchy(parent, h, yield hist);//not_resolved.type
 		modify {delete(not_resolved);}
 	| 
-		//parent:Node -:Contains-> not_resolved;
+		//parent:Node -:Contains-> not_resolved;		
 		if {typeof(not_resolved) == UnresolvedHistory;}
-		if {not_resolved.name == null;}
+		if {not_resolved.name == null || not_resolved.name.length() == 0;}
 		
 		//if {not_resolved.type == history_type::any;}
-		h:History;		
+		h:History;
+		///parent -:Contains-> h:History;
 		:FindHierarchy(parent, h, yield hist);//not_resolved.type
 		modify {delete(not_resolved);}
 	|			
 		
-		if {not_resolved.name != null;}
+		if {not_resolved.name != null && not_resolved.name.length() != 0;}
 		//def ret : History;
 		h:History;
 		:QualifiedRecType(parent, not_resolved.name.asArray("."), 0, h, yield hist);
@@ -136,9 +150,67 @@ rule ResolveHistory()
 	modify
 	{            
 		n -:copy<tran>-> hist;
-		
+		eval {emitdebug(parent); emitdebug(n);}
+		//modify {delete(not_resolved);}
 	}
 }
+
+/*
+pattern FindResolvedHistoryType(parent : Node, not_resolved : UnresolvedHistory, def hist : Node)
+{
+	(	    
+		:UnresolvedDeepHistory<not_resolved>;
+		if {not_resolved.name == null;}
+		
+		//if {not_resolved.type == history_type::deep;}
+		h:DeepHistory;				
+		:FindHierarchy(parent, h, yield hist);//not_resolved.type
+		//modify {delete(not_resolved);}
+	| 
+	    //parent:Node -:Contains-> not_resolved;
+		:UnresolvedShallowHistory<not_resolved>;
+		if {not_resolved.name == null;}
+		
+		//if {not_resolved.type == history_type::shallow;}
+		h:ShallowHistory;				
+		:FindHierarchy(parent, h, yield hist);//not_resolved.type
+		//modify {delete(not_resolved);}
+	| 
+		//parent:Node -:Contains-> not_resolved;		
+		if {typeof(not_resolved) == UnresolvedHistory;}
+		if {not_resolved.name == null;}
+		
+		//if {not_resolved.type == history_type::any;}
+		h:History;
+		:FindHierarchy(parent, h, yield hist);//not_resolved.type
+		//modify {delete(not_resolved);}
+	|			
+		
+		if {not_resolved.name != null;}
+		//def ret : History;
+		h:History;
+		:QualifiedRecType(parent, not_resolved.name.asArray("."), 0, h, yield hist);
+		
+		//modify {delete(not_resolved);}
+	)
+}*/
+
+/*
+rule ResolveHistory()
+{
+	n:Node -tran:Transition-> not_resolved:UnresolvedHistory;
+	parent:NamedNode -:Contains-> not_resolved;
+	hom(n, parent);
+	def hist : Node;	
+	
+	
+	
+	modify
+	{            
+		n -:copy<tran>-> hist;
+		
+	}
+}*/
 
 rule ResolveFinal()
 {
@@ -169,6 +241,44 @@ rule ResolveFinal()
 		   parent -:Contains-> final:FinalState;
 		  
 		   eval {yield ret = final;}
+		 }
+	   }
+	}		
+
+	modify
+	{			
+		delete(not_resolved);
+		def ret : Node;
+		n -:copy<tran>-> ret;
+	}		
+}
+
+rule ResolveTerminate()
+{
+	not_resolved:UnresolvedTerminate <-tran:Transition- n:Node;
+	
+	
+	alternative
+	{
+	   found
+	   {	   
+		 -:TopState-> . -:Contains-> term:Terminate;
+		
+		 modify { eval {yield ret = term;} }		
+	   } 
+	   not
+	   {
+		 -:TopState-> top:Node;
+		 negative
+		 {
+			top -:Contains-> term:Terminate;
+		 }
+		
+		 modify
+		 {
+		   top -:Contains-> term:Terminate;
+		  
+		   eval {yield ret = term;}
 		 }
 	   }
 	}		
@@ -304,6 +414,7 @@ rule ResolveNames()
   //res:NamedNode \ Unresolved;
 	// search for qualified path node, return last node of that path
   res:NamedNode;
+  hom(st, res);
   //:FindQualifiedParent(st, not_resolved.name.asArray("."), yield res);	
   
   if {res.name == not_resolved.name;}
@@ -344,6 +455,7 @@ rule ResolveNames2()
 	// search for qualified path node, return last node of that path
   if {typeof(e) != Contains;}
   res:NamedNode;
+  hom(st, res);
   //:FindQualifiedParent(st, not_resolved.name.asArray("."), yield res);	
   if {res.name == not_resolved.name;}
   if (isReachable(st, res, Contains));
@@ -491,7 +603,7 @@ rule CheckSelfTargets()
 		
 		modify
 		{
-		  state -:copy<e>-> state;
+		  state -:copy<e>-> state;		  
 		  delete(t);
 		}
 	  }
@@ -505,6 +617,7 @@ rule CheckSelfTargets()
 		modify
 		{
 		  state -:copy<e>-> src;
+		  //state -e-> src;
 		  delete(t);
 		}
 	  }
