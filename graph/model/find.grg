@@ -49,23 +49,14 @@ pattern FindOrCreate(parent : Node, type : Node) modify(def ret : Node)
 pattern FindHierarchy(parent : Node, type : Node, def ret : Node)
 {
   (
-  
-  
-	// search for parent contains node of that type
-	  //def t : Node;
+	  // search for parent contains node of that type	  
 	  parent -:Contains-> type;
-	  yield {yield ret = type;}
+	  yield {yield ret = type;} // yield to output
+	|	
+	  ~( parent -:Contains-> type; ) // if not found 
 	  
-	|
-	
-	  negative
-	  {
-	    // if not found
-		parent -:Contains-> type;
-	  }
-	  
-	  p:Node -:Contains-> parent;
-	  :FindHierarchy(p, type, yield ret);
+	  p:Node -:Contains-> parent; // match parent
+	  :FindHierarchy(p, type, yield ret); // recursive call with parent
 	
   )
 
@@ -75,146 +66,109 @@ pattern FindHierarchy(parent : Node, type : Node, def ret : Node)
 pattern FindNameHierarchy(parent : Node, type : Node, var name : string, def ret : Node)
 {
   (
-  
-  
-	// search for parent contains node of that type
-	  //def t : Node;
+	// search for parent contains node of that type	  
 	  parent -:Contains-> type;
+	  t:NamedNode<type>; // try cast to type
+	 
+	  if {t.name == name;} // if name is equal to search
 	  
-	  t:NamedNode<type>;
-	  // eval
-	  // {
-		  
-	  // }
-	  //if {typeof(t) >= typeof(type);}
-	  if {t.name == name;}
-	  
-	  yield {yield ret = t;}
-	  
+	  yield {yield ret = t;} // return
 	|
-	
 	  negative
 	  {
 	    // if not found
-		parent -:Contains-> t:typeof(type);
+		parent -:Contains-> type;
 	  }
 	  
-	  p:Node -:Contains-> parent;
-	  :FindNameHierarchy(p, type, name, yield ret);
+	  p:Node -:Contains-> parent; // get parent
+	  :FindNameHierarchy(p, type, name, yield ret); // recursive call with parent
   )
 }
 
-test ParentOf(elem : Node) : (State)
-{
-  parent:State -:Contains-> elem;
+// test ParentOf(elem : Node) : (State)
+// {
+  // parent:State -:Contains-> elem;
   
-  return (parent);
-}
+  // return (parent);
+// }
 
-pattern FindContainedType(parent : Node, type : Node, def ret : Node)
-{
-  parent -:Contains-> type;
-  yield {yield ret = type;}
-}
+// pattern FindContainedType(parent : Node, type : Node, def ret : Node)
+// {
+  // parent -:Contains-> type;
+  // yield {yield ret = type;}
+// }
 
-pattern FindQualifiedParent(st : Node, ref tar : array<string>, def ret : StateMachineNode)
+pattern FindQualified(ref tar : array<string>, def ret : StateMachineNode)
 {
 	n:NamedNode;
-	:QualifiedRecInParent(st, n, tar, 0, yield ret);
+	:QualifiedRec(n, tar, 0, yield ret);
+}
+
+pattern FindQualifiedType(ref tar : array<string>, type : Node, def ret : Node)
+{
+	n:NamedNode;
+	:QualifiedRecType(n, tar, 0, type, yield ret);
 }
 
 pattern QualifiedRec(state : NamedNode, ref tar : array<string>, var idx : int, def ret : StateMachineNode)
 {
-	alternative
-	{	   
-	    first // first entry
-		{
-		    st:NamedNode; // search for named node
-		    if { idx == 0; } // at index 0 of path
-            if { st.name == tar[0]; } // name equal to this first name		  
-		    :QualifiedRec(st, tar, 1, yield ret);  // recursive call next index with that node
-		}
-		next
-	    {
-			negative
-			{
-			   if {idx == 0 || idx == tar.size();} // is not at 0 index or at end of array
-			}
-			state -:Contains-> t:NamedNode; // find named node contained in state
-			if { t.name == tar[idx];} // if name of this child equal current path at index
-			
-		    :QualifiedRec(t, tar, idx + 1, yield ret); // recursive search for path at next index
-	    }
-	    end
-	    {
-			if {idx == tar.size();}        // index at end of array 			
-			yield { yield ret = state; } // yield result
-	    }	   
-	}
+	if { state.name == tar[idx];} // if name of this child equal current path at index
+	(	   
+		if {idx < tar.size() - 1;} // is not at end of array			
+		state -:Contains-> t:NamedNode; // find named node contained in state
+		:QualifiedRec(t, tar, idx + 1, yield ret); // recursive search for path at next index
+	|	    
+		if {idx >= tar.size() - 1;}        // index at end of array 									
+		yield { yield ret = state; } // yield result
+	)
 }
 
-pattern QualifiedRecInParent(main_parent : Node, state : NamedNode, ref tar : array<string>, var idx : int, def ret : StateMachineNode)
-{
-	alternative
-	{	   
-	    first // first entry
-		{
-		    st:NamedNode; // search for named node
-		    if { idx == 0; } // at index 0 of path
-            if { st.name == tar[0]; } // name equal to this first name		  
-		    :QualifiedRec(st, tar, 1, yield ret);  // recursive call next index with that node
-		}
-		next
-	    {
-			negative
-			{
-			   if {idx == 0 || idx == tar.size();} // is not at 0 index or at end of array
-			   //if {state == null;}
-			}
-			state -:Contains-> t:NamedNode; // find named node contained in state
-			if { t.name == tar[idx];} // if name of this child equal current path at index
+// pattern QualifiedRecInParent(main_parent : Node, state : NamedNode, ref tar : array<string>, var idx : int, def ret : StateMachineNode)
+// {
+	// alternative
+	// {	   
+	    // first // first entry
+		// {
+		    // st:NamedNode; // search for named node
+		    // if { idx == 0; } // at index 0 of path
+            // if { st.name == tar[0]; } // name equal to this first name		  
+		    // :QualifiedRec(st, tar, 1, yield ret);  // recursive call next index with that node
+		// }
+		// next
+	    // {
+			// negative
+			// {
+			   // if {idx == 0 || idx == tar.size();} // is not at 0 index or at end of array
+			   // //if {state == null;}
+			// }
+			// state -:Contains-> t:NamedNode; // find named node contained in state
+			// if { t.name == tar[idx];} // if name of this child equal current path at index
 			
-		    :QualifiedRec(t, tar, idx + 1, yield ret); // recursive search for path at next index
-	    }
-	    end
-	    {
-			if {idx == tar.size();}        // index at end of array 		
-			if (isReachable(main_parent, state, Contains));
-			yield { yield ret = state; } // yield result
-	    }	   
-	}
-}
+		    // :QualifiedRec(t, tar, idx + 1, yield ret); // recursive search for path at next index
+	    // }
+	    // end
+	    // {
+			// if {idx == tar.size();}        // index at end of array 		
+			// if (isReachable(main_parent, state, Contains));
+			// yield { yield ret = state; } // yield result
+	    // }	   
+	// }
+// }
 
 pattern QualifiedRecType(state : NamedNode, ref tar : array<string>, var idx : int, type : Node, def ret : Node)
 {
-	alternative
-	{	   
-	    first // first entry
-		{
-		    st:NamedNode; // search for named node
-		    if { idx == 0; } // at index 0 of path
-            if { st.name == tar[0]; } // name equal to this first name		  
-		    :QualifiedRecType(st, tar, 1, type, yield ret);  // recursive call next index with that node
-		}
-		next
-	    {
-			negative
-			{
-			   if {idx == 0 || idx == tar.size();} // is not at 0 index or at end of array
-			}
-			state -:Contains-> t:NamedNode; // find named node contained in state
-			if { t.name == tar[idx];} // if name of this child equal current path at index
-			
-		    :QualifiedRecType(t, tar, idx + 1, type, yield ret); // recursive search for path at next index
-	    }
-	    end
-	    {
-			if {idx == tar.size();}        // index at end of array 
-			state -:Contains-> type;
-			//if {typeof(t) >= typeof(type);}
-			yield { yield ret = type; } // yield result
-	    }
-	}
+	if { state.name == tar[idx];} // if name of this child equal current path at index
+	(	  
+		if {idx < tar.size() - 1;} // is not at 0 index or at end of array
+		
+		state -:Contains-> t:NamedNode; // find named node contained in state
+		:QualifiedRecType(t, tar, idx + 1, type, yield ret); // recursive search for path at next index
+	 |
+		if {idx >= tar.size() - 1;}        // index at end of array 
+		state -:Contains-> type;			
+		yield { yield ret = type; } // yield result
+	 
+	)
 }
 
 
@@ -271,6 +225,7 @@ pattern FindRecHierarchy(state : State, type : StateMachineNode, var name : stri
 
 */
 
+/*
 pattern HistoryFindRec(state : State, hist : History, def ret : History)//var hist : history_type
 {
 	alternative
@@ -306,7 +261,7 @@ pattern HistoryFindRec(state : State, hist : History, def ret : History)//var hi
 		:HistoryFindRec(parent, hist, yield ret); // recursive search for history in parent
 	  }
 	}
-}
+}*/
 
 // find qualified target state.substate or state.pseudo syntax
 test FindNamed(var name : string) : (NamedNode)
@@ -335,26 +290,28 @@ test FindNamedHierarchy(st : State, type : StateMachineNode, var name : string) 
 	 // return (lca);
 // }
 
-pattern LCArec(u : StateMachineNode, v : StateMachineNode,  def lca : Node)
+pattern LCA(u : StateMachineNode, v : StateMachineNode, def lca : Node)
+{
+	parent1:StateMachineNode -:Contains-> u;
+	parent2:StateMachineNode -:Contains-> v;
+	:LCArec(parent1, parent2, yield lca);
+}
+
+pattern LCArec(u : StateMachineNode, v : StateMachineNode, def lca : Node)
 {	
 	(
 	     if { u.depth > v.depth;}
 	 
 		 parent:StateMachineNode -:Contains-> u;
-		 
 		 :LCArec(parent, v, yield lca);
-		 
 	 |   
 		 if { u.depth < v.depth;}
 	 
 		 parent:StateMachineNode -:Contains-> v;
-		 
 		 :LCArec(u, parent, yield lca);
-		 
      |   
 		 if {u.depth == v.depth;}
 	     if {u != v;}
-		 
 		 parent1:StateMachineNode -:Contains-> u;
 		 parent2:StateMachineNode -:Contains-> v;
 		 
@@ -391,13 +348,13 @@ pattern FindSourceState(st : PseudoState, def source : State)
   {
     found
 	{
-		state:State --> st;
+		state:State -e:Transition-> st;
 	   
 		yield { yield source = state; }
 	}
 	not_found
 	{
-		state:PseudoState --> st;		
+		state:PseudoState -e:Transition-> st;		
 		
 		:FindSourceState(state, yield source);
 	}

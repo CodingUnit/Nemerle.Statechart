@@ -112,7 +112,7 @@ rule ResolveHistory()
 	
 	(	    
 		:UnresolvedDeepHistory<not_resolved>;
-		if {not_resolved.name == null || not_resolved.name.length() == 0;}
+		if {not_resolved.name.length() == 0;}
 		
 		//if {not_resolved.type == history_type::deep;}
 		h:DeepHistory;				
@@ -121,7 +121,7 @@ rule ResolveHistory()
 	| 
 	    //parent:Node -:Contains-> not_resolved;
 		:UnresolvedShallowHistory<not_resolved>;
-		if {not_resolved.name == null || not_resolved.name.length() == 0;}
+		if {not_resolved.name.length() == 0;}
 		
 		//if {not_resolved.type == history_type::shallow;}
 		h:ShallowHistory;				
@@ -130,7 +130,7 @@ rule ResolveHistory()
 	| 
 		//parent:Node -:Contains-> not_resolved;		
 		if {typeof(not_resolved) == UnresolvedHistory;}
-		if {not_resolved.name == null || not_resolved.name.length() == 0;}
+		if {not_resolved.name.length() == 0;}
 		
 		//if {not_resolved.type == history_type::any;}
 		h:History;
@@ -139,10 +139,10 @@ rule ResolveHistory()
 		modify {delete(not_resolved);}
 	|			
 		
-		if {not_resolved.name != null && not_resolved.name.length() != 0;}
+		if {not_resolved.name.length() != 0;}
 		//def ret : History;
-		h:History;
-		:QualifiedRecType(parent, not_resolved.name.asArray("."), 0, h, yield hist);
+		h:History;		
+		:FindQualifiedType(not_resolved.name.asArray("."), h, yield hist);
 		
 		modify {delete(not_resolved);}
 	)
@@ -150,7 +150,7 @@ rule ResolveHistory()
 	modify
 	{            
 		n -:copy<tran>-> hist;
-		eval {emitdebug(parent); emitdebug(n);}
+		//eval {emitdebug(parent); emitdebug(n);}
 		//modify {delete(not_resolved);}
 	}
 }
@@ -222,19 +222,13 @@ rule ResolveFinal()
 	   {
 		 parent -:Contains-> final:FinalState;
 		
-		 modify
-		 {
-		   eval {yield ret = final;}
-		 }
+		 modify { eval {yield ret = final;} }
 		
 	   } 
 		
 	   not
 	   {
-		 negative
-		 {
-			parent -:Contains-> final:FinalState;
-		 }
+		 ~( parent -:Contains-> :FinalState; )
 		
 		 modify
 		 {
@@ -269,10 +263,7 @@ rule ResolveTerminate()
 	   not
 	   {
 		 -:TopState-> top:Node;
-		 negative
-		 {
-			top -:Contains-> term:Terminate;
-		 }
+		 ~( top -:Contains-> term:Terminate; )
 		
 		 modify
 		 {
@@ -293,52 +284,36 @@ rule ResolveTerminate()
 
 rule ResolveExitPoint()
 {	    
-	parent:Node -e:Contains-> not_resolved:UnresolvedExitPoint;
-	
+	parent:Node -e:Contains-> not_resolved:UnresolvedExitPoint; // match parent contains unresolved exit point node
 	
 	alternative
 	{
 	   found
 	   {
-		not_resolved <-tran:Transition- n:Node;	
-		hom(parent, n);
+		not_resolved <-tran:Transition- n:Node;	 // match node with transition to not resolved node
+		hom(parent, n); // homomorphically parent and n
+		
 		ex:ExitPoint;
 		def r : Node;
 		:FindNameHierarchy(parent, ex, not_resolved.name, yield r);
 					
-		modify
-		{
-		  //eval {yield ret = r;}
-		  //delete(not_resolved);
-		  //def ret : Node;
-		  n -:copy<tran>-> r;
-		}
-		
-	   } 
-		
+		modify { n -:copy<tran>-> r; }
+	   }
 	   not
-	   {
-	     //parent:State -e:Contains-> not_resolved:UnresolvedExitPoint;
-		 //not_resolved <-tran:Transition- n:Node;
+	   {	     
 		 not_resolved <-tran:Transition- n:Node;
 		 hom(parent, n);
-		 negative
-		 {
+		 ~(
 			def r : Node;
 			ex:ExitPoint;
-			//not_resolved <-:Transition- n:Node;
-			//hom(parent, n);
 			:FindNameHierarchy(parent, ex, not_resolved.name, yield r);//not_resolved.name,
-		 }
+		  )
 		
 		 modify
 		 {
 		   parent -:Contains-> ex:ExitPoint;
-		   eval {ex.name = not_resolved.name;}
-		   //def re : Node;
-		   n -:copy<tran>-> ex;
-		   //delete(not_resolved);
-		   //eval {yield ret = ex;}
+		   eval {ex.name = not_resolved.name;}		   
+		   n -:copy<tran>-> ex;		   
 		 }
 	   }
 	}
@@ -352,39 +327,30 @@ rule ResolveEntryPoint()
 {
 	parent:Node -e:Contains-> not_resolved:UnresolvedEntryPoint;
 	
-	
 	alternative
 	{
 	   found
 	   {
 		not_resolved <-tran:Transition- n:Node;	
 		hom(parent, n);
+		
 		ex:EntryPoint;
 		def r : Node;
 		:FindNameHierarchy(parent, ex, not_resolved.name, yield r);
 					
-		modify
-		{
-		  //eval {yield ret = r;}
-		  //delete(not_resolved);
-		  //def ret : Node;
-		  n -:copy<tran>-> r;
-		}
+		modify { n -:copy<tran>-> r; }
 		
 	   } 
 		
 	   not
-	   {
-	     //parent:State -e:Contains-> not_resolved:UnresolvedEntryPoint;
-		 //not_resolved <-tran:Transition- n:Node;
+	   {	     
 		 not_resolved <-tran:Transition- n:Node;
 		 hom(parent, n);
 		 negative
 		 {
 			def r : Node;
 			ex:EntryPoint;
-			//not_resolved <-:Transition- n:Node;
-			//hom(parent, n);
+			
 			:FindNameHierarchy(parent, ex, not_resolved.name, yield r);//not_resolved.name,
 		 }
 		
@@ -392,17 +358,11 @@ rule ResolveEntryPoint()
 		 {
 		   parent -:Contains-> ex:EntryPoint;
 		   eval {ex.name = not_resolved.name;}
-		   //def re : Node;
-		   n -:copy<tran>-> ex;
-		   //delete(not_resolved);
-		   //eval {yield ret = ex;}
+		   n -:copy<tran>-> ex;		
 		 }
 	   }
 	}
-	 modify
-	 {			
-		delete(not_resolved);
-	 } 
+	 modify { delete(not_resolved); } 
 }
 
 // resolve unresolved nodes
@@ -410,15 +370,13 @@ rule ResolveNames()
 {
   st:Node -e:Edge-> not_resolved:Unresolved; // node that points to unresolved
   
-  if {typeof(e) != Contains;}
-  //res:NamedNode \ Unresolved;
-	// search for qualified path node, return last node of that path
-  res:NamedNode;
-  hom(st, res);
-  //:FindQualifiedParent(st, not_resolved.name.asArray("."), yield res);	
+  if {typeof(e) != Contains;} // not contains edge  
+	
+  res:NamedNode; // named node
+  hom(st, res); // maybe that type  
   
-  if {res.name == not_resolved.name;}
-  if (isReachable(st, res, Contains));
+  if {res.name == not_resolved.name;} // if name equals
+  if (isReachable(st, res, Contains)); // if reachable, in that statemachine
   
   modify
   {
@@ -429,16 +387,13 @@ rule ResolveNames()
 
 // resolve unresolved nodes
 rule ResolveQualifiedNames()
-{
-  st:Node -e:Edge-> not_resolved:Unresolved; // node that points to unresolved
-  //res:NamedNode \ Unresolved;
-  if {typeof(e) != Contains;}
+{  
+  st:Node -e:Edge \ Contains->  not_resolved:Unresolved; // node that points to unresolved  
+  //if {typeof(e) != Contains;}
 	// search for qualified path node, return last node of that path 
   if {not_resolved.name.indexOf(".") != -1;}
   def res:StateMachineNode;
-  :FindQualifiedParent(st, not_resolved.name.asArray("."), yield res);	
-  
-  //if {res.name == not_resolved.name;}
+  :FindQualified(not_resolved.name.asArray("."), yield res);
   
   modify
   {
@@ -450,16 +405,15 @@ rule ResolveQualifiedNames()
 rule ResolveNames2()
 {
  
-  st:Node <-e:Edge- not_resolved:Unresolved; // node that points to unresolved
+  st:Node <-e:Edge \ Contains- not_resolved:Unresolved; // node that points to unresolved
   //res:NamedNode \ Unresolved;
 	// search for qualified path node, return last node of that path
-  if {typeof(e) != Contains;}
+  //if {typeof(e) != ;}
   res:NamedNode;
   hom(st, res);
   //:FindQualifiedParent(st, not_resolved.name.asArray("."), yield res);	
   if {res.name == not_resolved.name;}
   if (isReachable(st, res, Contains));
-  
   
   modify
   {
@@ -495,52 +449,29 @@ rule MarkSubMachines()
 	submachine_type : State \ SubMachineState; // some state except sub machine
 	if { st.typename == submachine_type.name; } // if typename equals submachine_type name
 	
-    negative
-	{
-		submachine_type -:SubMachineInstance-> st; // not contained instance edge
-	}
+    ~( submachine_type -:SubMachineInstance-> st; ) // not contained instance edge
 	
-	modify
-    {
-		submachine_type -:SubMachineInstance-> st; // create instance edge
-	}
+	modify { submachine_type -:SubMachineInstance-> st; } // create instance edge
 }
 
 rule MergeSubmachine1()
 {
 	-:SubMachineInstance-> st:State; // search for type and instances  
-	
-	multiple
-	{
-		st -:Contains-> n1:ExitPoint;
-		st -:Contains-> n2:ExitPoint;
+	n2:ExitPoint <-:Contains- st -:Contains-> n1:ExitPoint;
 
-		if {n1.name == n2.name;}
+	if {n1.name == n2.name;}
 
-		modify
-		{
-			st -:Contains-> :ExitPoint<n1, n2>;		 
-		}
-	}
-	
+	modify { st -:Contains-> :ExitPoint<n1, n2>; }
 }
 
 rule MergeSubmachine2()
 {
 	-:SubMachineInstance-> st:State; // search for type and instances  
-	
-	multiple
-	{
-		st -:Contains-> n1:EntryPoint;
-		st -:Contains-> n2:EntryPoint;
+	n2:EntryPoint <-:Contains- st -:Contains-> n1:EntryPoint;
 
-		if {n1.name == n2.name;}
+	if {n1.name == n2.name;}
 
-		modify
-		{
-			st -:Contains-> :EntryPoint<n1, n2>;		 
-		}
-	}
+	modify { st -:Contains-> :EntryPoint<n1, n2>; }
 	
 }
 // instatiate sub machines
@@ -548,13 +479,7 @@ rule InstanceSubMachines()
 {
   submachine_type:State -e:SubMachineInstance-> st:SubMachineState; // search for type and instances  
   
-  modify
-  {
-	eval
-	{
-	  Replace(submachine_type, st);	  	  // instantiate from type, create copy	  	  
-	}
-  }
+  modify { eval { Replace(submachine_type, st);	} }  	  // instantiate from type, create copy	  
 }
 
 // delete sub machine types already instantiated
@@ -562,22 +487,11 @@ rule DeleteSubMachineTypes()
 {
   submachine:State; // search for submachine
   
-  negative
-  {
-	-:Contains-> submachine;
-  }
+  ~( -:Contains-> submachine; )
 		  
-  multiple
-  {
-	submachine -e:SubMachineInstance->; // contained more than 0 instance edges
-	
-	modify { }
-  }
+  ( submachine -e:SubMachineInstance->; modify {})+ // contained more than 0 instance edges
 		   
-  modify
-  {
-	eval { Delete(submachine); }	// delete it
-  }
+  modify { eval { Delete(submachine); }	}// delete it
 }
 
 rule ClearSubMachines()
@@ -624,19 +538,12 @@ rule CheckSelfTargets()
 	}
 }
 
-//TODO: кэширование
-
 rule CreateDepth()
 {
   -:TopState-> top:State;
-  
   t:CreateDepthRec(top, 0);
   
-  modify
-  {
-    t();
-  }
-  
+  modify { t();}
 }
 
 pattern CreateDepthRec(n : StateMachineNode, var depth : int)
@@ -647,15 +554,64 @@ pattern CreateDepthRec(n : StateMachineNode, var depth : int)
 	
 	t:CreateDepthRec(child, depth + 1);
 	
-	modify
-	{	  
-	  t();
-	}
+	modify { t(); }
   }
   
-  modify
-  {
-    eval { n.depth = depth; }
-  }
+  modify { eval { n.depth = depth; } }
 }
 
+rule StateCombinations()
+{
+	st:ConcurrentState;
+	
+	st -r1:Region-> sub_reg:State;
+	st -r2:Region-> sub_reg2:State;
+	
+	iterated
+	{
+		sub_reg -:Substate-> sub1:State;
+		iterated
+		{
+			sub_reg2 -:Substate-> sub2:State;		
+			and:AndComb(sub1, sub2);
+			
+			modify
+			{
+				
+				and(yield and_st);
+				delete(sub2);
+			}
+		}	
+        modify
+		{
+			delete(sub1);
+		}		
+	}
+	
+	modify
+	{
+		def and_st : State;
+		m:State<sub_reg, and_st>;
+		eval {m.name = and_st.name;}
+		delete(sub_reg2);
+	}
+}
+
+pattern AndComb(st1 : State, st2 : State) modify(def ret : State)
+{
+	modify
+	{
+		def a1 : State;
+		def a2 : State;
+		eval
+		{
+			//
+			(def g1 : State) = insertInduced(reachableOutgoing(st1, Contains), st1);
+			(def g2 : State) = insertInduced(reachableOutgoing(st2, Contains), st2);		
+			yield a1 = g1;
+			yield a2 = g2;
+		}
+		a1 -:And-> a2;		
+		eval {yield ret = a1;}
+	}
+}
