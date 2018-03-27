@@ -38,23 +38,6 @@ namespace Nemerle.Statechart
       proc_env = LGSPGraphProcessingEnvironment(graph, graph_actions);
     }
 
-    //FindQualifed(path : list[string], tar : TargetType) : INode
-    //{
-    //  def node = {mutable res; if (graph_actions.FindQualifiedPath.Apply(proc_env, path.ToList(), ref res)) res else null};
-    //  if (node == null) null else
-    //  match (tar)
-    //  {
-    //    | null           => node
-    //    | PseudoState(p) => match (p)
-    //                          {
-    //                            | History(type = HistoryType.Deep) with type = DeepHistory.TypeInstance
-    //                            | History                          with type = History.TypeInstance => GetContained(node, type)
-    //                            | _                                                                 => null // error node here
-    //                          }
-    //    | _              => null // other not supported
-    //  }
-    //}
-
     ParentOf(node : LGSPNode) : LGSPNode
     {
       def nodes = GraphHelper.AdjacentIncoming(node, Contains.TypeInstance, NodeType_StateMachineNode.typeVar);
@@ -116,26 +99,14 @@ namespace Nemerle.Statechart
       node
     }
 
-    find_named(x : string) : INamedNode
-    {
-      mutable res;
-      if (graph_actions.FindNamed.Apply(proc_env, x, ref res)) res else null
-    }
+    //find_named(x : string) : INamedNode
+    //{
+    //  mutable res;
+    //  if (graph_actions.FindNamed.Apply(proc_env, x, ref res)) res else null
+    //}
 
     GetTarget(src : LGSPNode, to : TargetType) : LGSPNode
     {
-      //def create_named_hier(n, ty : IStateMachineNode, f)
-      //{
-      //  def res = {mutable res; if (graph_actions.FindNamedHierarchy.Apply(proc_env, src :> IState, ty, n, ref res)) res else null }
-      //  match (res)
-      //  {
-      //    | null => def node = create_named(f, n);// not found, create new unresolved node
-      //              _ = graph.CreateEdgeContains(src, node :> LGSPNode);
-      //              node
-      //    | node => node
-      //  }
-      //}
-
       def parent = ParentOf(src);
       def parent_or_src = parent ?? src;
       def n = match (to)
@@ -157,28 +128,13 @@ namespace Nemerle.Statechart
           | PseudoState(Junction(name = n))
           | TargetType.Named(n) => graph.CreateNodeUnresolved(create_name(n)) |> set_attr(_, x => x.name = n) |> contains(parent_or_src, _) // create new unresolved node
           | Final               => graph.CreateNodeUnresolvedFinalState() |> contains(parent_or_src, _)// search final in parent state
-                                    //mutable final;
-                                    //_ = graph_actions.FindOrCreate.Apply(proc_env, parent, FinalState(), ref final);
-                                    //when (final is FinalState as final) when (final.id == 0) final.id = get_id();
-                                    //final
-
           | PseudoState(p) => match (p)
               {
                 | History(type = t) => (match (t)
                                        {
                                          | HistoryType.Deep => graph.CreateNodeUnresolvedDeepHistory() 
-                                         //| Shallow          => graph.CreateNodeUnresolvedShallowHistory()
                                          | _                => graph.CreateNodeUnresolvedHistory()
                                        }) |> contains(src, _)
-                                       
-                //                       mutable res;
-                //                       if (graph_actions.FindHistory.Apply(proc_env, src :> IState, type, ref res))
-                //                       {
-                //                         res
-                //                       } else
-                //                       {
-                //                         graph.CreateNodeUnknown(create_name($"History$t"))
-                //                       }
 
                 | Fork as f         => def node = create_node2(create_name("Fork"), parent, graph.CreateNodeFork);
                                        def target = f.target.Map(GetTarget(src, _)); // get target nodes of fork
@@ -188,25 +144,16 @@ namespace Nemerle.Statechart
                                        }
                                        node
 
-                | Terminate         => graph.CreateNodeUnresolvedTerminate() |> contains(parent_or_src, _)
-                                   //def top = graph.GetCompatibleEdges(TopState.TypeInstance).First().Target; // find top state
-                                   //    mutable term;
-                                   //    _ = graph_actions.FindOrCreate.Apply(proc_env, top, Terminate(), ref term);
-                                   //    term
+                | Terminate         => graph.CreateNodeUnresolvedTerminate()
                 | t                 => graph.CreateNodeUnknown(create_name($"Pseudo_$t"))
               }
           | Qualified as q      => // create path and last node
-          //                         def path = q.FinalPath;
-          //                         match (FindQualifed(path)) // find other nodes recursive
-          //                         {
                                      (match (q.target)
                                      {
                                       | TargetType.PseudoState(History) => graph.CreateNodeUnresolvedHistory(create_name(q.PathName)) |> set_attr(_, x => x.name = q.PathName)
-                                      | _                               => graph.CreateNodeUnresolved(create_name(q.ToString()))  |> set_attr(_, x => x.name = q.ToString())
+                                      | _                               => graph.CreateNodeUnresolved(create_name(q.ToString()))      |> set_attr(_, x => x.name = q.ToString())
                                     }) |> contains(parent_or_src, _)
-                                   //  | q    => q
-                                   //}
-          | Self                => graph.CreateNodeSelfTarget() |> contains(parent_or_src, _)//{mutable node; _ = graph_actions.CreateNode.Apply(proc_env, parent ?? src, SelfTarget(), "", ref node); node}
+          | Self                => graph.CreateNodeSelfTarget() |> contains(parent_or_src, _)
           | NoTarget            => src
           | t                   => graph.CreateNodeUnknown(create_name($"Target_$t"))
         }
@@ -299,19 +246,10 @@ namespace Nemerle.Statechart
       foreach (from in j.sources)
       {
         // search for node of source path
-        //def from = 
         _ = graph.CreateNodeUnresolved(create_name(from.FullName)) 
         |> contains(src, _)
         |> set_attr(_, x => x.name = from.FullName) 
         |> graph.CreateEdgeTransition(_, src)
-        //match (FindQualifed(from.Parts, null))
-        //{
-        //  // not found create unresolved
-        //  | null => 
-        //  | node => node
-        //}
-        // create edge from source to this Join node
-        //_ = graph.CreateEdgeTransition(from :> LGSPNode, src)
       }
       src
     }
@@ -364,8 +302,6 @@ namespace Nemerle.Statechart
       2) For all states, get all pseudo states and create edges connecting them
       3) For all states, create transition edges from states to targets
       */
-      //def list_nodes = List();
-      //def states = Fsm.GetPreOrderEnumerable().FilterType().ToArray();
 
       def create_id(x, childs)
       {
@@ -380,9 +316,7 @@ namespace Nemerle.Statechart
 
       def prepare(fsm)
       {
-        def fsm = fsm.Reduce(create_id) :> StateNode.StateMachine;
-        //def fsm = fsm.ChangeState(fsm.state.ChangeName($"TopState$(fsm.name)"));
-        fsm
+        fsm.Reduce(create_id) :> StateNode.StateMachine
       }
 
       def fsm = tree |> prepare;
@@ -409,16 +343,19 @@ namespace Nemerle.Statechart
               def st_id = st.Id;
               def st_node = match (t)
                             {
-                              | SubRegion
+                              | SubRegion       => def node = graph.CreateNodeSubRegion(name);
+                                                   childs.Iter(x => _ = graph.CreateEdgeRegion(node, x));
+                                                   node
                               | StateType.State => def node = graph.CreateNodeState(name);
                                                    childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
                                                    node
                               | Region          => def node = graph.CreateNodeConcurrentState(name);
                                                    foreach (x in childs with i)
                                                    {
-                                                     | n is IState => n.name = $"$(name)_SubRegion$i";
-                                                                      _ = graph.CreateEdgeRegion(node, x)
-                                                     | _           => ()
+                                                     | n is ISubRegion => n.name = $"$(name)_SubRegion$i";
+                                                                          _ = graph.CreateEdgeRegion(node, x);
+                                                                          n.idx = i;
+                                                     | _               => ()
                                                    }
                                                    node
                               | Final           => graph.CreateNodeFinalState()
@@ -482,10 +419,6 @@ namespace Nemerle.Statechart
                          def st = instance.state.ChangeName(m);
                          _ = st.MapTree(create_nodes);
                          | _         => _ = graph.CreateNodeUnresolvedSubMachine(create_name(m)) |> set_attr(_, x : UnresolvedSubMachine => {x.typename = m; x.name = m;}) // type
-                         //when (node is UnresolvedSubMachine as n)
-                         //{
-                         //   n.typename = m;
-                         //}
         }
       }
 

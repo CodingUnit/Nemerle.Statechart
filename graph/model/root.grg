@@ -81,15 +81,59 @@ rule CreateNode(parent : Node, type : Node, var name : string) : (Node)
 	// }
  // }
 
+rule InitConcurrent()
+{
+	
+	state:ConcurrentState;
+
+	iterated it
+    {
+		state -:Region->;
+		
+		modify
+		{
+		}
+	}
+	
+	modify
+	{
+		eval { state.regions = count(it); }
+	}
+}
+
 rule MoveSubstateToParent()
 {
-  state:State -p:Parent-> parent:State;
-  
-  replace
-  {
+  (
+	state:State -p:Parent-> parent:State \ ConcurrentState;
+		
+	replace
+    { 
+		//delete(p);
+		state <-:Substate- parent;
+    }
+  |
+	state:State -p:Parent-> parent:ConcurrentState;
+	
+	iterated it
+	{
+		parent -:Region->;
+		
+		modify {}
+	}
+	
+	modify
+    { 
     //delete(p);
-    state <-:Substate- parent;
-  }
+	    def var name : string;
+		def var idx : int;
+		evalhere {yield idx = count(it); yield name = parent.name + "_SubRegion" + (string)idx;}
+	    delete(p);
+		parent -:Region-> sub:SubRegion@($=name, name = name, idx = idx) -:Substate-> state;
+		//eval {sub.name = name;}
+		
+    }
+  )
+  
 }
 
 
@@ -433,7 +477,7 @@ procedure Replace(src : NamedNode, target : NamedNode)
 // delete node with nested containment
 procedure Delete(src : Node)
 {
-    def ref nodes : set<Node> = reachableOutgoing(src, Contains);
+    def ref nodes : set<Node> = reachableOutgoing(src, Contains) | reachable(src, And);
 	for (n:Node in nodes) // for all contained nodes
 	{
 		rem(n); // remove from graph
@@ -562,56 +606,295 @@ pattern CreateDepthRec(n : StateMachineNode, var depth : int)
 
 rule StateCombinations()
 {
-	st:ConcurrentState;
+	//st:ConcurrentState;
 	
-	st -r1:Region-> sub_reg:State;
-	st -r2:Region-> sub_reg2:State;
+	// st -r1:Region-> sub_reg:State;
+	// st -r2:Region-> sub_reg2:State;	 
 	
-	iterated
+	
+	-:TopState-> . -e:SimpleState-> state:State;
+	and:Parents(state);	
+		
+	modify
 	{
-		sub_reg -:Substate-> sub1:State;
-		iterated
+		new_st : ActiveState;
+		eval
 		{
-			sub_reg2 -:Substate-> sub2:State;		
-			and:AndComb(sub1, sub2);
+			new_st.name = state.name;
+			new_st.entry_act = state.entry_act;
+			new_st.exit_act = state.exit_act;
+			new_st.do_act = state.do_act;
+		}
+		and(new_st);
+		delete(e);
+		// //m:State<sub_reg, and_st>;		
+		
+		// //eval {m.name = and_st.name;}
+		// //delete(sub_reg2);
+	}
+
+	
+	// negative
+	// {
+		// state -:Substate->;
+	// }
+	
+	// def ref conf : set<Node>;
+	// yield { yield conf = set<Node>{};}
+	
+	
+	
+	// iterated
+	// {
+		
+		// st -r1:Region-> sub_reg:State;
+			
+			
+		// //iterated
+		// //{
+			
+			// //:SimpleStates(sub1, yield ret);
+			
+			// //
+			
+			
+			// //:Comb(sub_reg, sub_reg, yield conf);
+			
+			
+			
+			// modify
+			// {
+				// // def ref conf : set<Node>;
+				// // eval
+				// // {
+					// // yield conf = set<Node>();
+					// // //conf.clear();
+				// // }
+				// //and();
+				// //emitdebug("\nsimple", st);
+				// //emitdebug("\nparents", conf);
+			// }
+		// //}
+		
+        // // modify
+		// // {
+			// // //and();
+			// // //eval { Delete(sub1); }
+		// // }
+	// }
+	
+	// iterated
+		// {
+			// sub_reg2 -:Substate-> sub2:State;		
+			// and:Comb(sub2, sub2);
+			
+			// modify
+			// {
+				// and();
+				// //def and_st : State;
+				// //and();
+				// //sub_reg -:Substate-> and_st;
+				// //eval { Delete(sub2); }
+			// }
+		// }
+		
+	 
+}
+
+/*
+pattern SimpleStateIter(def ret : State)
+{
+	multiple
+	{
+		top -:SimpleState-> state:State;
+		yield {yield ret = state;}
+		
+		// modify
+		// {
+			// new_st : ActiveState;
+			// eval
+			// {
+				// new_st.name = state.name;
+			// }
+			// and(new_st);
+			// // //m:State<sub_reg, and_st>;		
+			
+			// // //eval {m.name = and_st.name;}
+			// // //delete(sub_reg2);
+		// }
+	}
+}*/
+
+rule SimpleStates()
+{	
+	st:State;
+	
+	-:TopState-> top:State;
+	
+	~( st -:Substate->; )
+	~(	top -:SimpleState-> st; )
+	//if (isReachableIncoming(st, top, Contains));
+	
+	modify
+	{
+		top -:SimpleState-> st;
+	}
+	//yield {yield ret = st;}
+}
+
+pattern Parents(st : State) modify(root : ActiveState)
+{	
+	
+	
+	optional
+	{
+		
+		parent:State -:Contains-> st;
+		
+		
+		(
+			if {typeof(parent) == State;}		
+		
+			and:Parents(parent);
+	
 			
 			modify
 			{
-				
-				and(yield and_st);
-				delete(sub2);
+				root <-:And- nst:ActiveState;				
+				eval {yield new_st = nst;}
+				and(nst);
 			}
-		}	
-        modify
-		{
-			delete(sub1);
-		}		
+		| 	
+			//parent:SubRegion -:Contains-> st;			
+			p:SubRegion<parent>;
+			and:Parents(parent);
+			
+			modify
+			{
+				root <-:And- nst:ActiveSubRegionState;				
+				eval
+				{
+					nst.idx 		  = p.idx;				
+					yield new_st = nst;					
+					// new_st.name 	  = parent.name;
+					// new_st.entry_act  = parent.entry_act;
+					// new_st.exit_act   = parent.exit_act;
+					// new_st.do_act     = parent.do_act;
+				}
+				and(nst);
+			}
+		
+		|	
+			
+			//parent:ConcurrentState -:Region-> st;	
+			p:ConcurrentState<parent>;
+			
+			and:Parents(parent);
+			modify
+			{
+				root <-:And- nst:ActiveRegionState;
+				eval
+				{
+					nst.regions = p.regions;
+					yield new_st = nst;
+				// {
+					// new_st.name 	  = parent.name;
+					// new_st.entry_act = parent.entry_act;
+					// new_st.exit_act  = parent.exit_act;
+					// new_st.do_act    = parent.do_act;
+				}
+				//
+				and(nst);
+			}
+		)
+		
+		modify
+		{	
+			def new_st : ActiveState;
+			
+			eval
+			{
+				new_st.name 	  = parent.name;
+				new_st.entry_act  = parent.entry_act;
+				new_st.exit_act   = parent.exit_act;
+				new_st.do_act     = parent.do_act;
+			}			
+		}
 	}
+	
 	
 	modify
 	{
-		def and_st : State;
-		m:State<sub_reg, and_st>;
-		eval {m.name = and_st.name;}
-		delete(sub_reg2);
+		
+	}
+	// modify
+	// {
+		// eval
+		// {
+			// //ret.add(st);
+		// }
+	// }
+}
+
+pattern Comb(state : State, st : State, def ref ret : set<Node>)
+{	
+	
+		//if {state != st;}	
+	
+		optional
+		{
+			negative
+			{
+				state -:Substate->;
+			}		
+		}	
+		iterated
+		{
+			state -:Substate-> sub:State;
+			
+			:Comb(sub, sub, yield ret);				
+		}
+	
+}
+
+rule MarkAndRegions()
+{
+	st : ActiveRegionState --> sreg:ActiveSubRegionState;
+	st2 : ActiveRegionState --> sreg2:ActiveSubRegionState;
+	
+	
+}
+
+pattern MarkSubRegions(st : ActiveRegionState, or_node : OrConf, var i : int)
+{
+	reg:ActiveRegionState --> sreg:ActiveSubRegionState;	
+	
+	if {reg.name == st.name;}
+	if {sreg.idx == i;}	
+	
+	modify
+	{
+		or_node --> st;
 	}
 }
 
-pattern AndComb(st1 : State, st2 : State) modify(def ret : State)
-{
-	modify
-	{
-		def a1 : State;
-		def a2 : State;
-		eval
-		{
-			//
-			(def g1 : State) = insertInduced(reachableOutgoing(st1, Contains), st1);
-			(def g2 : State) = insertInduced(reachableOutgoing(st2, Contains), st2);		
-			yield a1 = g1;
-			yield a2 = g2;
-		}
-		a1 -:And-> a2;		
-		eval {yield ret = a1;}
-	}
-}
+// pattern AndComb(parent : State, st1 : State, st2 : State) modify(def ret : State)
+// {
+	// modify
+	// {
+		// def a1 : State;
+		// def a2 : State;
+		// evalhere
+		// {
+			// //
+			// (def g1 : State) = insertInduced(reachableOutgoing(st1, Contains) | reachable(st1, And), st1);
+			// (def g2 : State) = insertInduced(reachableOutgoing(st2, Contains) | reachable(st1, And), st2);		
+			// yield a1 = g1;
+			// yield a2 = g2;
+		// }		
+		// a1 -:And- a2;
+		// parent -:Contains-> a1;
+		// parent -:Contains-> a2;
+		// eval {yield ret = a1;}
+	// }
+// }
