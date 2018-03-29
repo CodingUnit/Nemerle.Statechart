@@ -613,7 +613,7 @@ rule StateCombinations()
 	
 	
 	-:TopState-> . -e:SimpleState-> state:State;
-	and:Parents(state);	
+	and:CreateConfig(state);	
 		
 	modify
 	{
@@ -742,7 +742,7 @@ rule SimpleStates()
 	//yield {yield ret = st;}
 }
 
-pattern Parents(st : State) modify(root : ActiveState)
+pattern CreateConfig(st : State) modify(root : ActiveState)
 {	
 	
 	
@@ -755,7 +755,7 @@ pattern Parents(st : State) modify(root : ActiveState)
 		(
 			if {typeof(parent) == State;}		
 		
-			and:Parents(parent);
+			and:CreateConfig(parent);
 	
 			
 			modify
@@ -767,11 +767,12 @@ pattern Parents(st : State) modify(root : ActiveState)
 		| 	
 			//parent:SubRegion -:Contains-> st;			
 			p:SubRegion<parent>;
-			and:Parents(parent);
+			and:CreateConfig(parent);
 			
 			modify
 			{
-				root <-:And- nst:ActiveSubRegionState;				
+				root <-:And- nst:ActiveSubRegionState;
+				parent --> nst;
 				eval
 				{
 					nst.idx 		  = p.idx;				
@@ -789,10 +790,11 @@ pattern Parents(st : State) modify(root : ActiveState)
 			//parent:ConcurrentState -:Region-> st;	
 			p:ConcurrentState<parent>;
 			
-			and:Parents(parent);
+			and:CreateConfig(parent);
 			modify
 			{
 				root <-:And- nst:ActiveRegionState;
+				parent --> nst;
 				eval
 				{
 					nst.regions = p.regions;
@@ -859,10 +861,175 @@ pattern Comb(state : State, st : State, def ref ret : set<Node>)
 
 rule MarkAndRegions()
 {
-	st : ActiveRegionState --> sreg:ActiveSubRegionState;
-	st2 : ActiveRegionState --> sreg2:ActiveSubRegionState;
+	st : ConcurrentState -e:Edge -> :ActiveState;	
 	
+	t:CreateAndOrRegion(st);
 	
+	modify { t(); }
+}
+
+// TODO: nested subregion in subregion
+// pattern IterateConf(src : ActiveState)
+// {
+	
+	// (
+		// c : ActiveSubRegionState<src>;
+		
+		// ~(c --> :Oper;);
+	// |
+		// ~(c : ActiveSubRegionState<src>;)
+		// parent : ActiveState --> src;
+		// :IterateConf(parent);
+	// )
+	
+// }
+
+pattern CreateAndOrRegion(src:ConcurrentState)
+{
+	~(src --> :AndConf;)
+	
+	(
+		src --> :SubRegion --> :ActiveSubRegionState <-- or:OrConf;
+		
+		modify { and_conf --> or; }
+	)+
+	
+	modify { src --> and_conf:AndConf <-- :Eval; }	
+}
+
+rule OrSubRegion()
+{
+	st_sub:SubRegion;
+	
+	~( st_sub --> sub:ActiveSubRegionState <-- :OrConf; )
+	
+	iterated
+	{
+		st_sub -e:Edge-> sub:ActiveSubRegionState;
+		
+		modify { or --> sub; }
+	}
+	
+	modify { or : OrConf; }
+}
+
+rule ClearAndRegion()
+{
+	st : ConcurrentState -a:Edge-> :AndConf;
+	
+	multiple
+	{
+		st -e:Edge-> :ActiveRegionState;
+		
+		modify
+		{
+			delete(e);
+		}
+	}
+	
+	modify
+	{
+		delete(a);
+	}
+}
+
+rule ClearOrSubRegion()
+{
+	st_sub : SubRegion;	
+	
+	multiple
+	{
+		st_sub -e:Edge-> :ActiveSubRegionState;
+		
+		modify
+		{
+			delete(e);
+		}
+	}
+	
+	modify
+	{				
+	}
+	
+}
+
+rule OrMoveToTopOfActiveState()
+{
+	sub:ActiveSubRegionState <-e:Edge- or:OrConf;
+	
+	def upper : ActiveState;
+	:FindUpperActiveState(sub, yield upper);
+	
+	modify
+	{
+		delete(e);
+		or --> upper;
+	}
+}
+
+pattern FindUpperActiveState(st : ActiveState, def res : ActiveState)
+{
+	(
+	  ~( --> st;)
+	  yield {yield res = st;}
+	|	
+		parent:ActiveState --> st;
+		:FindUpperActiveState(parent, yield res);
+	)
+}
+
+rule AndOrConvertToBinary()
+{	
+	left:Node <-- and:Oper --> right:Node;	
+	and -e:Edge-> third:Node;	
+	
+	multiple
+	{
+		from:Node -ne:Edge-> and;
+		
+		modify
+		{
+			delete(ne);
+			from --> new_and;
+		}
+	}
+	
+	modify
+	{
+		and <-- new_and:typeof(and) --> third;		
+		delete(e);
+	}
+}
+
+rule UnfoldAndOr()
+{
+   left:OrConf <-- and:AndConf --> right:OrConf;   
+   lor1:Node   <-- left        --> lor2:Node;
+   ror1:Node   <-- right       --> ror2:Node;
+   
+   multiple
+   {
+		from:Node --> and;
+		
+		modify
+		{			
+			from --> or;
+		}
+   }
+	
+   modify
+   {	  
+	  or2:OrConf <-- or:OrConf --> a1:AndConf;
+	  or3:OrConf <-- or2 	   --> a2:AndConf;
+	  a4:AndConf <-- or3 	   --> a3:AndConf;	  
+	  lor1 <-- a1 --> ror1;
+	  lor2 <-- a2 --> ror1;
+	  lor1 <-- a3 --> ror2;
+	  lor2 <-- a4 --> ror2;
+	  delete(left);
+	  delete(right);
+	  delete(and);	  
+   }
 }
 
 pattern MarkSubRegions(st : ActiveRegionState, or_node : OrConf, var i : int)
