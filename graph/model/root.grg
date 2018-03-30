@@ -980,24 +980,15 @@ pattern FindUpperActiveState(st : ActiveState, def res : ActiveState)
 
 rule AndOrConvertToBinary()
 {	
-	left:Node <-- and:Oper --> right:Node;	
-	and -e:Edge-> third:Node;	
-	
-	multiple
-	{
-		from:Node -ne:Edge-> and;
-		
-		modify
-		{
-			delete(ne);
-			from --> new_and;
-		}
-	}
+	left:Node  <-e1:Edge- op:Oper -e2:Edge-> right:Node;	
+	third:Node <--	 	  op;
 	
 	modify
 	{
-		and <-- new_and:typeof(and) --> third;		
-		delete(e);
+		left   <-- new_op:typeof(op) --> right;
+		new_op <-- op;
+		delete(e1);
+		delete(e2);
 	}
 }
 
@@ -1006,30 +997,85 @@ rule UnfoldAndOr()
    left:OrConf <-- and:AndConf --> right:OrConf;   
    lor1:Node   <-- left        --> lor2:Node;
    ror1:Node   <-- right       --> ror2:Node;
+   l1:CopyTree(lor1);
+   l2:CopyTree(lor2);
+   r1:CopyTree(ror1);
+   r2:CopyTree(ror2);
    
-   multiple
-   {
-		from:Node --> and;
-		
-		modify
-		{			
-			from --> or;
-		}
-   }
-	
    modify
    {	  
-	  or2:OrConf <-- or:OrConf --> a1:AndConf;
-	  or3:OrConf <-- or2 	   --> a2:AndConf;
-	  a4:AndConf <-- or3 	   --> a3:AndConf;	  
-	  lor1 <-- a1 --> ror1;
-	  lor2 <-- a2 --> ror1;
-	  lor1 <-- a3 --> ror2;
-	  lor2 <-- a4 --> ror2;
+	  or:OrConf<and>;	  
+	  a2:AndConf  <-- or --> a1:AndConf;
+	  a4:AndConf  <-- or --> a3:AndConf;	  
+	  lor1 		  <-- a1 --> ror1;
+	  lor2 		  <-- a2;
+					  a3 --> ror2;
+	  l1(a3);
+	  l2(a4);
+	  r2(a4);
+	  r1(a2);
 	  delete(left);
 	  delete(right);
-	  delete(and);	  
    }
+}
+
+pattern CopyTree(n : Node) modify(src : Node)
+{
+	(
+		left:Node <-- n --> right:Node;
+		l:CopyTree(left);
+		r:CopyTree(right);
+		
+		modify
+		{
+			src --> nop:copy<n>;
+			l(nop);
+            r(nop);			
+		}
+		
+		| 			
+			n --> next:ActiveState;
+			
+			c:CopyTree(next);
+			modify
+			{
+				src --> na:copy<n>;
+				c(na);
+			}
+		| 			
+			~(n --> ;)
+			
+			modify
+			{
+				src --> na:copy<n>;
+			}
+	)
+	
+	modify
+	{
+	}
+}
+
+rule UnfoldAndOrSimple()
+{
+   left:OrConf <-- and:AndConf -e:Edge-> right:ActiveState;
+   lor1:Node   <-- left        --> lor2:Node;   
+      
+   r:CopyTree(right);
+   modify
+   {	  
+	  a2:AndConf <-- or:OrConf<and> --> a1:AndConf;	  
+	  lor1 <-- a1 --> right;
+	  lor2 <-- a2;
+	  r(a2);
+	  delete(left);
+	  delete(e);
+   }
+}
+
+rule EvalAndConf()
+{
+	
 }
 
 pattern MarkSubRegions(st : ActiveRegionState, or_node : OrConf, var i : int)
