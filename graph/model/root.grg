@@ -838,27 +838,6 @@ pattern CreateConfig(st : State) modify(root : ActiveState)
 	// }
 }
 
-pattern Comb(state : State, st : State, def ref ret : set<Node>)
-{	
-	
-		//if {state != st;}	
-	
-		optional
-		{
-			negative
-			{
-				state -:Substate->;
-			}		
-		}	
-		iterated
-		{
-			state -:Substate-> sub:State;
-			
-			:Comb(sub, sub, yield ret);				
-		}
-	
-}
-
 rule MarkAndRegions()
 {
 	st : ConcurrentState -e:Edge -> :ActiveState;	
@@ -992,15 +971,167 @@ rule AndOrConvertToBinary()
 	}
 }
 
+pattern AndComb(or : OrConf, other : Node) modify(parent : OrConf)
+{	
+	iterated
+	{
+		or --> sub:Node;
+		
+		//:Comb(sub, sub, yield ret);				
+		
+		modify
+		{
+			other <-- and --> sub;
+		}
+	}
+	
+	
+	modify
+	{		
+		parent --> and:AndConf;
+	}
+}
+
+rule DoublesEqualTargets()
+{
+	src:Node --> n:Node; 
+	n <-e:Edge- other:Node;
+		
+	if {src != other;}
+	if {typeof(n) >= ActiveState || typeof(n) >= Oper;}		
+		//delete(e);
+		// src -:typeof(e)-> ret;
+			// //t(src);
+		// }
+	//}
+	
+	t:CopyTree(n, e);
+	modify
+	{
+		delete(e);
+		// def ret : Node;
+		// eval { (yield ret) = insertInduced(reachableOutgoing(n, Edge), n); }
+		// other -:typeof(e)-> ret;
+		t(other);
+		
+	}
+}
+
+rule UnfoldAndOrComplex()
+{
+	left:OrConf <-- and:AndConf --> right:OrConf;
+		
+	
+	(		
+		and --> other:OrConf;
+		
+		modify
+		{
+			and --> res_or:OrConf;
+			eval
+			{
+				Product(left, right, res_or);
+			}
+		}
+	|
+		
+		~(
+		   left <-- and --> right;
+		   and --> other:OrConf;
+		 )
+		
+		modify
+		{
+			res_or:OrConf<and>;
+			eval
+			{
+				Product(left, right, res_or);
+			}
+		}
+	)
+	// iterated
+	// {
+		// right -e1:Edge-> chr:Node;
+		// //ch_copy:CopyTree(ch, e);
+		// //or_copy:CopyTree(or, Edge);
+		// //delr:DelTree(chr);
+				
+		
+		// modify
+		// {
+			// //def an:AndConf;
+			// //an --> chr;
+			// //delr();
+			// //delete(chr);
+		// }
+		
+	// }
+	//t:AndComb(right);	
+	
+	
+	// iterated itl
+	// {
+		// left -e2:Edge-> chl:Node;
+		
+		// //t:AndComb(right, chl);
+		// //chr_copy:CopyTree(chr, e1);
+		// //chl_copy:CopyTree(chl, e2);
+		// //dell:DelTree(chl);
+		
+		// modify
+		// {			   			   
+		   // //chl <-- 
+		   // //a:AndConf;// --> chr;
+		   // //t(res_or);
+		   // //eval {yield an = a;}
+		   // // chr_copy(a);
+		   // // chl_copy(a);			   
+		   // //dell();
+		// }
+	// }
+		// modify
+		// {			
+			// delete(or);
+		// }
+	//}
+	
+	modify
+	{		
+		// eval
+		// {
+			// Product(left, right, res_or);
+		// }
+		
+		delete(right);
+		delete(left);
+	}
+}
+
+
+procedure Product(left : Node, right : Node, parent : Node)
+{
+	for (chl:Node in adjacentOutgoing(left))
+	{
+		for (chr:Node in adjacentOutgoing(right))
+		{
+			(def a:AndConf) = add(AndConf);
+			add(Edge, a, chr);
+			add(Edge, a, chl);
+			add(Edge, parent, a);
+		}
+	}
+	return;
+}
+
 rule UnfoldAndOr()
 {
    left:OrConf <-- and:AndConf --> right:OrConf;   
    lor1:Node   <-- left        --> lor2:Node;
    ror1:Node   <-- right       --> ror2:Node;
-   l1:CopyTree(lor1);
-   l2:CopyTree(lor2);
-   r1:CopyTree(ror1);
-   r2:CopyTree(ror2);
+   l1:CopyTree(lor1, Edge);
+   l2:CopyTree(lor2, Edge);
+   r1:CopyTree(ror1, Edge);
+   r2:CopyTree(ror2, Edge);
    
    modify
    {	  
@@ -1009,7 +1140,7 @@ rule UnfoldAndOr()
 	  a4:AndConf  <-- or --> a3:AndConf;	  
 	  lor1 		  <-- a1 --> ror1;
 	  lor2 		  <-- a2;
-					  a3 --> ror2;
+					  a3 --> ror2;	  
 	  l1(a3);
 	  l2(a4);
 	  r2(a4);
@@ -1019,58 +1150,68 @@ rule UnfoldAndOr()
    }
 }
 
-pattern CopyTree(n : Node) modify(src : Node)
+pattern DelTree(n : Node) 
 {
-	(
-		left:Node <-- n --> right:Node;
-		l:CopyTree(left);
-		r:CopyTree(right);
+	iterated
+	{
+		n --> child:Node;
+		
+		t:DelTree(child);
 		
 		modify
 		{
-			src --> nop:copy<n>;
-			l(nop);
-            r(nop);			
-		}
-		
-		| 			
-			n --> next:ActiveState;
-			
-			c:CopyTree(next);
-			modify
-			{
-				src --> na:copy<n>;
-				c(na);
-			}
-		| 			
-			~(n --> ;)
-			
-			modify
-			{
-				src --> na:copy<n>;
-			}
-	)
+			t();
+		}		
+	}
 	
 	modify
 	{
+		delete(n);
 	}
+}
+
+pattern CopyTree(n : Node, -ee:Edge->) modify(res : Node)
+{
+	iterated
+	{
+		n -e:Edge-> child:Node;
+		
+		t:CopyTree(child, e);
+		
+		modify
+		{				
+			t(nn);
+			//nn -:typeof(e)-> ch;
+		}
+	}	
+		// l:CopyTree(left);
+		// r:CopyTree(right);
+		
+	modify
+	{
+		//delete(n);
+		res -:typeof(ee)-> nn:copy<n>;
+		//eval { yield res = nn; }
+		//src --> nop:copy<n>;			
+	}
+				
 }
 
 rule UnfoldAndOrSimple()
 {
-   left:OrConf <-- and:AndConf -e:Edge-> right:ActiveState;
-   lor1:Node   <-- left        --> lor2:Node;   
+   // left:OrConf <-- and:AndConf -e:Edge-> right:ActiveState;
+   // lor1:Node   <-- left        --> lor2:Node;   
       
-   r:CopyTree(right);
-   modify
-   {	  
-	  a2:AndConf <-- or:OrConf<and> --> a1:AndConf;	  
-	  lor1 <-- a1 --> right;
-	  lor2 <-- a2;
-	  r(a2);
-	  delete(left);
-	  delete(e);
-   }
+   // r:CopyTree(right);
+   // modify
+   // {	  
+	  // a2:AndConf <-- or:OrConf<and> --> a1:AndConf;	  
+	  // lor1 <-- a1 --> right;
+	  // lor2 <-- a2;
+	  // r(a2);
+	  // delete(left);
+	  // delete(e);
+   // }
 }
 
 rule EvalAndConf()
