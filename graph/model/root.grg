@@ -106,10 +106,20 @@ rule MoveSubstateToParent()
   (
 	state:State -p:Parent-> parent:State \ ConcurrentState;
 		
-	replace
+	iterated it
+	{
+		parent -:Substate->;
+		modify {}
+	}
+	
+	modify
     { 
-		//delete(p);
+		delete(p);
 		state <-:Substate- parent;
+		eval
+		{
+			state.idx = count(it);
+		}
     }
   |
 	state:State -p:Parent-> parent:ConcurrentState;
@@ -126,7 +136,12 @@ rule MoveSubstateToParent()
     //delete(p);
 	    def var name : string;
 		def var idx : int;
-		evalhere {yield idx = count(it); yield name = parent.name + "_SubRegion" + (string)idx;}
+		evalhere 
+		{
+			yield idx = count(it); 
+			yield name = parent.name + "_SubRegion" + (string)idx;
+			state.idx = 0;
+		}
 	    delete(p);
 		parent -:Region-> sub:SubRegion@($=name, name = name, idx = idx) -:Substate-> state;
 		//eval {sub.name = name;}
@@ -994,10 +1009,9 @@ pattern AndComb(or : OrConf, other : Node) modify(parent : OrConf)
 
 rule DoublesEqualTargets()
 {
-	src:Node --> n:Node; 
-	n <-e:Edge- other:Node;
+	src:Node --> n:Node <-e:Edge- other:Node;
 		
-	if {src != other;}
+	//if {src != other;}
 	if {typeof(n) >= ActiveState || typeof(n) >= Oper;}		
 		//delete(e);
 		// src -:typeof(e)-> ret;
@@ -1037,7 +1051,7 @@ rule UnfoldAndOrComplex()
 		
 		~(
 		   left <-- and --> right;
-		   and --> other:OrConf;
+		   and  --> other:OrConf;
 		 )
 		
 		modify
@@ -1048,60 +1062,10 @@ rule UnfoldAndOrComplex()
 				Product(left, right, res_or);
 			}
 		}
-	)
-	// iterated
-	// {
-		// right -e1:Edge-> chr:Node;
-		// //ch_copy:CopyTree(ch, e);
-		// //or_copy:CopyTree(or, Edge);
-		// //delr:DelTree(chr);
-				
-		
-		// modify
-		// {
-			// //def an:AndConf;
-			// //an --> chr;
-			// //delr();
-			// //delete(chr);
-		// }
-		
-	// }
-	//t:AndComb(right);	
-	
-	
-	// iterated itl
-	// {
-		// left -e2:Edge-> chl:Node;
-		
-		// //t:AndComb(right, chl);
-		// //chr_copy:CopyTree(chr, e1);
-		// //chl_copy:CopyTree(chl, e2);
-		// //dell:DelTree(chl);
-		
-		// modify
-		// {			   			   
-		   // //chl <-- 
-		   // //a:AndConf;// --> chr;
-		   // //t(res_or);
-		   // //eval {yield an = a;}
-		   // // chr_copy(a);
-		   // // chl_copy(a);			   
-		   // //dell();
-		// }
-	// }
-		// modify
-		// {			
-			// delete(or);
-		// }
-	//}
+	)	
 	
 	modify
 	{		
-		// eval
-		// {
-			// Product(left, right, res_or);
-		// }
-		
 		delete(right);
 		delete(left);
 	}
@@ -1123,32 +1087,32 @@ procedure Product(left : Node, right : Node, parent : Node)
 	return;
 }
 
-rule UnfoldAndOr()
-{
-   left:OrConf <-- and:AndConf --> right:OrConf;   
-   lor1:Node   <-- left        --> lor2:Node;
-   ror1:Node   <-- right       --> ror2:Node;
-   l1:CopyTree(lor1, Edge);
-   l2:CopyTree(lor2, Edge);
-   r1:CopyTree(ror1, Edge);
-   r2:CopyTree(ror2, Edge);
+// rule UnfoldAndOr()
+// {
+   // left:OrConf <-- and:AndConf --> right:OrConf;   
+   // lor1:Node   <-- left        --> lor2:Node;
+   // ror1:Node   <-- right       --> ror2:Node;
+   // l1:CopyTree(lor1, Edge);
+   // l2:CopyTree(lor2, Edge);
+   // r1:CopyTree(ror1, Edge);
+   // r2:CopyTree(ror2, Edge);
    
-   modify
-   {	  
-	  or:OrConf<and>;	  
-	  a2:AndConf  <-- or --> a1:AndConf;
-	  a4:AndConf  <-- or --> a3:AndConf;	  
-	  lor1 		  <-- a1 --> ror1;
-	  lor2 		  <-- a2;
-					  a3 --> ror2;	  
-	  l1(a3);
-	  l2(a4);
-	  r2(a4);
-	  r1(a2);
-	  delete(left);
-	  delete(right);
-   }
-}
+   // modify
+   // {	  
+	  // or:OrConf<and>;	  
+	  // a2:AndConf  <-- or --> a1:AndConf;
+	  // a4:AndConf  <-- or --> a3:AndConf;	  
+	  // lor1 		  <-- a1 --> ror1;
+	  // lor2 		  <-- a2;
+					  // a3 --> ror2;	  
+	  // l1(a3);
+	  // l2(a4);
+	  // r2(a4);
+	  // r1(a2);
+	  // delete(left);
+	  // delete(right);
+   // }
+// }
 
 pattern DelTree(n : Node) 
 {
@@ -1195,6 +1159,80 @@ pattern CopyTree(n : Node, -ee:Edge->) modify(res : Node)
 		//src --> nop:copy<n>;			
 	}
 				
+}
+
+rule EvalConf()
+{
+	(
+		left:ActiveState <-- and:AndConf --> right:ActiveState;
+		parent:Node 	 --> and;
+		
+		t:EvalAndConf(left, left, right);
+		
+		modify
+		{
+			delete(and);
+			parent --> left;
+			//:typeof(left)<left, and>;
+			t();
+		}
+	|
+		ev:Eval --> or:OrConf;
+		
+		iterated it
+		{
+			or --> conf:ActiveState;
+			
+			modify {}
+		}
+		
+		~(or --> :AndConf;)
+		
+		modify
+		{
+			emitdebug("Number of state config:", count(it));
+			delete(ev);
+			delete(or);
+		}
+	)
+		
+}
+
+pattern EvalAndConf(parent :ActiveState, left:ActiveState, right : ActiveState)
+{
+	(
+		if {left.name == right.name;}
+		
+		left  --> lnext:ActiveState;
+		right --> rnext:ActiveState;
+		t:EvalAndConf(left, lnext, rnext);
+		
+		modify
+		{
+			delete(right);
+			t();
+		}
+	|
+		if {left.name != right.name;}
+		
+		modify
+		{
+			parent -:And-> right;
+		}
+	)	
+}
+
+rule CreateAutoInitial()
+{
+	state:State \ ConcurrentState -:Substate-> sub:State;
+		
+	~( state -:Contains-> :InitialState;)
+	if {sub.idx == 0;}
+	
+	modify
+	{
+		state -:Contains-> i:InitialState -:PseudoTransition-> sub;
+	}
 }
 
 rule UnfoldAndOrSimple()
