@@ -1,8 +1,9 @@
 // graph rewrite rule file, shows how to define a model to use, and how a rule looks like,
 // with the pattern to match and the rewrite to apply, with lhs and rhs elements being indentified by their name
 
-//#using "StateMachine.gm"
+#using "StateMachine.gm"
 #include "find.grg"
+#include "config.grg"
 
 rule CreateNode(parent : Node, type : Node, var name : string) : (Node)
 {
@@ -103,9 +104,10 @@ rule InitConcurrent()
 
 rule MoveSubstateToParent()
 {
+	state:State -p:Parent-> parent:State;
+			
   (
-	state:State -p:Parent-> parent:State \ ConcurrentState;
-		
+	~(:ConcurrentState<parent>;)
 	iterated it
 	{
 		parent -:Substate->;
@@ -114,7 +116,7 @@ rule MoveSubstateToParent()
 	
 	modify
     { 
-		delete(p);
+		//delete(p);
 		state <-:Substate- parent;
 		eval
 		{
@@ -122,12 +124,10 @@ rule MoveSubstateToParent()
 		}
     }
   |
-	state:State -p:Parent-> parent:ConcurrentState;
-	
+	:ConcurrentState<parent>;
 	iterated it
 	{
-		parent -:Region->;
-		
+		parent -:Substate->;
 		modify {}
 	}
 	
@@ -142,25 +142,19 @@ rule MoveSubstateToParent()
 			yield name = parent.name + "_SubRegion" + (string)idx;
 			state.idx = 0;
 		}
-	    delete(p);
+	    //delete(p);
 		parent -:Region-> sub:SubRegion@($=name, name = name, idx = idx) -:Substate-> state;
 		//eval {sub.name = name;}
 		
     }
   )
   
+  modify
+  {
+	delete(p);
+  }
 }
 
-
-/*
-// find qualified target state.substate or state.pseudo syntax
-test FindQualifiedPath(ref tar : array<string>) : (StateMachineNode)
-{  
-  def n:StateMachineNode;  
-  
-  :QualifiedRec(null, tar, 0, yield n);  
-  return (n);
-}*/
 rule ResolveHistory()
 {
 	n:Node -tran:Transition-> not_resolved:UnresolvedHistory;
@@ -213,63 +207,6 @@ rule ResolveHistory()
 		//modify {delete(not_resolved);}
 	}
 }
-
-/*
-pattern FindResolvedHistoryType(parent : Node, not_resolved : UnresolvedHistory, def hist : Node)
-{
-	(	    
-		:UnresolvedDeepHistory<not_resolved>;
-		if {not_resolved.name == null;}
-		
-		//if {not_resolved.type == history_type::deep;}
-		h:DeepHistory;				
-		:FindHierarchy(parent, h, yield hist);//not_resolved.type
-		//modify {delete(not_resolved);}
-	| 
-	    //parent:Node -:Contains-> not_resolved;
-		:UnresolvedShallowHistory<not_resolved>;
-		if {not_resolved.name == null;}
-		
-		//if {not_resolved.type == history_type::shallow;}
-		h:ShallowHistory;				
-		:FindHierarchy(parent, h, yield hist);//not_resolved.type
-		//modify {delete(not_resolved);}
-	| 
-		//parent:Node -:Contains-> not_resolved;		
-		if {typeof(not_resolved) == UnresolvedHistory;}
-		if {not_resolved.name == null;}
-		
-		//if {not_resolved.type == history_type::any;}
-		h:History;
-		:FindHierarchy(parent, h, yield hist);//not_resolved.type
-		//modify {delete(not_resolved);}
-	|			
-		
-		if {not_resolved.name != null;}
-		//def ret : History;
-		h:History;
-		:QualifiedRecType(parent, not_resolved.name.asArray("."), 0, h, yield hist);
-		
-		//modify {delete(not_resolved);}
-	)
-}*/
-
-/*
-rule ResolveHistory()
-{
-	n:Node -tran:Transition-> not_resolved:UnresolvedHistory;
-	parent:NamedNode -:Contains-> not_resolved;
-	hom(n, parent);
-	def hist : Node;	
-	
-	
-	
-	modify
-	{            
-		n -:copy<tran>-> hist;
-		
-	}
-}*/
 
 rule ResolveFinal()
 {
@@ -619,501 +556,6 @@ pattern CreateDepthRec(n : StateMachineNode, var depth : int)
   modify { eval { n.depth = depth; } }
 }
 
-rule StateCombinations()
-{
-	//st:ConcurrentState;
-	
-	// st -r1:Region-> sub_reg:State;
-	// st -r2:Region-> sub_reg2:State;	 
-	
-	
-	-:TopState-> . -e:SimpleState-> state:State;
-	and:CreateConfig(state);	
-		
-	modify
-	{
-		new_st : ActiveState;
-		eval
-		{
-			new_st.name = state.name;
-			new_st.entry_act = state.entry_act;
-			new_st.exit_act = state.exit_act;
-			new_st.do_act = state.do_act;
-		}
-		and(new_st);
-		delete(e);
-		// //m:State<sub_reg, and_st>;		
-		
-		// //eval {m.name = and_st.name;}
-		// //delete(sub_reg2);
-	}
-
-	
-	// negative
-	// {
-		// state -:Substate->;
-	// }
-	
-	// def ref conf : set<Node>;
-	// yield { yield conf = set<Node>{};}
-	
-	
-	
-	// iterated
-	// {
-		
-		// st -r1:Region-> sub_reg:State;
-			
-			
-		// //iterated
-		// //{
-			
-			// //:SimpleStates(sub1, yield ret);
-			
-			// //
-			
-			
-			// //:Comb(sub_reg, sub_reg, yield conf);
-			
-			
-			
-			// modify
-			// {
-				// // def ref conf : set<Node>;
-				// // eval
-				// // {
-					// // yield conf = set<Node>();
-					// // //conf.clear();
-				// // }
-				// //and();
-				// //emitdebug("\nsimple", st);
-				// //emitdebug("\nparents", conf);
-			// }
-		// //}
-		
-        // // modify
-		// // {
-			// // //and();
-			// // //eval { Delete(sub1); }
-		// // }
-	// }
-	
-	// iterated
-		// {
-			// sub_reg2 -:Substate-> sub2:State;		
-			// and:Comb(sub2, sub2);
-			
-			// modify
-			// {
-				// and();
-				// //def and_st : State;
-				// //and();
-				// //sub_reg -:Substate-> and_st;
-				// //eval { Delete(sub2); }
-			// }
-		// }
-		
-	 
-}
-
-/*
-pattern SimpleStateIter(def ret : State)
-{
-	multiple
-	{
-		top -:SimpleState-> state:State;
-		yield {yield ret = state;}
-		
-		// modify
-		// {
-			// new_st : ActiveState;
-			// eval
-			// {
-				// new_st.name = state.name;
-			// }
-			// and(new_st);
-			// // //m:State<sub_reg, and_st>;		
-			
-			// // //eval {m.name = and_st.name;}
-			// // //delete(sub_reg2);
-		// }
-	}
-}*/
-
-rule SimpleStates()
-{	
-	st:State;
-	
-	-:TopState-> top:State;
-	
-	~( st -:Substate->; )
-	~(	top -:SimpleState-> st; )
-	//if (isReachableIncoming(st, top, Contains));
-	
-	modify
-	{
-		top -:SimpleState-> st;
-	}
-	//yield {yield ret = st;}
-}
-
-pattern CreateConfig(st : State) modify(root : ActiveState)
-{	
-	
-	
-	optional
-	{
-		
-		parent:State -:Contains-> st;
-		
-		
-		(
-			if {typeof(parent) == State;}		
-		
-			and:CreateConfig(parent);
-	
-			
-			modify
-			{
-				root <-:And- nst:ActiveState;				
-				eval {yield new_st = nst;}
-				and(nst);
-			}
-		| 	
-			//parent:SubRegion -:Contains-> st;			
-			p:SubRegion<parent>;
-			and:CreateConfig(parent);
-			
-			modify
-			{
-				root <-:And- nst:ActiveSubRegionState;
-				parent --> nst;
-				eval
-				{
-					nst.idx 		  = p.idx;				
-					yield new_st = nst;					
-					// new_st.name 	  = parent.name;
-					// new_st.entry_act  = parent.entry_act;
-					// new_st.exit_act   = parent.exit_act;
-					// new_st.do_act     = parent.do_act;
-				}
-				and(nst);
-			}
-		
-		|	
-			
-			//parent:ConcurrentState -:Region-> st;	
-			p:ConcurrentState<parent>;
-			
-			and:CreateConfig(parent);
-			modify
-			{
-				root <-:And- nst:ActiveRegionState;
-				parent --> nst;
-				eval
-				{
-					nst.regions = p.regions;
-					yield new_st = nst;
-				// {
-					// new_st.name 	  = parent.name;
-					// new_st.entry_act = parent.entry_act;
-					// new_st.exit_act  = parent.exit_act;
-					// new_st.do_act    = parent.do_act;
-				}
-				//
-				and(nst);
-			}
-		)
-		
-		modify
-		{	
-			def new_st : ActiveState;
-			
-			eval
-			{
-				new_st.name 	  = parent.name;
-				new_st.entry_act  = parent.entry_act;
-				new_st.exit_act   = parent.exit_act;
-				new_st.do_act     = parent.do_act;
-			}			
-		}
-	}
-	
-	
-	modify
-	{
-		
-	}
-	// modify
-	// {
-		// eval
-		// {
-			// //ret.add(st);
-		// }
-	// }
-}
-
-rule MarkAndRegions()
-{
-	st : ConcurrentState -e:Edge -> :ActiveState;	
-	
-	t:CreateAndOrRegion(st);
-	
-	modify { t(); }
-}
-
-// TODO: nested subregion in subregion
-// pattern IterateConf(src : ActiveState)
-// {
-	
-	// (
-		// c : ActiveSubRegionState<src>;
-		
-		// ~(c --> :Oper;);
-	// |
-		// ~(c : ActiveSubRegionState<src>;)
-		// parent : ActiveState --> src;
-		// :IterateConf(parent);
-	// )
-	
-// }
-
-pattern CreateAndOrRegion(src:ConcurrentState)
-{
-	~(src --> :AndConf;)
-	
-	(
-		src --> :SubRegion --> :ActiveSubRegionState <-- or:OrConf;
-		
-		modify { and_conf --> or; }
-	)+
-	
-	modify { src --> and_conf:AndConf <-- :Eval; }	
-}
-
-rule OrSubRegion()
-{
-	st_sub:SubRegion;
-	
-	~( st_sub --> sub:ActiveSubRegionState <-- :OrConf; )
-	
-	iterated
-	{
-		st_sub -e:Edge-> sub:ActiveSubRegionState;
-		
-		modify { or --> sub; }
-	}
-	
-	modify { or : OrConf; }
-}
-
-rule ClearAndRegion()
-{
-	st : ConcurrentState -a:Edge-> :AndConf;
-	
-	multiple
-	{
-		st -e:Edge-> :ActiveRegionState;
-		
-		modify
-		{
-			delete(e);
-		}
-	}
-	
-	modify
-	{
-		delete(a);
-	}
-}
-
-rule ClearOrSubRegion()
-{
-	st_sub : SubRegion;	
-	
-	multiple
-	{
-		st_sub -e:Edge-> :ActiveSubRegionState;
-		
-		modify
-		{
-			delete(e);
-		}
-	}
-	
-	modify
-	{				
-	}
-	
-}
-
-rule OrMoveToTopOfActiveState()
-{
-	sub:ActiveSubRegionState <-e:Edge- or:OrConf;
-	
-	def upper : ActiveState;
-	:FindUpperActiveState(sub, yield upper);
-	
-	modify
-	{
-		delete(e);
-		or --> upper;
-	}
-}
-
-pattern FindUpperActiveState(st : ActiveState, def res : ActiveState)
-{
-	(
-	  ~( --> st;)
-	  yield {yield res = st;}
-	|	
-		parent:ActiveState --> st;
-		:FindUpperActiveState(parent, yield res);
-	)
-}
-
-rule AndOrConvertToBinary()
-{	
-	left:Node  <-e1:Edge- op:Oper -e2:Edge-> right:Node;	
-	third:Node <--	 	  op;
-	
-	modify
-	{
-		left   <-- new_op:typeof(op) --> right;
-		new_op <-- op;
-		delete(e1);
-		delete(e2);
-	}
-}
-
-pattern AndComb(or : OrConf, other : Node) modify(parent : OrConf)
-{	
-	iterated
-	{
-		or --> sub:Node;
-		
-		//:Comb(sub, sub, yield ret);				
-		
-		modify
-		{
-			other <-- and --> sub;
-		}
-	}
-	
-	
-	modify
-	{		
-		parent --> and:AndConf;
-	}
-}
-
-rule DoublesEqualTargets()
-{
-	src:Node --> n:Node <-e:Edge- other:Node;
-		
-	//if {src != other;}
-	if {typeof(n) >= ActiveState || typeof(n) >= Oper;}		
-		//delete(e);
-		// src -:typeof(e)-> ret;
-			// //t(src);
-		// }
-	//}
-	
-	t:CopyTree(n, e);
-	modify
-	{
-		delete(e);
-		// def ret : Node;
-		// eval { (yield ret) = insertInduced(reachableOutgoing(n, Edge), n); }
-		// other -:typeof(e)-> ret;
-		t(other);
-		
-	}
-}
-
-rule UnfoldAndOrComplex()
-{
-	left:OrConf <-- and:AndConf --> right:OrConf;
-		
-	
-	(		
-		and --> other:OrConf;
-		
-		modify
-		{
-			and --> res_or:OrConf;
-			eval
-			{
-				Product(left, right, res_or);
-			}
-		}
-	|
-		
-		~(
-		   left <-- and --> right;
-		   and  --> other:OrConf;
-		 )
-		
-		modify
-		{
-			res_or:OrConf<and>;
-			eval
-			{
-				Product(left, right, res_or);
-			}
-		}
-	)	
-	
-	modify
-	{		
-		delete(right);
-		delete(left);
-	}
-}
-
-
-procedure Product(left : Node, right : Node, parent : Node)
-{
-	for (chl:Node in adjacentOutgoing(left))
-	{
-		for (chr:Node in adjacentOutgoing(right))
-		{
-			(def a:AndConf) = add(AndConf);
-			add(Edge, a, chr);
-			add(Edge, a, chl);
-			add(Edge, parent, a);
-		}
-	}
-	return;
-}
-
-// rule UnfoldAndOr()
-// {
-   // left:OrConf <-- and:AndConf --> right:OrConf;   
-   // lor1:Node   <-- left        --> lor2:Node;
-   // ror1:Node   <-- right       --> ror2:Node;
-   // l1:CopyTree(lor1, Edge);
-   // l2:CopyTree(lor2, Edge);
-   // r1:CopyTree(ror1, Edge);
-   // r2:CopyTree(ror2, Edge);
-   
-   // modify
-   // {	  
-	  // or:OrConf<and>;	  
-	  // a2:AndConf  <-- or --> a1:AndConf;
-	  // a4:AndConf  <-- or --> a3:AndConf;	  
-	  // lor1 		  <-- a1 --> ror1;
-	  // lor2 		  <-- a2;
-					  // a3 --> ror2;	  
-	  // l1(a3);
-	  // l2(a4);
-	  // r2(a4);
-	  // r1(a2);
-	  // delete(left);
-	  // delete(right);
-   // }
-// }
-
 pattern DelTree(n : Node) 
 {
 	iterated
@@ -1161,66 +603,6 @@ pattern CopyTree(n : Node, -ee:Edge->) modify(res : Node)
 				
 }
 
-rule EvalConf()
-{
-	(
-		left:ActiveState <-- and:AndConf --> right:ActiveState;
-		parent:Node 	 --> and;
-		
-		t:EvalAndConf(left, left, right);
-		
-		modify
-		{
-			delete(and);
-			parent --> left;
-			//:typeof(left)<left, and>;
-			t();
-		}
-	|
-		ev:Eval --> or:OrConf;
-		
-		iterated it
-		{
-			or --> conf:ActiveState;
-			
-			modify {}
-		}
-		
-		~(or --> :AndConf;)
-		
-		modify
-		{
-			emitdebug("Number of state config:", count(it));
-			delete(ev);
-			delete(or);
-		}
-	)
-		
-}
-
-pattern EvalAndConf(parent :ActiveState, left:ActiveState, right : ActiveState)
-{
-	(
-		if {left.name == right.name;}
-		
-		left  --> lnext:ActiveState;
-		right --> rnext:ActiveState;
-		t:EvalAndConf(left, lnext, rnext);
-		
-		modify
-		{
-			delete(right);
-			t();
-		}
-	|
-		if {left.name != right.name;}
-		
-		modify
-		{
-			parent -:And-> right;
-		}
-	)	
-}
 
 rule CreateAutoInitial()
 {
@@ -1235,58 +617,3 @@ rule CreateAutoInitial()
 	}
 }
 
-rule UnfoldAndOrSimple()
-{
-   // left:OrConf <-- and:AndConf -e:Edge-> right:ActiveState;
-   // lor1:Node   <-- left        --> lor2:Node;   
-      
-   // r:CopyTree(right);
-   // modify
-   // {	  
-	  // a2:AndConf <-- or:OrConf<and> --> a1:AndConf;	  
-	  // lor1 <-- a1 --> right;
-	  // lor2 <-- a2;
-	  // r(a2);
-	  // delete(left);
-	  // delete(e);
-   // }
-}
-
-rule EvalAndConf()
-{
-	
-}
-
-pattern MarkSubRegions(st : ActiveRegionState, or_node : OrConf, var i : int)
-{
-	reg:ActiveRegionState --> sreg:ActiveSubRegionState;	
-	
-	if {reg.name == st.name;}
-	if {sreg.idx == i;}	
-	
-	modify
-	{
-		or_node --> st;
-	}
-}
-
-// pattern AndComb(parent : State, st1 : State, st2 : State) modify(def ret : State)
-// {
-	// modify
-	// {
-		// def a1 : State;
-		// def a2 : State;
-		// evalhere
-		// {
-			// //
-			// (def g1 : State) = insertInduced(reachableOutgoing(st1, Contains) | reachable(st1, And), st1);
-			// (def g2 : State) = insertInduced(reachableOutgoing(st2, Contains) | reachable(st1, And), st2);		
-			// yield a1 = g1;
-			// yield a2 = g2;
-		// }		
-		// a1 -:And- a2;
-		// parent -:Contains-> a1;
-		// parent -:Contains-> a2;
-		// eval {yield ret = a1;}
-	// }
-// }
