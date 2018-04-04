@@ -362,81 +362,183 @@ rule ReachableConfigInit()
 	active:ActiveState;
 	
 	// names equals
+	if {state.reachable_conf.empty();}
 	if {state.name == active.name;}
 	
 	modify
 	{
 		eval
 		{
+			
 		 // add to reachable set of source
 			state.reachable_conf.add(active);
+			active.state = state;
+			//def active:ActiveState;
 			//active.reachable = set<ActiveState>(reachable(active, Edge) | set<Node>{active});
 		}
 	}
 }
 
+rule ActiveStatesInit()
+{
+	active:ActiveState;
+	~(--> active;)
+	
+	if {active.contains.empty();}
+	
+	modify
+	{
+		eval
+		{
+			def ref all : set<Node> = reachable(active, Edge) | set<Node>{active};
+			def ref all_st : set<State> = set<State>{};
+			for (a : ActiveState in all)
+			{				
+				all_st.add(a.state);
+			}
+			for (a : ActiveState in all)
+			{
+				a.contains = all_st;
+			}
+		}
+	}
+}
 
+rule CreateSimpleStatesTargets()
+{
+	-:Transition-> st:State;
+	
+	t:InitialConfig(st);
+	
+	modify
+	{
+		def ref tar : set<State>;
+		t(tar);
+		evalhere { st.simple_states = tar; }
+	}
+}
 // create transition for configs
 rule CreateTranConfig()
 {
+	//def ref conf : set<State>;
 	src:State -t:Transition-> tar:State;
 	
+	//:TargetConfig(tar);
+	
+	def tar_conf : ActiveState;
+	def src_conf : ActiveState;
+	
+	:SourceConfigs(src, yield src_conf);
+	:TargetConfig(tar,  yield tar_conf);
+	//yield {yield tar_conf = States2Conf(tar.simple_states);}
+	modify
+	{
+		src_conf -:copy<t>-> tar_conf;
+	}
 	// yield
 	// {
-		// // def res : ActiveState;
-		// // def ref min_sel : set<ActiveState>;
-		// // def var min : int = Math::intMax();
-		 // for (ret : set<State> in it)
-		 // {
-			// def var size : int = ret.reachable_conf.size();
-			// //if (size < min)
-			 // //{
-				// // min = size;
-				// // min_sel = ret.reachable_conf;
-			 // //}
-			// //yield act = ret;
-		 // }
-		// //yield act = res;
-	// }
+		
 	//:SourceConfigs(src, t);
 }
 
-// pattern SourceConfigs(src : State, tran : Transition, def ret : State)
-// {
-	// //src
-// }
-
-pattern TargetConfig(tar : State, ref res : set<State>)
+pattern TargetConfig(tar : State, def ret : ActiveState)
 {
-	(
-		~(tar -:Substate->;)
+	//def tar_conf : ActiveState;
+	
+	//yield {yield tar_conf = States2Conf(tar.simple_states);}
+	st:ActiveState;
+	if {st.contains >= tar.simple_states;}
+	yield {yield ret = st;}
+}
+
+pattern SourceConfigs(src : State, def ret : ActiveState)
+{
+	st:ActiveState;
+	if {st in src.reachable_conf;}
+	yield {yield ret = st;}
+}
+
+function States2Conf(ref conf : set<State>) : ActiveState
+{
+// def res : ActiveState;
+	 def ref min_sel : set<ActiveState>;
+	 def var min : int = Math::intMax();
+	 for (ret : State in conf)
+	 {
+		def var size : int = ret.reachable_conf.size();
+		if (size < min)
+		{
+			min = size;
+			min_sel = ret.reachable_conf;
+		}
+		//yield act = ret;
+	 }
+	 for (c : ActiveState in min_sel)
+	 {
+		if (c.contains >= conf)
+		{
+			return (c);
+		}
+	 }
+	 return (null);
+		//yield act = res;
+}
+
+pattern FindConfig(ref conf : set<State>)
+{
+	
+}
+
+pattern InitialConfig(rec_tar : State) modify(ref tar : set<State>)
+{
+	
+	(		
+		~(rec_tar -:Substate->;)
 		//target:ActiveConfig;
-		//if {target.name == tar.name;}
-		yield { res.add(tar);}
+		//if {target.name == tar.name;}conf.add(tar);
+		modify
+		{
+			eval { tar.add(rec_tar);}
+		}
 		
 	|
-		~(:ConcurrentState<tar>;)
-		tar -:Contains-> :InitialState -:PseudoTransition-> st:State;
+		~(:ConcurrentState<rec_tar>;)
+		rec_tar -:Contains-> :InitialState -:PseudoTransition-> st:State;
 		
-		:TargetConfig(st, res);
+		t:InitialConfig(rec_tar);
+		
+		modify {t(tar);}
 	| 	
-		c:ConcurrentState<tar>;
+		c:ConcurrentState<rec_tar>;
 		
-		:TargetConfRegion(c, res);
+		t:InitialConfRegion(c);
 		// iterated
 		// {
 			// def ret : ActiveState;
 			// tar -:Region-> sub:SubRegion;
-			// :TargetConfigs(sub, yield ret);
-		// }
+			// :TargetConfigs(sub, rec_tar);
+		// }	
+		modify
+		{
+			t(tar);
+		}
 	)
+	
+	modify {}
 }
 
-pattern TargetConfRegion(tar : ConcurrentState, ref act : set<State>)
+pattern InitialConfRegion(rec_tar : ConcurrentState) modify(ref tar : set<State>)
 {
 	iterated
 	{
-		tar -:Region-> sub:SubRegion;
-		:TargetConfig(sub, act);		
+		rec_tar -:Region-> sub:SubRegion;
+		t:InitialConfig(sub);		
+		
+		modify
+		{
+			t(tar);
+		}
 	}	
+	
+	modify {}
 }
