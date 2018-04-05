@@ -25,7 +25,7 @@ rule SimpleStates()
 	-:TopState-> top:State;
 	
 	~( st -:Substate->; )
-	~(	top -:SimpleState-> st; )
+	~( top -:SimpleState-> st; )
 	//if (isReachableIncoming(st, top, Contains));
 	
 	modify
@@ -35,6 +35,40 @@ rule SimpleStates()
 	//yield {yield ret = st;}
 }
 
+rule CreateConfigEdges()
+{
+	(
+		src:State -:Transition->;
+		
+		iterated
+		{
+			st:ActiveState;
+		
+			~(src -:Config-> st;)
+			if {st.name == src.name;}
+		
+			modify
+			{
+				src -:Config-> st;
+			}
+		}
+		
+		modify {}
+	|
+		-:Transition-> src:State;
+		def st : ActiveState;
+		def simple : State;
+		
+		:InitialConfigSimpleStates(src, yield simple, yield st);
+		
+		modify
+		{
+			simple -:Config-> st;
+		}
+	)
+	
+}
+
 pattern CreateConfig(st : State) modify(root : ActiveState)
 {	
 	optional
@@ -42,12 +76,14 @@ pattern CreateConfig(st : State) modify(root : ActiveState)
 		parent:State -:Contains-> st;
 		(
 			if {typeof(parent) == State;}		
-		
+					
 			and:CreateConfig(parent);
-	
+			//e:CreateConfigEdge(st);
+			
 			modify
 			{
-				root <-:And- nst:ActiveState;				
+				root <-:And- nst:ActiveState;
+				//parent -:Config-> nst;
 				eval {yield new_st = nst;}
 				and(nst);
 			}
@@ -58,6 +94,7 @@ pattern CreateConfig(st : State) modify(root : ActiveState)
 			modify
 			{
 				root <-:And- nst:ActiveSubRegionState;
+				//st -:Config-> nst;
 				parent --> nst;
 				eval
 				{
@@ -75,6 +112,7 @@ pattern CreateConfig(st : State) modify(root : ActiveState)
 			modify
 			{
 				root <-:And- nst:ActiveRegionState;
+				//st -:Config-> nst;
 				parent --> nst;
 				eval
 				{
@@ -223,20 +261,51 @@ pattern FindUpperActiveState(st : ActiveState, def res : ActiveState)
 	)
 }
 
+pattern CopyConfig(n : Node, -ee:Edge->) modify(res : Node)
+{
+	iterated
+	{
+		n -e:Edge-> child:Node;
+		
+		// optional
+		// {
+			// src:Node -:Config-> n;
+			
+			// modify
+			// {
+				// src -:Config-> nn;
+			// }
+		// }
+		
+		t:CopyConfig(child, e);
+		
+		modify
+		{				
+			t(nn);			
+		}
+	}	
+		
+	modify
+	{
+		res -:typeof(ee)-> nn:copy<n>;	
+	}
+				
+}
+
 rule DoublesEqualTargets()
 {
 	src:Node --> n:Node <-e:Edge- other:Node;
 		
 	if {typeof(n) >= ActiveState || typeof(n) >= Oper;}		
 	
-	//t:CopyTree(n, e);
+	t:CopyConfig(n, e);
 	modify
 	{
-		def nn : Node;
-		evalhere {(yield nn) = insertInduced(reachableOutgoing(n, Edge), n);}
-		//delete(e);		
-		other -e->! nn;
-		//t(other);
+		//def nn : Node;
+		//evalhere {(yield nn) = insertInduced(reachableOutgoing(n, Edge), n);}
+		delete(e);
+		//other -e->! nn;
+		t(other);
 	}
 }
 
@@ -372,7 +441,7 @@ rule ReachableConfigInit()
 			
 		 // add to reachable set of source
 			state.reachable_conf.add(active);
-			active.state = state;
+			//active.state = state;
 			//def active:ActiveState;
 			//active.reachable = set<ActiveState>(reachable(active, Edge) | set<Node>{active});
 		}
@@ -391,10 +460,10 @@ rule ActiveStatesInit()
 		eval
 		{
 			def ref all : set<Node> = reachable(active, Edge) | set<Node>{active};
-			def ref all_st : set<State> = set<State>{};
+			def ref all_st : set<string> = set<string>{};
 			for (a : ActiveState in all)
 			{				
-				all_st.add(a.state);
+				all_st.add(a.name);
 			}
 			for (a : ActiveState in all)
 			{
@@ -414,7 +483,13 @@ rule CreateSimpleStatesTargets()
 	{
 		def ref tar : set<State>;
 		t(tar);
-		evalhere { st.simple_states = tar; }
+		evalhere 
+		{ 
+			for (i : State in tar)
+			{
+				st.simple_states.add(i.name); 
+			}
+		}
 	}
 }
 // create transition for configs
@@ -462,6 +537,7 @@ function States2Conf(ref conf : set<State>) : ActiveState
 {
 // def res : ActiveState;
 	 def ref min_sel : set<ActiveState>;
+	 def ref names : set<string>;
 	 def var min : int = Math::intMax();
 	 for (ret : State in conf)
 	 {
@@ -471,11 +547,17 @@ function States2Conf(ref conf : set<State>) : ActiveState
 			min = size;
 			min_sel = ret.reachable_conf;
 		}
+		
 		//yield act = ret;
 	 }
+	 for (c : State in conf)
+	 {
+		names.add(c.name);
+	 }
+	 
 	 for (c : ActiveState in min_sel)
 	 {
-		if (c.contains >= conf)
+		if (c.contains >= names)
 		{
 			return (c);
 		}
@@ -527,6 +609,47 @@ pattern InitialConfig(rec_tar : State) modify(ref tar : set<State>)
 	modify {}
 }
 
+pattern InitialConfigSimpleStates(rec_tar : State, def simple : State, def ret : ActiveState)
+{
+	(		
+		~(rec_tar -:Substate->;)
+		
+		target:ActiveState;
+		~(rec_tar -:Config-> target;)
+		if {target.name == rec_tar.name;}
+		
+		yield {yield simple = rec_tar;}
+		yield {yield ret = target;}
+		
+	|
+		~(:ConcurrentState<rec_tar>;)
+		rec_tar -:Contains-> :InitialState -:PseudoTransition-> st:State;
+		
+		:InitialConfigSimpleStates(rec_tar, yield simple, yield ret);
+				
+	| 	
+		c:ConcurrentState<rec_tar>;
+		
+		:InitialConfRegionSimpleStates(c, yield simple, yield ret);
+		// iterated
+		// {
+			// def ret : ActiveState;
+			// tar -:Region-> sub:SubRegion;
+			// :TargetConfigs(sub, rec_tar);
+		// }	
+	)
+		
+}
+
+pattern InitialConfRegionSimpleStates(rec_tar : ConcurrentState, def simple : State, def ret : ActiveState)
+{
+	iterated
+	{
+		rec_tar -:Region-> sub:SubRegion;
+		t:InitialConfigSimpleStates(sub, yield simple, yield ret);		
+	}	
+}
+
 pattern InitialConfRegion(rec_tar : ConcurrentState) modify(ref tar : set<State>)
 {
 	iterated
@@ -542,3 +665,5 @@ pattern InitialConfRegion(rec_tar : ConcurrentState) modify(ref tar : set<State>
 	
 	modify {}
 }
+
+//rule CreateConfEdges
