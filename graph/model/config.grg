@@ -8,6 +8,7 @@ rule StateCombinations()
 		new_st : ActiveSimpleState;
 		eval
 		{
+			new_st.id 	= state.id;
 			new_st.name = state.name;
 			new_st.entry_act = state.entry_act;
 			new_st.exit_act = state.exit_act;
@@ -45,7 +46,7 @@ rule CreateConfigEdges()
 			st:ActiveState;
 		
 			~(src -:Config-> st;)
-			if {st.name == src.name;}
+			if {st.id == src.id;}
 		
 			modify
 			{
@@ -129,6 +130,7 @@ pattern CreateConfig(st : State) modify(root : ActiveState)
 			
 			eval
 			{
+				new_st.id 		  = parent.id;
 				new_st.name 	  = parent.name;
 				new_st.entry_act  = parent.entry_act;
 				new_st.exit_act   = parent.exit_act;
@@ -263,19 +265,15 @@ pattern FindUpperActiveState(st : ActiveState, def res : ActiveState)
 
 pattern CopyConfig(n : Node, -ee:Edge->) modify(res : Node)
 {
+	// (
+	   // a:ActiveState<n>;
+	// |
+
+		
+	// )
 	iterated
 	{
-		n -e:Edge-> child:Node;
-		
-		// optional
-		// {
-			// src:Node -:Config-> n;
-			
-			// modify
-			// {
-				// src -:Config-> nn;
-			// }
-		// }
+		n -e:Edge-> child:Node;		
 		
 		t:CopyConfig(child, e);
 		
@@ -287,7 +285,7 @@ pattern CopyConfig(n : Node, -ee:Edge->) modify(res : Node)
 		
 	modify
 	{
-		res -:typeof(ee)-> nn:copy<n>;	
+		res -:typeof(ee)-> nn:copy<n>;
 	}
 				
 }
@@ -382,7 +380,7 @@ rule EvalConf()
 	|
 		ev:Eval --> or:OrConf;
 		
-		iterated it
+		iterated
 		{
 			or --> conf:ActiveState;
 			
@@ -393,7 +391,7 @@ rule EvalConf()
 		
 		modify
 		{
-			emitdebug("Number of state config:", count(it));
+			//emitdebug("Number of state config:", count(it));
 			delete(ev);
 			delete(or);
 		}
@@ -404,7 +402,7 @@ rule EvalConf()
 pattern EvalAndConf(parent :ActiveState, left:ActiveState, right : ActiveState)
 {
 	(
-		if {left.name == right.name;}
+		if {left.id == right.id;}
 		
 		left  --> lnext:ActiveState;
 		right --> rnext:ActiveState;
@@ -416,7 +414,7 @@ pattern EvalAndConf(parent :ActiveState, left:ActiveState, right : ActiveState)
 			t();
 		}
 	|
-		if {left.name != right.name;}
+		if {left.id != right.id;}
 		
 		modify
 		{
@@ -427,25 +425,103 @@ pattern EvalAndConf(parent :ActiveState, left:ActiveState, right : ActiveState)
 
 rule ReachableConfigInit()
 {
-	state:State;
-	active:ActiveState;
+	-:TopState-> top:State;	
+	if {top.possible_conf.empty();}	
 	
-	// names equals
-	if {state.reachable_conf.empty();}
-	if {state.name == active.name;}
-	
-	modify
+	multiple
 	{
-		eval
+		active:ActiveState;
+		
+		~(--> active;)
+		
+		modify
 		{
-			
-		 // add to reachable set of source
-			state.reachable_conf.add(active);
-			//active.state = state;
-			//def active:ActiveState;
-			//active.reachable = set<ActiveState>(reachable(active, Edge) | set<Node>{active});
+			eval
+			{
+				top.possible_conf.add(active);
+				top.possible_conf_str.add(active.contains.asString("&"));
+				
+			}
 		}
 	}
+	// names equals
+	
+	//if {state.id == active.id;}
+	//~(if {active in state.reachable_conf;})
+	t:InitReachableConfig(top);
+	init:InitInitialConfig(top);
+	modify
+	{
+		def ref initial : set<State> = Set<State>{};
+		t();
+		init(initial);
+	}
+}
+
+// filter configurations to this state
+function FilterConf(conf : array<ActiveState>, st : State) : array<ActiveState>
+{
+	def ref nconf : array<ActiveState>(conf);
+	for (a : ActiveState in conf)
+	{
+		if (st in a.contains) // configuration contains state only
+		{
+			nconf.add(a);
+		}
+	}
+	return (nconf);
+}
+
+pattern InitReachableConfig(state : State)
+{
+	iterated
+	{
+		state -:Substate-> sub:State;
+		
+		t:InitReachableConfig(sub);
+		modify
+		{
+			evalhere
+			{
+				sub.possible_conf = FilterConf(state.possible_conf, sub);
+				sub.possible_conf_str = array<string(){};
+				for (s : ActiveState in sub.possible_conf)
+				{
+					sub.possible_conf_str.add(s.asString("&"));
+				}
+				
+			}
+			t();
+		}
+	}
+	
+	modify {}
+}
+
+pattern InitInitialConfig(state : State)
+{
+	iterated
+	{
+		state -:Substate-> sub:State;
+		
+		t:InitInitialConfig(sub);
+		modify
+		{
+			evalhere
+			{
+				// sub.possible_conf = FilterConf(state.possible_conf, sub);
+				// sub.possible_conf_str = array<string(){};
+				// for (s : ActiveState in sub.possible_conf)
+				// {
+					// sub.possible_conf_str.add(s.asString("&"));
+				// }
+				
+			}
+			t();
+		}
+	}
+	
+	modify {}
 }
 
 rule ActiveStatesInit()
@@ -473,15 +549,40 @@ rule ActiveStatesInit()
 	}
 }
 
+rule ActiveStatesInit2()
+{
+	active:ActiveSubRegionState;
+	
+	if {active.sub_region_contains.empty();}
+	
+	modify
+	{
+		eval
+		{
+			def ref all : set<Node> = reachableOutgoing(active, Edge) | set<Node>{active};
+			def ref all_st : set<string> = set<string>{};
+			for (a : ActiveState in all)
+			{				
+				all_st.add(a.name);
+			}
+			for (a : ActiveState in all)
+			{
+				a.sub_region_contains = all_st;
+			}
+		}
+	}
+}
+
 rule CreateSimpleStatesTargets()
 {
-	-:Transition-> st:State;
+	-:StateTransition-> st:State;
 	
+	if {st.simple_states.empty();}
 	t:InitialConfig(st);
 	
 	modify
 	{
-		def ref tar : set<State>;
+		def ref tar : set<State> = set<State>{};
 		t(tar);
 		evalhere 
 		{ 
@@ -496,24 +597,72 @@ rule CreateSimpleStatesTargets()
 rule CreateTranConfig()
 {
 	//def ref conf : set<State>;
-	src:State -t:Transition-> tar:State;
+	src:State -t:StateTransition-> tar:State;
 	
 	//:TargetConfig(tar);
 	
 	def tar_conf : ActiveState;
 	def src_conf : ActiveState;
 	
+	def lca : Node;
+	yield {yield lca = LCA(src, tar); }
+	~(def sub_region : SubRegion; :GetSubRegion((State)LCA(src, tar), yield sub_region);)
+		
 	:SourceConfigs(src, yield src_conf);
 	:TargetConfig(tar,  yield tar_conf);
-	//yield {yield tar_conf = States2Conf(tar.simple_states);}
+		
 	modify
 	{
 		src_conf -:copy<t>-> tar_conf;
 	}
+}
+
+rule CreateTranConfigRegion()
+{
+	//def ref conf : set<State>;
+	src:State -t:StateTransition-> tar:State;
+	
+	//:TargetConfig(tar);
+	
+	def sub_region : SubRegion;
+	lca : State;
+	if {lca == (State)LCA(src, tar);}
+		//:LCA(src, tar, yield lca);
+	//yield {yield lca = (State)LCA(src, tar); }
+	:GetSubRegion(lca, yield sub_region);
+	//if {reachableIncoming(lca, Contains, SubRegion);}	
+	def tar_conf : ActiveState;
+	def src_conf : ActiveState;
+		
+		
+	
+	:TargetConfigRegion(src, tar, t, yield src_conf, yield tar_conf);
+		//:TargetConfig(tar,  yield tar_conf);
+	//~(src_conf -:Transition-> tar_conf;)		
+	modify {src_conf -:copy<t>-> tar_conf;}
+	
 	// yield
 	// {
 		
 	//:SourceConfigs(src, t);
+}
+
+// function IsSubRegionPart(st : State) : boolean
+// {
+	
+// }
+
+pattern GetSubRegion(st : State, def parent : SubRegion)
+{
+	(
+		p:SubRegion -:Contains-> st;
+		
+		yield {yield parent = p;}
+	|
+		p:State -:Contains-> st;
+		~(:SubRegion -:Contains-> st;)
+		:GetSubRegion(p, yield parent);
+	)
 }
 
 pattern TargetConfig(tar : State, def ret : ActiveState)
@@ -521,16 +670,67 @@ pattern TargetConfig(tar : State, def ret : ActiveState)
 	//def tar_conf : ActiveState;
 	
 	//yield {yield tar_conf = States2Conf(tar.simple_states);}
-	st:ActiveState;
+	st:ActiveState;	
 	if {st.contains >= tar.simple_states;}
-	yield {yield ret = st;}
+		//:InitialConfig(tar, st);
+		
+	yield {yield ret = st;}	
+}
+
+pattern TargetConfigRegion(src : State, tar : State,  -tran:StateTransition->, def srcconf : ActiveState, def tgtconf : ActiveState)
+{
+	//def tar_conf : ActiveState;
+	
+	//yield {yield tar_conf = States2Conf(tar.simple_states);}
+	st_src:ActiveState;
+	st_tar:ActiveState;
+
+	~(--> st_src; )
+	~(--> st_tar; )
+	// def ref diff_src : set<string>;
+	// def ref diff_tar : set<string>;
+	
+	if {st_src in src.reachable_conf;}
+	//if {st_tar in tar.reachable_conf;}
+	
+	// yield 
+	// { 
+		// yield diff_src = ;
+		// yield diff_tar = ;
+	// }	
+	
+	//st_src.contains \ 
+		
+	
+	
+	if {st_tar.contains >= tar.simple_states;}
+	
+	if {(st_src.contains \ st_src.sub_region_contains) == (st_tar.contains \ st_tar.sub_region_contains);}
+	
+	~(
+		st_src -t:StateTransition-> st_tar;
+		if {t.out_str == tran.out_str;}
+	 )
+	//if {s}
+		//:InitialConfig(tar, st);
+		
+	yield {yield srcconf = st_src; yield tgtconf = st_tar;}	
+}
+
+rule MoveConfigTransitionToTop()
+{
+	st:ActiveState -->;
+		
 }
 
 pattern SourceConfigs(src : State, def ret : ActiveState)
 {
-	st:ActiveState;
-	if {st in src.reachable_conf;}
-	yield {yield ret = st;}
+	multiple
+	{
+		st:ActiveState;
+		if {st in src.reachable_conf;}
+		yield {yield ret = st;}
+	}
 }
 
 function States2Conf(ref conf : set<State>) : ActiveState
@@ -578,16 +778,18 @@ pattern InitialConfig(rec_tar : State) modify(ref tar : set<State>)
 		~(rec_tar -:Substate->;)
 		//target:ActiveConfig;
 		//if {target.name == tar.name;}conf.add(tar);
-		modify
-		{
+		//if {st.name == rec_tar.name;}
+		 //if {rec_tar.name in st.contains;}
+		 modify
+		 {
 			eval { tar.add(rec_tar);}
-		}
+		 }
 		
 	|
 		~(:ConcurrentState<rec_tar>;)
-		rec_tar -:Contains-> :InitialState -:PseudoTransition-> st:State;
+		rec_tar -:Contains-> :InitialState -:PseudoTransition-> child:State;
 		
-		t:InitialConfig(rec_tar);
+		t:InitialConfig(child);
 		
 		modify {t(tar);}
 	| 	
@@ -616,7 +818,7 @@ pattern InitialConfigSimpleStates(rec_tar : State, def simple : State, def ret :
 		
 		target:ActiveState;
 		~(rec_tar -:Config-> target;)
-		if {target.name == rec_tar.name;}
+		if {target.id == rec_tar.id;}
 		
 		yield {yield simple = rec_tar;}
 		yield {yield ret = target;}
@@ -652,7 +854,7 @@ pattern InitialConfRegionSimpleStates(rec_tar : ConcurrentState, def simple : St
 
 pattern InitialConfRegion(rec_tar : ConcurrentState) modify(ref tar : set<State>)
 {
-	iterated
+	multiple
 	{
 		rec_tar -:Region-> sub:SubRegion;
 		t:InitialConfig(sub);		

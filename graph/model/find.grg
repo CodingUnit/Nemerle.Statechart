@@ -288,39 +288,73 @@ test FindNamedHierarchy(st : State, type : StateMachineNode, var name : string) 
 	 // return (lca);
 // }
 
-pattern LCA(u : StateMachineNode, v : StateMachineNode, def lca : Node)
+function LCA(u : StateMachineNode, v : StateMachineNode) : Node
 {
-	parent1:StateMachineNode -:Contains-> u;
-	parent2:StateMachineNode -:Contains-> v;
-	:LCArec(parent1, parent2, yield lca);
+	// parent1:StateMachineNode -:Contains-> u;
+	// parent2:StateMachineNode -:Contains-> v;
+	// yield
+	// {
+		// yield lca = LCAfunc(parent1, parent2, parent1.depth, parent2.depth);
+	// }
+	return (LCAfunc(adjacentIncoming(u, Contains).peek(0), adjacentIncoming(v, Contains).peek(0), u.depth - 1, v.depth - 1));
+	//:LCArec(parent1, parent2, parent1.depth, parent2.depth, yield lca);
 }
 
-pattern LCArec(u : StateMachineNode, v : StateMachineNode, def lca : Node)
+pattern LCArec(u : StateMachineNode, v : StateMachineNode, var d1 : int, var d2 : int, def lca : Node)
 {	
+	parent1:StateMachineNode -:Contains-> u;
+	parent2:StateMachineNode -:Contains-> v;
 	(
-	     if { u.depth > v.depth;}
+	     if { d1 > d2;}
 	 
-		 parent:StateMachineNode -:Contains-> u;
-		 :LCArec(parent, v, yield lca);
+		 //parent:StateMachineNode -:Contains-> u;
+		 :LCArec(parent1, v, d1 - 1, d2, yield lca);
 	 |   
-		 if { u.depth < v.depth;}
+		 if { d1 < d2;}
 	 
-		 parent:StateMachineNode -:Contains-> v;
-		 :LCArec(u, parent, yield lca);
+		 //parent:StateMachineNode -:Contains-> v;
+		 :LCArec(u, parent2, d1, d2 - 1, yield lca);
      |   
-		 if {u.depth == v.depth;}
-	     if {u != v;}
-		 parent1:StateMachineNode -:Contains-> u;
-		 parent2:StateMachineNode -:Contains-> v;
+		 if {d1 == d2;}
+	     // if {u != v;}
+		 // parent1:StateMachineNode -:Contains-> u;
+		 // parent2:StateMachineNode -:Contains-> v;
 		 
-		 :LCArec(parent1, parent2, yield lca);
-     | 
-	     if { u == v; }
+		 // :LCArec(parent1, parent2, d1, d2, yield lca);
+     // | 
+	     // if { u == v; }
 		 yield { yield lca = u; }
+	 // |	
+		 // if {d1 == 0 && d2 == 0;}
+		 // yield { yield lca = u; }
 	)
 	
 }
 
+function LCAfunc(u : Node, v : Node, var d1 : int, var d2 : int) : Node
+{
+	if (d1 > d2)
+	{
+		def p1 : Node = adjacentIncoming(u, Contains).peek(0);
+		return (LCAfunc(p1, v, d1 - 1, d2));
+	}
+	if (d1 < d2)
+	{
+		def p2 : Node = adjacentIncoming(v, Contains).peek(0);
+		return (LCAfunc(u, p2, d1, d2 - 1));
+	} else
+	{
+		if (u != v)
+		{
+			def p1 : Node = adjacentIncoming(u, Contains).peek(0);
+			def p2 : Node = adjacentIncoming(v, Contains).peek(0);
+			return (LCAfunc(p1, p2, d1, d2));
+		} else
+		{
+			return (u);
+		}
+	}
+}
 /*
 Процедура LCA(u, v):
     h1 := depth(u)          // depth(x) = глубина вершины x
