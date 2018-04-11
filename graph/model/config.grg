@@ -514,7 +514,11 @@ pattern InitialInitRec(state:State)
 		
 		modify
 		{
-			evalhere {parent.initial_conf = state.initial_conf;}
+			evalhere 
+			{
+				parent.initial_conf 	= state.initial_conf;
+				parent.initial_conf_str = state.initial_conf_str;
+			}
 			t();
 		}
 		//if {state.initial_conf.empty();}
@@ -540,12 +544,13 @@ pattern InitialInitRec(state:State)
 		{			
 			evalhere 
 			{
-				def ref states : array<ActiveState> = array<ActiveState>(state.initial_conf);
+				def ref states : array<ActiveState> = copy(state.initial_conf);
 				for (i : State in adjacentOutgoing(parent, Region))
 				{
 					states = IntersectArray(states, i.initial_conf);
 				}
 				parent.initial_conf = states;
+				parent.initial_conf_str = GetConfigStr(parent.initial_conf);
 			}
 			t();
 		}
@@ -562,14 +567,18 @@ pattern InitialInitRec(state:State)
 // filter configurations to this state set, configurations not contained states st, will be filtered
 function FilterConf(ref conf : array<ActiveState>, ref st : set<State>) : array<ActiveState>
 {
-	def ref nconf : array<ActiveState> = array<ActiveState>(conf);
+	def ref nconf : array<ActiveState> = array<ActiveState>[];
 	for (a : ActiveState in conf)
 	{
+		//emit("\nfilt it", a, "contains", a.contains);
+		//emit("\nfilt &", st & a.contains);
 		if ((st & a.contains) == st) // configuration contains state only
 		{
+			//emit("\nenter", a);
 			nconf.add(a);
 		}
 	}
+	//emit("\nnconf", nconf);
 	return (nconf);
 }
 
@@ -587,7 +596,7 @@ function ContainsConf(ref conf : array<ActiveState>, ref st : set<State>) : bool
 
 function GetConfigStr(ref st : array<ActiveState>) : array<string>
 {
-	def ref str : array<string>;
+	def ref str : array<string> = array<string>[];
 	for (s : ActiveState in st)
 	{
 		def ref arr : array<string> =  s.contains_str.asArray();
@@ -608,13 +617,18 @@ pattern InitReachableConfig(state : State)
 		
 		modify
 		{
+			
 			def ref this_conf : set<State> = set<State>{sub};
 			//
 			evalhere
 			{
-				//def ref str : array<string>;
-				sub.possible_conf = FilterConf(state.possible_conf, this_conf);				
+				emit("\nthis_conf", this_conf);
+				emit("\nstate.possible_conf", state.possible_conf);
+				def ref str : array<ActiveState>;
+				sub.possible_conf 	  = FilterConf(state.possible_conf, this_conf);				
+				emit("\nsub.possible_conf", sub.possible_conf);
 				sub.possible_conf_str = GetConfigStr(sub.possible_conf);
+				emit("\nsub.possible_conf_str", sub.possible_conf_str);
 				//sub.possible_conf = conf;
 			}
 			t();
@@ -719,7 +733,9 @@ rule ActiveStatesInit()
 	active:ActiveState;
 	~(--> active;)
 	
-	if {active.contains.empty();}
+	//def ref all : set<Node> = reachable(active, Edge) | set<Node>{active};
+	
+	if {active.contains.size() == 1 && reachable(active, Edge).size() > 1;}
 	
 	modify
 	{
@@ -733,6 +749,8 @@ rule ActiveStatesInit()
 				all_st_name |= a.contains_str;
 				all_st |= a.contains;
 			}
+			// emitdebug("all_st", all_st);
+			// emitdebug("all_st_name", all_st_name);
 			for (a : ActiveState in all)
 			{
 				a.contains = all_st;
@@ -835,9 +853,11 @@ rule CreateTranConfigRegion()
 	{
 		eval
 		{
-			for (s : ActiveState in src.possible_conf)
+			def ref conf : array<ActiveState> = src.possible_conf;
+			def ref ttar : array<ActiveState> = tar.initial_conf;
+			for (i : int -> s : ActiveState in conf)
 			{
-				def tt : ActiveState = tar.initial_conf[i];
+				def tt : ActiveState = ttar[i];
 				addCopy(t, s, tt);
 			}
 			//src_conf -:copy<t>-> tar_conf;
