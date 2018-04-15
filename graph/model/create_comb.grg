@@ -1,0 +1,426 @@
+rule StateCombinations()
+{
+	-:TopState-> . -e:SimpleState-> state:State;
+	and:CreateConfig(state);	
+		
+	modify
+	{
+		new_st : ActiveSimpleState;
+		eval
+		{
+			emit("\ncreate_id:", new_st, ",", state, ":", state.id);
+			new_st.id 	= state.id;
+			new_st.name = state.name;
+			new_st.entry_act = state.entry_act;
+			new_st.exit_act = state.exit_act;
+			new_st.do_act = state.do_act;
+		}
+		and(new_st);
+		delete(e);
+	} 
+}
+
+rule SimpleStates()
+{	
+	st:State;
+	
+	-:TopState-> top:State;
+	
+	~( st -:Substate->; )
+	~( top -:SimpleState-> st; )
+	//if (isReachableIncoming(st, top, Contains));
+	
+	modify
+	{
+		top -:SimpleState-> st;
+	}
+	//yield {yield ret = st;}
+}
+
+// rule CreateConfigEdges()
+// {
+	// (
+		// src:State -:Transition->;
+		
+		// iterated
+		// {
+			// st:ActiveState;
+		
+			// ~(src -:Config-> st;)
+			// if {st.id == src.id;}
+		
+			// modify
+			// {
+				// src -:Config-> st;
+			// }
+		// }
+		
+		// modify {}
+	// |
+		// -:Transition-> src:State;
+		// def st : ActiveState;
+		// def simple : State;
+		
+		// :InitialConfigSimpleStates(src, yield simple, yield st);
+		
+		// modify
+		// {
+			// simple -:Config-> st;
+		// }
+	// )
+	
+// }
+
+pattern CreateConfig(st : State) modify(root : ActiveState)
+{	
+	optional
+	{
+		parent:State -:Contains-> st;
+		(
+			if {typeof(parent) == State;}		
+					
+			and:CreateConfig(parent);
+			//e:CreateConfigEdge(st);
+			
+			modify
+			{
+				root <-:And- nst:ActiveState;
+				//parent -:Config-> nst;
+				eval {yield new_st = nst;}
+				and(nst);
+			}
+		| 				
+			p:SubRegion<parent>;
+			and:CreateConfig(parent);
+			
+			modify
+			{
+				root <-:And- nst:ActiveSubRegionState;
+				//st -:Config-> nst;
+				parent --> nst;
+				eval
+				{
+					nst.idx 		  = p.idx;				
+					yield new_st = nst;					
+				}
+				and(nst);
+			}
+		
+		|	
+			
+			p:ConcurrentState<parent>;
+			
+			and:CreateConfig(parent);
+			modify
+			{
+				root <-:And- nst:ActiveRegionState;
+				//st -:Config-> nst;
+				parent --> nst;
+				eval
+				{
+					nst.regions = p.regions;
+					yield new_st = nst;
+				}
+				and(nst);
+			}
+		)
+		
+		modify
+		{	
+			def new_st : ActiveState;
+			
+			eval
+			{				
+				new_st.id 		  = parent.id;
+				new_st.name 	  = parent.name;
+				new_st.entry_act  = parent.entry_act;
+				new_st.exit_act   = parent.exit_act;
+				new_st.do_act     = parent.do_act;
+				emit("\ncreate_id:", new_st, parent, parent.id);
+			}			
+		}
+	}
+	
+	modify
+	{	
+	}
+}
+
+rule MarkAndRegions()
+{
+	st : ConcurrentState -e:Edge -> :ActiveState;	
+	
+	t:CreateAndOrRegion(st);
+	
+	modify { t(); }
+}
+
+// TODO: nested subregion in subregion
+// pattern IterateConf(src : ActiveState)
+// {
+	
+	// (
+		// c : ActiveSubRegionState<src>;
+		
+		// ~(c --> :Oper;);
+	// |
+		// ~(c : ActiveSubRegionState<src>;)
+		// parent : ActiveState --> src;
+		// :IterateConf(parent);
+	// )
+	
+// }
+
+pattern CreateAndOrRegion(src:ConcurrentState)
+{
+	~(src --> :AndConf;)
+	
+	(
+		src --> :SubRegion --> :ActiveSubRegionState <-- or:OrConf;
+		
+		modify { and_conf --> or; }
+	)+
+	
+	modify { src --> and_conf:AndConf <-- :Eval; }	
+}
+
+rule OrSubRegion()
+{
+	st_sub:SubRegion;
+	
+	~( st_sub --> sub:ActiveSubRegionState <-- :OrConf; )
+	
+	iterated
+	{
+		st_sub -e:Edge-> sub:ActiveSubRegionState;
+		
+		modify { or --> sub; }
+	}
+	
+	modify { or : OrConf; }
+}
+
+rule ClearAndRegion()
+{
+	st : ConcurrentState -a:Edge-> :AndConf;
+	
+	multiple
+	{
+		st -e:Edge-> :ActiveRegionState;
+		
+		modify
+		{
+			delete(e);
+		}
+	}
+	
+	modify
+	{
+		delete(a);
+	}
+}
+
+rule ClearOrSubRegion()
+{
+	st_sub : SubRegion;	
+	
+	multiple
+	{
+		st_sub -e:Edge-> :ActiveSubRegionState;
+		
+		modify
+		{
+			delete(e);
+		}
+	}
+	
+	modify
+	{				
+	}
+	
+}
+
+rule OrMoveToTopOfActiveState()
+{
+	sub:ActiveSubRegionState <-e:Edge- or:OrConf;
+	
+	def upper : ActiveState;
+	:FindUpperActiveState(sub, yield upper);
+	
+	modify
+	{
+		delete(e);
+		or --> upper;
+	}
+}
+
+pattern FindUpperActiveState(st : ActiveState, def res : ActiveState)
+{
+	(
+	  ~( --> st;)
+	  yield {yield res = st;}
+	|	
+		parent:ActiveState --> st;
+		:FindUpperActiveState(parent, yield res);
+	)
+}
+
+pattern CopyConfig(n : Node, -ee:Edge->) modify(res : Node)
+{
+	// (
+	   // a:ActiveState<n>;
+	// |
+
+		
+	// )
+	iterated
+	{
+		n -e:Edge-> child:Node;		
+		
+		t:CopyConfig(child, e);
+		
+		modify
+		{				
+			t(nn);			
+		}
+	}	
+		
+	modify
+	{
+		res -:typeof(ee)-> nn:copy<n>;
+	}
+				
+}
+
+rule DoublesEqualTargets()
+{
+	src:Node --> n:Node <-e:Edge- other:Node;
+		
+	if {typeof(n) >= ActiveState || typeof(n) >= Oper;}		
+	
+	t:CopyConfig(n, e);
+	modify
+	{
+		//def nn : Node;
+		//evalhere {(yield nn) = insertInduced(reachableOutgoing(n, Edge), n);}
+		delete(e);
+		//other -e->! nn;
+		t(other);
+	}
+}
+
+rule UnfoldAndOrComplex()
+{
+	left:OrConf <-- and:AndConf --> right:OrConf;
+		
+	
+	(		
+		and --> other:OrConf;
+		
+		modify
+		{
+			and --> res_or:OrConf;
+			eval
+			{
+				Product(left, right, res_or);
+			}
+		}
+	|
+		
+		~(
+		   left <-- and --> right;
+		   and  --> other:OrConf;
+		 )
+		
+		modify
+		{
+			res_or:OrConf<and>;
+			eval
+			{
+				Product(left, right, res_or);
+			}
+		}
+	)	
+	
+	modify
+	{		
+		delete(right);
+		delete(left);
+	}
+}
+
+// product of all nodes adjacent in two nodes, connect to parent
+procedure Product(left : Node, right : Node, parent : Node)
+{
+	for (chl:Node in adjacentOutgoing(left)) // for all left
+	{
+		for (chr:Node in adjacentOutgoing(right)) // for all right
+		{
+			(def a:AndConf) = add(AndConf); // create and
+			add(Edge, a, chr); // connect to it
+			add(Edge, a, chl);
+			add(Edge, parent, a); // connect to parent
+		}
+	}
+	return;
+}
+
+rule EvalConf()
+{
+	(
+		left:ActiveState <-- and:AndConf --> right:ActiveState;
+		parent:Node 	 --> and;
+		
+		t:EvalAndConf(left, left, right);
+		
+		modify
+		{
+			delete(and);
+			parent --> left;			
+			t();
+		}
+	|
+		ev:Eval --> or:OrConf;
+		
+		iterated
+		{
+			or --> conf:ActiveState;
+			
+			modify {}
+		}
+		
+		~(or --> :AndConf;)
+		
+		modify
+		{
+			//emitdebug("Number of state config:", count(it));
+			delete(ev);
+			delete(or);
+		}
+	)
+		
+}
+
+pattern EvalAndConf(parent :ActiveState, left:ActiveState, right : ActiveState)
+{
+	(
+		if {left.id == right.id;}
+		
+		left  --> lnext:ActiveState;
+		right --> rnext:ActiveState;
+		t:EvalAndConf(left, lnext, rnext);
+		
+		modify
+		{
+			delete(right);
+			t();
+		}
+	|
+		if {left.id != right.id;}
+		
+		modify
+		{
+			parent -:And-> right;
+		}
+	)	
+}
