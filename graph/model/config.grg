@@ -105,40 +105,40 @@ rule ConcurrentStateInitialInit()
 	}
 }
 
-function MergeRegionInitial(parent : ConcurrentState) : array<ActiveState>
+function MergeRegionInitial(parent : ConcurrentState) : set<ActiveState>
 {
-	def ref states : array<ActiveState> = array<ActiveState>[];
-	def ref nodes : set<Node> = adjacentOutgoing(parent, Region);
+	def ref states : set<ActiveState> = set<ActiveState>{};
+	//def ref nodes : set<Node> = ;
 	emit("\nmerge:", parent);
-	for (i : State in nodes)
+	for (i : State in adjacentOutgoing(parent, Region))
 	{
 		if (states.empty()) 
 		{
 			states = i.initial_conf;
 		} else
 		{
-			states = IntersectArray(states, i.initial_conf);
+			states &= i.initial_conf;//IntersectArray(states, i.initial_conf);
 		}
 		emit("\nstates:", states);
 	}
 	return (states);
 }
 
-function IntersectArray(ref a1 : array<ActiveState>, ref a2 : array<ActiveState>) : array<ActiveState>
-{
-	def ref res : array<ActiveState> = array<ActiveState>[];
-	emit("\na1", a1);
-	emit("\na2", a2);	
-	for (i1 : ActiveState in a1)
-	{
-		if (i1 in a2)
-		{
-			res.add(i1);
-		}
-	}
-	emit("\nres", res);
-	return (res);
-}
+// function IntersectArray(ref a1 : array<ActiveState>, ref a2 : array<ActiveState>) : array<ActiveState>
+// {
+	// def ref res : array<ActiveState> = array<ActiveState>[];
+	// emit("\na1", a1);
+	// emit("\na2", a2);	
+	// for (i1 : ActiveState in a1)
+	// {
+		// if (i1 in a2)
+		// {
+			// res.add(i1);
+		// }
+	// }
+	// emit("\nres", res);
+	// return (res);
+// }
 
 // pattern InitialInitRec(state:State)
 // {	
@@ -167,9 +167,9 @@ function IntersectArray(ref a1 : array<ActiveState>, ref a2 : array<ActiveState>
 // }
 
 // filter configurations to this state set, configurations not contained states st, will be filtered
-function FilterConf(ref conf : array<ActiveState>, ref st : set<State>) : array<ActiveState>
+function FilterConf(ref conf : set<ActiveState>, ref st : set<State>) : set<ActiveState>
 {
-	def ref nconf : array<ActiveState> = array<ActiveState>[];
+	def ref nconf : set<ActiveState> = set<ActiveState>{};
 	for (a : ActiveState in conf)
 	{
 		//emit("\nfilt it", a, "contains", a.contains);
@@ -184,21 +184,21 @@ function FilterConf(ref conf : array<ActiveState>, ref st : set<State>) : array<
 	return (nconf);
 }
 
-function ContainsConf(ref conf : array<ActiveState>, ref st : set<State>) : boolean
-{
-	for (a : ActiveState in conf)
-	{
-		if ((st & a.contains) != st) // configuration contains state only
-		{
-			return (false);
-		}
-	}
-	return (true);
-}
+// function ContainsConf(ref conf : set<ActiveState>, ref st : set<State>) : boolean
+// {
+	// for (a : ActiveState in conf)
+	// {
+		// if ((st & a.contains) != st) // configuration contains state only
+		// {
+			// return (false);
+		// }
+	// }
+	// return (true);
+// }
 
-function GetConfigStr(ref st : array<ActiveState>) : array<string>
+function GetConfigStr(ref st : set<ActiveState>) : set<string>
 {
-	def ref str : array<string> = array<string>[];
+	def ref str : set<string> = set<string>{};
 	for (s : ActiveState in st)
 	{
 		def ref arr : array<string> =  s.contains_str.asArray();
@@ -445,7 +445,7 @@ rule CreateTranConfig()
 	~(def sub_region : SubRegion; :GetSubRegion(t.lca.peek(0), yield sub_region);)
 		
 	:SourceConfigs(src, yield src_conf);
-	yield {yield tar_conf = tar.initial_conf[0];}
+	yield {yield tar_conf = tar.initial_conf.peek(0);}
 	//:TargetConfig(tar,  yield tar_conf);
 		
 	modify
@@ -462,27 +462,31 @@ rule CreateTranConfigRegion()
 	//:TargetConfig(tar);
 	if {!t.lca.empty();}
 	if {!tar.initial_conf.empty();}	
+	
+	negative
+	{
+		srcconf:ActiveState -t2:StateTransition-> tarconf:ActiveState;
+		
+		if {t.id == t2.id;}
+	}
+	
 	def sub_region : SubRegion;
 	// lca : State;
 	// if {lca == (State)LCA(src, tar);}
 		//:LCA(src, tar, yield lca);
 	//yield {yield lca = (State)LCA(src, tar); }
-	:GetSubRegion(t.lca.peek(0), yield sub_region);
+	tty:GetSubRegion(t.lca.peek(0), yield sub_region);
 	//if {reachableIncoming(lca, Contains, SubRegion);}	
-	//def tar_conf : ActiveState;
-	//def src_conf : ActiveState;
 		
-		
-	
+	//if {(src_conf.contains \ sub_region.sub_states) == (tar_conf.contains \ sub_region.sub_states);}
 	//:TargetConfigRegion(src, tar, yield src_conf, yield tar_conf);
 		//:TargetConfig(tar,  yield tar_conf);
 	//~(src_conf -:Transition-> tar_conf;)		
 	modify 
 	{
 		def ref sub_region_states : set<State> = sub_region.sub_states;
-		def ref conf : array<ActiveState> = src.possible_conf;
-		def ref ttar : array<ActiveState> = tar.initial_conf;
-		//def var size : int = tar.initial_conf.size();
+		def ref conf : set<ActiveState> = src.possible_conf;
+		def ref ttar : set<ActiveState> = tar.initial_conf;		
 		eval
 		{
 			for (s : ActiveState in conf)
@@ -492,14 +496,14 @@ rule CreateTranConfigRegion()
 				{
 					def ref tar_other_reg : set<State> = tt.contains \ sub_region_states;
 					if (src_other_reg == tar_other_reg)
-					{
-					//def tt : ActiveState = ttar[i % size];
+					{					
 						addCopy(t, s, tt);
 					}
 				}
 			}
 			//src_conf -:copy<t>-> tar_conf;
 		}
+		tty();
 	}
 	
 	// yield
@@ -515,15 +519,29 @@ rule CreateTranConfigRegion()
 
 pattern GetSubRegion(st : State, def parent : SubRegion)
 {
+	
 	(
+		
 		p:SubRegion -:Contains-> st;
 		
 		yield {yield parent = p;}
+		
+		modify
+		{
+			eval { emit("sub_region1:", st); }
+		}
 	|
+		
 		p:State -:Contains-> st;
 		~(:SubRegion -:Contains-> st;)
-		:GetSubRegion(p, yield parent);
+		t:GetSubRegion(p, yield parent);
+		
+		modify { t();eval { emit("sub_region2:", st); } }
 	)
+	
+	
+	modify { emit("sub_region:", st); }
+	
 }
 
 // pattern TargetConfig(tar : State, def ret : ActiveState)
@@ -578,34 +596,47 @@ pattern TargetConfigRegion(src : State, tar : State,  -tran:StateTransition->, d
 	yield {yield srcconf = st_src; yield tgtconf = st_tar;}	
 }*/
 
-pattern IterateArray(ref src : array<ActiveState>, var idx : int, def ret : ActiveState)
+pattern IterateArray(ref src : set<ActiveState>, var idx : int, def ret : ActiveState)
 {
-	(		
-		if {idx == src.size();}
-	|
+	optional
+	{
+		//if {idx != 0;}
+		
 		if {idx != src.size();}
 		
-		yield {yield ret = src[idx];}
+		//yield {yield si = uniqueof(src.peek(idx));}
+	
+		st:ActiveState;
+		if {st == src.peek(idx);}
+		
+		//:GetElem(uniqueof(src.peek(idx)), yield ret);
+		//yield {yield ret = st;}
 		
 		:IterateArray(src, idx + 1, yield ret);
-	)
+		
+	// |
+		// if {idx == 0;}
+		
+		// :IterateArray(src, "", idx, yield ret);
+	
+	}
 }
 
-pattern IterateTwoArray(ref src : array<ActiveState>, ref tar : array<ActiveState>, var idx : int, def ret1 : ActiveState, def ret2 : ActiveState)
-{
-	//if {src.size() == tar.size();}
-	(		
-		if {idx == src.size();}
-		modify {}
-	|
-		if {idx != src.size();}		
-		//yield {yield ret1 = src[idx];}//yield ret2 = tar[idx];}
+// pattern IterateTwoArray(ref src : array<ActiveState>, ref tar : array<ActiveState>, var idx : int, def ret1 : ActiveState, def ret2 : ActiveState)
+// {
+	// //if {src.size() == tar.size();}
+	// (		
+		// if {idx == src.size();}
+		// modify {}
+	// |
+		// if {idx != src.size();}		
+		// //yield {yield ret1 = src[idx];}//yield ret2 = tar[idx];}
 		
-		:IterateTwoArray(src, tar, idx + 1, yield ret1, yield ret2);
+		// :IterateTwoArray(src, tar, idx + 1, yield ret1, yield ret2);
 		
-		modify {}
-	)
-}
+		// modify {}
+	// )
+// }
 
 pattern TargetConfigRegion(src : State, tar : State, def srcconf : ActiveState, def tgtconf : ActiveState)
 {
