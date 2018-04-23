@@ -424,7 +424,7 @@ rule CreateLCA()
 	if {t.lca.empty();}
 	
 	def lca : State;
-	yield {yield lca = (State)LCA(src, tar); }
+	yield {yield lca = (State)getLCA(src, tar); }
 	
 	modify
 	{
@@ -437,51 +437,69 @@ rule CreateTranConfig()
 	//def ref conf : set<State>;
 	src:State -t:StateTransition-> tar:State;
 		
-	if {!t.lca.empty();}
-	if {!tar.initial_conf.empty();}
-	def tar_conf : ActiveState;
-	def src_conf : ActiveState;
+	//if {!t.lca.empty();}
+	//if {!tar.initial_conf.empty();}
+	
+	negative
+	{
+		:ActiveState -t2:StateTransition-> :ActiveState;
 		
-	~(def sub_region : SubRegion; :GetSubRegion(t.lca.peek(0), yield sub_region);)
-		
-	:SourceConfigs(src, yield src_conf);
-	yield {yield tar_conf = tar.initial_conf.peek(0);}
-	//:TargetConfig(tar,  yield tar_conf);
+		if {t.id == t2.id;}
+	}
+	
+	def src_conf : ActiveState;	
+	def tar_conf : ActiveState;	
+	
+	lca : State;
+	:LCA(src, tar, lca);
+	~(def sub_region : SubRegion; :GetSubRegion(lca, yield sub_region);)
+			
+	yield {yield tar_conf = tar.initial_conf.peek(0);yield src_conf = src.possible_conf.peek(0);}	
 		
 	modify
 	{
-		src_conf -:copy<t>-> tar_conf;
+		//src_conf -:copy<t>-> tar_conf;
+		//-e2:copy<t>->;
+		src_conf -e:GroupConfigTransition-> tar_conf;
+		
+		eval
+		{
+			e.source = src.possible_conf;
+			e.trigger = t.trigger;
+		    e.guard   = t.guard;
+			e.action  = t.action;
+			e.out_str = t.out_str;
+			e.id	  = t.id;
+		}
+		//def ref sub_region_states : set<State> = sub_region.sub_states;
+		// def ref conf : set<ActiveState> = src.possible_conf;		
+		// eval
+		// {			
+			// for (s : ActiveState in conf)
+			// {				
+				// addCopy(retype(e, GroupConfigTransition), s, tar_conf);
+			// }			
+		// }
 	}
 }
 
 rule CreateTranConfigRegion()
-{
-	//def ref conf : set<State>;
+{	
 	src:State -t:StateTransition-> tar:State;
-	
-	//:TargetConfig(tar);
-	if {!t.lca.empty();}
-	if {!tar.initial_conf.empty();}	
 	
 	negative
 	{
-		srcconf:ActiveState -t2:StateTransition-> tarconf:ActiveState;
+		:ActiveState -t2:StateTransition-> :ActiveState;
 		
 		if {t.id == t2.id;}
 	}
 	
 	def sub_region : SubRegion;
-	// lca : State;
-	// if {lca == (State)LCA(src, tar);}
-		//:LCA(src, tar, yield lca);
-	//yield {yield lca = (State)LCA(src, tar); }
-	tty:GetSubRegion(t.lca.peek(0), yield sub_region);
-	//if {reachableIncoming(lca, Contains, SubRegion);}	
-		
-	//if {(src_conf.contains \ sub_region.sub_states) == (tar_conf.contains \ sub_region.sub_states);}
-	//:TargetConfigRegion(src, tar, yield src_conf, yield tar_conf);
-		//:TargetConfig(tar,  yield tar_conf);
-	//~(src_conf -:Transition-> tar_conf;)		
+	
+	lca : State;
+	:LCA(src, tar, lca);
+	:GetSubRegion(lca, yield sub_region);
+	
 	modify 
 	{
 		def ref sub_region_states : set<State> = sub_region.sub_states;
@@ -501,15 +519,11 @@ rule CreateTranConfigRegion()
 					}
 				}
 			}
-			//src_conf -:copy<t>-> tar_conf;
+		
 		}
-		tty();
+		//tty();
 	}
 	
-	// yield
-	// {
-		
-	//:SourceConfigs(src, t);
 }
 
 // function IsSubRegionPart(st : State) : boolean
@@ -519,29 +533,28 @@ rule CreateTranConfigRegion()
 
 pattern GetSubRegion(st : State, def parent : SubRegion)
 {
-	
 	(
+		reg:SubRegion<st>;
+		yield {yield parent = reg;}
 		
-		p:SubRegion -:Contains-> st;
+	// |
+		// p:State -:Contains-> st;
 		
-		yield {yield parent = p;}
-		
-		modify
-		{
-			eval { emit("sub_region1:", st); }
-		}
+		// modify
+		// {
+			// eval { emit("sub_region1:", st); }
+		// }
 	|
-		
 		p:State -:Contains-> st;
-		~(:SubRegion -:Contains-> st;)
-		t:GetSubRegion(p, yield parent);
+		~(:SubRegion<st>;)
+		//~(:SubRegion -:Contains-> st;)
 		
-		modify { t();eval { emit("sub_region2:", st); } }
+		:GetSubRegion(p, yield parent);
+		
+		//modify { t();eval { emit("sub_region2:", st); } }
 	)
 	
-	
-	modify { emit("sub_region:", st); }
-	
+	//modify { emit("sub_region:", st); }
 }
 
 // pattern TargetConfig(tar : State, def ret : ActiveState)

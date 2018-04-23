@@ -288,7 +288,7 @@ test FindNamedHierarchy(st : State, type : StateMachineNode, var name : string) 
 	 // return (lca);
 // }
 
-function LCA(u : StateMachineNode, v : StateMachineNode) : Node
+function getLCA(u : StateMachineNode, v : StateMachineNode) : Node
 {
 	// parent1:StateMachineNode -:Contains-> u;
 	// parent2:StateMachineNode -:Contains-> v;
@@ -300,34 +300,62 @@ function LCA(u : StateMachineNode, v : StateMachineNode) : Node
 	//:LCArec(parent1, parent2, parent1.depth, parent2.depth, yield lca);
 }
 
-//pattern LCAp(u : StateMachineNode, v : StateMachineNode)
-pattern LCArec(u : StateMachineNode, v : StateMachineNode, var d1 : int, var d2 : int, def lca : Node)
-{	
-	parent1:StateMachineNode -:Contains-> u;
-	parent2:StateMachineNode -:Contains-> v;
+pattern LCA(u : StateMachineNode, v : StateMachineNode, lca : StateMachineNode)
+{
+	:LCArec(u, v, lca, u.depth, v.depth);
+}
+
+pattern LCArec2(u : StateMachineNode, v : StateMachineNode, lca : StateMachineNode, var d1 : int, var d2 : int)
+{
 	(
-	     if { d1 > d2;}
+		//if {u != v;}
+		parent1:StateMachineNode -:Contains-> u;
+		parent2:StateMachineNode -:Contains-> v;
+		~(v <-:Contains- lca -:Contains-> u;)
+		
+		:LCArec2(parent1, parent2, lca, d1 - 1, d2 - 1);
+	|		
+		//if {u == v;}
+	   v <-:Contains- lca -:Contains-> u;	
+	)
+}
+
+pattern LCArec(u : StateMachineNode, v : StateMachineNode, lca : StateMachineNode, var d1 : int, var d2 : int)
+{	
+	//parent1:StateMachineNode -:Contains-> u;
+	//parent2:StateMachineNode -:Contains-> v;
+	(
+	    if { d1 > d2; }
 	 
-		 //parent:StateMachineNode -:Contains-> u;
-		 :LCArec(parent1, v, d1 - 1, d2, yield lca);
+		parent:StateMachineNode -:Contains-> u;
+		:LCArec(parent, v, lca, d1 - 1, d2);
 	 |   
-		 if { d1 < d2;}
+		if { d1 < d2; }
 	 
-		 //parent:StateMachineNode -:Contains-> v;
-		 :LCArec(u, parent2, d1, d2 - 1, yield lca);
+		parent:StateMachineNode -:Contains-> v;
+		:LCArec(u, parent, lca, d1, d2 - 1);
      |   
-		 if {d1 == d2;}
-	     // if {u != v;}
-		 // parent1:StateMachineNode -:Contains-> u;
-		 // parent2:StateMachineNode -:Contains-> v;
-		 
-		 // :LCArec(parent1, parent2, d1, d2, yield lca);
-     // | 
-	     // if { u == v; }
-		 yield { yield lca = u; }
-	 // |	
-		 // if {d1 == 0 && d2 == 0;}
-		 // yield { yield lca = u; }
+		if { d1 == d2; }
+	    //if {u != v;}
+		//parent1:StateMachineNode -:Contains-> v;
+		//parent2:StateMachineNode -:Contains-> u;
+		
+		:LCArec2(u, v, lca, d1, d2);
+		//parent1 -:Contains-> lca;
+		//parent2:StateMachineNode -:Contains-> lca;
+	 // | 	 
+		// if {d1 == d2;}
+		// if {u == v;}
+		// parent1:StateMachineNode -:Contains-> v;
+		// parent2:StateMachineNode -:Contains-> u;
+		
+		// negative
+		// {
+			// parent1 -:Contains-> lca;
+			// parent2 -:Contains-> lca;
+		// }
+		// :LCArec(parent1, parent2, lca, d1 - 1, d2 - 1);
+     
 	)
 	
 }
