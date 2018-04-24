@@ -432,13 +432,15 @@ rule CreateLCA()
 	}
 }
 // create transition for configs
-rule CreateTranConfig()
+rule CreateTranConfigFromRegion()
 {
 	//def ref conf : set<State>;
 	src:State -t:StateTransition-> tar:State;
 		
 	//if {!t.lca.empty();}
 	//if {!tar.initial_conf.empty();}
+	def src_sub_region : SubRegion;
+	:GetSubRegion(src, yield src_sub_region);
 	
 	negative
 	{
@@ -447,14 +449,20 @@ rule CreateTranConfig()
 		if {t.id == t2.id;}
 	}
 	
+	
 	def src_conf : ActiveState;	
 	def tar_conf : ActiveState;	
+	
 	
 	lca : State;
 	:LCA(src, tar, lca);
 	~(def sub_region : SubRegion; :GetSubRegion(lca, yield sub_region);)
 			
-	yield {yield tar_conf = tar.initial_conf.peek(0);yield src_conf = src.possible_conf.peek(0);}	
+	yield 
+	{
+		yield tar_conf = tar.initial_conf.peek(0);
+		yield src_conf = src.possible_conf.peek(0);
+	}	
 		
 	modify
 	{
@@ -464,7 +472,7 @@ rule CreateTranConfig()
 		
 		eval
 		{
-			e.source = src.possible_conf;
+			e.source  = src.possible_conf;
 			e.trigger = t.trigger;
 		    e.guard   = t.guard;
 			e.action  = t.action;
@@ -483,6 +491,64 @@ rule CreateTranConfig()
 	}
 }
 
+rule CreateTranConfig()
+{
+	//def ref conf : set<State>;
+	src:State -t:StateTransition-> tar:State;
+		
+	//if {!t.lca.empty();}
+	//if {!tar.initial_conf.empty();}	
+	
+	negative
+	{
+		:ActiveState -t2:StateTransition-> :ActiveState;
+		if {t.id == t2.id;}
+	}
+	
+	negative
+	{
+		def sub_region : SubRegion; 
+		:GetSubRegion(lca, yield sub_region);
+	}
+	//def src_conf : ActiveState;	
+	def tar_conf : ActiveState;	
+	
+	lca : State;
+	:LCA(src, tar, lca);
+			
+	yield 
+	{
+		yield tar_conf = tar.initial_conf.peek(0);
+		//yield src_conf = src.possible_conf;
+	}	
+		
+	modify
+	{
+		//src_conf -:copy<t>-> tar_conf;
+		//-e2:copy<t>->;
+		//src_conf -e:GroupConfigTransition-> tar_conf;
+		
+		// eval
+		// {
+			// e.source  = src.possible_conf;
+			// e.trigger = t.trigger;
+		    // e.guard   = t.guard;
+			// e.action  = t.action;
+			// e.out_str = t.out_str;
+			// e.id	  = t.id;
+		// }
+		//def ref sub_region_states : set<State> = sub_region.sub_states;	
+		def ref src_conf : set<ActiveState> = src.possible_conf;
+		eval
+		{			
+			for (s : ActiveState in src_conf)
+			{				
+				addCopy(t, s, tar_conf);
+			}			
+		}
+	}
+}
+
 rule CreateTranConfigRegion()
 {	
 	src:State -t:StateTransition-> tar:State;
@@ -490,7 +556,6 @@ rule CreateTranConfigRegion()
 	negative
 	{
 		:ActiveState -t2:StateTransition-> :ActiveState;
-		
 		if {t.id == t2.id;}
 	}
 	
@@ -536,78 +601,14 @@ pattern GetSubRegion(st : State, def parent : SubRegion)
 	(
 		reg:SubRegion<st>;
 		yield {yield parent = reg;}
-		
-	// |
-		// p:State -:Contains-> st;
-		
-		// modify
-		// {
-			// eval { emit("sub_region1:", st); }
-		// }
 	|
 		p:State -:Contains-> st;
+		
 		~(:SubRegion<st>;)
-		//~(:SubRegion -:Contains-> st;)
 		
-		:GetSubRegion(p, yield parent);
-		
-		//modify { t();eval { emit("sub_region2:", st); } }
+		:GetSubRegion(p, yield parent);		
 	)
-	
-	//modify { emit("sub_region:", st); }
 }
-
-// pattern TargetConfig(tar : State, def ret : ActiveState)
-// {
-	// //def tar_conf : ActiveState;
-	
-	// //yield {yield tar_conf = States2Conf(tar.simple_states);}
-	// st:ActiveState;	
-	// if {st.contains >= tar.simple_states;}
-		// //:InitialConfig(tar, st);
-		
-	// yield {yield ret = st;}	
-// }
-/*
-pattern TargetConfigRegion(src : State, tar : State,  -tran:StateTransition->, def srcconf : ActiveState, def tgtconf : ActiveState)
-{
-	//def tar_conf : ActiveState;
-	
-	//yield {yield tar_conf = States2Conf(tar.simple_states);}
-	st_src:ActiveState;
-	st_tar:ActiveState;
-
-	~(--> st_src; )
-	~(--> st_tar; )
-	// def ref diff_src : set<string>;
-	// def ref diff_tar : set<string>;
-	
-	if {st_src in src.reachable_conf;}
-	//if {st_tar in tar.reachable_conf;}
-	
-	// yield 
-	// { 
-		// yield diff_src = ;
-		// yield diff_tar = ;
-	// }	
-	
-	//st_src.contains \ 
-		
-	
-	
-	if {st_tar.contains >= tar.simple_states;}
-	
-	if {(st_src.contains \ st_src.sub_region_contains) == (st_tar.contains \ st_tar.sub_region_contains);}
-	
-	~(
-		st_src -t:StateTransition-> st_tar;
-		if {t.out_str == tran.out_str;}
-	 )
-	//if {s}
-		//:InitialConfig(tar, st);
-		
-	yield {yield srcconf = st_src; yield tgtconf = st_tar;}	
-}*/
 
 pattern IterateArray(ref src : set<ActiveState>, var idx : int, def ret : ActiveState)
 {
@@ -651,164 +652,3 @@ pattern IterateArray(ref src : set<ActiveState>, var idx : int, def ret : Active
 	// )
 // }
 
-pattern TargetConfigRegion(src : State, tar : State, def srcconf : ActiveState, def tgtconf : ActiveState)
-{
-	//def tar_conf : ActiveState;
-	
-	//yield {yield tar_conf = States2Conf(tar.simple_states);}
-	//:IterateArray(src.possible_conf, 0, yield srcconf);
-	//:IterateTwoArray(src.possible_conf, tar.initial_conf, 0, yield srcconf, yield tgtconf);
-}
-
-rule MoveConfigTransitionToTop()
-{
-	st:ActiveState -->;
-		
-}
-
-pattern SourceConfigs(src : State, def ret : ActiveState)
-{
- multiple
- {
-	st:ActiveState;
-	if {st in src.possible_conf;}
-	yield {yield ret = st;}
- }
-}
-
-// function States2Conf(ref conf : set<State>) : ActiveState
-// {
-// // def res : ActiveState;
-	 // def ref min_sel : set<ActiveState>;
-	 // def ref names : set<string>;
-	 // def var min : int = Math::intMax();
-	 // for (ret : State in conf)
-	 // {
-		// def var size : int = ret.reachable_conf.size();
-		// if (size < min)
-		// {
-			// min = size;
-			// min_sel = ret.reachable_conf;
-		// }
-		
-		// //yield act = ret;
-	 // }
-	 // for (c : State in conf)
-	 // {
-		// names.add(c.name);
-	 // }
-	 
-	 // for (c : ActiveState in min_sel)
-	 // {
-		// if (c.contains >= names)
-		// {
-			// return (c);
-		// }
-	 // }
-	 // return (null);
-		// //yield act = res;
-// }
-
-// pattern FindConfig(ref conf : set<State>)
-// {
-	
-// }
-
-// pattern InitialConfig(rec_tar : State) modify(ref tar : set<State>)
-// {
-	
-	// (		
-		// ~(rec_tar -:Substate->;)
-		// //target:ActiveConfig;
-		// //if {target.name == tar.name;}conf.add(tar);
-		// //if {st.name == rec_tar.name;}
-		 // //if {rec_tar.name in st.contains;}
-		 // modify
-		 // {
-			// eval { tar.add(rec_tar);}
-		 // }
-		
-	// |
-		// ~(:ConcurrentState<rec_tar>;)
-		// rec_tar -:Contains-> :InitialState -:PseudoTransition-> child:State;
-		
-		// t:InitialConfig(child);
-		
-		// modify {t(tar);}
-	// | 	
-		// c:ConcurrentState<rec_tar>;
-		
-		// t:InitialConfRegion(c);
-		// // iterated
-		// // {
-			// // def ret : ActiveState;
-			// // tar -:Region-> sub:SubRegion;
-			// // :TargetConfigs(sub, rec_tar);
-		// // }	
-		// modify
-		// {
-			// t(tar);
-		// }
-	// )
-	
-	// modify {}
-// }
-
-// pattern InitialConfigSimpleStates(rec_tar : State, def simple : State, def ret : ActiveState)
-// {
-	// (		
-		// ~(rec_tar -:Substate->;)
-		
-		// target:ActiveState;
-		// ~(rec_tar -:Config-> target;)
-		// if {target.id == rec_tar.id;}
-		
-		// yield {yield simple = rec_tar;}
-		// yield {yield ret = target;}
-		
-	// |
-		// ~(:ConcurrentState<rec_tar>;)
-		// rec_tar -:Contains-> :InitialState -:PseudoTransition-> st:State;
-		
-		// :InitialConfigSimpleStates(rec_tar, yield simple, yield ret);
-				
-	// | 	
-		// c:ConcurrentState<rec_tar>;
-		
-		// :InitialConfRegionSimpleStates(c, yield simple, yield ret);
-		// // iterated
-		// // {
-			// // def ret : ActiveState;
-			// // tar -:Region-> sub:SubRegion;
-			// // :TargetConfigs(sub, rec_tar);
-		// // }	
-	// )
-		
-// }
-
-// pattern InitialConfRegionSimpleStates(rec_tar : ConcurrentState, def simple : State, def ret : ActiveState)
-// {
-	// iterated
-	// {
-		// rec_tar -:Region-> sub:SubRegion;
-		// t:InitialConfigSimpleStates(sub, yield simple, yield ret);		
-	// }	
-// }
-
-// pattern InitialConfRegion(rec_tar : ConcurrentState) modify(ref tar : set<State>)
-// {
-	// multiple
-	// {
-		// rec_tar -:Region-> sub:SubRegion;
-		// t:InitialConfig(sub);		
-		
-		// modify
-		// {
-			// t(tar);
-		// }
-	// }	
-	
-	// modify {}
-// }
-
-//rule CreateConfEdges
