@@ -1,1 +1,1 @@
-..\bin\grgen root.grg -keep . -debug
+..\bin\grgen StateMachine.grg -keep . -debug

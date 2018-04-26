@@ -1,3 +1,16 @@
+rule CreateActiveStateDepth()
+{
+  active:ActiveState -:And-> child:ActiveState;
+  
+  ~(-:And-> active;)
+  
+  if {child.depth == 0;}
+  
+  t:CreateDepthRec(active, And, 0);
+  
+  modify { t();}
+}
+
 rule ReachableConfigInit()
 {
 	-:TopState-> top:State;	
@@ -240,77 +253,6 @@ pattern InitReachableConfig(state : State)
 	modify {}
 }
 
-/*
-pattern InitInitialConfig(state : State)
-{
-	(
-			if {state.initial_conf.empty();}
-			
-			t:InitialConfig(state);
-			
-			iterated
-			{
-				state -:Substate-> sub:State;
-				
-				rec:InitInitialConfig(sub);
-				modify
-				{
-					evalhere
-					{
-						// sub.possible_conf = FilterConf(state.possible_conf, sub);
-						// sub.possible_conf_str = array<string(){};
-						// for (s : ActiveState in sub.possible_conf)
-						// {
-							// sub.possible_conf_str.add(s.asString("&"));
-						// }
-						
-					}
-					rec();
-				}
-			}
-		
-			modify
-			{
-				def ref init : set<State> = set<State>{};
-				t(init);
-				evalhere
-				{
-					state.initial_conf = FilterConf(state.possible_conf, init);
-				}
-			}
-		|
-			if {!state.initial_conf.empty();}
-						
-			iterated
-			{
-				state -:Substate-> sub:State;
-				
-				t:InitInitialConfig(sub);
-				
-				modify
-				{
-					evalhere
-					{
-						// if (state.initial_conf)
-						// sub.initial_conf = 
-						// sub.possible_conf = FilterConf(state.possible_conf, sub);
-						// sub.possible_conf_str = array<string(){};
-						// for (s : ActiveState in sub.possible_conf)
-						// {
-							// sub.possible_conf_str.add(s.asString("&"));
-						// }
-						
-					}
-					t();
-				}
-			}
-			
-			modify {}
-		
-	)
-	 modify {}	
-}
-*/
 rule ActiveStatesInit1()
 {
 	active:ActiveState;
@@ -324,6 +266,7 @@ rule ActiveStatesInit1()
 	{
 		eval
 		{
+			active.contains_id.add(state.id);
 			active.contains.add(state);
 			active.contains_str.add(state.name);
 			emit("\nadd_contains_str:", state.name, "contains:", active.contains_str);
