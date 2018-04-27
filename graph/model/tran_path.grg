@@ -7,14 +7,25 @@ rule CreateTranPath()
 
 	//if {t.id == t2.id;}
 
-
-	lca : State;
-	:LCA(src, tar, lca);
-
+	 def lca : State;
+	
+	 yield {yield lca = t.lca.peek(0);}
+	// lca : State;
+	// :LCA(src, tar, lca);
+	ex:ExitNodes(src, CalcTranNodes(src, lca));
 
 	modify
 	{		
-		src -t->! lca -:TransitionPath-> tar;
+		def res : Path;
+		
+		src -t->! nlca:Lca -:TransitionPath-> tar;
+		
+		eval
+		{
+			nlca.name = lca.name;
+		}
+		
+		ex(nlca, yield res);
 	}
 
 
@@ -24,8 +35,44 @@ rule CreateTranPath()
 
 }
 
+pattern GetActive(var id : set<int>, var idx : int, def ret : set<ActiveState>)
+{
+	(
+	
+		if {idx == id.size();}
+	|
+		if {idx != id.size();}
+		
+		st:ActiveState;
+		if {st.id == id;}
+		
+		modify
+		{
+			eval
+			{
+				ret.add(st);
+			}
+		}
+	)
+	
+}
 
-pattern ExitNodes(st : ActiveState, ref nodes : set<int>, parent : Path) modify(def res : Path)
+function CalcTranNodes(src : ActiveState, lca : State) : set<int>
+{
+	def ref res : set<int> = set<int>{};
+	emit("res", res);
+	def ref in_tran_nodes : set<State> = src.contains & lca.sub_states;
+	emit("in_tran_nodes", in_tran_nodes);
+	for (st : State in in_tran_nodes)
+	{
+		emit("st", st);
+		res.add(st.id);
+	}
+	emit("res", res);
+	return (res);
+}
+
+pattern ExitNodes(st : ActiveState, ref nodes : set<int>) modify(parent : Path, def res : Path)
 {
 	if {st.id in nodes;}
 	
@@ -33,11 +80,11 @@ pattern ExitNodes(st : ActiveState, ref nodes : set<int>, parent : Path) modify(
 	{
 		st -:And-> child:ActiveState;
 		
-		t:ExitNodes(child, nodes, e);
+		t:ExitNodes(child, nodes);
 		
 		modify
 		{
-			t(yield res);
+			t(e, yield res);
 		}
 		
 	}

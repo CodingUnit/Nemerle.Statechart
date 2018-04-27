@@ -1,14 +1,50 @@
 rule CreateActiveStateDepth()
 {
-  active:ActiveState -:And-> child:ActiveState;
+  active:ActiveState;
   
   ~(-:And-> active;)
   
-  if {child.depth == 0;}
+  if {active.depth == 0;}
   
-  t:CreateDepthRec(active, And, 0);
+  t:CreateActiveDepthRec(active, 1);
   
   modify { t();}
+}
+
+pattern CreateActiveDepthRec(n : ActiveState, var depth : int)
+{
+  iterated
+  {
+	n -:And-> child:ActiveState;
+	
+	t:CreateActiveDepthRec(child, depth + 1);
+	
+	modify { t(); }
+  }
+  
+  modify { eval { n.depth = depth; } }
+}
+
+rule CreateReachableActiveState()
+{
+	state:State -:Substate->;
+	
+	if {state.sub_states.empty();}
+	
+	modify
+	{
+		eval
+		{			
+			def ref nodes : set<State> = set<State>{};
+			//def ref src : set<Node> = ;
+			for (s : State in reachableOutgoing(state, Substate))
+			{
+				nodes.add(s);
+			}
+			state.sub_states = nodes;
+		}
+	}
+	
 }
 
 rule ReachableConfigInit()
@@ -137,48 +173,6 @@ function MergeRegionInitial(parent : ConcurrentState) : set<ActiveState>
 	return (states);
 }
 
-// function IntersectArray(ref a1 : array<ActiveState>, ref a2 : array<ActiveState>) : array<ActiveState>
-// {
-	// def ref res : array<ActiveState> = array<ActiveState>[];
-	// emit("\na1", a1);
-	// emit("\na2", a2);	
-	// for (i1 : ActiveState in a1)
-	// {
-		// if (i1 in a2)
-		// {
-			// res.add(i1);
-		// }
-	// }
-	// emit("\nres", res);
-	// return (res);
-// }
-
-// pattern InitialInitRec(state:State)
-// {	
-	// (
-		// parent:State -:Contains-> :InitialState --> state;
-					
-		// if {parent.initial_conf.empty();}
-			// //if {!state.initial_conf.empty();}
-		// t:InitialInitRec(parent);
-			
-		// modify
-		// {
-			// eval
-			// {				
-				// parent.initial_conf 	= state.initial_conf;
-				// parent.initial_conf_str = state.initial_conf_str;
-				// emit("\n0:parent.initial_conf", parent.initial_conf);
-				// emit("\n0:parent.initial_conf_str", parent.initial_conf_str);
-			// }
-			// t();
-		// }		
-	// )?
-	
-	// modify {}
-
-// }
-
 // filter configurations to this state set, configurations not contained states st, will be filtered
 function FilterConf(ref conf : set<ActiveState>, ref st : set<State>) : set<ActiveState>
 {
@@ -196,18 +190,6 @@ function FilterConf(ref conf : set<ActiveState>, ref st : set<State>) : set<Acti
 	//emit("\nnconf", nconf);
 	return (nconf);
 }
-
-// function ContainsConf(ref conf : set<ActiveState>, ref st : set<State>) : boolean
-// {
-	// for (a : ActiveState in conf)
-	// {
-		// if ((st & a.contains) != st) // configuration contains state only
-		// {
-			// return (false);
-		// }
-	// }
-	// return (true);
-// }
 
 function GetConfigStr(ref st : set<ActiveState>) : set<string>
 {
@@ -290,9 +272,12 @@ rule ActiveStatesInit()
 			def ref all : set<Node> = reachable(active, Edge) | set<Node>{active};
 			def ref all_st_name : set<string> = set<string>{};
 			def ref all_st : set<State> = set<State>{};
+			def ref all_st_id : set<int> = set<int>{};
+			
 			for (a : ActiveState in all)
 			{				
 				all_st |= a.contains;
+				all_st_id |= a.contains_id;
 			}
 			for (a : ActiveState in all)
 			{
@@ -304,59 +289,17 @@ rule ActiveStatesInit()
 			}
 			// emitdebug("all_st", all_st);
 			emit("\nall_st_name", all_st_name);
-			for (a : ActiveState in all)
-			{
-				a.contains = all_st;
-				a.contains_str = all_st_name;
-			}
+			active.contains = all_st;
+			active.contains_id = all_st_id;
+			active.contains_str = all_st_name;
+			// for (a : ActiveState in all)
+			// {
+				// a.contains = all_st;
+				// a.contains_str = all_st_name;
+			// }
 		}
 	}
 }
-
-// rule ActiveStatesInit2()
-// {
-	// active:ActiveSubRegionState;
-	
-	// if {active.sub_region_contains.empty();}
-	
-	// modify
-	// {
-		// eval
-		// {
-			// def ref all : set<Node> = reachableOutgoing(active, Edge) | set<Node>{active};
-			// def ref all_st : set<string> = set<string>{};
-			// for (a : ActiveState in all)
-			// {				
-				// all_st.add(a.name);
-			// }
-			// for (a : ActiveState in all)
-			// {
-				// a.sub_region_contains = all_st;
-			// }
-		// }
-	// }
-// }
-
-// rule CreateSimpleStatesTargets()
-// {
-	// -:StateTransition-> st:State;
-	
-	// if {st.simple_states.empty();}
-	// t:InitialConfig(st);
-	
-	// modify
-	// {
-		// def ref tar : set<State> = set<State>{};
-		// t(tar);
-		// evalhere 
-		// { 
-			// for (i : State in tar)
-			// {
-				// st.simple_states.add(i.name); 
-			// }
-		// }
-	// }
-// }
 
 rule CreateLCA()
 {
@@ -366,8 +309,10 @@ rule CreateLCA()
 	
 	if {t.lca.empty();}
 	
-	def lca : State;
-	yield {yield lca = (State)getLCA(src, tar); }
+	lca : State;
+	:LCA(src, tar, lca);
+	//def lca : State;
+	//yield {yield lca = (State)getLCA(src, tar); }
 	
 	modify
 	{
@@ -422,15 +367,6 @@ rule CreateTranConfigFromRegion()
 			e.out_str = t.out_str;
 			e.id	  = t.id;
 		}
-		//def ref sub_region_states : set<State> = sub_region.sub_states;
-		// def ref conf : set<ActiveState> = src.possible_conf;		
-		// eval
-		// {			
-			// for (s : ActiveState in conf)
-			// {				
-				// addCopy(retype(e, GroupConfigTransition), s, tar_conf);
-			// }			
-		// }
 	}
 }
 
@@ -453,7 +389,6 @@ rule CreateTranConfig()
 		def sub_region : SubRegion; 
 		:GetSubRegion(lca, yield sub_region);
 	}
-	//def src_conf : ActiveState;	
 	def tar_conf : ActiveState;	
 	
 	lca : State;
@@ -462,25 +397,10 @@ rule CreateTranConfig()
 	yield 
 	{
 		yield tar_conf = tar.initial_conf.peek(0);
-		//yield src_conf = src.possible_conf;
 	}	
 		
 	modify
 	{
-		//src_conf -:copy<t>-> tar_conf;
-		//-e2:copy<t>->;
-		//src_conf -e:GroupConfigTransition-> tar_conf;
-		
-		// eval
-		// {
-			// e.source  = src.possible_conf;
-			// e.trigger = t.trigger;
-		    // e.guard   = t.guard;
-			// e.action  = t.action;
-			// e.out_str = t.out_str;
-			// e.id	  = t.id;
-		// }
-		//def ref sub_region_states : set<State> = sub_region.sub_states;	
 		def ref src_conf : set<ActiveState> = src.possible_conf;
 		eval
 		{			
