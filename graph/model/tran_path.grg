@@ -1,3 +1,66 @@
+rule CreateLcaTran()
+{
+	src:ActiveState -t:StateTransition-> tar:ActiveState;
+	
+	//if {!t.lca.empty();}
+	if {typeof(t) != ActiveStateTransition && typeof(t) != GroupConfigTransition;}
+	def lca : State;
+	def ref lca_conf : set<ActiveState> = set<ActiveState>{};
+	def ref tar_lca_conf : set<ActiveState> = set<ActiveState>{};
+	
+	
+	yield {yield lca 		  = t.lca.peek(0);}
+	yield {yield lca_conf 	  = FindActiveState(src, lca);}
+	yield {yield tar_lca_conf = FindActiveState(tar, lca);}
+		
+	//:FindActiveState(src, t.lca.peek(0), yield lca_conf);
+	//:FindActiveState(tar, lca.id, yield tar_lca_conf);
+	
+	modify
+	{
+		src -tr:ActiveStateTransition<t>-> tar;
+
+		
+		eval
+		{
+			def ref src_lca : set<ActiveState> = set<ActiveState>{};
+			def ref tar_lca : set<ActiveState> = set<ActiveState>{};
+			if (!tar_lca_conf.empty() && !lca_conf.empty())
+			{
+				def ssrc_lca : ActiveState = lca_conf.peek(0);
+				def ttar_lca : ActiveState = tar_lca_conf.peek(0);
+				//src_lca.contains_conf | tar_lca.contains_conf;
+				src_lca = ssrc_lca.contains_conf;
+				tar_lca = ttar_lca.contains_conf;
+			}
+			tr.lca_conf = src_lca | tar_lca;
+		}
+	}
+}
+
+
+function FindActiveState(src : ActiveState, find : State) : set<ActiveState>
+{
+	for (st : ActiveState in reachableOutgoing(src, And))
+	{
+		if (st.id == find.id)
+		{
+			return (set<ActiveState>{st});
+		}
+	}
+	return (set<ActiveState>{});
+	// (
+		// if {src.id == st.id;}
+		
+		// yield {yield ret = src;}
+	// |
+		// if {src.id != st.id;}
+		
+		// src -:And-> child:ActiveState;
+		
+		// :FindActiveState(src, st, yield ret);
+	// )
+}
 
 rule CreateTranPath()
 {
@@ -35,27 +98,27 @@ rule CreateTranPath()
 
 }
 
-pattern GetActive(var id : set<int>, var idx : int, def ret : set<ActiveState>)
-{
-	(
+// pattern GetActive(var id : set<int>, var idx : int, def ret : set<ActiveState>)
+// {
+	// (
 	
-		if {idx == id.size();}
-	|
-		if {idx != id.size();}
+		// if {idx == id.size();}
+	// |
+		// if {idx != id.size();}
 		
-		st:ActiveState;
-		if {st.id == id;}
+		// st:ActiveState;
+		// if {st.id == id;}
 		
-		modify
-		{
-			eval
-			{
-				ret.add(st);
-			}
-		}
-	)
+		// modify
+		// {
+			// eval
+			// {
+				// ret.add(st);
+			// }
+		// }
+	// )
 	
-}
+// }
 
 function CalcTranNodes(src : ActiveState, lca : State) : set<int>
 {

@@ -1,1 +1,1 @@
-grshell %1 layout.grsi group.grsi show.grsi operconf2.grsi
+grshell %1 layout.grsi group.grsi operconf2.grsi

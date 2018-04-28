@@ -1,8 +1,39 @@
+rule CreateActiveBaseState()
+{
+  (
+	active:ActiveState \ ActiveBaseState;
+	
+	~(-:And-> active;)
+	
+	modify
+    {
+	  :ActiveBaseState<active>;
+    }
+  
+	|
+	
+	active:ActiveRegionState \ ActiveBaseRegionState;
+	
+	~(-:And-> active;)
+	
+	modify
+    {
+	  :ActiveBaseRegionState<active>;
+    }
+  )
+  //if {typeof(active) != ActiveBaseState;}
+  //~(:ActiveBaseState<active>;)
+  
+  
+  
+
+}
+
 rule CreateActiveStateDepth()
 {
-  active:ActiveState;
+  active:ActiveBaseState;
   
-  ~(-:And-> active;)
+  //~(-:And-> active;)
   
   if {active.depth == 0;}
   
@@ -25,23 +56,26 @@ pattern CreateActiveDepthRec(n : ActiveState, var depth : int)
   modify { eval { n.depth = depth; } }
 }
 
+// init contains_conf field sub configurations of active state includes it
 rule CreateReachableActiveState()
 {
-	state:State -:Substate->;
+	state:ActiveState;
 	
-	if {state.sub_states.empty();}
+	if {state.contains_conf.empty();}
 	
 	modify
 	{
 		eval
 		{			
-			def ref nodes : set<State> = set<State>{};
+			def ref nodes : set<ActiveState> = set<ActiveState>{};
 			//def ref src : set<Node> = ;
-			for (s : State in reachableOutgoing(state, Substate))
+			for (s : ActiveState in reachableOutgoing(state, And))
 			{
 				nodes.add(s);
 			}
-			state.sub_states = nodes;
+			state.contains_conf = nodes;
+			state.contains_conf.add(state);
+			state.sub_conf = nodes;
 		}
 	}
 	
