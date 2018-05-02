@@ -64,22 +64,22 @@ function FindActiveState(src : ActiveState, find : State) : set<ActiveState>
 
 rule CreateTranPath()
 {
-	src:ActiveState -t:StateTransition-> tar:ActiveState;
+	src:ActiveState -t:ActiveStateTransition-> tar:ActiveState;
 
 	//src:State -t:StateTransition-> tar:State;
 
 	//if {t.id == t2.id;}
 
-	 def lca : State;
-	
-	 yield {yield lca = t.lca.peek(0);}
+	def lca : State;
+	def ref lca_conf : set<State>;
+	yield {yield lca = t.lca.peek(0);lca_conf = t.lca_conf;}
 	// lca : State;
 	// :LCA(src, tar, lca);
-	ex:ExitNodes(src, CalcTranNodes(src, lca));
+	//ex:ExitNodes(src, t.lca_conf);
 
 	modify
 	{		
-		def res : Path;
+		//def res : Path;
 		
 		src -t->! nlca:Lca -:TransitionPath-> tar;
 		
@@ -88,7 +88,28 @@ rule CreateTranPath()
 			nlca.name = lca.name;
 		}
 		
-		ex(nlca, yield res);
+		
+		eval
+		{
+			def prev : Path = nlca;
+			for (st : ActiveState in lca_conf)
+			{
+				//e:StateExit@(name = st.name) -:TransitionPath-> prev;
+				add(StateExit);
+				add();
+				prev = e;
+			}
+		}
+		//ex(nlca, yield res);
+		/*
+		ЦИКЛ ДЛЯ J=1 ДО N-1 ШАГ 1                       FOR J=1 TO N-1 STEP 1
+   F=0                                             F=0 
+   ЦИКЛ ДЛЯ I=1 ДО N-J ШАГ 1                       FOR I=1 TO N-J STEP 1 
+     ЕСЛИ A[I] > A[I+1] ТО ОБМЕН A[I],A[I+1]:F=1     IF A[I]>A[I+1] THEN SWAP A[I],A[I+1]:F=1
+   СЛЕДУЮЩЕЕ I                                     NEXT I  
+   ЕСЛИ F=0 ТО ВЫХОД ИЗ ЦИКЛА                      IF F=0 THEN EXIT FOR
+ СЛЕДУЮЩЕЕ J                                     NEXT J
+		*/
 	}
 
 
@@ -135,9 +156,11 @@ function CalcTranNodes(src : ActiveState, lca : State) : set<int>
 	return (res);
 }
 
-pattern ExitNodes(st : ActiveState, ref nodes : set<int>) modify(parent : Path, def res : Path)
+pattern ExitNodes(st : ActiveState, ref nodes : set<ActiveState>) modify(parent : Path, def res : Path)
 {
-	if {st.id in nodes;}
+	if {st in nodes;}
+	
+	//def cur : ActiveState;
 	
 	iterated
 	{
@@ -147,7 +170,7 @@ pattern ExitNodes(st : ActiveState, ref nodes : set<int>) modify(parent : Path, 
 		
 		modify
 		{
-			t(e, yield res);
+			t(res, yield res);
 		}
 		
 	}
@@ -158,6 +181,7 @@ pattern ExitNodes(st : ActiveState, ref nodes : set<int>) modify(parent : Path, 
 		
 		eval
 		{
+			//yield cur = e;
 			yield res = e;
 		}
 	}
