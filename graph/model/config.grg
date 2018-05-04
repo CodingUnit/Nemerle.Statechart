@@ -88,9 +88,9 @@ rule ReachableConfigInit()
 	
 	iterated it
 	{
-		active:ActiveState;
+		active:ActiveBaseState;
 		
-		~(--> active;)
+		//~(--> active;)
 		
 		modify
 		{
@@ -150,8 +150,8 @@ rule InitialInit()
 		{
 			parent.initial_conf 	= state.initial_conf;
 			parent.initial_conf_str = state.initial_conf_str;
-			emit("\n0:parent.initial_conf", parent.initial_conf);
-			emit("\n0:parent.initial_conf_str", parent.initial_conf_str);
+			//emit("\n0:parent.initial_conf", parent.initial_conf);
+			//emit("\n0:parent.initial_conf_str", parent.initial_conf_str);
 		}
 		//t();
 	}
@@ -182,8 +182,8 @@ rule ConcurrentStateInitialInit()
 			
 			parent.initial_conf = MergeRegionInitial(parent);
 			parent.initial_conf_str = GetConfigStr(parent.initial_conf);
-			emit("\n1:parent.initial_conf", parent.initial_conf);
-			emit("\n1:parent.initial_conf_str", parent.initial_conf_str);
+			//emit("\n1:parent.initial_conf", parent.initial_conf);
+			//emit("\n1:parent.initial_conf_str", parent.initial_conf_str);
 		}
 	}
 }
@@ -192,7 +192,7 @@ function MergeRegionInitial(parent : ConcurrentState) : set<ActiveState>
 {
 	def ref states : set<ActiveState> = set<ActiveState>{};
 	//def ref nodes : set<Node> = ;
-	emit("\nmerge:", parent);
+	//emit("\nmerge:", parent);
 	for (i : State in adjacentOutgoing(parent, Region))
 	{
 		if (states.empty()) 
@@ -202,7 +202,7 @@ function MergeRegionInitial(parent : ConcurrentState) : set<ActiveState>
 		{
 			states &= i.initial_conf;//IntersectArray(states, i.initial_conf);
 		}
-		emit("\nstates:", states);
+		//emit("\nstates:", states);
 	}
 	return (states);
 }
@@ -215,7 +215,8 @@ function FilterConf(ref conf : set<ActiveState>, ref st : set<State>) : set<Acti
 	{
 		//emit("\nfilt it", a, "contains", a.contains);
 		//emit("\nfilt &", st & a.contains);
-		if ((st & a.contains) == st) // configuration contains state only
+		//if ((st & a.contains) == st) // configuration contains state only
+		if (st <= a.contains) // configuration contains state only
 		{
 			//emit("\nenter", a);
 			nconf.add(a);
@@ -292,8 +293,8 @@ rule ActiveStatesInit1()
 
 rule ActiveStatesInit()
 {
-	active:ActiveState;
-	~(--> active;)
+	active:ActiveBaseState;
+	//~(--> active;)
 	
 	//def ref all : set<Node> = reachable(active, Edge) | set<Node>{active};
 	
@@ -317,20 +318,15 @@ rule ActiveStatesInit()
 			{
 				if (typeof(a) == ActiveSimpleState)
 				{
-					emit("\ncontains_str", a.contains_str);
+					//emit("\ncontains_str", a.contains_str);
 					all_st_name |= a.contains_str;
 				}
 			}
 			// emitdebug("all_st", all_st);
-			emit("\nall_st_name", all_st_name);
+			//emit("\nall_st_name", all_st_name);
 			active.contains = all_st;
 			active.contains_id = all_st_id;
 			active.contains_str = all_st_name;
-			// for (a : ActiveState in all)
-			// {
-				// a.contains = all_st;
-				// a.contains_str = all_st_name;
-			// }
 		}
 	}
 }
@@ -338,15 +334,11 @@ rule ActiveStatesInit()
 rule CreateLCA()
 {
 	src:State -t:StateTransition-> tar:State;
-	
-	//if {t.lca != null}
-	
+		
 	if {t.lca.empty();}
 	
 	lca : State;
-	:LCA(src, tar, lca);
-	//def lca : State;
-	//yield {yield lca = (State)getLCA(src, tar); }
+	:LCA(src, tar, lca); // least common ancestor of source and target
 	
 	modify
 	{
@@ -355,12 +347,9 @@ rule CreateLCA()
 }
 // create transition for configs
 rule CreateTranConfigFromRegion()
-{
-	//def ref conf : set<State>;
+{	
 	src:State -t:StateTransition-> tar:State;
 		
-	//if {!t.lca.empty();}
-	//if {!tar.initial_conf.empty();}
 	def src_sub_region : SubRegion;
 	:GetSubRegion(src, yield src_sub_region);
 	
@@ -377,7 +366,7 @@ rule CreateTranConfigFromRegion()
 	
 	
 	lca : State;
-	:LCA(src, tar, lca);
+	:LCA(src, tar, lca); // least common ancestor
 	~(def sub_region : SubRegion; :GetSubRegion(lca, yield sub_region);)
 			
 	yield 
@@ -388,8 +377,6 @@ rule CreateTranConfigFromRegion()
 		
 	modify
 	{
-		//src_conf -:copy<t>-> tar_conf;
-		//-e2:copy<t>->;
 		src_conf -e:GroupConfigTransition-> tar_conf;
 		
 		eval
@@ -406,18 +393,16 @@ rule CreateTranConfigFromRegion()
 
 rule CreateTranConfig()
 {
-	//def ref conf : set<State>;
 	src:State -t:StateTransition-> tar:State;
-		
-	//if {!t.lca.empty();}
-	//if {!tar.initial_conf.empty();}	
 	
+	// not created active state transition
 	negative
 	{
 		:ActiveState -t2:StateTransition-> :ActiveState;
 		if {t.id == t2.id;}
 	}
 	
+	// no subregion
 	negative
 	{
 		def sub_region : SubRegion; 
