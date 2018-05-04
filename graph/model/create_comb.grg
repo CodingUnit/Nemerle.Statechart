@@ -1,6 +1,6 @@
 rule SimpleStates()
 {	
-	parent:State -:Substate-> st:State;
+	parent:State -:Substate \ SimpleState-> st:State;
 	
 	//-:TopState-> top:State;
 	
@@ -16,19 +16,18 @@ rule SimpleStates()
 }
 
 rule StateCombinations()
-{
-	//-:TopState-> . 
-	-:SimpleState-> state:State;
+{	
+	parent:State -:SimpleState-> state:State;
 	
 	~(st:ActiveSimpleState; if {st.id == state.id;})
-	and:CreateConfig(state);	
+	and:CreateConfig(parent);	
 		
 	modify
 	{
 		new_st : ActiveSimpleState;
 		eval
 		{
-			emit("\ncreate_id:", new_st, ",", state, ":", state.id);
+			//emit("\ncreate_id:", new_st, ",", state, ":", state.id);
 			new_st.id 	= state.id;
 			new_st.name = state.name;
 			new_st.entry_act = state.entry_act;
@@ -40,79 +39,102 @@ rule StateCombinations()
 	} 
 }
 
-pattern CreateConfig(st : State) modify(root : ActiveState)
-{	
-	optional
-	{
-		parent:State -:Contains-> st;
+pattern CreateConfigNest(st : State) modify(def new_st : ActiveState)
+{
 		(
-			if {typeof(parent) == State;}		
+			if {typeof(st) == State;}		
 					
-			and:CreateConfig(parent);
+			//and:CreateConfig(parent);
 			//e:CreateConfigEdge(st);
 			
 			modify
 			{
-				root <-:And- nst:ActiveState;
+				//root <-:And- 
+				nst:ActiveState;
 				//parent -:Config-> nst;
 				eval {yield new_st = nst;}
-				and(nst);
+				//and(nst);
 			}
 		| 				
-			p:SubRegion<parent>;
-			and:CreateConfig(parent);
+			p:SubRegion<st>;
+			//and:CreateConfig(parent);
 			
 			modify
 			{
-				root <-:And- nst:ActiveSubRegionState;
+				//root <-:And- 
+				nst:ActiveSubRegionState;
 				//st -:Config-> nst;
-				parent --> nst;
+				st --> nst;
 				eval
 				{
 					nst.idx 		  = p.idx;				
 					yield new_st = nst;					
 				}
-				and(nst);
+				//and(nst);
 			}
 		
 		|	
 			
-			p:ConcurrentState<parent>;
+			p:ConcurrentState<st>;
 			
-			and:CreateConfig(parent);
+			
 			modify
 			{
-				root <-:And- nst:ActiveRegionState;
+				//root <-:And- 
+				nst:ActiveRegionState;
 				//st -:Config-> nst;
-				parent --> nst;
+				st --> nst;
 				eval
 				{
 					nst.regions = p.regions;
 					yield new_st = nst;
 				}
-				and(nst);
+				
 			}
 		)
 		
+		modify {}
+}
+
+pattern CreateConfig(st : State) modify(root : ActiveState)
+{
+	(
+		parent:State -:Contains-> st;
+		and:CreateConfig(parent);
+		nest:CreateConfigNest(st);
+		
 		modify
 		{	
-			def new_st : ActiveState;
-			
-			eval
-			{				
-				new_st.id 		  = parent.id;
-				new_st.name 	  = parent.name;
-				new_st.entry_act  = parent.entry_act;
-				new_st.exit_act   = parent.exit_act;
-				new_st.do_act     = parent.do_act;
-				emit("\ncreate_id:", new_st, parent, parent.id);
-			}			
+			nest(yield new_st);
+			and(new_st);
 		}
-	}
-	
+		
+	|
+		~(parent:State -:Contains-> st;)
+		nest:CreateConfigNest(st);
+		
+		modify
+		{	
+			nest(yield new_st);
+		}
+	)
+		
 	modify
 	{	
+		def new_st : ActiveState;
+		
+		root <-:And- new_st;
+		eval
+		{				
+			new_st.id 		  = st.id;
+			new_st.name 	  = st.name;
+			new_st.entry_act  = st.entry_act;
+			new_st.exit_act   = st.exit_act;
+			new_st.do_act     = st.do_act;
+			//emit("\ncreate_id:", new_st, st, st.id);
+		}			
 	}
+	
 }
 
 rule MarkAndRegions()

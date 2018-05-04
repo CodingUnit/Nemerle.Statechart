@@ -211,50 +211,68 @@ rule ResolveHistory()
 	parent:NamedNode -:Contains-> not_resolved;
 	hom(n, parent);
 	
-	def hist : Node;	
+	if {not_resolved.name.length() == 0;}
+	
+	//def hist : History;	
 	
 	(	    
 		:UnresolvedDeepHistory<not_resolved>;
-		if {not_resolved.name.length() == 0;}
 		
-		//if {not_resolved.type == history_type::deep;}
 		h:DeepHistory;				
-		:FindHierarchy(parent, h, yield hist);//not_resolved.type
-		modify {delete(not_resolved);}
-	| 
-	    //parent:Node -:Contains-> not_resolved;
-		:UnresolvedShallowHistory<not_resolved>;
-		if {not_resolved.name.length() == 0;}
+		:FindHierarchy(parent, h);//not_resolved.type		
 		
-		//if {not_resolved.type == history_type::shallow;}
+		modify 
+		{
+			delete(not_resolved);
+			n -tran->! h;
+		}
+	| 
+	    :UnresolvedShallowHistory<not_resolved>;
+		
 		h:ShallowHistory;				
-		:FindHierarchy(parent, h, yield hist);//not_resolved.type
-		modify {delete(not_resolved);}
-	| 
-		//parent:Node -:Contains-> not_resolved;		
-		if {typeof(not_resolved) == UnresolvedHistory;}
-		if {not_resolved.name.length() == 0;}
-		
-		//if {not_resolved.type == history_type::any;}
+		:FindHierarchy(parent, h);//not_resolved.type
+	
+		modify 
+		{
+			delete(not_resolved);		
+			n -tran->! h;			
+		}
+	| 		
+		if {typeof(not_resolved) == UnresolvedHistory;}		
+				
 		h:History;
 		///parent -:Contains-> h:History;
-		:FindHierarchy(parent, h, yield hist);//not_resolved.type
-		modify {delete(not_resolved);}
-	|			
+		:FindHierarchy(parent, h);//not_resolved.type
+		//yield {yield hist = h;}
+		modify 
+		{
+			delete(not_resolved);			
+			n -tran->! h;
+		}
 		
-		if {not_resolved.name.length() != 0;}
-		//def ret : History;
-		h:History;		
-		:FindQualifiedType(not_resolved.name.asArray("."), h, yield hist);
-		
-		modify {delete(not_resolved);}
 	)
 	
 	modify
 	{            
-		n -:copy<tran>-> hist;
+		
 		//eval {emitdebug(parent); emitdebug(n);}
 		//modify {delete(not_resolved);}
+	}
+}
+
+rule ResolveHistoryPath()
+{
+	n:Node -tran:Transition-> not_resolved:UnresolvedHistory;	 	
+	
+	if {not_resolved.name.length() != 0;}
+		//def ret : History;
+	h:History;		
+	:FindQualifiedType(not_resolved.name.asArray("."), h);
+	
+	// modify {delete(not_resolved);n -:copy<tran>-> hist;}
+	replace
+	{
+		n -tran->! h;
 	}
 }
 

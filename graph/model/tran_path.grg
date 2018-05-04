@@ -59,7 +59,7 @@ rule CreateTranPath()
 	yield {yield lca = t.lca.peek(0);yield lca_conf = t.lca_conf;}
 	// lca : State;
 	// :LCA(src, tar, lca);
-	//ex:ExitNodes(src, t.lca_conf);
+	//ex:ExitNodes(src, t.lca_conf);	
 	
 	modify
 	{		
@@ -204,108 +204,57 @@ function SortByDepthAsc(ref data : set<ActiveState>) : array<ActiveState>
 	}
 	return (res);
 }
-// pattern GetActive(var id : set<int>, var idx : int, def ret : set<ActiveState>)
-// {
-	// (
-	
-		// if {idx == id.size();}
-	// |
-		// if {idx != id.size();}
-		
-		// st:ActiveState;
-		// if {st.id == id;}
-		
-		// modify
-		// {
-			// eval
-			// {
-				// ret.add(st);
-			// }
-		// }
-	// )
-	
-// }
 
-function CalcTranNodes(src : ActiveState, lca : State) : set<int>
+pattern AddActionLca(path : Path, var action : string)
 {
-	def ref res : set<int> = set<int>{};
-	emit("res", res);
-	def ref in_tran_nodes : set<State> = src.contains & lca.sub_states;
-	emit("in_tran_nodes", in_tran_nodes);
-	for (st : State in in_tran_nodes)
-	{
-		emit("st", st);
-		res.add(st.id);
-	}
-	emit("res", res);
-	return (res);
+	(
+		l:Lca<path>;
+		path -e:Next-> p:Node \ StateAction;
+		
+		modify
+		{
+			path -e->! a:StateAction -:Next-> p;
+			eval {a.name = action;}
+			//@(name = action)
+		}		
+	|
+		~(:Lca<path>;)
+		path -:Next-> next:Path;
+		
+		t:AddActionLca(next, action);
+		
+		modify
+		{
+			t();
+		}
+	)
+	
+	modify {}
 }
 
-// pattern ExitNodes(st : ActiveState, ref nodes : set<ActiveState>) modify(parent : Path, def res : Path)
-// {
-	// iterated
-	// {
-		// st -:And-> child:ActiveState;
+rule AddActions()
+{
+		src:ActiveState -t:ActiveStateTransition-> path:Path;
 		
-		// t:ExitNodes(child, nodes);
-		
-		// modify
-		// {
-			// t(res, yield res);
-		// }
-		
-	// }
-		
-	// (
-		// ~(if {st in nodes;})
-		
-		
-		
-		// modify
-		// {
-			// //e:StateExit@(name = st.name) -:TransitionPath-> parent;
+		if {t.action.length() != 0;}
 			
-			// // eval
-			// // {
-				// // //yield cur = e;
-				// // yield res = e;
-			// // }
-		// }
-	// |
-		// if {st in nodes;}
+		add:AddActionLca(path, t.action);
 		
-		// //def cur : ActiveState;
-		
-		// // iterated
-		// // {
-			// // st -:And-> child:ActiveState;
-			
-			// // t:ExitNodes(child, nodes);
-			
-			// // modify
-			// // {
-				// // t(res, yield res);
-			// // }
-			
-		// // }
-		
-		// modify
-		// {
-			// e:StateExit@(name = st.name) -:TransitionPath-> parent;
-			
-			// eval
-			// {
-				// //yield cur = e;
-				// yield res = e;
-			// }
-		// }
-	// )
-	
-	// modify
-	// {
-	// }
-// }
+		modify
+		{
+			add();
+		}
+}
 
-
+rule AddGuards()
+{
+	src:ActiveState -t:ActiveStateTransition-> path:Path \ GuardCheck;
+	if {t.guard.length() != 0;}
+		
+	modify
+	{
+		src -t->! :GuardCheck@(name = t.guard) -:True-> path;		
+	}
+}
 
 
