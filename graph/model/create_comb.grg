@@ -2,11 +2,7 @@ rule SimpleStates()
 {	
 	parent:State -:Substate \ SimpleState-> st:State;
 	
-	//-:TopState-> top:State;
-	
 	~( st -:Substate->; )
-	//~( top -:SimpleState-> st; )
-	//if (isReachableIncoming(st, top, Contains));
 	
 	replace
 	{
@@ -33,6 +29,8 @@ rule StateCombinations()
 			new_st.entry_act = state.entry_act;
 			new_st.exit_act = state.exit_act;
 			new_st.do_act = state.do_act;
+			new_st.defer  = state.defer;
+			new_st.depth	  = state.depth;
 		}
 		and(new_st);
 		//delete(e);
@@ -41,59 +39,45 @@ rule StateCombinations()
 
 pattern CreateConfigNest(st : State) modify(def new_st : ActiveState)
 {
-		(
-			if {typeof(st) == State;}		
-					
-			//and:CreateConfig(parent);
-			//e:CreateConfigEdge(st);
-			
-			modify
-			{
-				//root <-:And- 
-				nst:ActiveState;
-				//parent -:Config-> nst;
-				eval {yield new_st = nst;}
-				//and(nst);
-			}
-		| 				
-			p:SubRegion<st>;
-			//and:CreateConfig(parent);
-			
-			modify
-			{
-				//root <-:And- 
-				nst:ActiveSubRegionState;
-				//st -:Config-> nst;
-				st --> nst;
-				eval
-				{
-					nst.idx 		  = p.idx;				
-					yield new_st = nst;					
-				}
-				//and(nst);
-			}
+	(
+		if {typeof(st) == State;}		
 		
-		|	
-			
-			p:ConcurrentState<st>;
-			
-			
-			modify
-			{
-				//root <-:And- 
-				nst:ActiveRegionState;
-				//st -:Config-> nst;
-				st --> nst;
-				eval
-				{
-					nst.regions = p.regions;
-					yield new_st = nst;
-				}
-				
-			}
-		)
+		modify
+		{				
+			nst:ActiveState;
+			eval {yield new_st = nst;}
+		}
+	| 				
+		p:SubRegion<st>;
 		
-		modify {}
+		modify
+		{
+			nst:ActiveSubRegionState;
+			st --> nst;
+			eval
+			{
+				nst.idx 		  = p.idx;				
+				yield new_st = nst;					
+			}
+		}
+	
+	|	
+		p:ConcurrentState<st>;
+		
+		modify
+		{				
+			nst:ActiveRegionState;				
+			st --> nst;
+			eval
+			{
+				nst.regions = p.regions;
+				yield new_st = nst;
+			}
+			
+		}
+	)
+	
+	modify {}
 }
 
 pattern CreateConfig(st : State) modify(root : ActiveState)
@@ -131,6 +115,8 @@ pattern CreateConfig(st : State) modify(root : ActiveState)
 			new_st.entry_act  = st.entry_act;
 			new_st.exit_act   = st.exit_act;
 			new_st.do_act     = st.do_act;
+			new_st.defer	  = st.defer;
+			new_st.depth	  = st.depth;
 			//emit("\ncreate_id:", new_st, st, st.id);
 		}			
 	}

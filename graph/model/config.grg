@@ -1,6 +1,6 @@
 rule CreateActiveBaseState()
 {
-  (
+  //(
 	active:ActiveState \ ActiveBaseState;
 	
 	~(-:And-> active;)
@@ -10,17 +10,17 @@ rule CreateActiveBaseState()
 	  :ActiveBaseState<active>;
     }
   
-	|
+	// |
 	
-	active:ActiveRegionState \ ActiveBaseRegionState;
+	// active:ActiveRegionState \ ActiveBaseRegionState;
 	
-	~(-:And-> active;)
+	// ~(-:And-> active;)
 	
-	modify
-    {
-	  :ActiveBaseRegionState<active>;
-    }
-  )
+	// modify
+    // {
+	  // :ActiveBaseRegionState<active>;
+    // }
+  // )
   //if {typeof(active) != ActiveBaseState;}
   //~(:ActiveBaseState<active>;)
   
@@ -29,32 +29,32 @@ rule CreateActiveBaseState()
 
 }
 
-rule CreateActiveStateDepth()
-{
-  active:ActiveBaseState;
+// rule CreateActiveStateDepth()
+// {
+  // active:ActiveBaseState;
   
-  //~(-:And-> active;)
+  // //~(-:And-> active;)
   
-  if {active.depth == 0;}
+  // if {active.depth == 0;}
   
-  t:CreateActiveDepthRec(active, 1);
+  // t:CreateActiveDepthRec(active, 1);
   
-  modify { t();}
-}
+  // modify { t();}
+// }
 
-pattern CreateActiveDepthRec(n : ActiveState, var depth : int)
-{
-  iterated
-  {
-	n -:And-> child:ActiveState;
+// pattern CreateActiveDepthRec(n : ActiveState, var depth : int)
+// {
+  // iterated
+  // {
+	// n -:And-> child:ActiveState;
 	
-	t:CreateActiveDepthRec(child, depth + 1);
+	// t:CreateActiveDepthRec(child, depth + 1);
 	
-	modify { t(); }
-  }
+	// modify { t(); }
+  // }
   
-  modify { eval { n.depth = depth; } }
-}
+  // modify { eval { n.depth = depth; } }
+// }
 
 // init contains_conf field sub configurations of active state includes it
 rule CreateReachableActiveState()
@@ -117,9 +117,8 @@ rule ReachableConfigInit()
 
 rule InitialSimpleInit()
 {
-	simple:State;
-	
-	~(simple -:Substate->;)
+	-:SimpleState-> simple:State;
+		
 	if {simple.initial_conf.empty();}
 	
 	modify
@@ -350,8 +349,8 @@ rule CreateTranConfigFromRegion()
 {	
 	src:State -t:StateTransition-> tar:State;
 		
-	def src_sub_region : SubRegion;
-	:GetSubRegion(src, yield src_sub_region);
+	def src_region : ConcurrentState;
+	:GetRegion(src, yield src_region);
 	
 	negative
 	{
@@ -367,6 +366,7 @@ rule CreateTranConfigFromRegion()
 	
 	lca : State;
 	:LCA(src, tar, lca); // least common ancestor
+	// not in sub region
 	~(def sub_region : SubRegion; :GetSubRegion(lca, yield sub_region);)
 			
 	yield 
@@ -385,6 +385,8 @@ rule CreateTranConfigFromRegion()
 			e.trigger = t.trigger;
 		    e.guard   = t.guard;
 			e.action  = t.action;
+			e.source_state = src.name;
+			e.target_state = tar.name;
 			e.out_str = t.out_str;
 			e.id	  = t.id;
 		}
@@ -425,7 +427,12 @@ rule CreateTranConfig()
 		{			
 			for (s : ActiveState in src_conf)
 			{				
-				addCopy(t, s, tar_conf);
+				//addCopy(t, s, tar_conf);
+				
+				(def -n:Edge->) = addCopy(t, s, tar_conf);
+				(def -r:ActiveStateTransition->) = retype(n, ActiveStateTransition);
+				r.source_state = src.name;
+				r.target_state = tar.name;
 			}			
 		}
 	}
@@ -462,7 +469,10 @@ rule CreateTranConfigRegion()
 					def ref tar_other_reg : set<State> = tt.contains \ sub_region_states;
 					if (src_other_reg == tar_other_reg)
 					{					
-						addCopy(t, s, tt);
+						(def -n:Edge->) = addCopy(t, s, tt);
+						(def -r:ActiveStateTransition->) = retype(n, ActiveStateTransition);
+						r.source_state = src.name;
+						r.target_state = tar.name;
 					}
 				}
 			}
@@ -492,31 +502,45 @@ pattern GetSubRegion(st : State, def parent : SubRegion)
 	)
 }
 
-pattern IterateArray(ref src : set<ActiveState>, var idx : int, def ret : ActiveState)
+pattern GetRegion(st : State, def parent : ConcurrentState)
 {
-	optional
-	{
-		//if {idx != 0;}
+	(
+		reg:ConcurrentState<st>;
+		yield {yield parent = reg;}
+	|
+		p:State -:Contains-> st;
 		
-		if {idx != src.size();}
+		~(:ConcurrentState<st>;)
 		
-		//yield {yield si = uniqueof(src.peek(idx));}
-	
-		st:ActiveState;
-		if {st == src.peek(idx);}
-		
-		//:GetElem(uniqueof(src.peek(idx)), yield ret);
-		//yield {yield ret = st;}
-		
-		:IterateArray(src, idx + 1, yield ret);
-		
-	// |
-		// if {idx == 0;}
-		
-		// :IterateArray(src, "", idx, yield ret);
-	
-	}
+		:GetRegion(p, yield parent);		
+	)
 }
+
+// pattern IterateArray(ref src : set<ActiveState>, var idx : int, def ret : ActiveState)
+// {
+	// optional
+	// {
+		// //if {idx != 0;}
+		
+		// if {idx != src.size();}
+		
+		// //yield {yield si = uniqueof(src.peek(idx));}
+	
+		// st:ActiveState;
+		// if {st == src.peek(idx);}
+		
+		// //:GetElem(uniqueof(src.peek(idx)), yield ret);
+		// //yield {yield ret = st;}
+		
+		// :IterateArray(src, idx + 1, yield ret);
+		
+	// // |
+		// // if {idx == 0;}
+		
+		// // :IterateArray(src, "", idx, yield ret);
+	
+	// }
+// }
 
 // pattern IterateTwoArray(ref src : array<ActiveState>, ref tar : array<ActiveState>, var idx : int, def ret1 : ActiveState, def ret2 : ActiveState)
 // {

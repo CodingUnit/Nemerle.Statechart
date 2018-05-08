@@ -573,50 +573,46 @@ rule ClearSubMachines()
 
 rule CheckSelfTargets()
 {    	
-	alternative
+	state:Node -e:Transition-> s:SelfTarget;
+	def src : Node;
+	(
+		:State<state>;
+		
+		yield {yield src = state;}
+		modify {}
+	|
+		:PseudoState<state>;
+		
+		:FindSourceState(state, yield src);	
+		modify {}
+	)
+	
+	
+	modify
 	{
-	  state
-	  {
-	    state:State -e:Transition-> t:SelfTarget;
-		
-		modify
-		{
-		  state -:copy<e>-> state;		  
-		  delete(t);
-		}
-	  }
-	  pseudo
-	  {
-		state:PseudoState -e:Transition-> t:SelfTarget;
-		def src : State;
-		
-		:FindSourceState(state, yield src);
-		
-		modify
-		{
-		  state -:copy<e>-> src;
-		  //state -e-> src;
-		  delete(t);
-		}
-	  }
+	  //def tar : Node;
+	  //evalhere {yield tar = src;}
+	  
+	  state -:copy<e>-> src;
+	  delete(s);
 	}
 }
 
 rule CreateDepth()
 {
   -:TopState-> top:State;
-  t:CreateDepthRec(top, Contains, 0);
+  t:CreateDepthRec(top, 0);
   
   modify { t();}
 }
 
-pattern CreateDepthRec(n : StateMachineNode, -e:Edge->, var depth : int)
+pattern CreateDepthRec(n : StateMachineNode, var depth : int)
 {
   iterated
   {
-	n -:typeof(e)-> child:StateMachineNode;
+	n -:Contains-> child:StateMachineNode;
 	
-	t:CreateDepthRec(child, e, depth + 1);
+	t:CreateDepthRec(child, depth + 1);
 	
 	modify { t(); }
   }
@@ -732,5 +728,16 @@ rule CorrectTranId()
 		{
 			t.id = t2.id + 1;
 		}
+	}
+}
+
+// if transition from sub region move it to enclosing region
+rule CorrectRegionTran()
+{
+	reg:ConcurrentState -:Region-> :SubRegion -t:Transition->;
+	
+	modify
+	{
+		reg !-t->;
 	}
 }

@@ -1,9 +1,9 @@
 rule CreateLcaTran()
 {
-	src:ActiveState -t:StateTransition \ ActiveStateTransition-> tar:ActiveState;
+	src:ActiveState -t:ActiveStateTransition \ GroupConfigTransition-> tar:ActiveState;
 	
-	//if {!t.lca.empty();}
-	if {typeof(t) != GroupConfigTransition;}
+	if {t.lca_conf.empty();}
+	//if {typeof(t) != GroupConfigTransition;}
 	def lca : State;
 	def ref src_lca_conf : set<ActiveState> = set<ActiveState>{};
 	def ref tar_lca_conf : set<ActiveState> = set<ActiveState>{};
@@ -18,7 +18,7 @@ rule CreateLcaTran()
 	
 	modify
 	{
-		src -tr:ActiveStateTransition<t>-> tar;
+		//src -tr:ActiveStateTransition<t>-> tar;
 
 		eval
 		{			
@@ -26,9 +26,11 @@ rule CreateLcaTran()
 			{
 				def ssrc_lca : ActiveState = src_lca_conf.peek(0);
 				def ttar_lca : ActiveState = tar_lca_conf.peek(0);
-				tr.lca_conf = ssrc_lca.sub_conf | ttar_lca.sub_conf;
+				t.lca_conf = ssrc_lca.sub_conf | ttar_lca.sub_conf;
+			} else
+			{
+				t.lca_conf = set<ActiveState>{src, tar};
 			}
-			
 		}
 	}
 }
@@ -48,68 +50,33 @@ function FindActiveState(src : ActiveState, find : State) : set<ActiveState>
 
 rule CreateTranPath()
 {
-	src:ActiveState -t:ActiveStateTransition-> tar:ActiveState;
-
-	//src:State -t:StateTransition-> tar:State;
-
-	//if {t.id == t2.id;}
+	src:ActiveState -t:ActiveStateTransition \ GroupConfigTransition-> tar:ActiveState;
 
 	def lca : State;
 	def ref lca_conf : set<ActiveState>;
 	yield {yield lca = t.lca.peek(0);yield lca_conf = t.lca_conf;}
-	// lca : State;
-	// :LCA(src, tar, lca);
-	//ex:ExitNodes(src, t.lca_conf);	
 	
 	modify
 	{		
-		//def res : Path;
 		nlca:Lca@(name = lca.name);
-		
-		
-		// eval
-		// {
-			// nlca.name = lca.name;
-		// }
 		
 		def first : Path;
 		def last : Path;
+		//emithere("\nsrc", src, "tar", tar, "t", t);
 		evalhere
 		{			
-			def ref exit_nodes  : set<ActiveState> 	  = src.contains_conf & t.lca_conf;
-			def ref entry_nodes  : set<ActiveState>   = tar.contains_conf & t.lca_conf;
-			def ref sorted_exit : array<ActiveState>  = SortByDepthAsc(exit_nodes);
-			def ref sorted_entry : array<ActiveState> = SortByDepthAsc(entry_nodes);
+			def ref exit_nodes   : set<ActiveState>   = src.contains_conf & t.lca_conf;
+			def ref sorted_exit  : array<ActiveState> = SortByDepthAsc(exit_nodes);
 			(yield first) = AddPath(nlca, sorted_exit, false);
-			(yield last) = AddPath(nlca, sorted_entry, true);
+			
+			def ref entry_nodes  : set<ActiveState>   = tar.contains_conf & t.lca_conf;
+			def ref sorted_entry : array<ActiveState> = SortByDepthAsc(entry_nodes);
+			(yield last)  = AddPath(nlca, sorted_entry, true);
 		}
-		//emit("prev", prev);
-		src -t->! first;
+		//emithere("\nfirst", first);
+		//emithere("\nlast", last);
+		src  -t->! first;
 		last -:Next-> tar;
-		//delete(t);
-		
-		/*
-
-int tmp;
-bool noSwap;
-
-for (int i = N - 1; i >= 0; i--)
-{
-    noSwap = 1;
-    for (int j = 0; j < i; j++)
-    {
-        if (mass[j] > mass[j + 1])
-        {
-            tmp = mass[j];
-            mass[j] = mass[j + 1];
-            mass[j + 1] = tmp;
-            noSwap = 0;
-        }
-    }
-    if (noSwap == 1)
-        break;
-}
-		*/
 	}
 
 
@@ -118,29 +85,75 @@ for (int i = N - 1; i >= 0; i--)
 
 
 }
+
+// procedure addnodes(prev : Path, ref nodes : array<string>, type : Node) : (Path)
+// {
+	// for (a : string in nodes)
+	// {
+		// (n) = add(type);
+		// n.name = a;
+		// add(Next, prev, n);
+		// prev = n;
+	// }
+// }
 
 procedure AddPath(src : Path, ref nodes : array<ActiveState>, var from : boolean) : (Path)
 {
 	def prev : Path = src;
+	def n : Path = src;
+	//def ref act : array<string> = array<string>[];
+	//emit("\nnodes", nodes, "\nsrc", src);
 	for (st : ActiveState in nodes)
 	{
-		//e:StateExit@(name = st.name) -:TransitionPath-> prev;
-		def n : Path;
+		//e:StateExit@(name = st.name) -:TransitionPath-> prev;	
+		def ref entry_act : array<string> = st.entry_act;
+		def ref exit_act : array<string> = st.exit_act;
+		def ref do_act : array<string> = st.do_act;
 		if (from)
 		{
+			for (a : string in entry_act)
+			{
+				(n) = add(StateAction);
+				n.name = a;
+				add(Next, prev, n);				
+				prev = n;
+			}			
+			for (a : string in do_act)
+			{
+				(n) = add(StartDoActivity);
+				n.name = a;
+				add(Next, prev, n);
+				prev = n;
+			}
 			(n) = add(StateEntry);
+			n.name = st.name;
 			add(Next, prev, n);		
+			prev = n;
 		} else
 		{
 			(n) = add(StateExit);
+			n.name = st.name;
 			add(Next, n, prev);		
+			prev = n;			
+			for (a : string in exit_act)
+			{
+				(n) = add(StateAction);
+				n.name = a;
+				add(Next, n, prev);
+				prev = n;
+			}			
+			for (a : string in do_act)
+			{
+				(n) = add(StopDoActivity);
+				n.name = a;
+				add(Next, n, prev);
+				prev = n;
+			}
 		}
-		n.name = st.name;
-		prev = n;
 		//emit("prev", prev);
 	}
-	//emit("prev", prev);
-	return (prev);
+	//emit("\nn", n);
+	return (n);
 }
 
 function SortByDepthDesc(ref data : set<ActiveState>) : array<ActiveState>
@@ -208,12 +221,12 @@ function SortByDepthAsc(ref data : set<ActiveState>) : array<ActiveState>
 pattern AddActionLca(path : Path, var action : string)
 {
 	(
-		l:Lca<path>;
-		path -e:Next-> p:Node \ StateAction;
+		:Lca<path>;
+		path -e:Next-> p:Node \ TransitionAction;
 		
 		modify
 		{
-			path -e->! a:StateAction -:Next-> p;
+			path -e->! a:TransitionAction -:Next-> p;
 			eval {a.name = action;}
 			//@(name = action)
 		}		
@@ -250,11 +263,57 @@ rule AddGuards()
 {
 	src:ActiveState -t:ActiveStateTransition-> path:Path \ GuardCheck;
 	if {t.guard.length() != 0;}
+	
+	(
+		if {t.guard == "else";}
 		
+		modify
+		{
+			e:ElseGuard;
+			eval {yield guard = e;}
+		}
+	|
+		if {t.guard != "else";}
+		
+		modify
+		{
+			e:GuardCheck;
+			eval
+			{
+				e.name = t.guard;
+				yield guard = e;
+			}
+		}
+	)
 	modify
 	{
-		src -t->! :GuardCheck@(name = t.guard) -:True-> path;		
+		def guard : GuardCheck;
+		src -t->! guard -:True-> path;		
 	}
 }
 
+rule CombineGuards()
+{
+	g1:GuardCheck \ ElseGuard <-t1:ActiveStateTransition- src:ActiveState;
+	src -t2:ActiveStateTransition-> g2:GuardCheck \ ElseGuard;
+	
+	if {t1.trigger == t2.trigger;}	
+	
+	modify
+	{
+		
+	}
+}
 
+rule CombineGuards2()
+{
+	g1:ElseGuard <-t1:ActiveStateTransition- src:ActiveState;
+	src -t2:ActiveStateTransition-> g2:GuardCheck \ ElseGuard;
+	
+	if {t1.trigger == t2.trigger;}
+	
+	modify
+	{
+		
+	}
+}
