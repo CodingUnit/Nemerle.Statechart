@@ -333,7 +333,8 @@ rule ActiveStatesInit()
 rule CreateLCA()
 {
 	src:State -t:StateTransition-> tar:State;
-		
+	hom(src, tar);
+	
 	if {t.lca.empty();}
 	
 	lca : State;
@@ -348,9 +349,15 @@ rule CreateLCA()
 rule CreateTranConfigFromRegion()
 {	
 	src:State -t:StateTransition-> tar:State;
-		
+	hom(src, tar);
+	
+	
 	def src_region : ConcurrentState;
-	:GetRegion(src, yield src_region);
+	
+	independent
+	{
+		:GetRegion(src, yield src_region);
+	}
 	
 	negative
 	{
@@ -396,11 +403,12 @@ rule CreateTranConfigFromRegion()
 rule CreateTranConfig()
 {
 	src:State -t:StateTransition-> tar:State;
-	
+	hom(src, tar);
 	// not created active state transition
 	negative
 	{
-		:ActiveState -t2:StateTransition-> :ActiveState;
+		a1:ActiveState -t2:StateTransition-> a2:ActiveState;
+		hom(a1, a2);
 		if {t.id == t2.id;}
 	}
 	
@@ -441,21 +449,38 @@ rule CreateTranConfig()
 rule CreateTranConfigRegion()
 {	
 	src:State -t:StateTransition-> tar:State;
+	hom(src, tar);
 	
 	negative
 	{
-		:ActiveState -t2:StateTransition-> :ActiveState;
+		a1:ActiveState -t2:StateTransition-> a2:ActiveState;
+		hom(a1, a2);
 		if {t.id == t2.id;}
 	}
 	
 	def sub_region : SubRegion;
+	// st1:ActiveBaseState;
+	// st2:ActiveBaseState;
 	
 	lca : State;
 	:LCA(src, tar, lca);
-	:GetSubRegion(lca, yield sub_region);
+	independent
+	{
+		:GetSubRegion(lca, yield sub_region);
+	}
 	
+	// def conf : ActiveState;// = 
+	// def ttar : ActiveState;// = 		
+	// yield
+	// {
+		// yield conf = src.possible_conf.peek(0);
+		// yield ttar = tar.initial_conf.peek(0);
+	// }
 	modify 
 	{
+		//st1 -:copy<t>-> st2;
+		
+		//conf -:copy<t>-> ttar;
 		def ref sub_region_states : set<State> = sub_region.sub_states;
 		def ref conf : set<ActiveState> = src.possible_conf;
 		def ref ttar : set<ActiveState> = tar.initial_conf;		

@@ -2,6 +2,8 @@ rule CreateLcaTran()
 {
 	src:ActiveState -t:ActiveStateTransition \ GroupConfigTransition-> tar:ActiveState;
 	
+	hom(src, tar);
+	
 	if {t.lca_conf.empty();}
 	//if {typeof(t) != GroupConfigTransition;}
 	def lca : State;
@@ -27,9 +29,11 @@ rule CreateLcaTran()
 				def ssrc_lca : ActiveState = src_lca_conf.peek(0);
 				def ttar_lca : ActiveState = tar_lca_conf.peek(0);
 				t.lca_conf = ssrc_lca.sub_conf | ttar_lca.sub_conf;
-			} else
+			}
+			 else
 			{
-				t.lca_conf = set<ActiveState>{src, tar};
+				emit("error CreateLcaTran src:", src, "t:", t, "tar:", tar);
+				 t.lca_conf = set<ActiveState>{src, tar};
 			}
 		}
 	}
@@ -38,7 +42,8 @@ rule CreateLcaTran()
 
 function FindActiveState(src : ActiveState, find : State) : set<ActiveState>
 {
-	for (st : ActiveState in reachableOutgoing(src, And))
+	def ref nodes : set<Node> = reachableOutgoing(src, And) | set<Node>{src};
+	for (st : ActiveState in nodes)
 	{
 		if (st.id == find.id)
 		{
@@ -52,6 +57,7 @@ rule CreateTranPath()
 {
 	src:ActiveState -t:ActiveStateTransition \ GroupConfigTransition-> tar:ActiveState;
 
+	hom(src, tar);
 	def lca : State;
 	def ref lca_conf : set<ActiveState>;
 	yield {yield lca = t.lca.peek(0);yield lca_conf = t.lca_conf;}
@@ -100,15 +106,15 @@ rule CreateTranPath()
 procedure AddPath(src : Path, ref nodes : array<ActiveState>, var from : boolean) : (Path)
 {
 	def prev : Path = src;
-	def n : Path = src;
+	def n 	 : Path = src;
 	//def ref act : array<string> = array<string>[];
 	//emit("\nnodes", nodes, "\nsrc", src);
 	for (st : ActiveState in nodes)
 	{
 		//e:StateExit@(name = st.name) -:TransitionPath-> prev;	
 		def ref entry_act : array<string> = st.entry_act;
-		def ref exit_act : array<string> = st.exit_act;
-		def ref do_act : array<string> = st.do_act;
+		def ref exit_act  : array<string> = st.exit_act;
+		def ref do_act    : array<string> = st.do_act;
 		if (from)
 		{
 			for (a : string in entry_act)
@@ -265,7 +271,7 @@ rule AddGuards()
 	if {t.guard.length() != 0;}
 	
 	(
-		if {t.guard == "else";}
+		if {t.guard == "[else]";}
 		
 		modify
 		{
@@ -273,7 +279,7 @@ rule AddGuards()
 			eval {yield guard = e;}
 		}
 	|
-		if {t.guard != "else";}
+		if {t.guard != "[else]";}
 		
 		modify
 		{
@@ -292,28 +298,32 @@ rule AddGuards()
 	}
 }
 
-rule CombineGuards()
+rule CombineElseGuards()
 {
-	g1:GuardCheck \ ElseGuard <-t1:ActiveStateTransition- src:ActiveState;
-	src -t2:ActiveStateTransition-> g2:GuardCheck \ ElseGuard;
+	src:ActiveState -t1:ActiveStateTransition-> g1:GuardCheck \ ElseGuard;
+	src 			-t2:ActiveStateTransition-> g2:ElseGuard --> p:Node;
 	
 	if {t1.trigger == t2.trigger;}	
 	
 	modify
 	{
-		
+		g1 -:False-> p;
+		delete(g2);		
 	}
 }
 
-rule CombineGuards2()
+rule CombineGuards()
 {
-	g1:ElseGuard <-t1:ActiveStateTransition- src:ActiveState;
-	src -t2:ActiveStateTransition-> g2:GuardCheck \ ElseGuard;
+	src:ActiveState -t1:ActiveStateTransition-> g1:GuardCheck \ ElseGuard;
+	src 			-t2:ActiveStateTransition-> g2:GuardCheck \ ElseGuard;
 	
 	if {t1.trigger == t2.trigger;}
 	
+	~(g1 -:False->;)
+	
 	modify
 	{
-		
+		g1 -:False-> g2;
+		delete(t2);
 	}
 }
