@@ -337,21 +337,98 @@ rule CreateLCA()
 	
 	if {t.lca.empty();}
 	
-	lca : State;
-	:LCA(src, tar, lca); // least common ancestor of source and target
+	def lca : State;
+	//:LCA(src, tar, lca); // least common ancestor of source and target
+	yield {yield lca = (State)getLCA(src, tar);}
 	
 	modify
 	{
 		eval {t.lca.add(lca);}
 	}
 }
+
+rule InitSubRegion()
+{
+	
+	
+	(
+		src:SubRegion -:Contains-> sub:State;
+	
+		//if {!src.sub_region.empty();}
+		if {sub.sub_region.empty();}
+		
+		modify
+		{
+			eval {sub.sub_region = set<SubRegion>{src};src.sub_region = set<SubRegion>{src};}
+		}
+	|	
+		src:State \ SubRegion -:Contains-> sub:State;
+		
+		if {!src.sub_region.empty();}
+		if {sub.sub_region.empty();}
+		
+		modify
+		{
+			eval {sub.sub_region = src.sub_region;}
+		}
+	)
+	
+	modify
+	{
+
+	}
+}
+
+rule InitSubRegionTran()
+{
+	src:State -t:StateTransition-> tar:State;
+	
+	if {!t.is_sub_region_set;}
+	
+	//t:InitSubRegion();
+	def lca : State;
+	yield {yield lca = t.lca.peek(0);}
+	
+	modify
+	{
+		eval
+		{
+			t.sub_region = lca.sub_region;
+			t.is_sub_region_set = true;
+		}
+	}
+}
+
+pattern InitSubRegionRec(src : State, sub : SubRegion)
+{
+	// (
+		// ~(:ConcurrentState<src>;)
+		
+		// iterated
+		// {
+			// src -:Contains-> child:State;
+			// t:InitSubRegionRec(child, sub);
+			
+			// modify
+			// {
+				// eval {src.sub_region = set<SubRegion>{sub};}
+				// t();
+			// }
+		// }
+		
+		// modify {}
+	// |
+		// :ConcurrentState<src>;		
+		// modify {}
+	// )
+}
+
 // create transition for configs
 rule CreateTranConfigFromRegion()
 {	
 	src:State -t:StateTransition-> tar:State;
 	hom(src, tar);
-	
-	
+		
 	def src_region : ConcurrentState;
 	
 	independent
@@ -361,8 +438,8 @@ rule CreateTranConfigFromRegion()
 	
 	negative
 	{
-		:ActiveState -t2:StateTransition-> :ActiveState;
-		
+		a1:ActiveState -t2:GroupConfigTransition-> a2:ActiveState;
+		hom(a1, a2);
 		if {t.id == t2.id;}
 	}
 	
@@ -371,11 +448,15 @@ rule CreateTranConfigFromRegion()
 	def tar_conf : ActiveState;	
 	
 	
-	lca : State;
-	:LCA(src, tar, lca); // least common ancestor
-	// not in sub region
-	~(def sub_region : SubRegion; :GetSubRegion(lca, yield sub_region);)
-			
+	// def lca : State;
+	// :LCA(src, tar, yield lca); // least common ancestor
+	// // not in sub region
+	// ~(def sub_region : SubRegion; :GetSubRegion(lca, yield sub_region);)
+	yield {emit("\nerror CreateTranConfigFromRegion src:", src, "t:", t, "tar:", tar, "lca", t.lca.peek(0));}
+	//if {!t.lca.empty();}
+	//if {IsSubRegionPart(src);}
+	if {!t.sub_region.empty();}
+	
 	yield 
 	{
 		yield tar_conf = tar.initial_conf.peek(0);
@@ -413,15 +494,17 @@ rule CreateTranConfig()
 	}
 	
 	// no subregion
-	negative
-	{
-		def sub_region : SubRegion; 
-		:GetSubRegion(lca, yield sub_region);
-	}
+	//if {!t.lca.empty();}
+	if {t.sub_region.empty();}
+	// negative
+	// {
+		// def sub_region : SubRegion; 
+		// :GetSubRegion(lca, yield sub_region);
+	// }
 	def tar_conf : ActiveState;	
 	
-	lca : State;
-	:LCA(src, tar, lca);
+	// lca : State;
+	// :LCA(src, tar, lca);
 			
 	yield 
 	{
@@ -459,15 +542,18 @@ rule CreateTranConfigRegion()
 	}
 	
 	def sub_region : SubRegion;
+	//def lca : State;
 	// st1:ActiveBaseState;
 	// st2:ActiveBaseState;
+	//yield {yield lca = getLCA(src, tar);}
+	//if {!t.lca.empty();}
+	if {!t.sub_region.empty();}
+	yield {yield sub_region = t.sub_region.peek(0);}
 	
-	lca : State;
-	:LCA(src, tar, lca);
-	independent
-	{
-		:GetSubRegion(lca, yield sub_region);
-	}
+	// independent
+	// {
+		// :GetSubRegion(lca, yield sub_region);
+	// }
 	
 	// def conf : ActiveState;// = 
 	// def ttar : ActiveState;// = 		
@@ -508,10 +594,54 @@ rule CreateTranConfigRegion()
 	
 }
 
-// function IsSubRegionPart(st : State) : boolean
-// {
-	
-// }
+function IsSubRegionPart(st : Node) : boolean
+{	
+	emit("\nst:", st);
+	def ref nodes : set<Node> = reachableIncoming(st, Contains) | set<Node>{st};
+	emit("\nnodes:", nodes);
+	for (n : Node in nodes)
+	{
+		if (typeof(n) == SubRegion)
+		{
+			return (true);
+		}
+	}
+	return (false);
+}
+
+function getSubRegion(st : Node) : set<SubRegion>
+{
+	def res : SubRegion;
+	def var first : boolean = true;
+	//def ref last : SubRegio
+	def ref nodes : set<Node> = reachableIncoming(st, Contains) | set<Node>{st};
+	for (n : Node in nodes)
+	{
+		if (typeof(n) == SubRegion)
+		{
+			def r : SubRegion = (SubRegion)n;
+			if (first)
+			{
+				res = r;
+				first = false;
+			} else
+			{
+				if (r.depth > res.depth)
+				{
+					//res.clear();
+					res = r;
+				}
+			}
+		}
+	}
+	if (first)
+	{
+		return (set<SubRegion>{});
+	} else
+	{
+		return (set<SubRegion>{res});
+	}
+}
 
 pattern GetSubRegion(st : State, def parent : SubRegion)
 {
