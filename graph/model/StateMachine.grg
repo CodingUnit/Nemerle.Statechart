@@ -138,7 +138,7 @@ rule InitConcurrent()
 	
 	modify
 	{
-		eval { state.regions = count(it); }
+		eval { state.regions_count = count(it); }
 	}
 }
 
@@ -223,8 +223,9 @@ rule ResolveHistory()
 		
 		modify 
 		{
+			eval {yield hist = h;}
 			delete(not_resolved);
-			n -tran->! h;
+			//n -tran->! h;
 		}
 	| 
 	    :UnresolvedShallowHistory<not_resolved>;
@@ -234,8 +235,9 @@ rule ResolveHistory()
 	
 		modify 
 		{
+			eval {yield hist = h;}
 			delete(not_resolved);		
-			n -tran->! h;			
+			//n -tran->! h;			
 		}
 	| 		
 		if {typeof(not_resolved) == UnresolvedHistory;}		
@@ -246,15 +248,17 @@ rule ResolveHistory()
 		//yield {yield hist = h;}
 		modify 
 		{
+			eval {yield hist = h;}
 			delete(not_resolved);			
-			n -tran->! h;
+			//n -tran->! h;
 		}
 		
 	)
 	
 	modify
-	{            
-		
+	{
+		def hist : History;
+		n -tran->! hist;
 		//eval {emitdebug(parent); emitdebug(n);}
 		//modify {delete(not_resolved);}
 	}
@@ -281,18 +285,12 @@ rule ResolveFinal()
 {
 	parent:State -e:Contains-> not_resolved:UnresolvedFinalState <-tran:Transition- n:Node;
 	
-	alternative
-	{
-	   found
-	   {
-		 parent -:Contains-> final:FinalState;
+	(
+		parent -:Contains-> final:FinalState;
 		
-		 modify { eval {yield ret = final;} }
-		
-	   } 
-		
-	   not
-	   {
+		modify { eval {yield ret = final;} }
+	
+	|
 		 ~( parent -:Contains-> :FinalState; )
 		
 		 modify
@@ -301,8 +299,7 @@ rule ResolveFinal()
 		  
 		   eval {yield ret = final;}
 		 }
-	   }
-	}		
+	)		
 
 	modify
 	{			

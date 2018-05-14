@@ -29,18 +29,25 @@ rule StateCombinations()
 		
 	modify
 	{
-		new_st : ActiveSimpleState;
+		def new_st : ActiveSimpleState;
 		eval
 		{
-			//emit("\ncreate_id:", new_st, ",", state, ":", state.id);
-			new_st.id 	= state.id;
-			new_st.name = state.name;
-			new_st.entry_act = state.entry_act;
-			new_st.exit_act = state.exit_act;
-			new_st.do_act = state.do_act;
-			new_st.defer  = state.defer;
-			new_st.depth	  = state.depth;
+			(def n : State) = addCopy(state);
+			(yield new_st) = retype(n, ActiveSimpleState);
 		}
+		
+		//new_st : ActiveSimpleState<state>;
+		// eval
+		// {
+			// //emit("\ncreate_id:", new_st, ",", state, ":", state.id);
+			// new_st.id 	= state.id;
+			// new_st.name = state.name;
+			// new_st.entry_act = state.entry_act;
+			// new_st.exit_act = state.exit_act;
+			// new_st.do_act = state.do_act;
+			// new_st.defer  = state.defer;
+			// new_st.depth	  = state.depth;
+		// }
 		and(new_st);
 		//delete(e);
 	} 
@@ -53,21 +60,29 @@ pattern CreateConfigNest(st : State) modify(def new_st : ActiveState)
 		
 		modify
 		{				
-			nst:ActiveState;
-			eval {yield new_st = nst;}
+			//nst:ActiveState;
+			eval 
+			{
+				(def n : State) = addCopy(st);
+				(yield new_st) = retype(n, ActiveState);
+				//yield new_st = nst;
+			}
 		}
 	| 				
 		p:SubRegion<st>;
 		
 		modify
 		{
-			nst:ActiveSubRegionState;
-			st --> nst;
-			eval
+			
+			
+			evalhere
 			{
+				(def n : State) = addCopy(st);
+				(def nst:ActiveSubRegionState) = retype(n, ActiveSubRegionState);
 				nst.idx 		  = p.idx;				
 				yield new_st = nst;					
 			}
+			st --> new_st;
 		}
 	
 	|	
@@ -75,14 +90,16 @@ pattern CreateConfigNest(st : State) modify(def new_st : ActiveState)
 		
 		modify
 		{				
-			nst:ActiveRegionState;				
-			st --> nst;
+			//nst:ActiveRegionState;				
+			
 			eval
 			{
-				nst.regions = p.regions;
+				(def n : State) = addCopy(st);
+				(def nst:ActiveRegionState) = retype(n, ActiveRegionState);
+				nst.regions_count = p.regions_count;
 				yield new_st = nst;
 			}
-			
+			st --> new_st;
 		}
 	)
 	
@@ -117,17 +134,19 @@ pattern CreateConfig(st : State) modify(root : ActiveState)
 		def new_st : ActiveState;
 		
 		root <-:And- new_st;
-		eval
-		{				
-			new_st.id 		  = st.id;
-			new_st.name 	  = st.name;
-			new_st.entry_act  = st.entry_act;
-			new_st.exit_act   = st.exit_act;
-			new_st.do_act     = st.do_act;
-			new_st.defer	  = st.defer;
-			new_st.depth	  = st.depth;
-			//emit("\ncreate_id:", new_st, st, st.id);
-		}			
+		// eval
+		// {
+			// (def n : State) = addCopy(state);
+			// (yield new_st) = retype(n, ActiveSimpleState);
+			// new_st.id 		  = st.id;
+			// new_st.name 	  = st.name;
+			// new_st.entry_act  = st.entry_act;
+			// new_st.exit_act   = st.exit_act;
+			// new_st.do_act     = st.do_act;
+			// new_st.defer	  = st.defer;
+			// new_st.depth	  = st.depth;
+			// //emit("\ncreate_id:", new_st, st, st.id);
+		// }			
 	}
 	
 }
