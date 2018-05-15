@@ -304,11 +304,13 @@ rule InitSubRegion()
 	st:State;
 	
 	def ref sub_regions : set<SubRegion>; 
+	def ref regions	    : set<ConcurrentState>;
 	
 	if {(st.set_flag & 1) == 0;}
 	yield 
 	{
-		yield sub_regions = getSubRegion(st);
+		yield sub_regions = getSubRegions(st);
+		yield regions 	  = getRegions(st);
 	}
 	//:GetSubRegion(st, yield sub_region);
 	
@@ -317,6 +319,7 @@ rule InitSubRegion()
 		eval 
 		{
 			st.sub_regions = sub_regions;
+			st.regions	   = regions;
 			st.set_flag = 1;
 		}
 	}
@@ -325,7 +328,7 @@ rule InitSubRegion()
 rule InitSubRegionTran()
 {
 	src:State -t:StateTransition-> tar:State;
-	
+	hom(src, tar);
 	if {(t.set_flag & 1) == 0;}
 	
 	//t:InitSubRegion();
@@ -351,10 +354,13 @@ rule CreateTranConfigFromRegion()
 		
 	def src_region : ConcurrentState;
 	
-	independent
-	{
-		:GetRegion(src, yield src_region);
-	}
+	// independent
+	// {
+		// :GetRegion(src, yield src_region);
+	// }
+	
+	if {!src.regions.empty();}
+	if {t.sub_regions.empty();}
 	
 	negative
 	{
@@ -375,7 +381,7 @@ rule CreateTranConfigFromRegion()
 	yield {emit("\nerror CreateTranConfigFromRegion src:", src, "t:", t, "tar:", tar, "lca", t.lca.peek(0));}
 	//if {!t.lca.empty();}
 	//if {IsSubRegionPart(src);}
-	if {t.sub_regions.empty();}
+	
 	
 	yield 
 	{
@@ -414,17 +420,9 @@ rule CreateTranConfig()
 	}
 	
 	// no subregion
-	//if {!t.lca.empty();}
 	if {t.sub_regions.empty();}
-	// negative
-	// {
-		// def sub_region : SubRegion; 
-		// :GetSubRegion(lca, yield sub_region);
-	// }
+
 	def tar_conf : ActiveState;	
-	
-	// lca : State;
-	// :LCA(src, tar, lca);
 			
 	yield 
 	{
@@ -437,9 +435,7 @@ rule CreateTranConfig()
 		eval
 		{			
 			for (s : ActiveState in src_conf)
-			{				
-				//addCopy(t, s, tar_conf);
-				
+			{
 				(def -n:Edge->) = addCopy(t, s, tar_conf);
 				(def -r:ActiveStateTransition->) = retype(n, ActiveStateTransition);
 				r.source_state = src.name;
@@ -462,33 +458,13 @@ rule CreateTranConfigRegion()
 	}
 	
 	def ref sub_regions : set<SubRegion>;
-	//def lca : State;
-	// st1:ActiveBaseState;
-	// st2:ActiveBaseState;
-	//yield {yield lca = getLCA(src, tar);}
-	//if {!t.lca.empty();}
+
 	if {!t.sub_regions.empty();}
 	yield {yield sub_regions = t.sub_regions;}
 	
-	// independent
-	// {
-		// :GetSubRegion(lca, yield sub_region);
-	// }
-	
-	// def conf : ActiveState;// = 
-	// def ttar : ActiveState;// = 		
-	// yield
-	// {
-		// yield conf = src.possible_conf.peek(0);
-		// yield ttar = tar.initial_conf.peek(0);
-	// }
 	modify 
 	{
-		//st1 -:copy<t>-> st2;
-		
-		//conf -:copy<t>-> ttar;
 		def ref sub_region_states : set<State> = set<State>{};
-		//sub_region.sub_states;
 		def ref conf : set<ActiveState> = src.possible_conf;
 		def ref ttar : set<ActiveState> = tar.initial_conf;		
 		eval
@@ -549,11 +525,9 @@ function getLowestNode(ref sub : set<StateMachineNode>) : StateMachineNode
 	return (lowest);
 }
 
-function getSubRegion(st : Node) : set<SubRegion>
+function getSubRegions(st : Node) : set<SubRegion>
 {
 	def ref res : set<SubRegion> = set<SubRegion>{};
-	//def var first : boolean = true;
-	//def ref last : SubRegio
 	def ref nodes : set<Node> = reachableIncoming(st, Contains) | set<Node>{st};
 	for (n : Node in nodes)
 	{
@@ -567,42 +541,23 @@ function getSubRegion(st : Node) : set<SubRegion>
 	return (res);
 }
 
-// pattern GetSubRegion(st : State, def ref parent : set<SubRegion>)
-// {
-	// (
-		// reg:SubRegion<st>;
-		// p:State -:Contains-> st;
-		
-		// //yield {yield parent = parent | set<SubRegion>{reg};}
-		// t:GetSubRegion(p, yield parent);		
-		
-		// modify
-		// {
-			// eval
-			// {
-				// parent.add(reg);
-			// }
-			// t();
-		// }
-	// |
-		// p:State -:Contains-> st;
-		
-		// ~(:SubRegion<st>;)
-		
-		// t:GetSubRegion(p, yield parent);
-		
-		// modify
-		// {
-			// t();
-		// }
-	// |
-		// ~(p:State -:Contains-> st;)
-		
-		// modify {}
-	// )
+function getRegions(st : Node) : set<ConcurrentState>
+{
+	def ref res : set<ConcurrentState> = set<ConcurrentState>{};
+	//def var first : boolean = true;
+	//def ref last : SubRegio
+	def ref nodes : set<Node> = reachableIncoming(st, Contains) | set<Node>{st};
+	for (n : Node in nodes)
+	{
+		if (typeof(n) == ConcurrentState)
+		{
+			def nn : ConcurrentState = (ConcurrentState)n;
+			res.add(nn);
+		}
+	}
 	
-	// modify {}
-// }
+	return (res);
+}
 
 pattern GetRegion(st : State, def parent : ConcurrentState)
 {
@@ -617,46 +572,3 @@ pattern GetRegion(st : State, def parent : ConcurrentState)
 		:GetRegion(p, yield parent);		
 	)
 }
-
-// pattern IterateArray(ref src : set<ActiveState>, var idx : int, def ret : ActiveState)
-// {
-	// optional
-	// {
-		// //if {idx != 0;}
-		
-		// if {idx != src.size();}
-		
-		// //yield {yield si = uniqueof(src.peek(idx));}
-	
-		// st:ActiveState;
-		// if {st == src.peek(idx);}
-		
-		// //:GetElem(uniqueof(src.peek(idx)), yield ret);
-		// //yield {yield ret = st;}
-		
-		// :IterateArray(src, idx + 1, yield ret);
-		
-	// // |
-		// // if {idx == 0;}
-		
-		// // :IterateArray(src, "", idx, yield ret);
-	
-	// }
-// }
-
-// pattern IterateTwoArray(ref src : array<ActiveState>, ref tar : array<ActiveState>, var idx : int, def ret1 : ActiveState, def ret2 : ActiveState)
-// {
-	// //if {src.size() == tar.size();}
-	// (		
-		// if {idx == src.size();}
-		// modify {}
-	// |
-		// if {idx != src.size();}		
-		// //yield {yield ret1 = src[idx];}//yield ret2 = tar[idx];}
-		
-		// :IterateTwoArray(src, tar, idx + 1, yield ret1, yield ret2);
-		
-		// modify {}
-	// )
-// }
-
