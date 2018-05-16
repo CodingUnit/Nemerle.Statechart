@@ -38,14 +38,24 @@ namespace Nemerle.Statechart
       locator = Locator(parser, loc, this);
     }
 
+    text : string;
+    
+    public this(name : string, text : string)
+    {
+      this.text = text;
+      this.name = name;
+      parser = Parser();
+      locator = Locator(parser, loc, this);
+    }
+    
     [Accessor]
     mutable fsm : StateNode.StateMachine;
 
     AttributesAndMods : AttributesAndModifiers
     {
       get
-      {
-        top.ParsedAttributsAndModifiers
+      {        
+        top?.ParsedAttributsAndModifiers
       }
     }
 
@@ -64,7 +74,11 @@ namespace Nemerle.Statechart
           | _                      => None()
         }
         
-        AttributesAndMods.ParsedCustomAttributes.FindMap(find_func)
+        if (AttributesAndMods != null)
+        {
+          AttributesAndMods.ParsedCustomAttributes.FindMap(find_func)
+        }
+        else None()
       }
     }
 
@@ -72,7 +86,7 @@ namespace Nemerle.Statechart
     {
       get
       {
-        if (attribute is Some(a)) a.Location else top.Location;
+        if (attribute is Some(a)) a.Location else top?.Location;
       }
     }
 
@@ -121,12 +135,8 @@ namespace Nemerle.Statechart
       nloc
     }
     
-    Parse() : void
+    public Parse(text : string) : void
     {
-      parser.flags_map = Hashtable(FsmAnalyser.Flags);
-      parser.env = env;
-      CheckBody();
-      def text = body ?? "";
       fsm = if (!text.IsEmpty()) 
              {
                //when (loc.File == "AlarmClockInternals.n") assert2(false);
@@ -145,6 +155,23 @@ namespace Nemerle.Statechart
                } else ast
              } else null;
        when (fsm != null) locator.Locate(fsm);
+    }
+    
+    public Parse() : void
+    {
+      parser.flags_map = Hashtable(FsmAnalyser.Flags);      
+      def text = if (ty != null)
+      {
+        parser.env = env;
+        CheckBody();
+        body ?? "";
+      } else
+      {
+        def compiler = CompilerHost();
+        parser.env = compiler.CoreEnv;
+        text
+      }
+      Parse(text);
     }
 
     public static GetParsedResult(ty : TypeBuilder) : FsmBuilder
@@ -187,6 +214,16 @@ namespace Nemerle.Statechart
       }
     }
     
+    name : string;
+    
+    Name : string
+    {
+      get
+      {
+        if (ty != null) ty.Name else name
+      }
+    }
+    
     public GetEventClasses(evt : list[StateNode.EventClassDecl]) : list[EventClass]
     {
       def find(e)
@@ -219,6 +256,37 @@ namespace Nemerle.Statechart
     public CheckBody() : void
     {
       when (attribute is Some() && body == null) Message.Error(attr_loc, "Body expression must be a string");
+    }
+    
+    public BuildGraph(other : list[FsmBuilder]) : void
+    {
+      when (fsm.flags.Logging) Console.WriteLine($"Starting analyse fsm $(Name)...");
+      when (fsm.flags.Debug) assert2(false);
+      //def mach = ty.Manager.UserData[key] :> data_type;
+      def evt_class = GetEventClasses(fsm.event_classes);
+      def mach = other.Map(x => (x.fsm.name, x.fsm));
+      def analyser = FsmAnalyser(fsm, Name, mach, evt_class);
+      analyser.CreateGraph();
+      def warn = analyser.WarningMessages;
+      when (fsm.flags.Logging) Console.WriteLine($"Finish analyse with $(analyser.ErrorMessages.Count()) errors and $(warn.Count()) warnings");
+      def warn_file = $"$(Name)Warnings.log";
+      if (!warn.IsEmpty()) 
+      {
+        def text = warn.Map((_, x) => x);
+        warn.Iter(Message.Warning);
+        when (fsm.flags.Debug) File.WriteAllLines(warn_file, text);
+      } else when (fsm.flags.Debug) File.Delete(warn_file);
+      def err_file = $"$(Name)errors.log";
+      if (analyser.Error)
+      {
+        def err = analyser.ErrorMessages;
+        def text = err.Map((_, x) => x);
+        when (fsm.flags.Debug) System.IO.File.WriteAllLines(err_file, text);
+        err.Iter(Message.Error)
+      } else
+      {
+        when (fsm.flags.Debug) File.Delete(err_file)
+      }
     }
     
     public Build() : void
@@ -265,6 +333,8 @@ namespace Nemerle.Statechart
 
     }
 
+    
+    
     public static ParseAll(ty : TypeBuilder, typer : Typer) : void
     {
       def types = ty.Manager.Hierarchy.TopTypeBuilders();
