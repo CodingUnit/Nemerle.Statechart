@@ -1,0 +1,76 @@
+flags auto_initial, testing, log, debug;
+
+event num(int);
+
+state Locked
+{
+  entry / lock_door;
+
+  state Idle
+  {
+    $> / clear();
+    num(n) / enter_room(n) => Interaction;
+  }
+
+  state Interaction
+  {
+    cancel / beep(10) => Idle;
+
+    state EnteringRoomNumber
+    {
+      num(n) / enter_room(n);
+      key / beep(11) => EnteringPassword;
+      after (3 sec)  => InhabitantInteraction;
+    }
+
+    state EnteringPassword
+    {
+      entry / clear_pass, view_dash;
+
+      cancel / beep_fail => Idle;
+      
+      num(n) [password.Length == pass_length - 1] / enter_pass(n) => ${
+                                                                        pass_ok            => Unlocked;
+                                                                        else / beep_fail() => Idle;
+                                                                      }
+      num(n) [else] / enter_pass(n);
+    }
+
+    state InhabitantInteraction
+    {
+      enter_permitted => Unlocked;
+      
+      state Call
+      {
+        entry  / green_signal;
+        exit   / red_signal;
+        do / room_call;
+        
+        tube         => Talking;
+        after (10 s) => Idle;
+      }
+
+      state Talking
+      {
+        tube        => Idle;
+        after (15s) => Idle;
+      }
+    }
+    
+    
+  }
+}
+
+@Locked: 
+{
+  magnetic_key [key_ok] => Unlocked;
+  inside_button         => Unlocked;
+}
+
+state Unlocked
+{
+  do / beep_enter;
+  entry / unlock_door;
+  entry / clear;
+  after (5s) => Locked;
+}
