@@ -1,0 +1,143 @@
+  flags = auto_initial property_state_change log;
+  flags = debug;
+  //flags testing;
+
+  //sync form;
+  
+  entry / SaveDis;
+  
+  0 => Waiting;
+  
+  state Interface
+  {
+    new_pressed  => NewDialog;
+    open_pressed => OpenDialog;
+    (H*)
+  }
+  
+  merge merge_cancel => Interface.H;
+  
+  state NotNeedSaving : Interface
+  {
+    exit_pressed => X;
+    entry / SaveDis;
+    
+    state Saved
+    {
+      entry / CaptionFileName, SaveAsEna;
+      Change => Changed;
+    }
+    
+    state Waiting
+    {
+      entry / SaveAllDis, CaptionProgName;
+    }
+  
+  }
+  
+  state NotSaved : Interface
+  {
+    entry / SaveEna;
+
+    save_pressed => FileDialogs.SaveChecking.save;
+    open_pressed => FileDialogs;
+    new_pressed  => NewCreating;
+    
+    state New
+    {
+      entry / CaptionFile, SaveAsEna;
+      new_pressed  => NewCreating.SaveChecking.new;
+      save_pressed / send(save_as_pressed);
+      open_pressed => FileDialogs.Opening.Checking.new;
+      exit_pressed => Exiting.Checking.new;
+    }
+
+    state Changed
+    {
+      entry / CaptionChanged;
+    }
+
+  }
+  save_as_pressed (=> FileDialogs.SaveChecking.save_as;
+  exit_pressed    (=> Exiting;
+  
+  using SaveCheckingMachine; // include statemachine SaveChecking from SaveCheckingMachine class
+  
+  submachine SaveChecking : FileDialogs
+  {
+    _ => $0;
+    exit: cancel => merge_cancel;
+  }
+  
+  state FileDialogs
+  {
+    _      => Interface;
+    cancel => Interface.H;
+    
+    state Opening
+    {
+      _ => final;
+      
+      submachine Checking[SaveChecking]
+      {
+        _ => OpenDialog;
+        exit: cancel => merge_cancel;
+      }
+    }
+    
+    state OpenDialog : Opening
+    {
+      _ => $0;
+      
+      state ViewOpenDialog
+      {
+        do / ViewDialog(ViewOpenDialog);
+        OK / CurFile = OpenDialog.FileName => OpenFile;
+      }
+      
+      state OpenFile
+      {
+        do / DoActionComplete(OnOpenFileAction);
+        OK => $0;
+      }
+    }
+    
+    state NewCreating
+    {
+      _ => NotSaved;
+      
+      submachine SaveChecking
+      {
+        _ => NewDialog;
+        exit: cancel => merge_cancel;
+      }
+    }
+    
+    state NewDialog : NewCreating
+    {
+      _ => $0;
+      
+      state ViewNewDialog
+      {
+        do / DoActionComplete(ViewNewDialog);
+        OK => NewDialogAction;
+      }
+      
+      state NewDialogAction
+      {
+        do / DoActionComplete(OnNewFileAction);
+        OK => $0;
+      }
+    }
+    
+    state Exiting
+    {
+      _ => X;
+    }
+    
+    submachine Checking[SaveChecking] : Exiting
+    {
+      _ => $0;
+      exit: cancel => merge_cancel;
+    }
+  }
