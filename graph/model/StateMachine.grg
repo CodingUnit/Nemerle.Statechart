@@ -144,15 +144,17 @@ rule InitConcurrent()
 
 rule MoveSubstateToParent()
 {
-	state:State -p:Parent-> parent:State;
-			
+  old:State -o:Contains-> state:State -p:Parent-> parent:State;
+  
+  def var parent_nodes : int;
+  yield {yield parent_nodes = adjacentOutgoing(parent, Substate).size();}
   (
 	~(:ConcurrentState<parent>;)
-	iterated it
-	{
-		parent -:Substate->;
-		modify {}
-	}
+	// iterated it
+	// {
+		// parent -:Substate->;
+		// modify {}
+	// }
 	
 	modify
     { 
@@ -160,16 +162,17 @@ rule MoveSubstateToParent()
 		state <-:Substate- parent;
 		eval
 		{
-			state.idx = count(it);
+			if (parent_nodes == 0 && state.idx == -1)
+			{
+			    state.idx = 0;
+			} else
+			{
+				state.idx = parent_nodes;
+			}
 		}
     }
   |
 	:ConcurrentState<parent>;
-	iterated it
-	{
-		parent -:Substate->;
-		modify {}
-	}
 	
 	modify
     { 
@@ -178,7 +181,7 @@ rule MoveSubstateToParent()
 		def var idx : int;
 		evalhere 
 		{
-			yield idx = count(it); 
+			yield idx = parent_nodes; 
 			yield name = parent.name + "_SubRegion" + (string)idx;
 			state.idx = 0;
 		}
@@ -187,22 +190,37 @@ rule MoveSubstateToParent()
 		//eval {sub.name = name;}
 		
     }
-  )
-  
-  optional
-  {
-	old:State -o:Substate-> state;
-	
-	modify
-	{
-		delete(o);
-	}
-  }
+  )  
   
   modify
   {
-	delete(p);
+	//delete(p);
+	delete(o);
   }
+}
+
+rule ParentIdxFix()
+{
+	state:State -p:Parent-> parent:State;
+	
+	modify
+	{
+		eval
+		{
+			def ref nodes : array<Node> = adjacentIncoming(parent, Parent).asArray();
+			def var min : int = Math::intMax();
+			def min_node : State;
+			for (n : State in nodes)
+			{
+				if (n.idx < min)
+				{
+					min = n.idx;
+					min_node = n;
+				}			
+			}
+			min_node.idx = -1;
+		}
+	}
 }
 
 rule ResolveHistory()
