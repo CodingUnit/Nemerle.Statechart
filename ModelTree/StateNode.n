@@ -72,6 +72,7 @@ namespace Nemerle.Statechart
           $"Event_$name(..$parms_type)"
         }
       }
+    | Include {file : string;}
     | StateMachine
       {
         flags : MachineFlags;
@@ -85,11 +86,19 @@ namespace Nemerle.Statechart
         event_classes : list[EventClassDecl] = [];
         errors : list[Error];
         
+        public AddTopDecls(b : StateMachine) : StateMachine
+        {
+          def flags = MachineFlags(flags.flags | b.flags.flags, flags.errors + b.flags.errors);
+          def name = if (name != null) name else b.name;
+          StateNode.StateMachine(pos, flags, name, state, usings + b.usings, event_decls + b.event_decls, event_classes + b.event_classes, errors + b.errors);
+        }
+        
         GetErrors() : IEnumerable[Error]
         {
           TreeUtils.Fold(state, [], _.sub_states, (x, a) => a.Concat(x.errors)).Concat(errors)
           //StateParts.SelectMany(_.errors)
         }
+                
       }
 
     | State
@@ -113,7 +122,9 @@ namespace Nemerle.Statechart
         pseudo_states : list[PseudoState] = [];
         type          : StateType;
         errors        : list[Error] = [];
-
+        [NeedChange]
+        include       : list[Include] = [];
+                
         public Instantiate(submachine : State) : State
         {
           State(pos, name, parent, attributes, 
@@ -125,7 +136,7 @@ namespace Nemerle.Statechart
                 submachine.sub_states, 
                 pseudo_states + submachine.pseudo_states, 
                 submachine.type, 
-                errors)
+                errors, include)
         }
         
         public override ToString() : string
@@ -213,6 +224,33 @@ namespace Nemerle.Statechart
       }
     }
     
+        public static Combine(a : StateMachine, b : StateMachine) : StateMachine
+        {
+          def pos = Math.Min(a.pos, b.pos);
+          def flags = MachineFlags(a.flags.flags | b.flags.flags, a.flags.errors + b.flags.errors);
+          def aname = a.name ?? "";
+          def bname = b.name ?? "";
+          def name = if (aname.Length > bname.Length) aname else bname;
+          def state = State.Combine(a.state, b.state);
+          StateNode.StateMachine(pos, flags, name, state, a.usings + b.usings, a.event_decls + b.event_decls, a.event_classes + b.event_classes, a.errors + b.errors);
+        }
+
+        
+        public static Combine(a : State, b : State) : State
+        {
+          def entry = a.entry + b.entry;
+          def exit = a.exit + b.exit;
+          def tran = a.transitions + b.transitions;
+          def doact = a.do_activity + b.do_activity;
+          def err = a.errors + b.errors;
+          def defer = a.defer + b.defer;
+          def pseudo = a.pseudo_states + b.pseudo_states;
+          def sub = a.sub_states + b.sub_states;
+          def pos = Math.Min(a.pos, b.pos);
+          def include = a.include + b.include;
+          StateNode.State(pos, null, None(), [], entry, exit, tran, doact, defer, sub, pseudo, StateType.State(), err, include)
+        }
+
     [RecordIgnore]
     [NeedChange]
     public Id : int;

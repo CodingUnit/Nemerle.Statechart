@@ -1,153 +1,156 @@
 flags auto_initial testing force_concurrent_combination;
-  flags log, debug;
-  
-  state Operations : Powered
+flags log;//, debug;
+
+
+state Operations : Powered
+{
+	//#include "FastKeystroke.nsch"
+}
+
+state Run : Operations
+{
+  entry / set_am_pm;
+  do / update_time;
+
+  state DisplayCurrentTime
   {
+    do / disp_cur_time_blink;
+    push_hour                     => DisplayAlarmTime;
+    push_min [in_state(AlarmOn)]  => Beep;
   }
   
-  state Run : Operations
+  state CheckMode
   {
-    entry / set_am_pm;
-    do / update_time;
-
-    state DisplayCurrentTime
-    {
-      do / disp_cur_time_blink;
-      push_hour                     => DisplayAlarmTime;
-      push_min [in_state(AlarmOn)]  => Beep;
-    }
+    push_hour, push_min, after (5 s) => DisplayCurrentTime;
     
-    state CheckMode
+    state DisplayAlarmTime
     {
-      push_hour, push_min, after (5 s) => DisplayCurrentTime;
+      entry / disp_alarm_time;
+    }
+  
+    state Beep
+    {
+      do / Beep;
+    }
+  }
+  
+
+  time_set  => TimeSet;
+  alarm_set => AlarmSet;
+}
+
+state AlarmSet : Operations
+{
+  entry / al_icon_on;
+  entry / setup_time = alarm;
+  exit  / al_icon_off;
+  
+  run / alarm = setup_time => Run;
+  
+  state SetupTime
+  {
+    state SetNormal
+    {
+      do / disp_cur_set_time;
+      push_hour / UpdateHours;
+      push_min  / UpdateMins;
+      hold_hour => SetFastHour;
+      hold_min  => SetFastMin;
+    }
       
-      state DisplayAlarmTime
+    state SetFast
+    {
+      release_hour, release_min => SetNormal;
+          
+      state SetFastHour
       {
-        entry / disp_alarm_time;
+        do / set_hour_fast;
       }
-    
-      state Beep
+
+      state SetFastMin : SetFast
       {
-        do / Beep;
+        do / set_min_fast;
       }
     }
-    
-
-    time_set  => TimeSet;
-    alarm_set => AlarmSet;
-  }
   
-  state AlarmSet : Operations
+  }
+ 
+}
+  
+state TimeSet : Operations
+{
+  run / set_cur_time => Run;
+  entry / setup_time = Now;
+  
+  state DisplayCurrentTime
   {
-    entry / al_icon_on;
-    entry / setup_time = alarm;
-    exit  / al_icon_off;
-    
-    run / alarm = setup_time => Run;
-    
-    state SetupTime
+    submachine SetupTime
     {
-      state SetNormal
-      {
-        do / disp_cur_set_time;
-        push_hour / UpdateHours;
-        push_min  / UpdateMins;
-        hold_hour => SetFastHour;
-        hold_min  => SetFastMin;
-      }
-        
-      state SetFast
-      {
-        release_hour, release_min => SetNormal;
-            
-        state SetFastHour
-        {
-          do / set_hour_fast;
-        }
+      
+    }
+  }
+}
 
-        state SetFastMin : SetFast
-        {
-          do / set_min_fast;
-        }
-      }
-    
-    }
-   
-  }
-    
-  state TimeSet : Operations
-  {
-    run / set_cur_time => Run;
-    entry / setup_time = Now;
-    
-    state DisplayCurrentTime
-    {
-      submachine SetupTime
-      {
-        
-      }
-    }
-  }
 state Powered
+{
+  no_battery => NotPowered;
+  
+  state PMIconOff
   {
-    no_battery => NotPowered;
+    entry / set_am;
+    after_12_hours => PMIconOn;
+  }
     
-    state PMIconOff
-    {
-      entry / set_am;
-      after_12_hours => PMIconOn;
-    }
-      
-    state PMIconOn
-    {
-      entry / set_pm;
-      pass_12_hours => PMIconOff;
-    }
+  state PMIconOn
+  {
+    entry / set_pm;
+    pass_12_hours => PMIconOff;
+  }
+  
+  [---]
+  
+  state AlarmOff
+  {
+    entry  / alarm_icon_off;
+    alarm_on => AlarmOn;
+  }
+  
+  state AlarmOn
+  {
+    entry / alarm_icon_on;
+    alarm_off => AlarmOff;
     
-    [---]
-    
-    state AlarmOff
+    state Idle
     {
-      entry  / alarm_icon_off;
-      alarm_on => AlarmOn;
-    }
-    
-    state AlarmOn
-    {
-      entry / alarm_icon_on;
-      alarm_off => AlarmOff;
-      
-      state Idle
-      {
-        current_time_is_alarm [in_state(BacklightOn)] => @;
-        current_time_is_alarm [else]                  => Ringing;
-      }
-      
-      state Ringing
-      {
-        drowse_light / defer_alarm => Idle;
-        after (1 min) => Idle;
-        do / Beep;
-      }
-    }
-   
-   [---]
-   
-    state BacklightOff
-    {
-      entry / light_off;
-      drowse_light => BacklightOn;
+      current_time_is_alarm [in_state(BacklightOn)] => @;
+      current_time_is_alarm [else]                  => Ringing;
     }
     
-    state BacklightOn
+    state Ringing
     {
-      entry / light_on;
-      drowse_light_release => BacklightOff;
+      drowse_light / defer_alarm => Idle;
+      after (1 min) => Idle;
+      do / Beep;
     }
+  }
+ 
+ [---]
+ 
+  state BacklightOff
+  {
+    entry / light_off;
+    drowse_light => BacklightOn;
+  }
+  
+  state BacklightOn
+  {
+    entry / light_on;
+    drowse_light_release => BacklightOff;
+  }
 
-  }
-    
-  state NotPowered
-  {
-    battery => Powered;
-  }
+}
+  
+state NotPowered
+{
+  battery => Powered;
+}

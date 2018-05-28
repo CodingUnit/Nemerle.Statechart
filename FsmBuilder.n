@@ -133,6 +133,22 @@ namespace Nemerle.Statechart
 	               else Location(nloc, nloc.Line, nloc.Column + loc.Column, nloc.EndLine, nloc.EndColumn + loc.Column);
       //def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line - 1 + nloc.Line, nloc.Column) else Location(nloc, nloc.Line, nloc.Column + loc.Column);
       nloc
+    }    
+    
+    ParseInternal(file : string, text : string) : StateNode.StateMachine
+    {
+      def (ast, err) = parser.Parse(loc, text);
+      if (ast == null)
+      {
+        foreach (err in err)
+        {
+          def nloc = ConvLocation(err.Location);
+          def line = nloc.Line;
+          def col  = nloc.Column;
+          Message.Error(nloc, $"Error in input at $(line):$(col): $(err.Text) of file: $file");
+        }
+        null
+      } else ast |> OpenIncludes
     }
     
     public Parse(text : string) : void
@@ -141,20 +157,34 @@ namespace Nemerle.Statechart
              {
                //when (loc.File == "AlarmClockInternals.n") assert2(false);
                //assert2(false);
-               def (ast, err) = parser.Parse(loc, text);
-               if (ast == null)
-               {
-                 foreach (err in err)
-                 {
-                   def nloc = ConvLocation(err.Location);
-                   def line = nloc.Line;
-                   def col  = nloc.Column;
-                   Message.Error(nloc, $"Error in input at $(line):$(col): $(err.Text)");
-                 }
-                 null
-               } else ast
+               ParseInternal(loc.File, text)
              } else null;
        when (fsm != null) locator.Locate(fsm);
+    }
+    
+    OpenIncludes(src : StateNode.StateMachine) : StateNode.StateMachine
+    {
+      def included = List();
+      
+      def open(s, ch)
+      {
+        match (s)
+        {
+          | StateNode.State(include = (_ :: _) as i) as st => 
+              def fsms = i.Select(_.file).Map(x => File.ReadAllText(x) |> ParseInternal(x, _));
+              fsms |> included.AddRange;
+              def st = st.ChangeSubStates(ch.Map(x => x :> StateNode.State));
+              fsms.Fold(st, (x, a) => StateNode.Combine(a, x.state));
+          | StateNode.StateMachine as st       => st.ChangeState(ch.First() :> StateNode.State)
+          | _                                  => s
+        }
+      }
+      
+      if (src != null)
+      {
+        def res = src.Reduce(open) :> StateNode.StateMachine;
+        included.Fold(res, (x, a) => a.AddTopDecls(x));
+      } else null
     }
     
     public Parse() : void
@@ -166,9 +196,9 @@ namespace Nemerle.Statechart
         parser.env = env;
         CheckBody();
         def text = body ?? "";
-        def name = Path.GetFileNameWithoutExtension(loc.File);
-        when (!text.IsEmpty())
-          File.WriteAllText($"$(name)_gen.nsch", text);
+        //def name = Path.GetFileNameWithoutExtension(loc.File);
+        //when (!text.IsEmpty())
+        //  File.WriteAllText($"$(name)_gen.nsch", text);
         text
       } else
       {
@@ -358,35 +388,10 @@ namespace Nemerle.Statechart
         }
       }
     }
-
+      
     static MergePartial(fsm : list[StateNode.StateMachine]) : StateNode.StateMachine
     {
-      def merge_states(a, b)
-      {
-        def entry = a.entry + b.entry;
-        def exit = a.exit + b.exit;
-        def tran = a.transitions + b.transitions;
-        def doact = a.do_activity + b.do_activity;
-        def err = a.errors + b.errors;
-        def defer = a.defer + b.defer;
-        def pseudo = a.pseudo_states + b.pseudo_states;
-        def sub = a.sub_states + b.sub_states;
-        def pos = Math.Min(a.pos, b.pos);
-        StateNode.State(pos, null, None(), [], entry, exit, tran, doact, defer, sub, pseudo, StateType.State(), err)
-      }
-
-      def merge(a, b)
-      {
-        def pos = Math.Min(a.pos, b.pos);
-        def flags = MachineFlags(a.flags.flags | b.flags.flags, a.flags.errors + b.flags.errors);
-        def aname = a.name ?? "";
-        def bname = b.name ?? "";
-        def name = if (aname.Length > bname.Length) aname else bname;
-        def state = merge_states(a.state, b.state);
-        StateNode.StateMachine(pos, flags, name, state, a.usings + b.usings, a.event_decls + b.event_decls, a.event_classes + b.event_classes, a.errors + b.errors);
-      }
-
-      fsm.Reduce(merge)
+      fsm.Reduce(StateNode.Combine)
     }
 
   }
