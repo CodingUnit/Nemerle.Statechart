@@ -25,6 +25,7 @@ namespace Nemerle.Statechart
     {
       this(ty, typer, top);
       this.fsm = fsm;
+      this.files = HashSet();
       parser = Parser();
       locator = Locator(parser, loc, this);
     }
@@ -33,17 +34,16 @@ namespace Nemerle.Statechart
     {
       this.ty = ty;
       this.top = top;
+      this.files = HashSet();
       this.typer = typer;
       parser = Parser();
       locator = Locator(parser, loc, this);
     }
 
-    text : string;
-    
-    public this(name : string, text : string)
+    public this(file : string, files : HashSet[string])
     {
-      this.text = text;
-      this.name = name;
+      this.file = file;
+      this.files = files ?? HashSet();
       parser = Parser();
       locator = Locator(parser, loc, this);
     }
@@ -84,22 +84,29 @@ namespace Nemerle.Statechart
 
     loc : Location
     {
+      [Memoize]
       get
       {
+        if (file != null) 
+        {
+          def idx = Location.AddFile(file);
+          Location(idx, TextPoint(0, 0))
+        } else
         if (attribute is Some(a)) a.Location else top?.Location;
       }
     }
-
-    [Memoized]
+    
     public body : string
     {
+      [Memoize]
       get
       {
+        if (ty != null)
         match (attribute)
         {
           | Some(<[ $(str : string) ]>) => str
           | _                           => null
-        }
+        } else File.ReadAllText(file)
       }
     }
 
@@ -135,7 +142,16 @@ namespace Nemerle.Statechart
       nloc
     }    
     
-    ParseInternal(file : string, text : string) : StateNode.StateMachine
+    files : HashSet[string];
+    
+    static ParseFile(file : string, parent : FsmBuilder) : StateNode.StateMachine
+    {
+      def builder = FsmBuilder(file, if (parent != null) parent.files else null);
+      builder.Parse();
+      builder.Fsm
+    }
+    
+    ParseInternal(text : string) : StateNode.StateMachine
     {
       def (ast, err) = parser.Parse(loc, text);
       if (ast == null)
@@ -145,19 +161,19 @@ namespace Nemerle.Statechart
           def nloc = ConvLocation(err.Location);
           def line = nloc.Line;
           def col  = nloc.Column;
-          Message.Error(nloc, $"Error in input at $(line):$(col): $(err.Text) of file: $file");
+          Message.Error(nloc, $"Error in input at $(line):$(col): $(err.Text) of file: $File");
         }
         null
       } else ast |> OpenIncludes
     }
     
-    public Parse(text : string) : void
+    Parse(text : string) : void
     {
       fsm = if (!text.IsEmpty()) 
              {
                //when (loc.File == "AlarmClockInternals.n") assert2(false);
                //assert2(false);
-               ParseInternal(loc.File, text)
+               ParseInternal(text)
              } else null;
        when (fsm != null) locator.Locate(fsm);
     }
@@ -171,10 +187,17 @@ namespace Nemerle.Statechart
         match (s)
         {
           | StateNode.State(include = (_ :: _) as i) as st => 
-              def fsms = i.Select(_.file).Map(x => File.ReadAllText(x) |> ParseInternal(x, _));
+              
+              def (already, other) = i.Partition(x => files.Contains(x.file));
+              foreach (a in already)
+              {
+                Message.Error(a.Location, $"Cycle include file detected at $(a.Location)");
+              }
+              def fsms = other.Map(x => ParseFile(x.file, this));
               fsms |> included.AddRange;
               def st = st.ChangeSubStates(ch.Map(x => x :> StateNode.State));
               fsms.Fold(st, (x, a) => StateNode.Combine(a, x.state));
+              
           | StateNode.StateMachine as st       => st.ChangeState(ch.First() :> StateNode.State)
           | _                                  => s
         }
@@ -202,9 +225,10 @@ namespace Nemerle.Statechart
         text
       } else
       {
+        _ = files.Add(file);
         def compiler = CompilerHost();
         parser.env = compiler.CoreEnv;
-        text
+        body
       }
       Parse(text);
     }
@@ -249,13 +273,23 @@ namespace Nemerle.Statechart
       }
     }
     
-    name : string;
+    
+    file : string;
+    
+    File : string
+    {
+      [Memoize]
+      get
+      {
+        if (file != null) file else loc.File
+      }
+    }
     
     Name : string
     {
       get
       {
-        if (ty != null) ty.Name else name
+        if (ty != null) ty.Name else Path.GetFileNameWithoutExtension(file)
       }
     }
     
