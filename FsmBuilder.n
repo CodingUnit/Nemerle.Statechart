@@ -25,27 +25,25 @@ namespace Nemerle.Statechart
     {
       this(ty, typer, top);
       this.fsm = fsm;
-      this.files = HashSet();
       parser = Parser();
-      locator = Locator(parser, loc, this);
+      locator = Locator(parser, loc);
     }
 
     public this(ty : TypeBuilder, typer : Typer, top : TopDeclaration)
     {
       this.ty = ty;
       this.top = top;
-      this.files = HashSet();
       this.typer = typer;
       parser = Parser();
-      locator = Locator(parser, loc, this);
+      locator = Locator(parser, loc);
     }
 
     public this(file : string, files : HashSet[string])
     {
       this.file = file;
-      this.files = files ?? HashSet();
+      //this.files = files ?? HashSet();
       parser = Parser();
-      locator = Locator(parser, loc, this);
+      locator = Locator(parser, loc)
     }
     
     [Accessor]
@@ -126,29 +124,24 @@ namespace Nemerle.Statechart
       }
     }
     
-    public ConvLocation(location : Nitra.Location) : Location
-    {
-  //    def nloc = Nitra.Util.ToNemerleLocation(location);
-      def startLineColumn = location.StartLineColumn;
-	    def startLine = startLineColumn.Line;
-	    def startCol = startLineColumn.Column;
-	    def endLineColumn = location.EndLineColumn;
-	    def endLine = endLineColumn.Line;
-	    def endCol = endLineColumn.Column;
-	    def nloc =  Location(location.Source.File.FullName, startLine, startCol, endLine, endCol);
-	    def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line + loc.Line - 1, nloc.Column, loc.Line + nloc.EndLine - 1, nloc.EndColumn) 
-	               else Location(nloc, nloc.Line, nloc.Column + loc.Column, nloc.EndLine, nloc.EndColumn + loc.Column);
-      //def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line - 1 + nloc.Line, nloc.Column) else Location(nloc, nloc.Line, nloc.Column + loc.Column);
-      nloc
-    }    
+    //files : HashSet[string];
     
-    files : HashSet[string];
-    
-    static ParseFile(file : string, parent : FsmBuilder) : StateNode.StateMachine
+    ParseFile(file : string) : StateNode.StateMachine
     {
-      def builder = FsmBuilder(file, if (parent != null) parent.files else null);
-      builder.Parse();
-      builder.Fsm
+      def parser = Parser();
+      try
+      {
+        def text = File.ReadAllText(file);
+        def fsm = parser.Parse(file, text)[0];
+        def locator = Locator(parser, Location.Default);
+        locator.Locate(fsm);
+        fsm
+      }
+      catch
+      {
+        | c => Message.Error($"Error opening file $file: $c");null
+      }
+      
     }
     
     ParseInternal(text : string) : StateNode.StateMachine
@@ -158,13 +151,25 @@ namespace Nemerle.Statechart
       {
         foreach (err in err)
         {
-          def nloc = ConvLocation(err.Location);
+          def nloc = Locator.ConvLocation(err.Location, loc);
           def line = nloc.Line;
           def col  = nloc.Column;
           Message.Error(nloc, $"Error in input at $(line):$(col): $(err.Text) of file: $File");
         }
         null
-      } else ast |> OpenIncludes
+      } else 
+      {
+        def loop(ast)
+        {
+          def nast = ast |> OpenIncludes;
+          if (nast != ast : object)
+          {
+            loop(nast)
+          } else ast
+        }
+        
+        loop(ast)
+      }
     }
     
     Parse(text : string) : void
@@ -182,22 +187,23 @@ namespace Nemerle.Statechart
     {
       def included = List();
       
-      def open(s, ch)
+      def open(s, ch : list[StateNode])
       {
         match (s)
         {
           | StateNode.State(include = (_ :: _) as i) as st => 
               
-              def (already, other) = i.Partition(x => files.Contains(x.file));
-              foreach (a in already)
-              {
-                Message.Error(a.Location, $"Cycle include file detected at $(a.Location)");
-              }
-              def fsms = other.Map(x => ParseFile(x.file, this));
+              //def (already, other) = i.Partition(x => files.Contains(x.file));
+              //foreach (a in already)
+              //{
+              //  Message.Error(a.Location, $"Cycle include file detected at $(a.Location)");
+              //}
+              def fsms = i.Map(x => ParseFile(x.file));
               fsms |> included.AddRange;
-              def st = st.ChangeSubStates(ch.Map(x => x :> StateNode.State));
-              fsms.Fold(st, (x, a) => StateNode.Combine(a, x.state));
-              
+              def st = st.ChangeInclude([]);
+              def st = fsms.Fold(st, (x, a) => StateNode.Combine(a, x.state));
+              if (ch != st.sub_states : object) st.ChangeSubStates(ch.Map(x => x :> StateNode.State)) else st;
+          | State as st => if (ch != st.sub_states : object) st.ChangeSubStates(ch.Map(x => x :> StateNode.State)) else st;
           | StateNode.StateMachine as st       => st.ChangeState(ch.First() :> StateNode.State)
           | _                                  => s
         }
@@ -224,7 +230,7 @@ namespace Nemerle.Statechart
         text
       } else
       {
-        _ = files.Add(file);
+        //_ = files.Add(file);
         body
       }
       Parse(text);
