@@ -25,7 +25,7 @@ namespace Nemerle.Statechart
     {
       this(ty, typer, top);
       this.fsm = fsm;
-      parser = Parser();
+      parser = Parser(FsmAnalyser.Flags);
       locator = Locator(parser, loc);
     }
 
@@ -34,15 +34,15 @@ namespace Nemerle.Statechart
       this.ty = ty;
       this.top = top;
       this.typer = typer;
-      parser = Parser();
+      parser = Parser(FsmAnalyser.Flags);
       locator = Locator(parser, loc);
     }
 
-    public this(file : string, files : HashSet[string])
+    public this(file : string)
     {
       this.file = file;
       //this.files = files ?? HashSet();
-      parser = Parser();
+      parser = Parser(FsmAnalyser.Flags);
       locator = Locator(parser, loc)
     }
     
@@ -128,7 +128,7 @@ namespace Nemerle.Statechart
     
     ParseFile(file : string) : StateNode.StateMachine
     {
-      def parser = Parser();
+      def parser = Parser(FsmAnalyser.Flags);
       try
       {
         def text = File.ReadAllText(file);
@@ -159,16 +159,8 @@ namespace Nemerle.Statechart
         null
       } else 
       {
-        def loop(ast)
-        {
-          def nast = ast |> OpenIncludes;
-          if (nast != ast : object)
-          {
-            loop(nast)
-          } else ast
-        }
-        
-        loop(ast)
+        when (fsm != null) locator.Locate(fsm);
+        ast |> OpenIncludes(_, [File])
       }
     }
     
@@ -179,11 +171,10 @@ namespace Nemerle.Statechart
                //when (loc.File == "AlarmClockInternals.n") assert2(false);
                //assert2(false);
                ParseInternal(text)
-             } else null;
-       when (fsm != null) locator.Locate(fsm);
+             } else null;       
     }
     
-    OpenIncludes(src : StateNode.StateMachine) : StateNode.StateMachine
+    OpenIncludes(src : StateNode.StateMachine, parents : list[string]) : StateNode.StateMachine
     {
       def included = List();
       
@@ -193,17 +184,20 @@ namespace Nemerle.Statechart
         {
           | StateNode.State(include = (_ :: _) as i) as st => 
               
-              //def (already, other) = i.Partition(x => files.Contains(x.file));
-              //foreach (a in already)
-              //{
-              //  Message.Error(a.Location, $"Cycle include file detected at $(a.Location)");
-              //}
-              def fsms = i.Map(x => ParseFile(x.file));
+              def (already, other) = i.Partition(x => parents.Contains(x.file));
+              foreach (a in already)
+              {
+                Message.Error(a.Location, $"Cycle include file detected at $(a.Location)");
+              }
+              
+              def fsms = other.Map(x => (x.file, ParseFile(x.file)));
+              def fsms = fsms.Filter((_, x) => x != null);
+              def fsms = fsms.Map((f, x) => OpenIncludes(x, f :: parents));
               fsms |> included.AddRange;
-              def st = st.ChangeInclude([]);
-              def st = fsms.Fold(st, (x, a) => StateNode.Combine(a, x.state));
-              if (ch != st.sub_states : object) st.ChangeSubStates(ch.Map(x => x :> StateNode.State)) else st;
-          | State as st => if (ch != st.sub_states : object) st.ChangeSubStates(ch.Map(x => x :> StateNode.State)) else st;
+              def st = st.ChangeSubStates(ch.Map(x => x :> StateNode.State));
+              fsms.Fold(st, (x, a) => StateNode.Combine(a, x.state));
+              // else st;
+          | State as st => st.ChangeSubStates(ch.Map(x => x :> StateNode.State))
           | StateNode.StateMachine as st       => st.ChangeState(ch.First() :> StateNode.State)
           | _                                  => s
         }
@@ -218,7 +212,6 @@ namespace Nemerle.Statechart
     
     public Parse() : void
     {
-      parser.flags_map = Hashtable(FsmAnalyser.Flags);      
       //assert2(false);
       def text = if (ty != null)
       {

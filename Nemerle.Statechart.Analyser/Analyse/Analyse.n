@@ -180,12 +180,40 @@ namespace Nemerle.Statechart
       graph.CreateGraph(Name, Fsm, Hashtable(StateMachinesInProj));
     }
     
+    ParseExprs(fsm : StateNode.StateMachine) : StateNode.StateMachine
+    {
+      def map_act(x)
+      {
+        | FsmAction.ParseString(s) as a => Nemerle.Compiler.MainParser.ParseExpr(GlobalEnv, s) |> FsmAction.Expr(a.pos, _)
+        | x                             => x
+      }
+      
+      def map_actions(x)
+      {
+        Actions(x.pos, x.actions.Map(map_act))
+      }
+      
+      def parse(x, ch)
+      {
+        match (x)
+        {
+           | StateNode.StateMachine as st => st.ChangeState(ch.First() :> StateNode.State)
+           | State as st                  => def entry = st.entry.Map(x => map_actions(x.action));
+                                             st.ChangeSubStates(ch.Map(x => x : StateNode.State));
+                                             
+        }
+      }
+      
+      fsm.Reduce(parse)
+    }
+    
     public Analyse() : void
     {
       try
       {
         CheckParseErrors();
         PrintFsm(Fsm, $"$(Name)_statenode.txt");
+        ParseExprs();
         CreateStateMap();
         graph.CreateGraph(Name, Fsm, LoadedMachines);
         when (FsmFlags.Logging) PrintFsmState(TopState, $"$(Name)_after_created.txt");

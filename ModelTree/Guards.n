@@ -18,18 +18,10 @@ namespace Nemerle.Statechart
   public variant GuardNode : LocatedNode
   {
     | Empty   { this() {base(-1)} }
-    | Expr    
+    | ParseString {expr : string;}
+    | Expr 
     {
-      expr : string;
-      
-      public ExecExpr : PExpr
-      {
-        [Memoize]
-        get
-        {
-          MainParser.ParseExpr(Env, expr);
-        }
-      }
+      expr : PExpr 
     }
     //| InState {state : string;}
     | Else
@@ -39,14 +31,9 @@ namespace Nemerle.Statechart
     public static Combine(a : GuardNode, b : GuardNode) : GuardNode
     {
       | (GuardNode.Empty, GuardNode.Empty) => GuardNode.Empty(a.pos)
-      | (Expr(ae), Expr(be))   => GuardNode.Expr(a.pos, $"$ae && $be")
+      | (Expr(ae), Expr(be))   => GuardNode.Expr(a.pos, <[ $ae && $be ]>)
       | (Else, Else)           => GuardNode.Else(a.pos)
-      | (Empty, a)             
-      | (a, Empty)
-      | (Else, Expr as a)      
-      | (Expr as a, Else)
-      | (Expr as a, _)         
-      | (_, Expr as a)         => a
+      | (_, a)                 => a
     }
     
     public Name : string
@@ -56,10 +43,10 @@ namespace Nemerle.Statechart
       {
         match (this)
         {
-          | Expr(c)   => $"[$c]"
-          //| InState(c) => $"InState($c)" 
-          | Else       => "[else]"
-          | Empty      => ""
+          | Expr(c)        => $"[$c]"
+          | ParseString(s) => $"[$s]"
+          | Else           => "[else]"
+          | Empty          => ""
         }
       }
     }
