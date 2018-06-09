@@ -98,9 +98,21 @@ namespace Nemerle.Statechart
           TreeUtils.Fold(state, [], _.sub_states, (x, a) => a.Concat(x.errors)).Concat(errors)
           //StateParts.SelectMany(_.errors)
         }
-                
+       
+        public Rebuild(ch : list[StateNode]) : StateNode.StateMachine
+        {
+          def first = ch.First();
+          if (state != first : object)
+          {
+            def st = this.ChangeState(first :> StateNode.State);
+            st.Location = Location;
+            st
+          } else this
+        }
       }
 
+      
+        
     | State
       {
         this(pos : int, n : string, type : StateType) { base(pos, 0);name = n; this.type = type; }
@@ -127,7 +139,17 @@ namespace Nemerle.Statechart
         errors        : list[Error] = [];
         [NeedChange]
         include       : list[Include] = [];
-                
+     
+        public Rebuild(ch : list[StateNode]) : StateNode.State
+        {
+          if (sub_states != ch : object)
+          {
+            def st = ChangeSubStates(ch.Map(x => x :> StateNode.State));
+            st.Location = Location;
+            st
+          } else this
+        }
+        
         public Instantiate(submachine : State) : State
         {
           State(pos, name, parent, attributes, 
@@ -233,33 +255,33 @@ namespace Nemerle.Statechart
       }
     }
     
-        public static Combine(a : StateMachine, b : StateMachine) : StateMachine
-        {
-          def pos = if (a.Location.File == b.Location.File) Math.Min(a.pos, b.pos) else b.pos;
-          def flags = MachineFlags(a.flags.flags | b.flags.flags, a.flags.errors + b.flags.errors);
-          def aname = a.name ?? "";
-          def bname = b.name ?? "";
-          def name = if (aname.Length > bname.Length) aname else bname;
-          def state = State.Combine(a.state, b.state);
-          StateNode.StateMachine(pos, flags, name, state, a.usings + b.usings, a.event_decls + b.event_decls, a.event_classes + b.event_classes, a.errors + b.errors);
-        }
+    public static Combine(a : StateMachine, b : StateMachine) : StateMachine
+    {
+      def pos = if (a.Location.File == b.Location.File) Math.Min(a.pos, b.pos) else b.pos;
+      def flags = MachineFlags(a.flags.flags | b.flags.flags, a.flags.errors + b.flags.errors);
+      def aname = a.name ?? "";
+      def bname = b.name ?? "";
+      def name = if (aname.Length > bname.Length) aname else bname;
+      def state = State.Combine(a.state, b.state);
+      StateNode.StateMachine(pos, flags, name, state, a.usings + b.usings, a.event_decls + b.event_decls, a.event_classes + b.event_classes, a.errors + b.errors);
+    }
 
         
-        public static Combine(a : State, b : State) : State
-        {
-          def entry = a.entry + b.entry;
-          def exit = a.exit + b.exit;
-          def tran = a.transitions + b.transitions;
-          def doact = a.do_activity + b.do_activity;
-          def err = a.errors + b.errors;
-          def defer = a.defer + b.defer;
-          def pseudo = a.pseudo_states + b.pseudo_states;
-          def sub = a.sub_states + b.sub_states;
-          def pos = if (a.Location.File == b.Location.File) Math.Min(a.pos, b.pos) else b.pos;
-          def include = a.include + b.include;
-          StateNode.State(pos, null, None(), [], entry, exit, tran, doact, defer, sub, pseudo, StateType.State(), err, include)
-        }
-
+    public static Combine(a : State, b : State) : State
+    {
+      def entry = a.entry + b.entry;
+      def exit = a.exit + b.exit;
+      def tran = a.transitions + b.transitions;
+      def doact = a.do_activity + b.do_activity;
+      def err = a.errors + b.errors;
+      def defer = a.defer + b.defer;
+      def pseudo = a.pseudo_states + b.pseudo_states;
+      def sub = a.sub_states + b.sub_states;
+      def pos = if (a.Location.File == b.Location.File) Math.Min(a.pos, b.pos) else b.pos;
+      def include = a.include + b.include;
+      StateNode.State(pos, null, None(), [], entry, exit, tran, doact, defer, sub, pseudo, StateType.State(), err, include)
+    }    
+    
     [RecordIgnore]
     [NeedChange]
     public Id : int;

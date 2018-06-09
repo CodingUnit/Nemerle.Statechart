@@ -159,7 +159,7 @@ namespace Nemerle.Statechart
         null
       } else 
       {
-        when (fsm != null) locator.Locate(fsm);
+        when (ast != null) locator.Locate(ast);
         ast |> OpenIncludes(_, [File])
       }
     }
@@ -189,16 +189,17 @@ namespace Nemerle.Statechart
               {
                 Message.Error(a.Location, $"Cycle include file detected at $(a.Location)");
               }
+              def st = st.Rebuild(ch);
               
               def fsms = other.Map(x => (x.file, ParseFile(x.file)));
               def fsms = fsms.Filter((_, x) => x != null);
               def fsms = fsms.Map((f, x) => OpenIncludes(x, f :: parents));
               fsms |> included.AddRange;
-              def st = st.ChangeSubStates(ch.Map(x => x :> StateNode.State));
+              
               fsms.Fold(st, (x, a) => StateNode.Combine(a, x.state));
               // else st;
-          | State as st => st.ChangeSubStates(ch.Map(x => x :> StateNode.State))
-          | StateNode.StateMachine as st       => st.ChangeState(ch.First() :> StateNode.State)
+          | State as st                        => st.Rebuild(ch)
+          | StateNode.StateMachine as st       => st.Rebuild(ch)
           | _                                  => s
         }
       }
