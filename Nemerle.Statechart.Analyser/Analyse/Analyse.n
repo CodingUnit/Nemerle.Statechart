@@ -181,81 +181,91 @@ namespace Nemerle.Statechart
       graph.CreateGraph(Name, Fsm, Hashtable(StateMachinesInProj));
     }
     
+    locate[T](x : T, y : T) : T where T : LocatedNode     
+    {
+      x.Location = y.Location;
+      x
+    }
+      
     public ParseExprs(fsm : StateNode.StateMachine) : StateNode.StateMachine
     {
+      
+      
       def map_act(x)
       {
-        | FsmAction.ParseString(s) as a => MainParser.ParseExpr(Env, s) |> FsmAction.Expr(a.pos, _)
+        | FsmAction.ParseString(s) as a => MainParser.ParseExpr(Env, s) |> FsmAction.Expr(a.pos, _) |> locate(_, x)
         | x                             => x
       }
       
       def map_actions(x)
       {
-        Actions(x.pos, x.actions.Map(map_act))
+        Actions(x.pos, x.actions.Map(map_act)) |> locate(_, x)
       }
       
       def map_guard(x)
       {
-        | GuardNode.ParseString(s) as a => MainParser.ParseExpr(Env, s) |> GuardNode.Expr(a.pos, _)
+        | GuardNode.ParseString(s) as a => MainParser.ParseExpr(Env, s) |> GuardNode.Expr(a.pos, _) |> locate(_, x)
         | x                             => x
       }
 
       def map_node(p)
       {
-        def act = p.action.Map(map_actions);
-        def guard = p.guard |> map_guard;
-        def to = p.to |> map_target;
-        p.ChangeGuardActionTo(guard, act, to)
+        def act   = map_actions |> p.action.Map;
+        def guard = p.guard     |> map_guard;
+        def to    = p.to        |> map_target;
+        p.ChangeGuardActionTo(guard, act, to) |> locate(_, p)
       }
     
       and map_target(t)
       {
-        | TargetType.PseudoState(j) as t => j |> map_pseudo |> t.ChangeNode
+        | TargetType.PseudoState(j) as t => j |> map_pseudo |> t.ChangeNode |> locate(_, t)
         | x                              => x
       }
       
       and map_junc(j)
       {
-        j.nodes.Map(map_node) |> j.ChangeNodes
+        j.nodes.Map(map_node) |> j.ChangeNodes |> locate(_, j)
       }
       
       and map_pseudo(p : PseudoStateModelNode)
       {
-        | PseudoStateModelNode.Junction as j => j          |> map_junc
-        | EntryPoint as e                    => e.tran     |> map_tran      |> e.ChangeTran
-        | ExitPoint as e                     => map_tran   |> e.tran.Map    |> e.ChangeTran
-        | Initial as i                       => map_tran   |> i.tran.Map    |> i.ChangeTran
-        | History as h                       => map_tran   |> h.default.Map |> h.ChangeDefault
-        | Fork as f                          => map_target |> f.target.Map  |> f.ChangeTarget
-        | Join as j                          => j.tran     |> map_tran      |> j.ChangeTran
-        | x                                  => x
+        (match (p)
+        {
+          | PseudoStateModelNode.Junction as j => j          |> map_junc
+          | EntryPoint as e                    => e.tran     |> map_tran      |> e.ChangeTran
+          | ExitPoint as e                     => map_tran   |> e.tran.Map    |> e.ChangeTran
+          | Initial as i                       => map_tran   |> i.tran.Map    |> i.ChangeTran
+          | History as h                       => map_tran   |> h.default.Map |> h.ChangeDefault
+          | Fork as f                          => map_target |> f.target.Map  |> f.ChangeTarget
+          | Join as j                          => j.tran     |> map_tran      |> j.ChangeTran
+          | x                                  => x
+        }) |> locate(_, p)
       }
       
       and map_tran(t)
       {
-        def guard = t.guard |> map_guard;
-        def to    = t.to    |> map_target;
-        def act   = t.action.Map(map_actions);
-        act |> t.ChangeAction |> _.ChangeGuard(guard) |> _.ChangeTo(to)
+        def guard = t.guard     |> map_guard;
+        def to    = t.to        |> map_target;
+        def act   = map_actions |> t.action.Map;
+        t.ChangeGuardActionTo(guard, act, to) |> locate(_, t)
       }
       
       def parse(x, ch)
       {
         match (x)
         {
-           | StateNode.StateMachine as st => st.ChangeState(ch.First() :> StateNode.State)
-           | State as st                  => def entry = st.entry.Map(x => map_actions(x.action) |> x.ChangeAction);
-                                             def exit  = st.exit.Map(x => map_actions(x.action) |> x.ChangeAction);
-                                             def doact = st.do_activity.Map(x => map_actions(x.action) |> x.ChangeAction);
+           | StateNode.StateMachine as st => ch |> st.Rebuild
+           | State as st                  => def entry = st.entry.Map(x => map_actions(x.action) |> x.ChangeAction |> locate(_, x));
+                                             def exit  = st.exit.Map(x => map_actions(x.action) |> x.ChangeAction |> locate(_, x));
+                                             def doact = st.do_activity.Map(x => map_actions(x.action) |> x.ChangeAction |> locate(_, x));
                                              def tran  = st.transitions.Map(map_tran);
-                                             //def tran = tran.Map(x => x.to |> map_target |> x.ChangeTo);
-                                             st.pseudo_states.Map(x => x.node |> map_pseudo |> x.ChangeNode) 
+                                             st.pseudo_states.Map(x => x.node |> map_pseudo |> x.ChangeNode |> locate(_, x)) 
                                              |> st.ChangePseudoStates
                                              |> _.ChangeTransitions(tran)
                                              |> _.ChangeEntry(entry)
                                              |> _.ChangeExit(exit)
                                              |> _.ChangeDoActivity(doact)
-                                             |> _.ChangeSubStates(ch.Map(x => x :> StateNode.State))
+                                             |> _.Rebuild(ch)
            | x                            => x                                             
         }
       }
