@@ -16,22 +16,45 @@ namespace CppParserPrinter
         | mod_protected
     };
 
-  public variant CTree
+  public variant CTree : IPrintable
   {
       | Compound {decls : list[CTree] }
-      | NameSpace { name : string; decls : list[CTree]}
+      | NameSpace { name : string; decls : CTree}
       | Type { type : CComplexType;}
-      | Func { ret_type : CType; name : string; parms : list[CType]; body : list[CStatement] }
+      | Func { ret_type : CType; name : string; parms : list[CType]; body : CStatement }
       | Decl { specifiers : list[CSpec]; type : CType; decls : list[CDecl] }
+      
+      public Print(del : int) : string
+      {
+        match (this)
+        {
+          | Func(r, n, p, b) => def ret = r.Print(del);
+                                def parms = p.Map(x => x.Print(0));
+                                def body = b.Print(del);
+                                $<#$ret $n(..$(parms;", "))$body#>
+        }
+      }
   }
 
   // class содержимое
-  public variant CTypeDecl
+  public variant CTypeDecl : IPrintable
   {
-      | Type { type : CComplexType }
-      | Func { func : CTree.Func }
-      | Modifier { mod : CMod; }
+      | Type { type : CComplexType } // nested type
+      | Func { func : CTree.Func } // method
+      | Modifier { mod : CMod; } // public:
       | Decl { var : CTree.Decl }
+      
+      public Print(del : int) : string
+      {
+        match (this)
+        {
+          | Type(t) => t.Print(del)
+          | Func(f) => f.Print(del)
+          | Modifier(m) => def del = string(' ', del);
+                           $"$del$(CComplexType.PrintMod(m)):"
+          | Decl(v)     => v.Print(del)
+        }
+      }
   }
 
   // typedef, enum, union, storage class auto, register, static, extern
@@ -39,7 +62,7 @@ namespace CppParserPrinter
   // function qualif inline, noreturn
 
   // тип переменных и параметров функции
-  public variant CType
+  public variant CType : IPrintable
   {
       | Void
       | ComplexTypeDecl { type : CComplexType; }
@@ -62,15 +85,20 @@ namespace CppParserPrinter
       | Pointer { type : CType; rank : list[int] }
       | Reference { type : CType }
       | Array { type : CType; rank : list[int]}
+      
+      public Print(del : int) : string
+      {
+        ""
+      }
   }
 
-  public class CEnumDecl
+  public class CEnumDecl : IPrintable
   {
       public name : string;
       public val  : option[CConstExpr];
   }
 
-  public class CUnionDecl
+  public class CUnionDecl : IPrintable
   {
       public name : string;
       public val  : option[CConstExpr];
@@ -78,7 +106,8 @@ namespace CppParserPrinter
 
   interface IPrintable
   {
-    Print(delim : string) : string;
+    Print(delim : int) : string;
+    
   }
  
    [Record]
@@ -91,15 +120,30 @@ namespace CppParserPrinter
 
       name : option[string];
 
+      public static PrintMod(mod : CMod) : string
+      {
+        | CMod.mod_private   => "private"
+        | CMod.mod_public    => "public"
+        | CMod.mod_protected => "protected"
+      }
+      
       public Print(delim : int) : string
       {
         match (this)
         {
           | Class(b, d) => def name = name.Value;
                            def del = string(' ', delim);
-                           def del1 = string(' ', delim + 1);
-                           def decls = [""];
-                           $<#class $name\n$del{\n$(del1)..$decls\n}#>
+                           def delim1 = delim + 1;
+                           def del1 = string(' ', delim1);
+                           def decls = d.Map(x => del1 + x.Print(delim1));
+                           def base1 = match (b)
+                                       {
+                                         | [] => ""
+                                         | _  => def b = b.Map((x, y) => $"$(PrintMod(x)) $(y.Print(0))");
+                                                 $<# : ..$(b; ", ")#>
+                                                 
+                                       }
+                           $<#$(del)class $name$base1\n$del{\n$(del1)..$decls\n$del}#>
         }
       }
  
@@ -217,7 +261,7 @@ namespace CppParserPrinter
       | Sizeof { expr : CExpr }
   }
 
-  public variant CStatement
+  public variant CStatement : IPrintable
   {
       | Compound { body : list[CStatement]}
       | Empty
@@ -234,6 +278,17 @@ namespace CppParserPrinter
       | While { cond : CExpr; body : CStatement }
       | DoWhile { body : CStatement; cond : CExpr }
       | For { init : option[CInitExpr]; cond : option[CExpr]; iter : option[CExpr]; body : CStatement }
+      
+      public Print(del : int) : string
+      {
+        match (this)
+        {
+          | Compound(b) => def delim = string(' ', del);
+                           def b = b.Map(x => x.Print(del + 1));
+                           $<#$delim{..$(b;"\n")$delim}#>
+        }
+      }
+      
   }
 
   public variant CSwitchCase
