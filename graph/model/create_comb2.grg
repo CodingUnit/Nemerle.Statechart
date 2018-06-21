@@ -1,35 +1,147 @@
 rule CreateComb()
 {
-	st:State;
-	
-	iterated
-	{
-		st -:Substate-> ch:State;
-		
-		break negative {if {ch.combinations.empty();}}
-		
-		modify {}
-	}
-	
-	if {st.combinations.empty();}
+	-:TopState-> st:State;		
 	
 	modify
 	{
+		eval
+		{
+			(def comb : Node) = get_comb(st);
+			if (typeof(comb) == OrConf)
+			{
+				def or : OrConf = (OrConf)comb;
+				def ref op : array<Node> = or.oper;
+				for (i : Node in op)
+				{
+					create_comb(i);
+				}
+			}
+		}
+		
 	}
 }
 
-function get_comb(n : State) : set<Node>
+procedure create_comb(n : Node)
 {
-	def ref childs : set<Node> = adjacentOutgoing(n, Substate);
-	return (childs);
+	def prev : Node;
+	if (typeof(n) == AndConf)
+	{
+		def ref and : array<Node> = ((AndConf)n).oper;
+		for (idx : int -> i : State in and)
+		{
+			def new_st : ActiveState;
+			if (typeof(i) != SubRegion && typeof(i) != ConcurrentState)
+			{
+				if (idx == 0)
+				{
+					(new_st) = add(ActiveBaseState);
+				} else
+				{
+					(new_st) = add(ActiveState);
+				}
+			}
+			new_st.id 	= i.id;
+			new_st.name = i.name;
+			new_st.entry_act = i.entry_act;
+			new_st.exit_act = i.exit_act;
+			new_st.do_act = i.do_act;
+			new_st.defer  = i.defer;
+			new_st.depth	  = i.depth;
+			
+			if (idx != 0)			
+			{
+				add(And, prev, new_st);
+			}
+			prev = new_st;
+		}
+	}
+	return;
 }
 
-procedure and_comb(x : Node, y : Node) : (AndConf)
+procedure get_comb(n : State) : (Node)
+{
+	def ref childs 	: array<Node> = adjacentOutgoing(n, Substate).asArray();	
+	def childs_comb : Node;
+	
+	if (typeof(n) != ConcurrentState)
+	{
+		for (idx : int -> i : State in childs)
+		{
+			(def comb : Node) = get_comb(i);
+			if (idx == 0)
+			{
+				childs_comb = comb;
+			} else
+			{
+				(childs_comb) = or_comb(childs_comb, i);
+			}
+		}
+	} else
+	{
+		for (idx : int -> i : State in childs)
+		{
+			(def comb : Node) = get_comb(i);
+			if (idx == 0)
+			{
+				childs_comb = comb;
+			} else
+			{
+				(childs_comb) = and_comb(childs_comb, i);
+			}
+		}
+	}
+	if (childs.empty())
+	{
+		return (n);
+	} else
+	{
+		(def res : Node) = and_comb(n, childs_comb);
+		return (res);
+	}	
+}
+
+procedure or_comb(x : Node, y : Node) : (Node)
+{
+	if (typeof(x) == OrConf && typeof(y) == OrConf)
+	{
+		def nx : OrConf = (OrConf)x;
+		def ny : OrConf = (OrConf)y;
+		nx.oper += ny.oper;
+		rem(y);
+		return (nx);		
+	}	
+	if (typeof(y) == OrConf)
+	{
+		def ny : OrConf = (OrConf)y;				
+		ny.oper.add(x, 0);
+		return (ny);		
+	} else
+	if (typeof(x) == OrConf)
+	{
+		def nx : OrConf = (OrConf)x;
+		nx.oper.add(y);
+		return (nx);		
+	} else	
+	{
+		(def n : OrConf) = add(OrConf);
+		n.oper = array<Node>[x, y];
+		return (n);
+	}
+		
+}
+
+procedure and_comb(x : Node, y : Node) : (Node)
 {	
+	if (typeof(x) == State && typeof(y) == State)
+	{
+		(def n : AndConf) = add(AndConf);
+		n.oper = array<Node>[x, y];
+		return (n);
+	} else
 	if (typeof(x) == State && typeof(y) == AndConf)
 	{
 		def ny : AndConf = (AndConf)y;
-		ny.oper.add(x);
+		ny.oper.add(x, 0);
 		return (ny);
 	} else
 	if (typeof(x) == AndConf && typeof(y) == State)
@@ -42,15 +154,71 @@ procedure and_comb(x : Node, y : Node) : (AndConf)
 	{
 		def nx : AndConf = (AndConf)x;
 		def ny : AndConf = (AndConf)y;
-		nx.oper |= ny.oper;
-		rem(ny);
+		nx.oper += ny.oper;
+		rem(y);
 		return (nx);
 	}
+	if ((typeof(x) == State  || typeof(x) == AndConf) && typeof(y) == OrConf)
+	{
+		def ny : OrConf = (OrConf)y;
+		def ref oper : array<Node> = ny.oper;
+		def ref res : array<Node> = array<Node>[];
+		for (i : Node in oper)
+		{			
+			(def and : Node) = and_comb(x, i);
+			res.add(and);
+		}
+		ny.oper = res;
+		return (ny);		
+	} else
+	if (typeof(x) == OrConf && (typeof(y) == State  || typeof(y) == AndConf))
+	{
+		def nx : OrConf = (OrConf)x;
+		def ref oper : array<Node> = nx.oper;
+		def ref res  : array<Node> = array<Node>[];
+		for (i : Node in oper)
+		{
+			(def and : Node) = and_comb(i, y);		
+			res.add(and);
+		}
+		nx.oper = res;
+		return (nx);		
+	} else
+	if (typeof(x) == AndConf && typeof(y) == OrConf)
+	{
+		def ny : OrConf = (OrConf)y;
+		def ref oper : array<Node> = ny.oper;
+		def ref res  : array<Node> = array<Node>[];
+		for (i : Node in oper)
+		{
+			(def and : Node) = and_comb(x, i);
+			res.add(and);
+		}
+		ny.oper = res;
+		return (ny);		
+	} else
+	if (typeof(x) == OrConf && typeof(y) == OrConf)
+	{
+		def nx : OrConf = (OrConf)x;
+		def ny : OrConf = (OrConf)y;
+		def ref operx : array<Node> = nx.oper;
+		def ref opery : array<Node> = ny.oper;
+		def ref res   : array<Node> = array<Node>[];
+		for (ix : Node in operx)
+		{			
+			for (iy : Node in opery)
+			{
+				(def and : Node) = and_comb(ix, iy);
+				res.add(and);
+			}
+		}
+		nx.oper = res;
+		rem(y);
+		return (nx);		
+	}		
 	else 
 	{
-		(def n : AndConf) = add(AndConf);
-		n.oper = set<Node>{x, y};
-		return (n);
+		return (null);
 	}
 	
 }
