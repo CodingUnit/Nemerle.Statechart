@@ -27,23 +27,29 @@ namespace CppParserPrinter
       
       public override Print(del : int) : string
       {
-        def delim = del |> Del;
+        Delim($"$this", del)
+      }
+      
+      public override ToString() : string
+      {
         match (this)
         {
-          | Func(r, n, p, b) => def ret   = r |> Print(_, del);
-                                def parms = p |> Print(_, 0);
-                                def body  = b |> Print(_, del);
-                                $<#$delim$ret $n(..$(parms;", "))$body#>
-          | Compound(d)      => def decls = d |> Print(_, del);
-                                $"..$decls"
-          | NameSpace(n, d)  => def decls = d.decls |> Print(_, del + 1);
-                                $<#$(delim)namespace $n\n$(delim){..$(decls;"\n")\n$(delim)}#>
+          //| Decl(spec, type, decls)          => $""
+          | Type(t)                          => $"$t"
+          | Func(ret, name, parms, body)     => $<#$ret $name(..$(parms;", "))$body#>
+          | Compound(decls)                  => $"..$decls"
+          | NameSpace(name, Compound(decls)) => 
+$<#namespace $name
+{
+  ..$(decls;"\n")
+}#>
         }
       }
   }
 
   public variant CMethodQualifier : IPrintable
   {
+    | None
     | Const
     | Volatile
     
@@ -57,37 +63,28 @@ namespace CppParserPrinter
   public variant CTypeDecl : IPrintable
   {
       | Type { type : CComplexType } // nested type
-      | Method { specifier : option[CSpec]; func : CTree.Func; qualifiers : list[CMethodQualifier]; } // method
+      | Method { specifier : CSpec; func : CTree.Func; qualifiers : list[CMethodQualifier]; } // method
       | Modifier { mod : CMod; } // public:
       | Decl { var : CTree.Decl }
       | Constructor {cl : CComplexType.Class;parms : list[CType]; body : CStatement}
-      | Destructor {specifier : option[CSpec];cl : CComplexType.Class;body : CStatement}
+      | Destructor {specifier : CSpec;cl : CComplexType.Class;body : CStatement}
       | CopyAssignmentOperator {cl : CComplexType.Class;qualifiers : list[CMethodQualifier];body : CStatement}
       
       public override Print(del : int) : string
       {
-        def delim = del |> Del;
+        $"$this" |> Delim(_, del)
+      }
+      
+      public override ToString() : string
+      {
         match (this)
         {
-          | Type(t) => t.Print(del)
-          | Method(sp, (r, n, p, b), q) => 
-                          def ret   = r |> Print(_, del);
-                          def parms = p |> Print(_, 0);
-                          def body  = b |> Print(_, del);
-                          def spec = sp |> PrintOpt(_, 0, x => x + " ");
-                          def qual  = q |> Print(_, 0, x => " " + x);
-                          $<#$(delim)$spec$ret $n(..$(parms;", "))..$(qual; " ")$body#>
-                          
-          | Modifier(m) => $"$delim$(CComplexType.PrintMod(m)):"
-                           
-          | Decl(v)     => v.Print(del)
-          | Constructor(c, p, b) => def parms = p |> Print(_, 0);
-                                    def body  = b |> Print(_, del);
-                                    $<#$(delim)$(c.name.Value)(..$(parms; ",")$body#>
-          | Destructor(sp, c, b) => 
-                                    def spec = sp |> PrintOpt(_, 0, x => x + " ");
-                                    def body = b |> Print(_, del);
-                                    $<#$(delim)$spec~$(c.name.Value)()$body#>
+          | Type(t)                                            => $"$t"
+          | Method(spec, (ret, name, parms, body), qual)       => $<#$spec $ret $name(..$(parms; ", ")) ..$(qual; " ")$body#>
+          | Modifier(m)                                        => $"$m:"
+          | Decl(v)                                            => $"$v"
+          | Constructor(Class(name = Some(name)), parms, body) => $<#$name(..$(parms; ",")$body#>
+          | Destructor(spec, Class(name = Some(name)), body)   => $<#$spec~$name()$body#>
         }
       }
   }
@@ -161,11 +158,11 @@ namespace CppParserPrinter
         Print(_, del) |> printer.Map;
     }
     
-    public PrintOpt[T](printer : option[T], del : int, func : string -> string) : string where T : IPrintable
-    {
-        def func = if (func != null) func else x => x;
-        (x => Print(x, del) |> func) |> printer.MapDefault(_, "");
-    }
+    //public PrintOpt[T](printer : option[T], del : int, func : string -> string) : string where T : IPrintable
+    //{
+    //    def func = if (func != null) func else x => x;
+    //    (x => Print(x, del) |> func) |> printer.MapDefault(_, "");
+    //}
     
     public Print(printer : IPrintable, del : int) : string
     {
@@ -197,6 +194,14 @@ namespace CppParserPrinter
 
       public name : option[string];
 
+      public Name : string
+      {
+        [Memoize]
+        get
+        {
+          name.Value
+        }
+      }
       //public static PrintMod(mod : CMod) : string
       //{
       //  | CMod.mod_private   => "private"
@@ -213,30 +218,22 @@ namespace CppParserPrinter
       {
         match (this)
         {
-          | Class(b, d) => def name = name.Value;
-                           def delim1 = 1;
-                           def del1 = delim1 |> Del;
-                           def decls = d.Map(x => del1 + x.Print(delim1));
-                           def base1 = match (b)
-                                       {
-                                         | [] => ""
-                                         | _  => def b = b.Map((x, y) => $"$(x.Print(0)) $(y.Print(0))");
-                                                 $<# : ..$(b; ", ")#>
+          | Class(b, decls) => def base1 = match (b)
+                                           {
+                                             | [] => ""
+                                             | _  => def b = b.Map((x, y) => $"$x $y");
+                                                     $<# : ..$(b; ", ")#>
                                                  
-                                       }
-$<#class $name$base1
+                                           }
+$<#class $Name$base1
 {
-  ..$decls
+  ..$(decls; "\n")
 };#>
                            
-          | Struct(d)   => 
-                           def delim1 = 1;
-                           def del1 = delim1 |> Del;
-                           def decls = d.Map(x => del1 + x.Print(delim1));
-                           def name = name.Value;
-$<#struct $name
+          | Struct(decls)   => 
+$<#struct $Name
 {
-  ..$decls
+  ..$(decls; "\n")
 };#>
         }
       }
@@ -245,6 +242,7 @@ $<#struct $name
 
   public variant CSpec : IPrintable
   {
+      | None
       | Typedef
       | Auto
       | Register
@@ -352,7 +350,14 @@ $<#struct $name
       {
         match (this)
         {
-          | Mul => $"$left * $right"
+          | Mul        => $"$left * $right"
+          | Div        => $"$left / $right"
+          | LogicAnd   => $"$left & $right"
+          | LowerEqual => $"$left <= $right"
+          | ArrayIndex => $"$left[$right]"
+          | SeqOp      => $"$left, $right"
+          | CallFunc   => $"$left$right"
+          | TypeConv   => $"$(left)$right"
         }
       }
   }
