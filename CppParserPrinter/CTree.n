@@ -37,11 +37,11 @@ namespace CppParserPrinter
           //| Decl(spec, type, decls)          => $""
           | Type(t)                          => $"$t"
           | Func(ret, name, parms, body)     => $<#$ret $name(..$(parms;", "))$body#>
-          | Compound(decls)                  => $"..$decls"
+          | Compound(decls)                  => $<#..$(decls;"\n")#>
           | NameSpace(name, Compound(decls)) => 
 $<#namespace $name
 {
-  ..$(decls;"\n")
+  ..$decls
 }#>
         }
       }
@@ -66,9 +66,9 @@ $<#namespace $name
       | Method { specifier : CSpec; func : CTree.Func; qualifiers : list[CMethodQualifier]; } // method
       | Modifier { mod : CMod; } // public:
       | Decl { var : CTree.Decl }
-      | Constructor {cl : CComplexType.Class;parms : list[CType]; body : CStatement}
-      | Destructor {specifier : CSpec;cl : CComplexType.Class;body : CStatement}
-      | CopyAssignmentOperator {cl : CComplexType.Class;qualifiers : list[CMethodQualifier];body : CStatement}
+      | Constructor {cl : CComplexType.Class;parms : list[CType]; body : CStatement.Compound}
+      | Destructor {specifier : CSpec;cl : CComplexType.Class;body : CStatement.Compound}
+      | CopyAssignmentOperator {cl : CComplexType.Class;qualifiers : list[CMethodQualifier];body : CStatement.Compound}
       
       public override Print(del : int) : string
       {
@@ -80,7 +80,7 @@ $<#namespace $name
         match (this)
         {
           | Type(t)                                            => $"$t"
-          | Method(spec, (ret, name, parms, body), qual)       => $<#$spec $ret $name(..$(parms; ", ")) ..$(qual; " ")$body#>
+          | Method(spec, (ret, name, parms, body), qual)       => $<#$spec $ret $name(..$(parms; ", ")) ..$(qual; " ")$body#>.Trim()
           | Modifier(m)                                        => $"$m:"
           | Decl(v)                                            => $"$v"
           | Constructor(Class(name = Some(name)), parms, body) => $<#$name(..$(parms; ",")$body#>
@@ -128,12 +128,22 @@ $<#namespace $name
   {
       public name : string;
       public val  : option[CConstExpr];
+      
+      public override Print(del : int) : string
+      {
+        ""
+      }
   }
 
   public class CUnionDecl : IPrintable
   {
       public name : string;
       public val  : option[CConstExpr];
+      
+      public override Print(del : int) : string
+      {
+        ""
+      }
   }
 
   public abstract class IPrintable
@@ -329,7 +339,7 @@ $<#struct $Name
       | OrAssign
       | XorAssign
       | LShiftAssign
-      | RShfiftAssign
+      | RShiftAssign
       | Equal
       | NotEqual
       | Greater
@@ -350,27 +360,65 @@ $<#struct $Name
       {
         match (this)
         {
-          | Mul        => $"$left * $right"
-          | Div        => $"$left / $right"
-          | LogicAnd   => $"$left & $right"
-          | LowerEqual => $"$left <= $right"
-          | ArrayIndex => $"$left[$right]"
-          | SeqOp      => $"$left, $right"
-          | CallFunc   => $"$left$right"
-          | TypeConv   => $"$(left)$right"
+          | Mul         => $"$left * $right"
+          | Div         => $"$left / $right"
+          | Add         => $"$left + $right"
+          | Sub         => $"$left - $right"
+          | Mod         => $"$left % $right"
+          | LogicOr     => $"$left | $right"
+          | LogicAnd    => $"$left & $right"
+          | Xor         => $"$left ^ $right"
+          | LShift      => $"$left << $right"
+          | RShift      => $"$left >> $right"
+          | CondOper(c) => $"$c ? $left : $right"
+          | Assign      => $"$left = $right"
+          | AddAssign   => $"$left += $right"
+          | SubAssign   => $"$left -= $right"
+          | MulAssign   => $"$left *= $right"
+          | DivAssign   => $"$left /= $right"
+          | ModAssign   => $"$left %= $right"
+          | AndAssign   => $"$left &= $right"
+          | OrAssign    => $"$left |= $right"
+          | XorAssign   => $"$left ^= $right"
+          | RShiftAssign => $"$left >>= $right"
+          | LShiftAssign => $"$left <<= $right"
+          | Equal        => $"$left == $right"
+          | NotEqual     => $"$left != $right"
+          | Greater      => $"$left > $right"
+          | Lower        => $"$left < $right"
+          | GreaterEqual => $"$left >= $right"
+          | LowerEqual  => $"$left <= $right"
+          | ArrayIndex  => $"$left[$right]"
+          | MemberAccess => $"$left.$right"
+          | MemberPointerAccess => $"$left->$right"
+          | SeqOp       => $"$left, $right"
+          | CallFunc    => $"$left$right"
+          | TypeConv    => $"$(left)$right"
         }
       }
   }
 
   public variant CConstExpr
   {
-      | Compound { expr : list[CConstExpr] }
+      //| Compound { expr : list[CConstExpr] }
       | Int { val : int }
       | Enum { val : string }
       | Oper { oper : CReadOnlyOper }
       | Char { val : Char }
       | Float { val : double }
       | Sizeof { expr : CExpr }
+      
+      public override ToString() : string
+      {
+        match (this)
+        {
+          | Int(v)
+          | Float(v : ValueType) => $"$v"
+          | Enum(v)
+          | Char(v : object)     => $"$v"
+          | Sizeof(v)            => $"sizeof($v)"
+        }
+      }
   }
 
   public variant CStatement : IPrintable
@@ -389,7 +437,7 @@ $<#struct $Name
       | If { cond : CExpr; body : CStatement; else_body : option[CStatement]}
       | While { cond : CExpr; body : CStatement }
       | DoWhile { body : CStatement; cond : CExpr }
-      | For { init : option[CInitExpr]; cond : option[CExpr]; iter : option[CExpr]; body : CStatement }
+      | For { init : CInitExpr; cond : option[CExpr]; iter : option[CExpr]; body : CStatement }
       
       public override Print(del : int) : string
       {
@@ -401,6 +449,38 @@ $<#struct $Name
         }
       }
       
+      public override ToString() : string
+      {
+        match (this)
+        {
+          | Compound(b) => 
+$<#{
+  ..$(b;"\n")
+}#>
+          | Expression(e) => $"$e"
+          | Continue      => "continue;"
+          | Decl(t)       => $"$t"
+          | DoWhile(b, c) => 
+$<#do
+{
+  $b
+} while ($c);
+#>
+          | For(i, c, it, b) => 
+$<#for ($i; $c; $it)
+{
+  $b
+}
+#>
+          | Goto(l) => $"goto $l;"
+          | If(c, b, e) => def els = e.MapDefault(x => $" else\n$x", "");
+$<#if ($c)
+{
+  $b
+}$els
+#>
+        }
+      }
   }
 
   public variant CSwitchCase
@@ -411,6 +491,7 @@ $<#struct $Name
 
   public variant CInitExpr
   {
+      | None
       | Decl { decl : CStatement.Decl }
       | Expr { expr : CExpr }
   }
@@ -429,11 +510,18 @@ $<#struct $Name
       | Constant { lit : CConstant }
       | Operator { op : COper }
 
+      public override ToString() : string
+      {
+      }
   }
 
   public variant PreprocessorExpr
   {
     | Include {file : string;}
     | Define {parms : list[string]; body : string;}
+    | If
+    | Else
+    | Ifdef
+    | Endif
   }
 }
