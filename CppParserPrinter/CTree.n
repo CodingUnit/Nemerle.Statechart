@@ -15,60 +15,25 @@ namespace CppParserPrinter
     | Private
     | Public
     | Protected
+    
+    public override ToString() : string
+    {
+      match (this)
+      {
+        | Private   => "private"
+        | Public    => "public"
+        | Protected => "protected"
+      }
+    }
   }
 
   public variant CTree : IPrintable
   {
       | Compound {decls : list[CTree] }
-      | NameSpace { name : string; decls : CTree.Compound}
+      | NameSpace { name : string; decls : CTree}
       | Type { type : CComplexType;}
-      | Func { ret_type : CType; name : string; parms : list[CType]; body : CStatement.Compound }
+      | Func { ret_type : CType; name : string; parms : list[CType]; body : CStatement}
       | Decl { specifiers : list[CSpec]; type : CType; decls : list[CDecl] }
-      
-      public override Print(del : int) : string
-      {
-        Delim($"$this", del)
-      }
-      
-      public override ToString() : string
-      {
-        match (this)
-        {
-          //| Decl(spec, type, decls)          => $""
-          | Type(t)                          => $"$t"
-          | Func(ret, name, parms, body)     => $<#$ret $name(..$(parms;", "))$body#>
-          | Compound(decls)                  => $<#..$(decls;"\n")#>
-          | NameSpace(name, Compound(decls)) => 
-$<#namespace $name
-{
-  ..$decls
-}#>
-        }
-      }
-  }
-
-  public variant CMethodQualifier : IPrintable
-  {
-    | None
-    | Const
-    | Volatile
-    
-    public override Print(del : int) : string
-    {
-      ""
-    }
-  }
-  
-  // class содержимое
-  public variant CTypeDecl : IPrintable
-  {
-      | Type { type : CComplexType } // nested type
-      | Method { specifier : CSpec; func : CTree.Func; qualifiers : list[CMethodQualifier]; } // method
-      | Modifier { mod : CMod; } // public:
-      | Decl { var : CTree.Decl }
-      | Constructor {cl : CComplexType.Class;parms : list[CType]; body : CStatement.Compound}
-      | Destructor {specifier : CSpec;cl : CComplexType.Class;body : CStatement.Compound}
-      | CopyAssignmentOperator {cl : CComplexType.Class;qualifiers : list[CMethodQualifier];body : CStatement.Compound}
       
       public override Print(del : int) : string
       {
@@ -79,12 +44,88 @@ $<#namespace $name
       {
         match (this)
         {
+          | Decl(spec, type, decls)          => $<#..($spec; " ") $type ..$decls#>.Trim()
+          | Type(t)                          => $"$t"
+          | Func(ret, name, parms, body)     => 
+$<#$ret $name(..$(parms;", "))
+{
+  $body
+}#>
+          | Compound(decls)                  => $<#..$(decls;"\n")#>
+          | NameSpace(name, d) => 
+$<#namespace $name
+{
+  $d
+}
+#>
+        }
+      }
+  }
+
+  public variant CMethodQualifier : IPrintable
+  {
+    | None
+    | Const
+    
+    public override Print(del : int) : string
+    {
+      $"$this" |> Delim(_, del)
+    }
+    
+    public override ToString() : string
+    {
+      match (this)
+      {
+        | None  => ""
+        | Const => "const"
+      }
+    }
+    
+  }
+  
+  // class содержимое
+  public variant CTypeDecl : IPrintable
+  {
+      | Type { type : CComplexType } // nested type
+      | Method { specifier : CSpec; func : CTree.Func; qualifiers : CMethodQualifier; } // method
+      | Modifier { mod : CMod; } // public:
+      | Decl { var : CTree.Decl }
+      | Constructor {cl : CComplexType.Class;parms : list[CType]; body : CStatement}
+      | Destructor {specifier : CSpec;cl : CComplexType.Class;body : CStatement}
+      | AssignmentOperator {ret_type : CType; parms : list[CType]; body : CStatement;qualifiers : list[CMethodQualifier];}
+      
+      public override Print(del : int) : string
+      {
+        $"$this" |> Delim(_, del)
+      }
+      
+      public override ToString() : string
+      {
+        match (this)
+        {
+          | AssignmentOperator(ret, parms, body, qual)         => 
+$<#$ret operator=(..$(parms; ",")) $qual
+{
+  $body
+}#>
           | Type(t)                                            => $"$t"
-          | Method(spec, (ret, name, parms, body), qual)       => $<#$spec $ret $name(..$(parms; ", ")) ..$(qual; " ")$body#>.Trim()
+          | Method(spec, (ret, name, parms, body), qual)       => 
+$<#$spec $ret $name(..$(parms; ", ")) $qual
+{
+  $body
+}#>.Trim()
           | Modifier(m)                                        => $"$m:"
           | Decl(v)                                            => $"$v"
-          | Constructor(Class(name = Some(name)), parms, body) => $<#$name(..$(parms; ",")$body#>
-          | Destructor(spec, Class(name = Some(name)), body)   => $<#$spec~$name()$body#>
+          | Constructor(Class(name = Some(name)), parms, body) => 
+$<#$name(..$(parms; ",")
+{
+  $body
+}#>
+          | Destructor(spec, Class(name = Some(name)), body)   => 
+$<#$spec~$name()
+{
+  $body
+}#>
         }
       }
   }
@@ -424,6 +465,7 @@ $<#struct $Name
   public variant CStatement : IPrintable
   {
       | Compound { body : list[CStatement]}
+      | BraceStatement { comp : Compound;} // {..e}
       | Empty
       | Null // ;
       | Decl { type: CTree.Decl; }
@@ -453,9 +495,10 @@ $<#struct $Name
       {
         match (this)
         {
-          | Compound(b) => 
+          | Compound(b) => $<#..$(b;"\n")}#>
+          | BraceStatement(b) => 
 $<#{
-  ..$(b;"\n")
+  $b
 }#>
           | Expression(e) => $"$e"
           | Continue      => "continue;"

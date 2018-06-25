@@ -19,7 +19,7 @@ rule CreateComb()
 						def ref and : array<Node> = ((AndConf)i).oper;
 						create_comb(and);
 					} else
-					if (typeof(i) == State)
+					if (typeof(i) >= State)
 					{
 						create_comb(array<Node>[i]);
 					}
@@ -30,7 +30,7 @@ rule CreateComb()
 				def ref and : array<Node> = ((AndConf)comb).oper;
 				create_comb(and);
 			} else
-			if (typeof(comb) == State)
+			if (typeof(comb) >= State)
 			{
 				create_comb(array<Node>[comb]);
 			}
@@ -96,35 +96,41 @@ procedure get_comb(n : State) : (Node)
 	{
 		for (idx : int -> i : State in childs)
 		{
-			(def comb : Node) = get_comb(i);
+			(def comb : Node) = get_comb(i);			
 			if (idx == 0)
 			{
 				childs_comb = comb;
 			} else
 			{
-				(childs_comb) = or_comb(childs_comb, i);
+				(childs_comb) = or_comb(childs_comb, comb);
 			}
+			emit("\nchilds_comb_or:", print_oper(childs_comb));
 		}
 	} else
 	{
 		for (idx : int -> i : State in childs)
 		{
 			(def comb : Node) = get_comb(i);
+			
 			if (idx == 0)
 			{
 				childs_comb = comb;
 			} else
 			{
-				(childs_comb) = and_comb(childs_comb, i);
+				emit("\nand:", print_oper(childs_comb), "&", print_oper(comb));
+				(childs_comb) = and_comb(childs_comb, comb);
 			}
+			emit("\nchilds_comb_and:", print_oper(childs_comb));
 		}
 	}
 	if (childs.empty())
 	{
+		emit("\nget_comb:", print_oper(n));
 		return (n);
 	} else
 	{
 		(def res : Node) = and_comb(n, childs_comb);
+		emit("\nget_comb:", print_oper(res));
 		return (res);
 	}	
 }
@@ -140,10 +146,10 @@ function print_oper(x : Node) : string
 		{
 			if (idx == 0)
 			{
-				str = print_oper(i);
+				str = str + print_oper(i);
 			} else
 			{
-				str = str + "& " + print_oper(i);
+				str = str + " & " + print_oper(i);
 			}
 		}
 		str = str + ")";
@@ -156,15 +162,15 @@ function print_oper(x : Node) : string
 		{
 			if (idx == 0)
 			{
-				str = print_oper(i);
+				str = str + print_oper(i);
 			} else
 			{
-				str = str + "| " + print_oper(i);
+				str = str + " | " + print_oper(i);
 			}
 		}
 		str = str + ")";
 	} else
-	if (typeof(x) == State)
+	if (typeof(x) >= State)
 	{
 		str = nameof(x);
 	}
@@ -173,34 +179,37 @@ function print_oper(x : Node) : string
 
 procedure or_comb(x : Node, y : Node) : (Node)
 {
-	emit(print_oper(x), "|", print_oper(y));
+	emit("\n", print_oper(x), " | ", print_oper(y));
 	if (typeof(x) == OrConf && typeof(y) == OrConf)
 	{
 		def nx : OrConf = (OrConf)x;
 		def ny : OrConf = (OrConf)y;
-		nx.oper += ny.oper;
-		rem(y);
-		emit("res:", print_oper(nx));
-		return (nx);		
+		(def n : OrConf) = add(OrConf);
+		n.oper = nx.oper + ny.oper;
+		//rem(y);
+		emit("\nres:", print_oper(n));
+		return (n);		
 	}	
 	if (typeof(y) == OrConf)
 	{
-		def ny : OrConf = (OrConf)y;				
-		ny.oper.add(x, 0);
-		emit("res:", print_oper(ny));
-		return (ny);		
+		def ny : OrConf = (OrConf)y;			
+		(def n : AndConf) = add(AndConf);		
+		n.oper = array<Node>[x] + ny.oper;
+		emit("\nres:", print_oper(n));
+		return (n);		
 	} else
 	if (typeof(x) == OrConf)
 	{
+		(def n : AndConf) = add(AndConf);
 		def nx : OrConf = (OrConf)x;
-		nx.oper.add(y);
-		emit("res:", print_oper(nx));
-		return (nx);		
+		n.oper = nx.oper + array<Node>[y];
+		emit("\nres:", print_oper(n));
+		return (n);		
 	} else	
 	{
 		(def n : OrConf) = add(OrConf);
 		n.oper = array<Node>[x, y];
-		emit("res:", print_oper(n));
+		emit("\nres:", print_oper(n));
 		return (n);
 	}
 		
@@ -208,40 +217,44 @@ procedure or_comb(x : Node, y : Node) : (Node)
 
 procedure and_comb(x : Node, y : Node) : (Node)
 {	
-	emit(print_oper(x), "&", print_oper(y));
-	if (typeof(x) == State && typeof(y) == State)
+	emit("\n", print_oper(x), " & ", print_oper(y));
+	//emit(typeof(x), typeof(y));
+	if (typeof(x) >= State && typeof(y) >= State)
 	{
 		(def n : AndConf) = add(AndConf);
 		n.oper = array<Node>[x, y];
-		emit("res:", print_oper(n));
+		emit("\nres:", print_oper(n));
 		return (n);
 	} else
-	if (typeof(x) == State && typeof(y) == AndConf)
+	if (typeof(x) >= State && typeof(y) == AndConf)
 	{
+		(def n : AndConf) = add(AndConf);
 		def ny : AndConf = (AndConf)y;
-		ny.oper.add(x, 0);
-		emit("res:", print_oper(ny));
-		return (ny);
+		n.oper = array<Node>[x] + ny.oper;		
+		emit("\nres:", print_oper(n));
+		return (n);
 	} else
-	if (typeof(x) == AndConf && typeof(y) == State)
+	if (typeof(x) == AndConf && typeof(y) >= State)
 	{
 		def nx : AndConf = (AndConf)x;
-		nx.oper.add(y);
-		emit("res:", print_oper(nx));
-		return (nx);
+		(def n : AndConf) = add(AndConf);
+		n.oper = nx.oper + array<Node>[y];
+		emit("\nres:", print_oper(n));
+		return (n);
 	} else
 	if (typeof(x) == AndConf && typeof(y) == AndConf)
 	{
 		def nx : AndConf = (AndConf)x;
 		def ny : AndConf = (AndConf)y;
-		nx.oper += ny.oper;
-		rem(y);
-		emit("res:", print_oper(nx));
-		return (nx);
+		(def n : AndConf) = add(AndConf);
+		n.oper = nx.oper + ny.oper;		
+		emit("\nres:", print_oper(n));
+		return (n);
 	}
-	if ((typeof(x) == State  || typeof(x) == AndConf) && typeof(y) == OrConf)
+	if ((typeof(x) >= State  || typeof(x) == AndConf) && typeof(y) == OrConf)
 	{
 		def ny : OrConf = (OrConf)y;
+		(def n : OrConf) = add(OrConf);
 		def ref oper : array<Node> = ny.oper;
 		def ref res : array<Node> = array<Node>[];
 		for (i : Node in oper)
@@ -249,61 +262,66 @@ procedure and_comb(x : Node, y : Node) : (Node)
 			(def and : Node) = and_comb(x, i);
 			res.add(and);
 		}
-		ny.oper = res;
-		emit("res:", print_oper(ny));
-		return (ny);		
+		n.oper = res;
+		emit("\nres:", print_oper(n));
+		return (n);		
 	} else
-	if (typeof(x) == OrConf && (typeof(y) == State  || typeof(y) == AndConf))
+	if (typeof(x) == OrConf && (typeof(y) >= State  || typeof(y) == AndConf))
 	{
 		def nx : OrConf = (OrConf)x;
 		def ref oper : array<Node> = nx.oper;
 		def ref res  : array<Node> = array<Node>[];
+		(def n : OrConf) = add(OrConf);
 		for (i : Node in oper)
 		{
 			(def and : Node) = and_comb(i, y);		
 			res.add(and);
 		}
-		nx.oper = res;
-		emit("res:", print_oper(nx));
-		return (nx);		
+		n.oper = res;
+		emit("\nres:", print_oper(n));
+		return (n);		
 	} else
-	if (typeof(x) == AndConf && typeof(y) == OrConf)
-	{
-		def ny : OrConf = (OrConf)y;
-		def ref oper : array<Node> = ny.oper;
-		def ref res  : array<Node> = array<Node>[];
-		for (i : Node in oper)
-		{
-			(def and : Node) = and_comb(x, i);
-			res.add(and);
-		}
-		ny.oper = res;
-		emit("res:", print_oper(ny));
-		return (ny);		
-	} else
+	// if (typeof(x) == AndConf && typeof(y) == OrConf)
+	// {
+		// def ny : OrConf = (OrConf)y;
+		// def ref oper : array<Node> = ny.oper;
+		// def ref res  : array<Node> = array<Node>[];
+		// (def n : AndConf) = add(OrConf);
+		// for (i : Node in oper)
+		// {
+			// (def and : Node) = and_comb(x, i);
+			// res.add(and);
+		// }
+		// n.oper = res;
+		// emit("\nres:", print_oper(ny));
+		// return (n);		
+	//} else
 	if (typeof(x) == OrConf && typeof(y) == OrConf)
 	{
 		def nx : OrConf = (OrConf)x;
 		def ny : OrConf = (OrConf)y;
-		def ref operx : array<Node> = nx.oper;
-		def ref opery : array<Node> = ny.oper;
 		def ref res   : array<Node> = array<Node>[];
+		def ref operx : array<Node> = nx.oper;
+		def ref opery : array<Node> = ny.oper;		
+		(def n : OrConf) = add(OrConf);
+		emit("\nor_and_or:");		
 		for (ix : Node in operx)
 		{			
 			for (iy : Node in opery)
 			{
+				emit("\nor_and_or:", print_oper(ix), print_oper(iy));
 				(def and : Node) = and_comb(ix, iy);
 				res.add(and);
 			}
 		}
-		nx.oper = res;
-		rem(y);
-		emit("res:", print_oper(nx));
-		return (nx);		
+		n.oper = res;
+		//rem(y);
+		emit("\nres:", print_oper(n));
+		return (n);		
 	}		
 	else 
 	{
-		emit("res:", "null");
+		emit("\nres:", "null");
 		return (null);
 	}
 	
