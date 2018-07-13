@@ -1,0 +1,757 @@
+// graph rewrite rule file, shows how to define a model to use, and how a rule looks like,
+// with the pattern to match and the rewrite to apply, with lhs and rhs elements being indentified by their name
+
+#using "StateMachine.gm"
+#using "Unresolved.gm"
+#using "Config.gm"
+
+#include "find.grg"
+#include "create_comb.grg"
+#include "config.grg"
+#include "tran_path.grg"
+#include "create_comb2.grg"
+
+rule IdCorrect()
+{
+	n:StateMachineNode;
+	n2:StateMachineNode;
+	
+	if {n.id == n2.id;}
+	
+	modify
+	{
+		eval
+		{
+			n.id = n2.id + 1;
+		}
+	}
+}
+
+rule CreateId()
+{
+	n:StateMachineNode;
+	
+	if {n.id == 0;}
+	
+	modify
+	{		
+		eval 
+		{			
+			n.id = uniqueof(n);
+		}
+		//def var idx : int = 1;
+		//yield {idx}
+	}
+}
+
+
+
+rule CreateNode(parent : Node, type : Node, var name : string) : (Node)
+{
+  (
+      :NamedNode<type>;
+	  
+	  modify
+	  {
+		def var uname : string;
+		//eval { uname = UniqueName(name); }
+		t:typeof(type)@($ = uname);
+		parent -:Contains-> t;
+		//n:N@($="foo", i=42, s="Hallo Welt");
+		
+		eval 
+		{ 
+			def named : NamedNode = (NamedNode)t; 
+			named.name = name; 
+			yield ret = t;
+		}
+	  } 
+	| 
+	
+	  negative {  :NamedNode<type>;  }
+	//t:Node<type>;
+	  
+	  modify
+	  {
+		parent -:Contains-> t:typeof(type);
+		
+		eval {yield ret = t;}
+	  }
+  )
+  
+  modify
+  {
+    def ret : Node;
+	return (ret);
+  }
+  
+}
+
+ // pattern UniqueName(var name : string, def var ret : string)
+ // {
+    // (
+		// n:Node{@(name)};
+		
+		// :UniqueNameRec(name, 0, yield ret);
+    // |
+	    // negative {n:Node{@(name)};}
+		// yield {yield ret = name;}
+	// )
+// }
+
+ // pattern UniqueNameRec(var name : string, var idx : int, def var ret : string)
+ // {
+	// //def var nn : string;
+	// //yield {yield nn = name + (string)idx;}
+	// alternative
+	// {
+		// found
+		// {
+	     
+		 // //n:Node{@(name)};
+		 // if{ nodeByName(name) != null; }
+		
+		 // :UniqueNameRec(name, idx + 1, yield ret);
+		// }
+		// not_found
+		// {
+	// //|
+	     // negative {if{ nodeByName(name) != null; }}
+		 // yield {yield ret = name;}
+		// }
+	// //)
+	// }
+ // }
+
+rule InitConcurrent()
+{
+	
+	state:ConcurrentState;
+
+	iterated it
+    {
+		state -:Region->;
+		
+		modify
+		{
+		}
+	}
+	
+	modify
+	{
+		eval { state.regions_count = count(it); }
+	}
+}
+
+rule MoveSubstateToParent()
+{
+  old:State -o:Contains-> state:State -p:Parent-> parent:State;
+  
+  hom(old, parent);
+  hom(state, parent);
+  
+  def var parent_nodes : int;
+  
+  yield {yield parent_nodes = adjacentOutgoing(parent, Substate).size();}
+  (
+	~(:ConcurrentState<parent>;)
+	
+	modify
+    { 
+		state <-:Substate- parent;
+		eval
+		{
+			if (parent_nodes == 0 && state.idx == -1)
+			{
+			    state.idx = 0;
+			} else
+			{
+				state.idx = parent_nodes;
+			}
+		}
+    }
+  |
+	:ConcurrentState<parent>;
+	
+	modify
+    { 
+	    def var name : string;
+		def var idx : int;
+		evalhere
+		{
+			yield idx = parent_nodes; 
+			yield name = parent.name + "_SubRegion" + (string)idx;
+			state.idx = 0;
+		}
+	    
+		parent -:Region-> sub:SubRegion@($=name, name = name, idx = idx) -:Substate-> state;		
+		
+    }
+  )  
+  
+  modify
+  {	
+	delete(p);
+	delete(o);
+  }
+}
+
+rule ParentIdxFix()
+{
+	state:State -p:Parent-> parent:State;
+	
+	modify
+	{
+		eval
+		{
+			def ref nodes : array<Node> = adjacentIncoming(parent, Parent).asArray();
+			def var min : int = Math::intMax();
+			def min_node : State;
+			for (n : State in nodes)
+			{
+				if (n.idx < min)
+				{
+					min = n.idx;
+					min_node = n;
+				}			
+			}
+			min_node.idx = -1;
+		}
+	}
+}
+
+rule ResolveHistory()
+{
+	n:Node -tran:Transition-> not_resolved:UnresolvedHistory;
+	parent:NamedNode -:Contains-> not_resolved;
+	hom(n, parent);
+	
+	if {not_resolved.name.length() == 0;}
+	
+	//def hist : History;	
+	
+	(	    
+		:UnresolvedDeepHistory<not_resolved>;
+		
+		h:DeepHistory;				
+		:FindHierarchy(parent, h);//not_resolved.type		
+		
+		modify 
+		{
+			//eval {yield hist = h;}
+			delete(not_resolved);
+			n -tran->! h;
+		}
+	| 
+	    :UnresolvedShallowHistory<not_resolved>;
+		
+		h:ShallowHistory;				
+		:FindHierarchy(parent, h);//not_resolved.type
+	
+		modify 
+		{
+			//eval {yield hist = h;}
+			delete(not_resolved);		
+			n -tran->! h;			
+		}
+	| 		
+		if {typeof(not_resolved) == UnresolvedHistory;}		
+				
+		h:History;
+		///parent -:Contains-> h:History;
+		:FindHierarchy(parent, h);//not_resolved.type
+		//yield {yield hist = h;}
+		modify 
+		{
+			//eval {yield hist = h;}
+			delete(not_resolved);			
+			n -tran->! h;
+		}
+		
+	)
+	
+	// modify
+	// {
+		// // def hist : History;
+		// // n -tran->! hist;
+		// //eval {emitdebug(parent); emitdebug(n);}
+		// //modify {delete(not_resolved);}
+	// }
+}
+
+rule ResolveHistoryPath()
+{
+	n:Node -tran:Transition-> not_resolved:UnresolvedHistory;	 	
+	
+	if {not_resolved.name.length() != 0;}
+		//def ret : History;
+	h:History;		
+	:FindQualifiedType(not_resolved.name.asArray("."), h);
+	
+	// modify {delete(not_resolved);n -:copy<tran>-> hist;}
+	modify
+	{
+		n -:copy<tran>-> h;
+		delete(not_resolved);
+	}
+}
+
+rule ResolveFinal()
+{
+	parent:State -e:Contains-> not_resolved:UnresolvedFinalState <-tran:Transition- n:Node;
+	
+	(
+		parent -:Contains-> final:FinalState;
+		
+		modify { eval {yield ret = final;} }
+	
+	|
+		 ~( parent -:Contains-> :FinalState; )
+		
+		 modify
+		 {
+		   parent -:Contains-> final:FinalState;
+		  
+		   eval {yield ret = final;}
+		 }
+	)		
+
+	modify
+	{			
+		delete(not_resolved);
+		def ret : Node;
+		n -:copy<tran>-> ret;
+	}		
+}
+
+rule ResolveTerminate()
+{
+	not_resolved:UnresolvedTerminate <-tran:Transition- n:Node;
+	
+	
+	alternative
+	{
+	   found
+	   {	   
+		 -:TopState-> . -:Contains-> term:Terminate;
+		
+		 modify { eval {yield ret = term;} }		
+	   } 
+	   not
+	   {
+		 -:TopState-> top:Node;
+		 ~( top -:Contains-> term:Terminate; )
+		
+		 modify
+		 {
+		   top -:Contains-> term:Terminate;
+		  
+		   eval {yield ret = term;}
+		 }
+	   }
+	}		
+
+	modify
+	{			
+		delete(not_resolved);
+		def ret : Node;
+		n -:copy<tran>-> ret;
+	}		
+}
+
+rule ResolveExitPoint()
+{	    
+	parent:Node -e:Contains-> not_resolved:UnresolvedExitPoint; // match parent contains unresolved exit point node
+	
+	alternative
+	{
+	   found
+	   {
+		not_resolved <-tran:Transition- n:Node;	 // match node with transition to not resolved node
+		hom(parent, n); // homomorphically parent and n
+		
+		ex:ExitPoint;
+		def r : Node;
+		:FindNameHierarchy(parent, ex, not_resolved.name, yield r);
+					
+		modify { n -:copy<tran>-> r; }
+	   }
+	   not
+	   {	     
+		 not_resolved <-tran:Transition- n:Node;
+		 hom(parent, n);
+		 ~(
+			def r : Node;
+			ex:ExitPoint;
+			:FindNameHierarchy(parent, ex, not_resolved.name, yield r);//not_resolved.name,
+		  )
+		
+		 modify
+		 {
+		   parent -:Contains-> ex:ExitPoint;
+		   eval {ex.name = not_resolved.name;}		   
+		   n -:copy<tran>-> ex;		   
+		 }
+	   }
+	}
+	 modify
+	 {			
+		delete(not_resolved);
+	 } 
+}
+
+rule ResolveEntryPoint()
+{
+	parent:Node -e:Contains-> not_resolved:UnresolvedEntryPoint;
+	
+	alternative
+	{
+	   found
+	   {
+		not_resolved <-tran:Transition- n:Node;	
+		hom(parent, n);
+		
+		ex:EntryPoint;
+		def r : Node;
+		:FindNameHierarchy(parent, ex, not_resolved.name, yield r);
+					
+		modify { n -:copy<tran>-> r; }
+		
+	   } 
+		
+	   not
+	   {	     
+		 not_resolved <-tran:Transition- n:Node;
+		 hom(parent, n);
+		 negative
+		 {
+			def r : Node;
+			ex:EntryPoint;
+			
+			:FindNameHierarchy(parent, ex, not_resolved.name, yield r);//not_resolved.name,
+		 }
+		
+		 modify
+		 {
+		   parent -:Contains-> ex:EntryPoint;
+		   eval {ex.name = not_resolved.name;}
+		   n -:copy<tran>-> ex;		
+		 }
+	   }
+	}
+	 modify { delete(not_resolved); } 
+}
+
+// resolve unresolved nodes
+rule ResolveNames()
+{
+	// not contains edge  
+  st:Node -e:Edge \ Contains-> not_resolved:Unresolved; // node that points to unresolved
+
+  
+  res:NamedNode; // named node
+  hom(st, res); // maybe that type  
+  
+  if {res.name == not_resolved.name;} // if name equals
+  if (isReachable(st, res, Contains)); // if reachable, in that statemachine
+  
+  replace
+  {
+	st -e->! res; // create edge to resolved			
+	//delete(not_resolved); // delete unresolved		
+	exec([ResolveNames2]);
+  }
+}
+
+// resolve unresolved nodes
+rule ResolveQualifiedNames()
+{  
+  st:Node -e:Edge \ Contains->  not_resolved:Unresolved; // node that points to unresolved  
+  //if {typeof(e) != Contains;}
+	// search for qualified path node, return last node of that path 
+  if {not_resolved.name.indexOf(".") != -1;}
+  def res:StateMachineNode;
+  :FindQualified(not_resolved.name.asArray("."), yield res);
+  
+  modify
+  {
+	st -:copy<e>-> res; // create edge to resolved			
+	delete(not_resolved); // delete unresolved	
+  }
+}
+
+rule ResolveNames2()
+{
+ 
+  st:Node <-e:Edge \ Contains- not_resolved:Unresolved; // node that points to unresolved
+  //res:NamedNode \ Unresolved;
+	// search for qualified path node, return last node of that path
+  //if {typeof(e) != ;}
+  res:NamedNode;
+  hom(st, res);
+  //:FindQualifiedParent(st, not_resolved.name.asArray("."), yield res);	
+  if {res.name == not_resolved.name;}
+  if (isReachable(st, res, Contains));
+  
+  replace
+  {
+	st <-e-! res; // create edge to resolved			
+	//delete(not_resolved); // delete unresolved	
+  }
+}
+// replace target node with source with nested containment
+procedure Replace(src : NamedNode, target : NamedNode)
+{	    
+	(def instance : NamedNode) = insertInduced(reachableOutgoing(src, Contains), src);	 // create sub graph clone contained in src node
+	instance.name = target.name; // set instance name to target
+	merge(instance, target); // merge instance to target
+	return;
+}
+
+// delete node with nested containment
+procedure Delete(src : Node)
+{
+    def ref nodes : set<Node> = reachableOutgoing(src, Contains) | reachable(src, And);
+	for (n:Node in nodes) // for all contained nodes
+	{
+		rem(n); // remove from graph
+	}
+	rem(src); // remove root
+	return;
+}
+
+// create instance edges for submachines
+rule MarkSubMachines()
+{
+	st:SubMachineState; // search for sub machine state
+	submachine_type : State \ SubMachineState; // some state except sub machine
+	if { st.typename == submachine_type.name; } // if typename equals submachine_type name
+	
+    ~( submachine_type -:SubMachineInstance-> st; ) // not contained instance edge
+	
+	modify { submachine_type -:SubMachineInstance-> st; } // create instance edge
+}
+
+rule MergeSubmachine()
+{
+	-:SubMachineInstance-> st:State; // search for type and instances  
+	n2:ExitPoint <-:Contains- st -:Contains-> n1:ExitPoint;
+
+	if {n1.name == n2.name;}
+
+	modify { st -:Contains-> :ExitPoint<n1, n2>; exec([MergeSubmachine2]);}
+}
+
+rule MergeSubmachine2()
+{
+	-:SubMachineInstance-> st:State; // search for type and instances  
+	n2:EntryPoint <-:Contains- st -:Contains-> n1:EntryPoint;
+
+	if {n1.name == n2.name;}
+
+	modify { st -:Contains-> :EntryPoint<n1, n2>; }
+	
+}
+// instatiate sub machines
+rule InstanceSubMachines()
+{
+  submachine_type:State -e:SubMachineInstance-> st:SubMachineState; // search for type and instances  
+  
+  modify { eval { Replace(submachine_type, st);	} }  	  // instantiate from type, create copy	  
+}
+
+// delete sub machine types already instantiated
+rule DeleteSubMachineTypes()
+{
+  submachine:State; // search for submachine
+  
+  ~( -:Contains-> submachine; )
+		  
+  ( submachine -e:SubMachineInstance->; modify {})+ // contained more than 0 instance edges
+		   
+  modify { eval { Delete(submachine); }	}// delete it
+}
+
+rule ClearSubMachines()
+{  
+  submachine:State;
+  
+  multiple
+  {
+	submachine -e:SubMachineInstance->; // contained more than 0 instance edges
+	
+	modify { delete(e); }
+  }
+		   
+}
+
+rule CheckSelfTargets()
+{    	
+	state:Node -e:Transition-> s:SelfTarget;
+	def src : Node;
+	(
+		:State<state>;
+		
+		yield {yield src = state;}
+		modify {}
+	|
+		:PseudoState<state>;
+		
+		:FindSourceState(state, yield src);	
+		modify {}
+	)
+	
+	
+	modify
+	{
+	  //def tar : Node;
+	  //evalhere {yield tar = src;}
+	  
+	  state -:copy<e>-> src;
+	  delete(s);
+	}
+}
+
+rule CreateDepth()
+{
+  -:TopState-> top:State;
+  t:CreateDepthRec(top, 0);
+  
+  modify { t();}
+}
+
+pattern CreateDepthRec(n : StateMachineNode, var depth : int)
+{
+  iterated
+  {
+	n -:Contains-> child:StateMachineNode;
+	
+	t:CreateDepthRec(child, depth + 1);
+	
+	modify { t(); }
+  }
+  
+  modify { eval { n.depth = depth; } }
+}
+
+pattern DelTree(n : Node) 
+{
+	iterated
+	{
+		n --> child:Node;
+		
+		t:DelTree(child);
+		
+		modify
+		{
+			t();
+		}		
+	}
+	
+	modify
+	{
+		delete(n);
+	}
+}
+
+pattern CopyTree(n : Node, -ee:Edge->) modify(res : Node)
+{
+	iterated
+	{
+		n -e:Edge-> child:Node;
+		
+		t:CopyTree(child, e);
+		
+		modify
+		{				 
+			t(nn);
+		}
+	}	
+		
+	modify
+	{
+		//delete(n);
+		res -:typeof(ee)-> nn:copy<n>;
+		//eval { yield res = nn; }
+		//src --> nop:copy<n>;			
+	}
+				
+}
+
+
+rule CreateAutoInitial()
+{
+	state:State \ ConcurrentState -:Substate-> sub:State;
+		
+	~( state -:Contains-> :InitialState;)
+	if {sub.idx == 0;}
+	
+	modify
+	{
+		state -:Contains-> :InitialState -:PseudoTransition-> sub;
+	}
+}
+
+rule CreateSubStates()
+{
+	state:State -:Substate->;
+	
+	if {state.sub_states.empty();}
+	
+	modify
+	{
+		eval
+		{			
+			def ref nodes : set<State> = set<State>{};
+			//def ref src : set<Node> = ;
+			for (s : State in reachableOutgoing(state, Substate))
+			{
+				nodes.add(s);
+			}
+			state.sub_states = nodes;
+		}
+	}
+	
+}
+
+rule CreateTranId()
+{
+	-t:Transition->;
+	
+	if {t.id == 0;}
+	
+	modify
+	{
+		eval
+		{
+			t.id = uniqueof(t);
+		}
+	}
+}
+
+rule CorrectTranId()
+{
+	-t:Transition->;
+	-t2:Transition->;
+	
+	if {t.id == t2.id;}
+	
+	modify
+	{
+		eval
+		{
+			t.id = t2.id + 1;
+		}
+	}
+}
+
+// if transition from sub region move it to enclosing region
+rule CorrectRegionTran()
+{
+	reg:ConcurrentState -:Region-> :SubRegion -t:Transition->;
+	
+	modify
+	{
+		reg !-t->;
+	}
+}

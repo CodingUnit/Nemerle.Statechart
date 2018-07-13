@@ -24,31 +24,38 @@ namespace Nemerle.Statechart
         parameters : list[string];
       }
 
+    | ParseString { expr : string;}
     | Expr 
       { 
+      
         expr : PExpr;
         
-        public this(expr : PExpr) 
+        public this(str : PExpr) 
         {
           base(-1);
-          this.expr = expr
+          expr = str;
         }
       }
 
     public static Empty : FsmAction
     {
+      [Memoize]
       get
       {
         FsmAction.Normal(-1, null, [])
       }
     }
 
+    [RecordIgnore]
+    public Env : GlobalEnv {get;set;}
+    
     public override ToString() : string
     {
       match (this)
       {
-        | Normal(n, p) => $"$n(..$p)"
-        | Expr(e)      => $"$e"
+        | Normal(n, p)   => $"$n(..$p)"
+        | Expr(s)        => s.ToString()
+        | ParseString(e) => e.Replace("\r\n", " ")
       } 
     }
   }
@@ -70,6 +77,15 @@ namespace Nemerle.Statechart
       opt.MapDefault(_.actions, [])
     }
 
+    public ActionsString : IEnumerable[string]
+    {
+      [Memoize]
+      get
+      {
+        actions.Select(x => x.ToString());
+      }
+    }
+    
     public Empty : bool
     {
       get
@@ -80,7 +96,7 @@ namespace Nemerle.Statechart
 
     public override ToString() : string
     {
-      $"..$actions"
+      $<#..$(actions;",")#>//).Replace("\r\n", " ")
     }
   } 
 

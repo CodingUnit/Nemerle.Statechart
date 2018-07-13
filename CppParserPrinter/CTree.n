@@ -1,45 +1,151 @@
-﻿using Nemerle.Collections;
+using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CommonLib.Macros;
 
 namespace CppParserPrinter
 {
-    public enum CMod
-    {
-        | mod_private
-        | mod_public
-        | mod_protected
-    };
-    
-  // class содержимое
-  public variant CTypeDecl
+  // public:
+  public variant CMod
   {
-      | Type { type : CComplexType }
-      | Func { func : CTree.Func }
-      | Modifier { mod : CMod; }
-      | Decl { var : CTree.Decl }
+    | Private
+    | Public
+    | Protected
+    
+    public override ToString() : string
+    {
+      match (this)
+      {
+        | Private   => "private"
+        | Public    => "public"
+        | Protected => "protected"
+      }
+    }
+  }
+
+  public variant CTree : IPrintable
+  {
+      | Compound {decls : list[CTree] }
+      | NameSpace { name : string; decls : CTree}
+      | Type { type : CComplexType;}
+      | Func { ret_type : CType; name : string; parms : list[CType]; body : CStatement}
+      | Decl { specifiers : list[CSpec]; type : CType; decls : list[CDecl] }
+      
+      public override Print(del : int) : string
+      {
+        $"$this" |> Delim(_, del)
+      }
+      
+      public override ToString() : string
+      {
+        match (this)
+        {
+          | Decl(spec, type, decls)          => $<#..($spec; " ") $type ..$decls#>.Trim()
+          | Type(t)                          => $"$t"
+          | Func(ret, name, parms, body)     => 
+$<#$ret $name(..$(parms;", "))
+{
+  $body
+}#>
+          | Compound(decls)                  => $<#..$(decls;"\n")#>
+          | NameSpace(name, d) => 
+$<#namespace $name
+{
+  $d
+}
+#>
+        }
+      }
+  }
+
+  public variant CMethodQualifier : IPrintable
+  {
+    | None
+    | Const
+    
+    public override Print(del : int) : string
+    {
+      $"$this" |> Delim(_, del)
+    }
+    
+    public override ToString() : string
+    {
+      match (this)
+      {
+        | None  => ""
+        | Const => "const"
+      }
+    }
+    
   }
   
+  // class содержимое
+  public variant CTypeDecl : IPrintable
+  {
+      | Type { type : CComplexType } // nested type
+      | Method { specifier : CSpec; func : CTree.Func; qualifiers : CMethodQualifier; } // method
+      | Modifier { mod : CMod; } // public:
+      | Decl { var : CTree.Decl }
+      | Constructor {cl : CComplexType.Class;parms : list[CType]; body : CStatement}
+      | Destructor {specifier : CSpec;cl : CComplexType.Class;body : CStatement}
+      | AssignmentOperator {ret_type : CType; parms : list[CType]; body : CStatement;qualifiers : list[CMethodQualifier];}
+      
+      public override Print(del : int) : string
+      {
+        $"$this" |> Delim(_, del)
+      }
+      
+      public override ToString() : string
+      {
+        match (this)
+        {
+          | AssignmentOperator(ret, parms, body, qual)         => 
+$<#$ret operator=(..$(parms; ",")) $qual
+{
+  $body
+}#>
+          | Type(t)                                            => $"$t"
+          | Method(spec, (ret, name, parms, body), qual)       => 
+$<#$spec $ret $name(..$(parms; ", ")) $qual
+{
+  $body
+}#>.Trim()
+          | Modifier(m)                                        => $"$m:"
+          | Decl(v)                                            => $"$v"
+          | Constructor(Class(name = Some(name)), parms, body) => 
+$<#$name(..$(parms; ",")
+{
+  $body
+}#>
+          | Destructor(spec, Class(name = Some(name)), body)   => 
+$<#$spec~$name()
+{
+  $body
+}#>
+        }
+      }
+  }
+
   // typedef, enum, union, storage class auto, register, static, extern
   // type qualif const, volatile, restrict
   // function qualif inline, noreturn
-  
+
   // тип переменных и параметров функции
-  public variant CType
+  public variant CType : IPrintable
   {
       | Void
-      | ComplexTypeDecl { type : CComplexType; }
+      //| ComplexTypeDecl { type : CComplexType; }
       | Class { name : string; }
       | Enum  { name : string; }
       | Short
-      | Byte
+      //| Byte
       | Char
       | UShort
-      | UByte
+      //| UByte
       | UChar
       | Int
       | UInt
@@ -52,41 +158,168 @@ namespace CppParserPrinter
       | Pointer { type : CType; rank : list[int] }
       | Reference { type : CType }
       | Array { type : CType; rank : list[int]}
+      
+      public override ToString() : string
+      {
+        match (this)
+        {
+          | Void                 => "void"
+          //| ComplexTypeDecl(t) =>  { type : CComplexType; }
+          | Class(n)             => n
+          | Enum(n)              => n
+          | Short                => "short"
+          //| Byte     
+          | Char                 => "char"
+          | UShort               => "unsigned short"
+          | UChar                => "unsigned char"
+          | Int                  => "int"
+          | UInt                 => "unsigned int"
+          | Long                 => "long"
+          | ULong                => "unsigned long"
+          | Float                => "float"
+          | Double               => "double"
+          | LongLong             => "long long"
+          | ULongLong            => "unsigned long long"
+          | Reference(t)         => $"$t &"
+        }
+      }
+      
+      public override Print(del : int) : string
+      {
+        ""
+      }
   }
 
-  public class CEnumDecl
+  public class CEnumDecl : IPrintable
   {
       public name : string;
       public val  : option[CConstExpr];
+      
+      public override Print(del : int) : string
+      {
+        ""
+      }
   }
-  
-  public class CUnionDecl
+
+  public class CUnionDecl : IPrintable
   {
       public name : string;
       public val  : option[CConstExpr];
+      
+      public override Print(del : int) : string
+      {
+        ""
+      }
   }
+
   
-  public variant CComplexType
+  public abstract class IPrintable
+  {
+    public Del(del : int) : string
+    {
+      del |> string(' ', _)
+    }
+    
+    public abstract Print(delim : int) : string
+    {
+      
+    }
+    
+    public Print(printer : IEnumerable[IPrintable], del : int, func : string -> string) : list[string]
+    {
+        (x => Print(x, del) |> func) |> printer.Map;
+    }
+    
+    public Print(printer : IEnumerable[IPrintable], del : int) : list[string]
+    {
+        Print(_, del) |> printer.Map;
+    }
+    
+    //public PrintOpt[T](printer : option[T], del : int, func : string -> string) : string where T : IPrintable
+    //{
+    //    def func = if (func != null) func else x => x;
+    //    (x => Print(x, del) |> func) |> printer.MapDefault(_, "");
+    //}
+    
+    public Print(printer : IPrintable, del : int) : string
+    {
+       printer.Print(del)
+    }
+    
+    public Delim(str : string, del : int) : string
+    {
+      Del(del) + str |> _.Replace("\n", Del(del))
+    }
+  }
+ 
+  //class Printer
+  //{
+  //  public static Delim(del : int) : string {string(' ', del)}
+    
+  //  public static Print(printer : IPrintable, del : int) : string
+  //  {
+  //      printer.Print(del)
+  //  }
+  //}
+   [Record]
+  public variant CComplexType : IPrintable
   {
       | Class { base_class : list[CMod * Class]; decls : list[CTypeDecl]; }
       | Struct { decls : list[CTypeDecl]; }
       | Enum { decls : list[CEnumDecl]}
       | Union { decls : list[CUnionDecl] }
+
+      public name : option[string];
+
+      public Name : string
+      {
+        [Memoize]
+        get
+        {
+          name.Value
+        }
+      }
+      //public static PrintMod(mod : CMod) : string
+      //{
+      //  | CMod.mod_private   => "private"
+      //  | CMod.mod_public    => "public"
+      //  | CMod.mod_protected => "protected"
+      //}
       
-      name : option[string];
+      public override Print(delim : int) : string
+      {
+        Delim($"$this", delim)
+      }
+ 
+      public override ToString() : string
+      {
+        match (this)
+        {
+          | Class(b, decls) => def base1 = match (b)
+                                           {
+                                             | [] => ""
+                                             | _  => def b = b.Map((x, y) => $"$x $y");
+                                                     $<# : ..$(b; ", ")#>
+                                                 
+                                           }
+$<#class $Name$base1
+{
+  ..$(decls; "\n")
+};#>
+                           
+          | Struct(decls)   => 
+$<#struct $Name
+{
+  ..$(decls; "\n")
+};#>
+        }
+      }
   }
-  
-  public variant CTree
+
+
+  public variant CSpec : IPrintable
   {
-      | Compound {decls : list[CTree] }
-      | NameSpace { name : string; decls : list[CTree]}
-      | Type { type : CComplexType;}
-      | Func { ret_type : CType; name : string; parms : list[CType]; body : list[CStatement] }
-      | Decl { specifiers : list[CSpec]; type : CType; decls : list[CDecl] }
-  }
-  
-  public variant CSpec
-  {
+      | None
       | Typedef
       | Auto
       | Register
@@ -98,23 +331,29 @@ namespace CppParserPrinter
       | Restrict
       | Inline
       | Noreturn
+      | Virtual
+      
+      public override Print(del : int) : string
+      {
+        ""
+      }
   }
-  
+
   public variant CDecl
   {
       | Id
       | Pointer
       | Array
       | Function
-      
+
       name : string;
       init : option[ CConstExpr ]
   }
-  
+
   public class COper
   {
   }
-  
+
   public variant CUnaryOper : COper
   {
       | PostInc
@@ -128,20 +367,20 @@ namespace CppParserPrinter
       | Plus
       | Minus
       | Sizeof
-      
+
       expr : CExpr;
   }
-  
+
   public variant CReadOnlyOper : COper
   {
       | Not { expr : CConstExpr }
       | Invert {expr : CConstExpr }
       | Plus { expr : CConstExpr }
       | Minus { expr : CConstExpr }
-      | Sizeof { expr : CConstExpr }     
+      | Sizeof { expr : CConstExpr }
       | Binary { bin : CBinaryOper }
   }
-  
+
   public variant CBinaryOper : COper
   {
       | Mul
@@ -156,8 +395,8 @@ namespace CppParserPrinter
       | Or
       | LShift
       | RShift
-      | CondOper { cond : CExpr } // ? : 
-      | Assign 
+      | CondOper { cond : CExpr } // ? :
+      | Assign
       | AddAssign
       | SubAssign
       | MulAssign
@@ -167,7 +406,7 @@ namespace CppParserPrinter
       | OrAssign
       | XorAssign
       | LShiftAssign
-      | RShfiftAssign
+      | RShiftAssign
       | Equal
       | NotEqual
       | Greater
@@ -180,28 +419,82 @@ namespace CppParserPrinter
       | SeqOp // ,
       | CallFunc // a(...)
       | TypeConv // (type)expr
-      
+
       left : CExpr;
       right : CExpr;
+      
+      public override ToString() : string
+      {
+        match (this)
+        {
+          | Mul         => $"$left * $right"
+          | Div         => $"$left / $right"
+          | Add         => $"$left + $right"
+          | Sub         => $"$left - $right"
+          | Mod         => $"$left % $right"
+          | LogicOr     => $"$left | $right"
+          | LogicAnd    => $"$left & $right"
+          | Xor         => $"$left ^ $right"
+          | LShift      => $"$left << $right"
+          | RShift      => $"$left >> $right"
+          | CondOper(c) => $"$c ? $left : $right"
+          | Assign      => $"$left = $right"
+          | AddAssign   => $"$left += $right"
+          | SubAssign   => $"$left -= $right"
+          | MulAssign   => $"$left *= $right"
+          | DivAssign   => $"$left /= $right"
+          | ModAssign   => $"$left %= $right"
+          | AndAssign   => $"$left &= $right"
+          | OrAssign    => $"$left |= $right"
+          | XorAssign   => $"$left ^= $right"
+          | RShiftAssign => $"$left >>= $right"
+          | LShiftAssign => $"$left <<= $right"
+          | Equal        => $"$left == $right"
+          | NotEqual     => $"$left != $right"
+          | Greater      => $"$left > $right"
+          | Lower        => $"$left < $right"
+          | GreaterEqual => $"$left >= $right"
+          | LowerEqual  => $"$left <= $right"
+          | ArrayIndex  => $"$left[$right]"
+          | MemberAccess => $"$left.$right"
+          | MemberPointerAccess => $"$left->$right"
+          | SeqOp       => $"$left, $right"
+          | CallFunc    => $"$left$right"
+          | TypeConv    => $"$(left)$right"
+        }
+      }
   }
-  
+
   public variant CConstExpr
   {
-      | Compound { expr : list[CConstExpr] }
+      //| Compound { expr : list[CConstExpr] }
       | Int { val : int }
       | Enum { val : string }
       | Oper { oper : CReadOnlyOper }
       | Char { val : Char }
       | Float { val : double }
       | Sizeof { expr : CExpr }
+      
+      public override ToString() : string
+      {
+        match (this)
+        {
+          | Int(v)
+          | Float(v : ValueType) => $"$v"
+          | Enum(v)
+          | Char(v : object)     => $"$v"
+          | Sizeof(v)            => $"sizeof($v)"
+        }
+      }
   }
-  
-  public variant CStatement
+
+  public variant CStatement : IPrintable
   {
       | Compound { body : list[CStatement]}
+      | BraceStatement { comp : Compound;} // {..e}
       | Empty
       | Null // ;
-      | Decl { type: CTree.Decl; } 
+      | Decl { type: CTree.Decl; }
       | Expression { expr : CExpr }
       | Return {ret : option[CExpr]}
       | Break
@@ -211,35 +504,93 @@ namespace CppParserPrinter
       | Switch { cond : CExpr; cases : list[CSwitchCase]}
       | If { cond : CExpr; body : CStatement; else_body : option[CStatement]}
       | While { cond : CExpr; body : CStatement }
-      | DoWhile { body : CStatement; cond : CExpr } 
-      | For { init : option[CInitExpr]; cond : option[CExpr]; iter : option[CExpr]; body : CStatement }
+      | DoWhile { body : CStatement; cond : CExpr }
+      | For { init : CInitExpr; cond : option[CExpr]; iter : option[CExpr]; body : CStatement }
+      
+      public override Print(del : int) : string
+      {
+        match (this)
+        {
+          | Compound(b) => def delim = string(' ', del);
+                           def b = b.Map(x => x.Print(del + 1));
+                           $<#$delim{..$(b;"\n")$delim}#>
+        }
+      }
+      
+      public override ToString() : string
+      {
+        match (this)
+        {
+          | Compound(b) => $<#..$(b;"\n")}#>
+          | BraceStatement(b) => 
+$<#{
+  $b
+}#>
+          | Expression(e) => $"$e"
+          | Continue      => "continue;"
+          | Decl(t)       => $"$t"
+          | DoWhile(b, c) => 
+$<#do
+{
+  $b
+} while ($c);
+#>
+          | For(i, c, it, b) => 
+$<#for ($i; $c; $it)
+{
+  $b
+}
+#>
+          | Goto(l) => $"goto $l;"
+          | If(c, b, e) => def els = e.MapDefault(x => $" else\n$x", "");
+$<#if ($c)
+{
+  $b
+}$els
+#>
+        }
+      }
   }
-  
+
   public variant CSwitchCase
   {
       | Default { body : CStatement }
-      | Case { expr : CConstExpr; body : CStatement } 
+      | Case { expr : CConstExpr; body : CStatement }
   }
-  
+
   public variant CInitExpr
   {
+      | None
       | Decl { decl : CStatement.Decl }
       | Expr { expr : CExpr }
   }
-  
+
   public variant CConstant
   {
       | Int { val : int}
       | Float { val : float }
       | String { str : string }
   }
-  
+
   public variant CExpr
   {
-      | Compound { expr : list[CExpr]}
+      | Compound { expr : list[CExpr]} // (a,b,c)
       | Id { name : string }
-      | Constant { lit : CConstant } 
+      | Constant { lit : CConstant }
       | Operator { op : COper }
-      
+
+      public override ToString() : string
+      {
+      }
+  }
+
+  public variant PreprocessorExpr
+  {
+    | Include {file : string;}
+    | Define {parms : list[string]; body : string;}
+    | If
+    | Else
+    | Ifdef
+    | Endif
   }
 }

@@ -1,0 +1,324 @@
+rule CreateLcaTran()
+{
+	src:ActiveState -t:ActiveStateTransition \ GroupConfigTransition-> tar:ActiveState;
+	
+	hom(src, tar);
+	
+	if {t.lca_conf.empty();}
+	//if {typeof(t) != GroupConfigTransition;}
+	def lca : State;
+	def ref src_lca_conf : set<ActiveState> = set<ActiveState>{};
+	def ref tar_lca_conf : set<ActiveState> = set<ActiveState>{};
+	
+	
+	yield {yield lca 		  = t.lca.peek(0);}
+	yield {yield src_lca_conf = FindActiveState(src, lca);}
+	yield {yield tar_lca_conf = FindActiveState(tar, lca);}
+		
+	//:FindActiveState(src, t.lca.peek(0), yield lca_conf);
+	//:FindActiveState(tar, lca.id, yield tar_lca_conf);
+	
+	modify
+	{
+		//src -tr:ActiveStateTransition<t>-> tar;
+
+		eval
+		{			
+			if (!tar_lca_conf.empty() && !src_lca_conf.empty())
+			{
+				def ssrc_lca : ActiveState = src_lca_conf.peek(0);
+				def ttar_lca : ActiveState = tar_lca_conf.peek(0);
+				t.lca_conf = ssrc_lca.sub_conf | ttar_lca.sub_conf;
+			}
+			 else
+			{
+				emit("error CreateLcaTran src:", src, "t:", t, "tar:", tar);
+				 t.lca_conf = set<ActiveState>{src, tar};
+			}
+		}
+	}
+}
+
+
+function FindActiveState(src : ActiveState, find : State) : set<ActiveState>
+{
+	def ref nodes : set<Node> = reachableOutgoing(src, And) | set<Node>{src};
+	for (st : ActiveState in nodes)
+	{
+		if (st.id == find.id)
+		{
+			return (set<ActiveState>{st});
+		}
+	}
+	return (set<ActiveState>{});
+}
+
+rule CreateTranPath()
+{
+	src:ActiveState -t:ActiveStateTransition \ GroupConfigTransition-> tar:ActiveState;
+
+	hom(src, tar);
+	def lca : State;
+	def ref lca_conf : set<ActiveState>;
+	yield {yield lca = t.lca.peek(0);yield lca_conf = t.lca_conf;}
+	
+	modify
+	{		
+		nlca:Lca@(name = lca.name);
+		
+		def first : Path;
+		def last : Path;
+		//emithere("\nsrc", src, "tar", tar, "t", t);
+		evalhere
+		{			
+			def ref exit_nodes   : set<ActiveState>   = src.contains_conf & t.lca_conf;
+			def ref sorted_exit  : array<ActiveState> = SortByDepthAsc(exit_nodes);
+			(yield first) = AddPath(nlca, sorted_exit, false);
+			
+			def ref entry_nodes  : set<ActiveState>   = tar.contains_conf & t.lca_conf;
+			def ref sorted_entry : array<ActiveState> = SortByDepthAsc(entry_nodes);
+			(yield last)  = AddPath(nlca, sorted_entry, true);
+		}
+		//emithere("\nfirst", first);
+		//emithere("\nlast", last);
+		src  -t->! first;
+		last -:Next-> tar;
+	}
+}
+
+procedure AddPath(src : Path, ref nodes : array<ActiveState>, var from : boolean) : (Path)
+{
+	def prev : Path = src;
+	def n 	 : Path = src;
+	//emit("\nnodes", nodes, "\nsrc", src);
+	for (st : ActiveState in nodes)
+	{
+		def ref entry_act : array<string> = st.entry_act;
+		def ref exit_act  : array<string> = st.exit_act;
+		def ref do_act    : array<string> = st.do_act;
+		if (from)
+		{
+			for (a : string in entry_act)
+			{
+				(n) = add(StateAction);
+				n.name = a;
+				add(Next, prev, n);				
+				prev = n;
+			}			
+			for (a : string in do_act)
+			{
+				(n) = add(StartDoActivity);
+				n.name = a;
+				add(Next, prev, n);
+				prev = n;
+			}
+			(n) = add(StateEntry);
+			n.name = st.name;
+			add(Next, prev, n);		
+			prev = n;
+		} else
+		{
+			(n) = add(StateExit);
+			n.name = st.name;
+			add(Next, n, prev);		
+			prev = n;			
+			for (a : string in exit_act)
+			{
+				(n) = add(StateAction);
+				n.name = a;
+				add(Next, n, prev);
+				prev = n;
+			}			
+			for (a : string in do_act)
+			{
+				(n) = add(StopDoActivity);
+				n.name = a;
+				add(Next, n, prev);
+				prev = n;
+			}
+		}
+		//emit("prev", prev);
+	}
+	//emit("\nn", n);
+	return (n);
+}
+
+function SortByDepthDesc(ref data : set<ActiveState>) : array<ActiveState>
+{
+	def ref res : array<ActiveState> = data.asArray();
+	
+	def tmp : ActiveState;
+	def var noSwap : boolean;
+
+	for (i : ActiveState in res)
+	{
+		noSwap = true;
+		for (j : int -> s : ActiveState in res)
+		{
+			if (j != res.size() - 1)
+			{
+				if (res[j].depth < res[j + 1].depth)
+				{
+					tmp = res[j];
+					res[j] = res[j + 1];
+					res[j + 1] = tmp;
+					noSwap = false;
+				}
+			}
+		}
+		if (noSwap)
+		{
+			return (res);
+		}
+	}
+	return (res);
+}
+
+function SortByDepthAsc(ref data : set<ActiveState>) : array<ActiveState>
+{
+	def ref res : array<ActiveState> = data.asArray();
+	
+	def tmp : ActiveState;
+	def var noSwap : boolean;
+
+	for (i : ActiveState in res)
+	{
+		noSwap = true;
+		for (j : int -> s : ActiveState in res)
+		{
+			if (j != res.size() - 1)
+			{
+				if (s.depth > res[j + 1].depth)
+				{
+					tmp = s;
+					res[j] = res[j + 1];
+					res[j + 1] = tmp;
+					noSwap = false;
+				}
+			}
+		}
+		if (noSwap)
+		{
+			return (res);
+		}
+	}
+	return (res);
+}
+
+pattern AddActionLca(path : Path, var action : string)
+{
+	(
+		:Lca<path>;
+		path -e:Next-> p:Node \ TransitionAction;
+		
+		modify
+		{
+			path -e->! a:TransitionAction -:Next-> p;
+			eval {a.name = action;}
+			//@(name = action)
+		}		
+	|
+		~(:Lca<path>;)
+		path -:Next-> next:Path;
+		
+		t:AddActionLca(next, action);
+		
+		modify
+		{
+			t();
+		}
+	)
+	
+	modify {}
+}
+
+rule AddActions()
+{
+		src:ActiveState -t:ActiveStateTransition-> path:Path;
+		
+		if {t.action.length() != 0;}
+			
+		add:AddActionLca(path, t.action);
+		
+		modify
+		{
+			add();
+		}
+}
+
+rule AddGuards()
+{
+	src:ActiveState -t:ActiveStateTransition-> path:Path \ GuardCheck;
+	if {t.guard.length() != 0;}
+	
+	(
+		if {t.guard == "[else]";}
+		
+		modify
+		{
+			e:ElseGuard;
+			eval {yield guard = e;}
+		}
+	|
+		if {t.guard != "[else]";}
+		
+		modify
+		{
+			e:GuardCheck;
+			eval
+			{
+				e.name = t.guard;
+				yield guard = e;
+			}
+		}
+	)
+	modify
+	{
+		def guard : GuardCheck;
+		src -t->! guard -:True-> path;		
+	}
+}
+
+rule CombineElseGuards()
+{
+	src:ActiveState -t1:ActiveStateTransition-> g1:GuardCheck \ ElseGuard;
+	src 			-t2:ActiveStateTransition-> :ElseGuard --> p:Node;
+	
+	if {t1.trigger == t2.trigger;}	
+	
+	replace
+	{
+		src -t1-> g1 -:False-> p;
+	}
+}
+
+rule CombineGuards()
+{
+	src:ActiveState -t1:ActiveStateTransition-> g1:GuardCheck \ ElseGuard;
+	src 			-t2:ActiveStateTransition-> g2:GuardCheck \ ElseGuard;
+	
+	if {t1.trigger == t2.trigger;}
+	
+	~(g1 -:False->;)
+	
+	replace
+	{
+		src -t1-> g1 -:False-> g2;		
+	}
+}
+
+rule CreateInitialConfig()
+{
+	sm:Node -:TopState-> top:State;
+	
+	def initial : ActiveState;
+	
+	~(sm -:InitialConfig->;)
+	
+	yield {yield initial = top.initial_conf.peek(0);}
+	
+	modify
+	{
+		sm -:InitialConfig-> initial;
+	}
+}

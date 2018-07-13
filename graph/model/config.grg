@@ -1,0 +1,569 @@
+rule CreateActiveBaseState()
+{
+  //(
+	active:ActiveState \ ActiveBaseState;
+	
+	~(-:And-> active;)
+	
+	modify
+    {
+	  :ActiveBaseState<active>;
+    }
+}
+
+// init contains_conf field sub configurations of active state includes it
+rule CreateReachableActiveState()
+{
+	state:ActiveState;
+	
+	if {state.contains_conf.empty();}
+	
+	modify
+	{
+		eval
+		{			
+			def ref nodes : set<ActiveState> = set<ActiveState>{};
+			//def ref src : set<Node> = ;
+			for (s : ActiveState in reachableOutgoing(state, And))
+			{
+				nodes.add(s);
+			}
+			state.contains_conf = nodes;
+			state.contains_conf.add(state);
+			state.sub_conf = nodes;
+		}
+	}
+	
+}
+
+rule ReachableConfigInit()
+{
+	-:TopState-> top:State;	
+	if {top.possible_conf.empty();}	
+	
+	iterated it
+	{
+		active:ActiveBaseState;
+		
+		//~(--> active;)
+		
+		modify
+		{
+			eval
+			{
+				top.possible_conf.add(active);
+				top.possible_conf_str.add(active.contains_str.asArray().asString("&"));
+				
+			}
+		}
+	}
+	// names equals
+		
+	t:InitReachableConfig(top);
+	//init:InitInitialConfig(top);
+	modify
+	{
+		//def ref initial : set<State> = Set<State>{};
+		iterated it;
+		t();
+		//init();
+	}
+}
+
+rule InitialSimpleInit()
+{
+	-:SimpleState-> simple:State;
+		
+	if {simple.initial_conf.empty();}
+	
+	modify
+	{
+		eval 
+		{ 
+			simple.initial_conf 	= simple.possible_conf;
+			simple.initial_conf_str = simple.possible_conf_str;
+		}
+	}
+}
+
+rule InitialInit()
+{
+	
+	
+	//~(simple -:Substate->;)
+	parent:State -:Contains-> :InitialState --> state:State;
+	
+	if {parent.initial_conf.empty();}
+	if {!state.initial_conf.empty();}
+	
+//	t:InitialInitRec(state);
+	
+	modify
+	{
+		eval
+		{
+			parent.initial_conf 	= state.initial_conf;
+			parent.initial_conf_str = state.initial_conf_str;
+			//emit("\n0:parent.initial_conf", parent.initial_conf);
+			//emit("\n0:parent.initial_conf_str", parent.initial_conf_str);
+		}
+		//t();
+	}
+}
+
+
+rule ConcurrentStateInitialInit()
+{
+	parent:ConcurrentState;
+	
+	if {parent.initial_conf.empty();}
+	
+	multiple
+	{
+		parent -:Region-> sub:SubRegion;
+		
+		break negative {if {sub.initial_conf.empty();}}
+		
+		modify			
+		{
+		}
+	}
+	
+	modify
+	{
+		eval
+		{
+			
+			parent.initial_conf = MergeRegionInitial(parent);
+			parent.initial_conf_str = GetConfigStr(parent.initial_conf);
+			//emit("\n1:parent.initial_conf", parent.initial_conf);
+			//emit("\n1:parent.initial_conf_str", parent.initial_conf_str);
+		}
+	}
+}
+
+function MergeRegionInitial(parent : ConcurrentState) : set<ActiveState>
+{
+	def ref states : set<ActiveState> = set<ActiveState>{};
+	//def ref nodes : set<Node> = ;
+	//emit("\nmerge:", parent);
+	for (i : State in adjacentOutgoing(parent, Region))
+	{
+		if (states.empty()) 
+		{
+			states = i.initial_conf;
+		} else
+		{
+			states &= i.initial_conf;//IntersectArray(states, i.initial_conf);
+		}
+		//emit("\nstates:", states);
+	}
+	return (states);
+}
+
+// filter configurations to this state set, configurations not contained states st, will be filtered
+function FilterConf(ref conf : set<ActiveState>, ref st : set<State>) : set<ActiveState>
+{
+	def ref nconf : set<ActiveState> = set<ActiveState>{};
+	for (a : ActiveState in conf)
+	{
+		//emit("\nfilt it", a, "contains", a.contains);
+		//emit("\nfilt &", st & a.contains);
+		//if ((st & a.contains) == st) // configuration contains state only
+		if (st <= a.contains) // configuration contains state only
+		{
+			//emit("\nenter", a);
+			nconf.add(a);
+		}
+	}
+	//emit("\nnconf", nconf);
+	return (nconf);
+}
+
+function GetConfigStr(ref st : set<ActiveState>) : set<string>
+{
+	def ref str : set<string> = set<string>{};
+	for (s : ActiveState in st)
+	{
+		def ref arr : array<string> =  s.contains_str.asArray();
+		def var text : string = arr.asString("&");
+		str.add(text);
+		
+	}
+	return (str);
+}
+
+pattern InitReachableConfig(state : State)
+{
+	iterated
+	{
+		state -:Substate-> sub:State;
+		
+		t:InitReachableConfig(sub);
+		
+		
+		modify
+		{
+			
+			def ref this_conf : set<State> = set<State>{sub};
+			//
+			evalhere
+			{
+				//emit("\nthis_conf", this_conf);
+				//emit("\nstate.possible_conf", state.possible_conf);				
+				sub.possible_conf 	  = FilterConf(state.possible_conf, this_conf);				
+				//emit("\nsub.possible_conf", sub.possible_conf);
+				sub.possible_conf_str = GetConfigStr(sub.possible_conf);
+				//emit("\nsub.possible_conf_str", sub.possible_conf_str);
+				//sub.possible_conf = conf;
+			}
+			t();
+		}
+	}
+	
+	modify {}
+}
+
+rule ActiveStatesInit1()
+{
+	active:ActiveState;
+	state:State;
+	
+	if {state.id == active.id;}
+	~(if {state in active.contains;})
+	
+	
+	modify
+	{
+		eval
+		{
+			active.contains_id.add(state.id);
+			active.contains.add(state);
+			active.contains_str.add(state.name);
+			//emit("\nadd_contains_str:", state.name, "contains:", active.contains_str);
+		}
+	}
+}
+
+rule ActiveStatesInit()
+{
+	active:ActiveBaseState;
+	
+	if {active.contains.size() == 1 && reachable(active, Edge).size() > 1;}
+	
+	modify
+	{
+		eval
+		{
+			def ref all : set<Node> = reachable(active, Edge) | set<Node>{active};
+			def ref all_st_name : set<string> = set<string>{};
+			def ref all_st : set<State> = set<State>{};
+			def ref all_st_id : set<int> = set<int>{};
+			
+			for (a : ActiveState in all)
+			{				
+				all_st |= a.contains;
+				all_st_id |= a.contains_id;
+			}
+			for (a : ActiveState in all)
+			{
+				if (typeof(a) == ActiveSimpleState)
+				{
+					//emit("\ncontains_str", a.contains_str);
+					all_st_name |= a.contains_str;
+				}
+			}
+			// emitdebug("all_st", all_st);
+			//emit("\nall_st_name", all_st_name);
+			active.contains = all_st;
+			active.contains_id = all_st_id;
+			active.contains_str = all_st_name;
+		}
+	}
+}
+
+rule CreateLCA()
+{
+	src:State -t:StateTransition-> tar:State;
+	hom(src, tar);
+	
+	if {t.lca.empty();}
+	
+	def lca : State;
+	//:LCA(src, tar, lca); // least common ancestor of source and target
+	yield {yield lca = (State)getLCA(src, tar);}
+	
+	modify
+	{
+		eval {t.lca.add(lca);}
+	}
+}
+
+rule InitSubRegion()
+{
+	st:State;
+	
+	def ref sub_regions : set<SubRegion>; 
+	def ref regions	    : set<ConcurrentState>;
+	
+	if {(st.set_flag & 1) == 0;}
+	yield 
+	{
+		yield sub_regions = getSubRegions(st);
+		yield regions 	  = getRegions(st);
+	}
+	//:GetSubRegion(st, yield sub_region);
+	
+	modify
+	{
+		eval 
+		{
+			st.sub_regions = sub_regions;
+			st.regions	   = regions;
+			st.set_flag = 1;
+		}
+	}
+}
+
+rule InitSubRegionTran()
+{
+	src:State -t:StateTransition-> tar:State;
+	hom(src, tar);
+	if {(t.set_flag & 1) == 0;}
+	
+	//t:InitSubRegion();
+	def lca : State;
+	yield {yield lca = t.lca.peek(0);}
+	
+	modify
+	{
+		eval
+		{
+			t.sub_regions = lca.sub_regions;
+			t.regions	  = lca.regions;
+			t.set_flag = 1;
+		}
+	}
+}
+
+// create transition for configs
+rule CreateTranConfigFromRegion()
+{	
+	src:State -t:StateTransition-> tar:State;
+	hom(src, tar);
+		
+	def src_region : ConcurrentState;
+	
+	if {!src.regions.empty();}
+	if {t.sub_regions.empty();}
+	
+	negative
+	{
+		a1:ActiveState -t2:GroupConfigTransition-> a2:ActiveState;
+		hom(a1, a2);
+		if {t.id == t2.id;}
+	}
+	
+	
+	def src_conf : ActiveState;	
+	def tar_conf : ActiveState;	
+	
+	
+	// def lca : State;
+	// :LCA(src, tar, yield lca); // least common ancestor
+	// // not in sub region
+	// ~(def sub_region : SubRegion; :GetSubRegion(lca, yield sub_region);)
+	yield {emit("\nerror CreateTranConfigFromRegion src:", src, "t:", t, "tar:", tar, "lca", t.lca.peek(0));}
+	//if {!t.lca.empty();}
+	//if {IsSubRegionPart(src);}
+	
+	
+	yield 
+	{
+		yield tar_conf = tar.initial_conf.peek(0);
+		yield src_conf = src.possible_conf.peek(0);
+	}	
+		
+	modify
+	{
+		src_conf -e:GroupConfigTransition-> tar_conf;
+		
+		eval
+		{
+			e.source  = src.possible_conf;
+			e.trigger = t.trigger;
+		    e.guard   = t.guard;
+			e.action  = t.action;
+			e.source_state = src.name;
+			e.target_state = tar.name;
+			e.out_str = t.out_str;
+			e.id	  = t.id;
+		}
+	}
+}
+
+rule CreateTranConfig()
+{
+	src:State -t:StateTransition-> tar:State;
+	hom(src, tar);
+	// not created active state transition
+	negative
+	{
+		a1:ActiveState -t2:StateTransition-> a2:ActiveState;
+		hom(a1, a2);
+		if {t.id == t2.id;}
+	}
+	
+	// no subregion
+	if {t.sub_regions.empty();}
+
+	def tar_conf : ActiveState;	
+			
+	yield 
+	{
+		yield tar_conf = tar.initial_conf.peek(0);
+	}	
+		
+	modify
+	{
+		def ref src_conf : set<ActiveState> = src.possible_conf;
+		eval
+		{			
+			for (s : ActiveState in src_conf)
+			{
+				(def -n:Edge->) = addCopy(t, s, tar_conf);
+				(def -r:ActiveStateTransition->) = retype(n, ActiveStateTransition);
+				r.source_state = src.name;
+				r.target_state = tar.name;
+			}			
+		}
+	}
+}
+
+rule CreateTranConfigRegion()
+{	
+	src:State -t:StateTransition-> tar:State;
+	hom(src, tar);
+	
+	negative
+	{
+		a1:ActiveState -t2:StateTransition-> a2:ActiveState;
+		hom(a1, a2);
+		if {t.id == t2.id;}
+	}
+	
+	def ref sub_regions : set<SubRegion>;
+
+	if {!t.sub_regions.empty();}
+	yield {yield sub_regions = t.sub_regions;}
+	
+	modify 
+	{
+		def ref sub_region_states : set<State> = set<State>{};
+		def ref conf : set<ActiveState> = src.possible_conf;
+		def ref ttar : set<ActiveState> = tar.initial_conf;		
+		eval
+		{
+			for (i : SubRegion in sub_regions)
+			{
+				sub_region_states |= i.sub_states;
+			}
+			for (s : ActiveState in conf)
+			{
+				def ref src_other_reg : set<State> = s.contains \ sub_region_states;
+				for (tt : ActiveState in ttar)
+				{
+					def ref tar_other_reg : set<State> = tt.contains \ sub_region_states;
+					if (src_other_reg == tar_other_reg)
+					{					
+						(def -n:Edge->) = addCopy(t, s, tt);
+						(def -r:ActiveStateTransition->) = retype(n, ActiveStateTransition);
+						r.source_state = src.name;
+						r.target_state = tar.name;
+					}
+				}
+			}
+		
+		}
+		//tty();
+	}
+	
+}
+
+function IsSubRegionPart(st : Node) : boolean
+{	
+	emit("\nst:", st);
+	def ref nodes : set<Node> = reachableIncoming(st, Contains) | set<Node>{st};
+	emit("\nnodes:", nodes);
+	for (n : Node in nodes)
+	{
+		if (typeof(n) == SubRegion)
+		{
+			return (true);
+		}
+	}
+	return (false);
+}
+
+function getLowestNode(ref sub : set<StateMachineNode>) : StateMachineNode
+{
+	def var depth : int = -1;
+	def lowest : StateMachineNode;
+	for (n : StateMachineNode in sub)
+	{
+		if (n.depth > depth)
+		{
+			depth = n.depth;
+			lowest = n;
+		}
+	}
+	return (lowest);
+}
+
+function getSubRegions(st : Node) : set<SubRegion>
+{
+	def ref res : set<SubRegion> = set<SubRegion>{};
+	def ref nodes : set<Node> = reachableIncoming(st, Contains) | set<Node>{st};
+	for (n : Node in nodes)
+	{
+		if (typeof(n) == SubRegion)
+		{
+			def nn : SubRegion = (SubRegion)n;
+			res.add(nn);
+		}
+	}
+	
+	return (res);
+}
+
+function getRegions(st : Node) : set<ConcurrentState>
+{
+	def ref res : set<ConcurrentState> = set<ConcurrentState>{};
+	//def var first : boolean = true;
+	//def ref last : SubRegio
+	def ref nodes : set<Node> = reachableIncoming(st, Contains) | set<Node>{st};
+	for (n : Node in nodes)
+	{
+		if (typeof(n) == ConcurrentState)
+		{
+			def nn : ConcurrentState = (ConcurrentState)n;
+			res.add(nn);
+		}
+	}
+	
+	return (res);
+}
+
+pattern GetRegion(st : State, def parent : ConcurrentState)
+{
+	(
+		reg:ConcurrentState<st>;
+		yield {yield parent = reg;}
+	|
+		p:State -:Contains-> st;
+		
+		~(:ConcurrentState<st>;)
+		
+		:GetRegion(p, yield parent);		
+	)
+}

@@ -18,7 +18,11 @@ namespace Nemerle.Statechart
   public variant GuardNode : LocatedNode
   {
     | Empty   { this() {base(-1)} }
-    | Expr    {expr : PExpr;}
+    | ParseString {expr : string;}
+    | Expr 
+    {
+      expr : PExpr 
+    }
     //| InState {state : string;}
     | Else
 
@@ -29,30 +33,27 @@ namespace Nemerle.Statechart
       | (GuardNode.Empty, GuardNode.Empty) => GuardNode.Empty(a.pos)
       | (Expr(ae), Expr(be))   => GuardNode.Expr(a.pos, <[ $ae && $be ]>)
       | (Else, Else)           => GuardNode.Else(a.pos)
-      | (Empty, a)             
-      | (a, Empty)
-      | (Else, Expr as a)      
-      | (Expr as a, Else)
-      | (Expr as a, _)         
-      | (_, Expr as a)         => a
+      | (_, a)                 => a
     }
     
     public Name : string
     {
+      [Memoize]
       get
       {
         match (this)
         {
-          | Expr(c)   => $"GuardNode{$c}"
-          //| InState(c) => $"InState($c)" 
-          | Else       => "Else"
-          | Empty      => "Empty"
+          | Expr(c)        => $"[$c]"
+          | ParseString(s) => $"[$s]"
+          | Else           => "[else]"
+          | Empty          => ""
         }
       }
     }
 
     public IsEmpty : bool
     {
+      [Memoize]
       get
       {
         this is Empty
@@ -61,11 +62,15 @@ namespace Nemerle.Statechart
     
     public NotEmpty : bool
     {
+      [Memoize]
       get
       {
         !IsEmpty
       }
     }
+    
+    [RecordIgnore]
+    public Env : GlobalEnv {get;set;}
     
     public static @+(a : GuardNode, b : GuardNode) : GuardNode
     {

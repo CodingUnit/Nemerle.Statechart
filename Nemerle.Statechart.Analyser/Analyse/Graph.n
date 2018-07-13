@@ -1,0 +1,449 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+using Nemerle.Statechart;
+using System.ComponentModel;
+using CommonLib.Macros;
+using de.unika.ipd.grGen.libGr;
+using de.unika.ipd.grGen.lgsp;
+using de.unika.ipd.grGen.Action_StateMachine;
+using de.unika.ipd.grGen.Model_StateMachine;
+
+namespace Nemerle.Statechart
+{
+  /// <summary>
+  /// Description of Graph.
+  /// </summary>
+  class Graph
+  {
+    map : Hashtable[StateNode, LGSPNode] = Hashtable();
+    //mutable map_st : List[StateNode];
+
+    graph : StateMachineNamedGraph;
+    graph_actions : StateMachineActions;
+    proc_env : LGSPGraphProcessingEnvironment;
+
+    //mutable top : State;
+    
+    public this()
+    {
+      graph = StateMachineNamedGraph();
+      graph_actions = StateMachineActions(graph);
+      proc_env = LGSPGraphProcessingEnvironment(graph, graph_actions);
+    }
+
+    ParentOf(node : LGSPNode) : LGSPNode
+    {
+      def nodes = GraphHelper.AdjacentIncoming(node, Contains.TypeInstance, NodeType_StateMachineNode.typeVar);
+      if (nodes.IsEmpty()) null else
+      {
+        nodes.First().Key :> LGSPNode
+      }
+    }
+
+    //GetContained(src : INode, node_type : NodeType) : IStateMachineNode
+    //{
+    //  def nodes = GraphHelper.AdjacentOutgoing(src, Contains.TypeInstance, node_type);
+    //  if (nodes.IsEmpty()) null else
+    //  {
+    //    nodes.First().Key :> IStateMachineNode
+    //  }
+    //}
+
+    create_name(n : string) : string
+    {
+      def str_enum = Enumerable.Range(1, int.MaxValue).Select(x => $"$n$x"); // lazy create names with number
+      def it = ListUtils.SingleElement(n ?? "").Concat(str_enum); // create enumeration with normal name and with numbers
+      it.First(x => graph.GetNode(x) == null) // find first than not exist in graph
+    }
+
+    create_named[T](func : string -> INamedNode, n : string) : T
+    {
+      def node = func(create_name(n));
+      node.name = n;
+      node :> T
+    }
+
+    contains[T](parent : LGSPNode, node : T) : T
+    {
+      _ = graph.CreateEdgeContains(parent, node :> LGSPNode);
+      node
+    }
+    
+    set_attr[T](node : T, func : T -> void) : T
+    {
+      func(node);
+      node
+    }
+    
+    create_node(n : string, parent : LGSPNode, func : string -> INamedNode) : INamedNode
+    {
+      def node = func(n);
+      node.name = n;
+      _ = graph.CreateEdgeContains(parent, node :> LGSPNode);
+      node.id = get_id();
+      node
+    }
+
+    create_node2(n : string, parent : LGSPNode, func : string -> IStateMachineNode) : IStateMachineNode
+    {
+      def node = func(n);
+      _ = graph.CreateEdgeContains(parent, node :> LGSPNode);
+      node.id = get_id();
+      node
+    }
+
+    //find_named(x : string) : INamedNode
+    //{
+    //  mutable res;
+    //  if (graph_actions.FindNamed.Apply(proc_env, x, ref res)) res else null
+    //}
+
+    GetTarget(src : LGSPNode, to : TargetType) : LGSPNode
+    {
+      def parent = ParentOf(src);
+      def parent_or_src = parent ?? src;
+      def n = match (to)
+        {
+          | PseudoState(Junction(name = null, type = t) as j) => // unnamed junction
+                              // create unnamed junction node in graph
+                              def func = match (t)
+                              {
+                                | JunctionType.Choice   => graph.CreateNodeChoice
+                                | JunctionType.Junction => graph.CreateNodeJunction
+                                | JunctionType.Merge    => graph.CreateNodeMerge
+                              }
+                              def node = create_node(create_name(PseudoStateNode.Junction.GetUnnamedName(t)), parent, func);
+                              ConnectJunction(j, node :> LGSPNode); // connect junction targets
+                              node
+          | PseudoState(EntryPoint(name = n)) => graph.CreateNodeUnresolvedEntryPoint(create_name(n)) |> set_attr(_, x => x.name = n) |> contains(parent_or_src, _)
+          | PseudoState(ExitPoint(name = n))  => graph.CreateNodeUnresolvedExitPoint(create_name(n)) |> set_attr(_, x => x.name = n) |> contains(parent_or_src, _)
+          | PseudoState(Join(name = n))
+          | PseudoState(Junction(name = n))
+          | TargetType.Named(n) => graph.CreateNodeUnresolved(create_name(n)) |> set_attr(_, x => x.name = n) |> contains(parent_or_src, _) // create new unresolved node
+          | Final               => graph.CreateNodeUnresolvedFinalState() |> contains(parent_or_src, _)// search final in parent state
+          | PseudoState(p) => match (p)
+              {
+                | History(type = t) => (match (t)
+                                       {
+                                         | HistoryType.Deep => graph.CreateNodeUnresolvedDeepHistory() 
+                                         | _                => graph.CreateNodeUnresolvedHistory()
+                                       }) |> contains(src, _)
+
+                | Fork as f         => def node = create_node2(create_name("Fork"), parent, graph.CreateNodeFork);
+                                       def target = f.target.Map(GetTarget(src, _)); // get target nodes of fork
+                                       foreach (t in target) // for each target
+                                       {
+                                         _ = graph.CreateEdgeTransition(src, t) // create edge from source to target node
+                                       }
+                                       node
+
+                | Terminate         => graph.CreateNodeUnresolvedTerminate()
+                | t                 => graph.CreateNodeUnknown(create_name($"Pseudo_$t"))
+              }
+          | Qualified as q      => // create path and last node
+                                     (match (q.target)
+                                     {
+                                      | TargetType.PseudoState(History) => graph.CreateNodeUnresolvedHistory(create_name(q.PathName)) |> set_attr(_, x => x.name = q.PathName)
+                                      | _                               => graph.CreateNodeUnresolved(create_name(q.ToString()))      |> set_attr(_, x => x.name = q.ToString())
+                                    }) |> contains(parent_or_src, _)
+          | Self                => graph.CreateNodeSelfTarget() |> contains(parent_or_src, _)
+          | NoTarget            => src
+          | t                   => graph.CreateNodeUnknown(create_name($"Target_$t"))
+        }
+        n :> LGSPNode
+    }
+
+    enum TranType
+    {
+      | State
+      | Pseudo
+      | Link
+    };
+
+    GetSource(src : LGSPNode, tr : StateNode.Transition) : LGSPNode
+    {
+      match (tr.from)
+      {
+        | PseudoState(PseudoStateModelNode.Join as j) => graph.CreateNodeJoin |> create_named(_, "Join") |> contains(src, _) |> ConnectJoin(j, _)
+        | TargetType.Named(n)                         => graph.CreateNodeUnresolved(create_name(n)) |> contains(src, _) |> set_attr(_, x => x.name = n) 
+        | _                                           => src
+      }
+    }
+
+    CreateTransition(src : LGSPNode, tr : StateNode.Transition, type : TranType) : void
+    {
+      def src = GetSource(src, tr);
+      def target = GetTarget(src, tr.to);
+      match (target)
+      {
+        | null   => ()
+        | target =>
+            match (type)
+            {
+              | Pseudo =>
+                  def tran = graph.CreateEdgePseudoTransition(src, target);
+                  tran.guard = tr.guard.ToString();
+                  tran.action = tr.action.MapDefault(_.ToString(), "");
+                  tran.out_str = tr.ExecStr(TransitionEvent.None);
+
+              | State =>
+
+              foreach (trig in tr.evt)
+              {
+
+                def tran : IStateTransition = match (tr.kind)
+                                              {
+                                                | Internal                => graph.CreateEdgeInternalTransition(src, target)
+                                                | Local                   => graph.CreateEdgeLocalTransition(src, target)
+                                                | _                       => graph.CreateEdgeExternalTransition(src, target);
+                                              }
+                if (trig is TransitionEvent.Normal(name = null)) () else
+                  tran.trigger = trig.ToString();
+                tran.guard = tr.guard.ToString();
+                tran.action = tr.action.MapDefault(_.ToString(), "");
+                tran.out_str = tr.ExecStr(trig);
+              }
+
+              | Link => _ = graph.CreateEdgeTransition(src, target);
+            }
+      }
+    }
+
+    mutable max_id : int = 0;
+
+    get_id() : int { def m = max_id; max_id++; m}
+
+    ConnectJunction(j : PseudoStateModelNode.Junction, src : LGSPNode) : void
+    {
+      // connect one src and its nodes
+      foreach (n in j.nodes)
+      {
+        def target = GetTarget(src, n.to); // get target of that node
+        when (target != null) // if correct and created
+        {
+          def tran = graph.CreateEdgePseudoTransition(src, target); // create edge
+          tran.guard = n.guard.ToString(); // set guard and actions
+          tran.action = n.action.MapDefault(_.ToString(), "");
+          tran.out_str = n.ExecStr;
+        }
+        match (n.to) // go further
+        {
+          | TargetType.PseudoState(Junction as j) => ConnectJunction(j, target) // loop
+          | _                                     => ()
+        }
+      }
+    }
+
+    ConnectJoin(j : PseudoStateModelNode.Join, src : LGSPNode) : LGSPNode
+    {
+      // for each of source
+      foreach (from in j.sources)
+      {
+        // search for node of source path
+        _ = graph.CreateNodeUnresolved(create_name(from.FullName)) 
+        |> contains(src, _)
+        |> set_attr(_, x => x.name = from.FullName) 
+        |> graph.CreateEdgeTransition(_, src)
+      }
+      src
+    }
+
+    CreateTransitions(map : Hashtable[StateNode, LGSPNode]) : void
+    {
+      // create transition edges between states and pseudostates
+      foreach (node in map)
+      {
+        def src = node.Value;
+        def st = node.Key;
+        match (st)
+        {
+          | StateNode.State(transitions = tran) =>
+
+               // create all transition edges between state and targets
+              foreach (tr in tran)
+              {
+                CreateTransition(src, tr, TranType.State)
+              }
+
+          | PseudoState(p) =>
+              match (p)
+              {
+                | EntryPoint(tran = t)
+                | ExitPoint(tran = Some(t))
+                | History(default = Some(t)) => CreateTransition(src, t, TranType.Pseudo)
+                | Junction as j              => ConnectJunction(j, src)
+                | Join as j                  => _ = ConnectJoin(j, src);
+                                                // create edge from join to target
+                                                CreateTransition(src, j.tran, TranType.State);
+
+                | Initial(tran = t)          => foreach (tr in t)
+                                                {
+                                                  CreateTransition(src, tr, TranType.Pseudo)
+                                                }
+
+                | _                          => ()
+              }
+          | _ => ()
+        }
+      }
+    }
+
+    public CreateGraph(name : string, tree : StateNode, loaded : Hashtable[string, StateNode.StateMachine]) : void
+    {
+
+      /*
+      1) For all states, in tree, create state and pseudo nodes
+      2) For all states, get all pseudo states and create edges connecting them
+      3) For all states, create transition edges from states to targets
+      */
+
+      def create_id(x, childs)
+      {
+        match (x)
+        {
+          | StateNode.State as st        => def pseudo = st.pseudo_states.Map(_.ChangeId(get_id()));
+                                            st.ChangeSubStatesIdPseudoStates(childs.Map(_ :> StateNode.State), get_id(), pseudo) : StateNode
+          | StateNode.StateMachine as st => st.ChangeStateId(childs.First() :> StateNode.State, get_id())
+          | _                            => x
+        }
+      }
+
+      def prepare(fsm)
+      {
+        fsm.Reduce(create_id) :> StateNode.StateMachine
+      }
+
+      def fsm = tree |> prepare;
+      def machines = HashSet();
+      // check all states and create state nodes and substate relation edge
+      def create_nodes(x, childs)
+      {
+
+        def node = match (x)
+        {
+          | StateNode.StateMachine(name = n) =>
+              def n = n ?? name;
+              def name = create_name(n);
+              def node = graph.CreateNodeStateMachine(name); // create graph node
+              def st_id = x.Id;
+              node.name = n;
+              node.id = st_id;
+              map[x] = node;
+              def state =  childs.First() :> IState;
+              _ = graph.CreateEdgeTopState(node, state :> LGSPNode); // link it to sub state through edge for each substate
+              node
+          | State(name = n, type = t, parent = p) as st =>
+              def name = create_name(n);
+              def st_id = st.Id;
+              def st_node = match (t)
+                            {
+                              | SubRegion       => def node = graph.CreateNodeSubRegion(name);
+                                                   foreach (ch in childs with i) 
+                                                   {
+                                                     | IState as st => st.idx = i;
+                                                                      _ = graph.CreateEdgeRegion(node, st :> LGSPNode)
+                                                     | _           => ()
+                                                   }                                                   
+                                                   node
+                              | StateType.State => def node = graph.CreateNodeState(name);
+                                                   //childs.Iter(x => _ = graph.CreateEdgeSubstate(node, x));
+                                                   foreach (ch in childs with i) 
+                                                   {
+                                                      | IState as st => st.idx = i;
+                                                                       _ = graph.CreateEdgeSubstate(node, st :> LGSPNode)
+                                                      | _           => ()
+                                                   }
+                                                   node
+                              | Region          => def node = graph.CreateNodeConcurrentState(name);
+                                                   foreach (x in childs with i)
+                                                   {
+                                                     | n is ISubRegion => n.name = $"$(name)_SubRegion$i";
+                                                                          //_ = graph.CreateEdgeRegion(node, x);
+                                                                          n.idx = i;
+                                                                          _ = graph.CreateEdgeRegion(node, n :> LGSPNode);
+                                                     | _               => ()
+                                                   }
+                                                   node
+                              | Final           => graph.CreateNodeFinalState()
+                              | SubMachine(null, _) => graph.CreateNodeSubMachineState |> create_named(_, name) |> set_attr(_, x : SubMachineState => x.typename = n)
+                              | SubMachine(t, _) => _ = machines.Add(t);
+                                                    graph.CreateNodeSubMachineState |> create_named(_, name) |> set_attr(_, x : SubMachineState => x.typename = t)
+                            }
+
+              when (st_node is INamedNode as s) s.name = n;
+              when (st_node is IState as s) 
+              {
+                s.entry_act = st.entry.SelectMany(x => x.action.ActionsString) |> List;
+                s.exit_act = st.exit.SelectMany(x => x.action.ActionsString) |> List;
+                s.do_act = st.do_activity.SelectMany(x => x.action.ActionsString) |> List;
+                s.defer  = st.defer.SelectMany(x => x.evt.Select(x => x.ToString())) |> List;
+                s.id = st_id;
+              }
+              def st_node = st_node :> LGSPNode;
+              map[x] = st_node;
+              // link it to sub state through edge for each substate
+
+              when (p is Some(p))
+              {
+                _ = graph.CreateNodeUnresolved(create_name(p)) |> set_attr(_, x => x.name = p) |> graph.CreateEdgeParent(st_node, _)
+              }
+              foreach (p in st.pseudo_states)
+              {
+                def st_id = p.Id;
+                def node = match (p.node)
+                {
+                  | Initial                                     => graph.CreateNodeInitialState()
+                  | History(type = HistoryType.None)            => graph.CreateNodeHistory()
+                  | History(type = HistoryType.Deep)            => graph.CreateNodeDeepHistory()
+                  | History(type = HistoryType.Shallow)         => graph.CreateNodeShallowHistory()
+                  | Fork                                        => graph.CreateNodeFork()
+                  | Terminate                                   => graph.CreateNodeTerminate()
+
+                  | EntryPoint(name = n)                             with f = graph.CreateNodeEntryPoint(_)// => create_named(graph.CreateNodeEntryPoint, e.name)// entry point needs transition pass
+                  | ExitPoint(name = n)                              with f = graph.CreateNodeExitPoint
+                  | Join(name = n)                                   with f = graph.CreateNodeJoin
+                  | Junction(type = JunctionType.Junction, name = n) with f = graph.CreateNodeJunction
+                  | Junction(type = JunctionType.Choice, name = n)   with f = graph.CreateNodeChoice
+                  | Junction(type = JunctionType.Merge, name = n)    with f = graph.CreateNodeMerge
+                                                                => create_named(f, n)
+
+                }
+                when (node is IPseudoState as p) p.id = st_id;
+                def node = node :> LGSPNode;
+                map[p] = node;
+
+                _ = graph.CreateEdgeContains(st_node, node);
+              }
+              st_node
+          | _ => null
+        }
+
+        node
+      }
+      //def top : LGSPNode
+      _ = fsm.MapTree(create_nodes);
+      //top = GraphHelper.Adjacent(tree, TopState.TypeInstance, State.TypeInstance).First().Key :> State;
+      // create sub machines types in graph
+      foreach (m in machines)
+      {
+        match (loaded.Values.Find(x => x.name == m))
+        {
+          | Some(sub) => def instance = prepare(sub); // new id for each tree element
+                         def st = instance.state.ChangeName(m);
+                         _ = st.MapTree(create_nodes);
+                         | _         => _ = graph.CreateNodeUnresolvedSubMachine(create_name(m)) |> set_attr(_, x : UnresolvedSubMachine => {x.typename = m; x.name = m;}) // type
+        }
+      }
+
+      CreateTransitions(map);
+      GRSExport.Export(graph, $"$(name).grs");
+    }
+  }
+}

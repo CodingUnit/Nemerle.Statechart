@@ -1,0 +1,105 @@
+flags auto_initial log testing;
+//flags debug;
+
+using CalcEnterOper;
+
+event oper(char);
+event digit(char);
+
+entry / insert('0');
+
+state on
+{
+  off => off;
+  C   => @;
+}
+
+state operand1 : on
+{
+  oper(o) / operator = o => opEntered;
+  CE => ready;
+}
+
+state ready : operand1
+{
+  digit(n) => enter_operand1.digit;
+  point    => enter_operand1.point;
+  
+  state begin
+  {
+    entry / clear();
+    oper(o) [o == '-'] => negated1;
+  }
+
+  state result
+  {
+    entry / show(result);
+    entry / op1 = result;
+    oper(o) [o == '%'] / calc_proc1() => @;
+  }
+
+  state negated1
+  {
+    $> / negate();
+    oper / ();
+  }
+}
+
+submachine enter_operand1[enter_operand] : operand1
+{
+  exit / op1 = ent_op;
+  oper(o) [o == '%'] / calc_proc1 => result;
+}
+
+state operand2 : on
+{
+  CE => opEntered;
+  digit(n) => enter_operand2.digit;
+  point    => enter_operand2.point;
+}
+
+state proc : operand2_ready
+{
+  $> / { calc_proc2(); show(op2) }
+}
+
+state opEntered : operand2
+{
+  $> / clear_op2();
+  oper(o) [o == '-'] => negated2;
+}
+
+state negated2 : operand2
+{
+  entry / negate();
+  oper(o) [o == '-'] / ();
+}
+
+state operand2_ready : operand2
+{
+  oper(o) => {
+               error => error;
+               o == '%' => proc;
+               priority(operator, o) < 0 / mem_op1(o) => opEntered;
+               else / { op1 = calculate(); operator = o; } => opEntered;
+             }
+  equal / calc_all() => {
+                          error => error;
+                          else  => result;
+                        }
+}
+
+submachine enter_operand2[enter_operand] : operand2_ready
+{
+  exit / op2 = ent_op;
+}
+
+state error : on
+{
+}
+
+state off
+{
+  on, C => on;
+  $> / show("");
+}

@@ -9,6 +9,11 @@ using System.Linq;
 using Nemerle.Statechart;
 using System.ComponentModel;
 using CommonLib.Macros;
+using de.unika.ipd.grGen.libGr;
+using de.unika.ipd.grGen.lgsp;
+using de.unika.ipd.grGen.Action_StateMachine;
+using de.unika.ipd.grGen.Model_StateMachine;
+using Nemerle.Compiler;
 
 namespace Nemerle.Statechart
 {
@@ -19,7 +24,8 @@ namespace Nemerle.Statechart
   [NotifyPropertyChange]
   partial class FsmAnalyser : INotifyPropertyChanged
   {
-
+    graph : Graph = Graph();
+    
     public concurrent_field_pattern : bool
     {
       [Memoize]
@@ -34,38 +40,38 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
+
     internal CreateEvent(evt : TransitionEvent) : StateEvent
     {
       | TransitionEvent.Normal(n, _)   => match (EventClasses.Find(x => if (x is EventClass.External(evt_name = n2) when n != null) n2 == n.ToUpperFirst() else false))
-                                          {
-                                            | Some(e) => StateEvent.Normal(evt.Location, n, GetEventParms(evt), e)
-                                            | _       => StateEvent.Normal(evt.Location, n, GetEventParms(evt), EventClass.Internal())
-                                          }
+          {
+            | Some(e) => StateEvent.Normal(evt.Location, n, GetEventParms(evt), e)
+            | _       => StateEvent.Normal(evt.Location, n, GetEventParms(evt), EventClass.Internal())
+          }
       | Completion as e                => StateEvent.Completion(e.Location)
       | Timed(TimedExpr.Expr(ex)) as e => StateEvent.Timed(e.Location, ex)
       | _                              => throw InvalidOperationException("invalid event")
     }
-    
+
     internal GetEventParms(evt : TransitionEvent) : list[string * string]
     {
       def (name, parms) = if (evt is TransitionEvent.Normal as n) (n.name, n.parms) else (null, []);
       if (parms.IsEmpty()) [] else
-      match (EventDecls.Find(x => x.name == name))
-      {
-        | Some(e) => def types = e.parms_type;
-                     if (types.Length != parms.Length)
-                     {
-                       messager.AddError(FsmError.EventDeclarationNumberOfParamsNotEqual(e, evt));
-                       []
-                     } else
-                     {
-                       parms.Zip(types)
-                     }
-       | _        => messager.AddError(FsmError.EventDeclarationNotFound(evt));[]
-      }
+        match (EventDecls.Find(x => x.name == name))
+        {
+          | Some(e) => def types = e.parms_type;
+                    if (types.Length != parms.Length)
+                    {
+                      messager.AddError(FsmError.EventDeclarationNumberOfParamsNotEqual(e, evt));
+                      []
+                    } else
+                    {
+                      parms.Zip(types)
+                    }
+          | _        => messager.AddError(FsmError.EventDeclarationNotFound(evt));[]
+        }
     }
-    
+
     actions : list[FsmAction]
     {
       [Memoize]
@@ -77,7 +83,7 @@ namespace Nemerle.Statechart
         tran.Concat(st).Concat(pseudo).NToList()
       }
     }
-    
+
     CheckActivities() : void 
     {
       def do_act = States.SelectMany(x => x.do_activity.Select(y => (x, y)));
@@ -91,10 +97,10 @@ namespace Nemerle.Statechart
           | _       => ()
         }
       }
-      
+
       def sm = do_act.Filter((x : FsmState, _) => x.PartOfStateMachine.HasValue);
       def do_act = sm.GroupBy((x : FsmState, _) => x.PartOfStateMachine.Value.SubMachineType);
-      
+
       foreach (group in do_act)
       {
         foreach (st in group.GroupBy((x, _) => x.name))
@@ -111,10 +117,10 @@ namespace Nemerle.Statechart
         }
       }
     }
-    
+
     PrintTree[T](tree : T, childs : T -> IEnumerable[T], print_elem : T -> string, file : string) : void
     {
-      
+
       def indent((text, depth), (acc, prev_depth))
       {
         def ind = string(' ', depth * 2); // create indentation from depth
@@ -123,7 +129,7 @@ namespace Nemerle.Statechart
         def text = if (depth < prev_depth) text :: "" :: acc else text :: acc;
         (text, depth)
       }
-      
+
       // get pre order iterator and preorde depth function of elements
       def res = TreeUtils.GetPreOrderEnumerable(tree, childs).Map(print_elem); // map iterator to list of lines of printed text
       def depth = TreeUtils.GetPreOrderDepth(tree, childs).NToList();
@@ -131,20 +137,20 @@ namespace Nemerle.Statechart
       def (res, _) = with_depth.Fold(([], 0), indent); // indent
       System.IO.File.WriteAllLines(file, res.Rev().ToArray()) // write to file
     }
-    
+
     PrintFsm(tree : StateNode, file : string) : void
     {
       def print(st)
       {
         | StateNode.State as st => def str = $"$(st.name):, Type: $(st.type)";
-                                   def str = if (st.parent is Some(p)) str + $", Parent:$p" else str;
-                                   def sub_states = st.sub_states;
-                                   def names = sub_states.Select(_.name);
-                                   def str = if (sub_states.IsEmpty()) str else $"$str, Sub:..$(names)";
-                                   str
+                                  def str = if (st.parent is Some(p)) str + $", Parent:$p" else str;
+                                  def sub_states = st.sub_states;
+                                  def names = sub_states.Select(_.name);
+                                  def str = if (sub_states.IsEmpty()) str else $"$str, Sub:..$(names)";
+                                  str
         | _                     => ""
       }
-     
+
       def get_childs(t)
       {
         | StateNode.StateMachine as t => t.state :: []
@@ -152,22 +158,120 @@ namespace Nemerle.Statechart
         | StateNode.State as t        => t.sub_states
         | _                           => []
       }
-      
+
       PrintTree(tree, get_childs, print, file)
     }
-    
+
     PrintFsmState(tree : FsmState, file : string) : void
     {
       //def file = System.IO.File.CreateText();
-      
+
       def print(st)
       {
         def str = $<#$(st.Name):, Type: $(st.type)#>;
         def str = if (st.sub_states.IsEmpty()) str else str + $", Sub:..$(st.sub_states)";
         str
       }
-      
+
       PrintTree(tree, _.sub_states, print, file)
+    }
+
+    public CreateGraph() : void
+    {
+      graph.CreateGraph(Name, Fsm, Hashtable(StateMachinesInProj));
+    }
+    
+    locate[T](x : T, y : T) : T where T : LocatedNode     
+    {
+      x.Location = y.Location;
+      x
+    }
+      
+    public ParseExprs(fsm : StateNode.StateMachine) : StateNode.StateMachine
+    {
+      
+      
+      def map_act(x)
+      {
+        | FsmAction.ParseString(s) as a => MainParser.ParseExpr(Env, s) |> FsmAction.Expr(a.pos, _) |> locate(_, x)
+        | x                             => x
+      }
+      
+      def map_actions(x)
+      {
+        Actions(x.pos, x.actions.Map(map_act)) |> locate(_, x)
+      }
+      
+      def map_guard(x)
+      {
+        | GuardNode.ParseString(s) as a => MainParser.ParseExpr(Env, s) |> GuardNode.Expr(a.pos, _) |> locate(_, x)
+        | x                             => x
+      }
+
+      def map_node(p)
+      {
+        def act   = map_actions |> p.action.Map;
+        def guard = p.guard     |> map_guard;
+        def to    = p.to        |> map_target;
+        p.ChangeGuardActionTo(guard, act, to) |> locate(_, p)
+      }
+    
+      and map_target(t)
+      {
+        | TargetType.PseudoState(j) as t => j |> map_pseudo |> t.ChangeNode |> locate(_, t)
+        | x                              => x
+      }
+      
+      and map_junc(j)
+      {
+        j.nodes.Map(map_node) |> j.ChangeNodes |> locate(_, j)
+      }
+      
+      and map_pseudo(p : PseudoStateModelNode)
+      {
+        (match (p)
+        {
+          | PseudoStateModelNode.Junction as j => j          |> map_junc
+          | EntryPoint as e                    => e.tran     |> map_tran      |> e.ChangeTran
+          | ExitPoint as e                     => map_tran   |> e.tran.Map    |> e.ChangeTran
+          | Initial as i                       => map_tran   |> i.tran.Map    |> i.ChangeTran
+          | History as h                       => map_tran   |> h.default.Map |> h.ChangeDefault
+          | Fork as f                          => map_target |> f.target.Map  |> f.ChangeTarget
+          | Join as j                          => j.tran     |> map_tran      |> j.ChangeTran
+          | x                                  => x
+        }) |> locate(_, p)
+      }
+      
+      and map_tran(t)
+      {
+        def guard = t.guard     |> map_guard;
+        def to    = t.to        |> map_target;
+        def act   = map_actions |> t.action.Map;
+        t.ChangeGuardActionTo(guard, act, to) |> locate(_, t)
+      }
+      
+      def parse(x, ch)
+      {
+        match (x)
+        {
+           | StateNode.StateMachine as st => ch |> st.Rebuild
+           | State as st                  => def entry = st.entry.Map(x => map_actions(x.action) |> x.ChangeAction |> locate(_, x));
+                                             def exit  = st.exit.Map(x => map_actions(x.action) |> x.ChangeAction |> locate(_, x));
+                                             def doact = st.do_activity.Map(x => map_actions(x.action) |> x.ChangeAction |> locate(_, x));
+                                             def tran  = st.transitions.Map(map_tran);
+                                             st.pseudo_states.Map(x => x.node |> map_pseudo |> x.ChangeNode |> locate(_, x)) 
+                                             |> st.ChangePseudoStates
+                                             |> _.ChangeTransitions(tran)
+                                             |> _.ChangeEntry(entry)
+                                             |> _.ChangeExit(exit)
+                                             |> _.ChangeDoActivity(doact)
+                                             |> _.Rebuild(ch) 
+                                             |> locate(_, x)
+           | x                            => x                                             
+        }
+      }
+      
+      fsm.Reduce(parse) :> StateNode.StateMachine
     }
     
     public Analyse() : void
@@ -177,10 +281,11 @@ namespace Nemerle.Statechart
         CheckParseErrors();
         PrintFsm(Fsm, $"$(Name)_statenode.txt");
         CreateStateMap();
+        graph.CreateGraph(Name, Fsm, LoadedMachines);
         when (FsmFlags.Logging) PrintFsmState(TopState, $"$(Name)_after_created.txt");
         CheckHistoryStates(); // check for errors in history
         CheckTransitions();
-        CheckInitialTransitions();
+        CheckInitialTransitions();  
         CreateTransitions();
         BreakIfError();
         TransformFsm();

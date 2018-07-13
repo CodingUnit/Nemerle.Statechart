@@ -48,7 +48,7 @@ namespace Nemerle.Statechart
   }
 
   [Record]
-  public variant StateNode : LocatedNode
+  public variant StateNode : LocatedNode, IGeneralTree[StateNode]
   {
     | Flags
       {
@@ -72,43 +72,100 @@ namespace Nemerle.Statechart
           $"Event_$name(..$parms_type)"
         }
       }
+    | Include {file : string;}
     | StateMachine
       {
         flags : MachineFlags;
         [NeedChange]
         name  : string;
+        [NeedChange(Id)]
+        [NeedChange]
         state : State;
         usings : list[Using] = [];
         event_decls : list[EventDecl] = [];
         event_classes : list[EventClassDecl] = [];
         errors : list[Error];
         
+        public AddTopDecls(b : StateMachine) : StateMachine
+        {
+          def flags = MachineFlags(flags.flags | b.flags.flags, flags.errors + b.flags.errors);
+          def name = if (name != null) name else b.name;
+          def fsm = StateNode.StateMachine(pos, flags, name, state, usings + b.usings, event_decls + b.event_decls, event_classes + b.event_classes, errors + b.errors);
+          fsm.Location = this.Location;
+          fsm
+        }
+        
         GetErrors() : IEnumerable[Error]
         {
           TreeUtils.Fold(state, [], _.sub_states, (x, a) => a.Concat(x.errors)).Concat(errors)
           //StateParts.SelectMany(_.errors)
         }
+       
+        public Rebuild(ch : list[StateNode]) : StateNode.StateMachine
+        {
+          def first = ch.First();
+          if (state != first : object)
+          {
+            def st = this.ChangeState(first :> StateNode.State);
+            st.Location = Location;
+            st
+          } else this
+        }
       }
 
+      
+        
     | State
       {
-        this(pos : int, n : string, type : StateType) { base(pos);name = n; this.type = type; }
+        this(pos : int, n : string, type : StateType) { base(pos, 0);name = n; this.type = type; }
         
+        [NeedChange]
         name          : string;
         parent        : option[string] = None();
         attributes    : list[StateAttribute] = [];
+        [NeedChange]
         entry         : list[Entry] = [];
+        [NeedChange]
         exit          : list[Exit] = [];
         [NeedChange]
         transitions   : list[Transition] = [];
+        [NeedChange]
         do_activity   : list[DoActivity] = [];
         defer         : list[Defer] = [];
+        [NeedChange(Id, pseudo_states)]
         [NeedChange]
         sub_states    : list[State] = [];
+        [NeedChange]
         pseudo_states : list[PseudoState] = [];
         type          : StateType;
         errors        : list[Error] = [];
-
+        [NeedChange]
+        include       : list[Include] = [];
+     
+        public Rebuild(ch : list[StateNode]) : StateNode.State
+        {
+          if (sub_states != ch : object)
+          {
+            def st = ChangeSubStates(ch.Map(x => x :> StateNode.State));
+            st.Location = Location;
+            st
+          } else this
+        }
+        
+        public Instantiate(submachine : State) : State
+        {
+          State(pos, name, parent, attributes, 
+                entry, 
+                exit, 
+                transitions + submachine.transitions, 
+                do_activity, 
+                defer + submachine.defer, 
+                submachine.sub_states, 
+                pseudo_states + submachine.pseudo_states, 
+                submachine.type, 
+                errors, include)
+        }
+        
         public override ToString() : string
         {
           $"StateNode.State $name"
@@ -118,11 +175,13 @@ namespace Nemerle.Statechart
     | Entry
       {
         attrib : ActionFlags;
+        [NeedChange]
         action : Actions;
       }
     | Exit
       {
         attrib : ActionFlags;
+        [NeedChange]
         action : Actions;
       }
     | Defer
@@ -130,24 +189,115 @@ namespace Nemerle.Statechart
         evt : list[TransitionEvent];
       }
     | Error { node : StateNode; }
-    | DoActivity {action : Actions;flags : ActivityFlag;}
+    | DoActivity {[NeedChange] action : Actions;flags : ActivityFlag;}
     | Transition
       {
         [NeedChange]
         from   : TargetType;
         evt    : list[TransitionEvent] = [];
+        [NeedChange(action, to)]
+        [NeedChange]
         guard  : GuardNode;
+        [NeedChange]
         action : option[Actions];
+        [NeedChange]
         to     : TargetType;
         kind   : TransitionKind;
+        
+        public ExecStr(evt : TransitionEvent) : string
+        {
+          def evt = if (evt is TransitionEvent.Normal(name = null)) "" else evt.ToString();
+          def action = if (action is Some(a)) $" / $a" else "";
+          def guard = if (guard.ToString().IsEmpty()) "" else $" $guard";
+          $"$evt$guard$action"
+        }
+        
+        Str : string
+        {
+          [Memoize]
+          get
+          {
+            def action = if (action is Some(a)) $" / $a" else "";
+            def guard = if (guard.ToString().IsEmpty()) "" else $" $guard";
+            def to = match (kind, to)
+            {
+              | (_, TargetType.NoTarget) 
+              | (TransitionKind.Internal, _) => ""
+              | _                            => $" => $to"
+            }
+            $<#..$(evt; ",")$guard$action$to#>
+          }
+        }
+        
+        public override ToString() : string
+        {
+          Str
+        }
       }
     | PseudoState
       {
+        [NeedChange]
         node : PseudoStateModelNode;
       }
 
     | Region
     | Sequence { lst : list[StateNode]; }
+    
+    public ChildNodes : IEnumerable[StateNode]
+    {
+      [Memoize]
+      get
+      {
+        match (this)
+        {
+          | StateNode.StateMachine(state = s) => [s]
+          | State(sub_states = s)             => s
+          | Sequence(s)                       => s.AsEnumerable()
+          | _                                 => Enumerable.Empty()
+        }
+      }
+    }
+    
+    public static Combine(a : StateMachine, b : StateMachine) : StateMachine
+    {
+      def pos = if (a.Location.File == b.Location.File) Math.Min(a.pos, b.pos) else b.pos;
+      def flags = MachineFlags(a.flags.flags | b.flags.flags, a.flags.errors + b.flags.errors);
+      def aname = a.name ?? "";
+      def bname = b.name ?? "";
+      def name = if (aname.Length > bname.Length) aname else bname;
+      def state = State.Combine(a.state, b.state);
+      StateNode.StateMachine(pos, flags, name, state, a.usings + b.usings, a.event_decls + b.event_decls, a.event_classes + b.event_classes, a.errors + b.errors);
+    }
+
+        
+    public static Combine(a : State, b : State) : State
+    {
+      def entry = a.entry + b.entry;
+      def exit = a.exit + b.exit;
+      def tran = a.transitions + b.transitions;
+      def doact = a.do_activity + b.do_activity;
+      def err = a.errors + b.errors;
+      def defer = a.defer + b.defer;
+      def pseudo = a.pseudo_states + b.pseudo_states;
+      def sub = a.sub_states + b.sub_states;
+      def pos = if (a.Location.File == b.Location.File) Math.Min(a.pos, b.pos) else b.pos;
+      def include = a.include + b.include;
+      StateNode.State(pos, null, None(), [], entry, exit, tran, doact, defer, sub, pseudo, StateType.State(), err, include)
+    }    
+    
+    [RecordIgnore]
+    [NeedChange]
+    public Id : int;
+    
+    public override Equals(obj : object) : bool
+    {
+      this == obj
+    }
+    
+    public override GetHashCode() : int
+    {
+      Id
+    }
   }
 
 }

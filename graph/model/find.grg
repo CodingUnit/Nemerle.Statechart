@@ -1,0 +1,252 @@
+// graph rewrite rule file, shows how to define a model to use, and how a rule looks like,
+// with the pattern to match and the rewrite to apply, with lhs and rhs elements being indentified by their name
+
+// // find or create element in parent of type 
+// pattern FindOrCreate(parent : Node, type : Node) modify(def ret : Node)
+// {
+  // alternative
+  // {
+    // found
+	// {
+	// // search for parent contains node of that type
+	  // parent -:Contains-> t:typeof(type);
+	  // //if {typeof(t) == typeof(type);}
+	  
+	  // //hom(parent, t);
+	  // modify
+	  // {
+	  // // return to rhs part
+		// eval { yield ret = t; }
+	  // }
+	// }
+	// not_found
+	// {	  
+	  // negative
+	  // {
+	    // // if not found
+		// parent -:Contains-> t:typeof(type);
+		
+		// //if {typeof(t) == typeof(type);}
+	  // }
+	  // modify
+	  // {
+	   // // create
+		// parent -:Contains-> t:typeof(type);
+		// eval { yield ret = t; } // return to rhs part
+	  // }
+	// }
+	
+  // }
+
+  // modify
+  // {
+  // }  
+// }
+
+// find or create element in parent of type 
+pattern FindHierarchy(parent : Node, type : Node)
+{
+  (
+	  // search for parent contains node of that type	  
+	  parent -:Contains-> type;
+	  //yield {yield ret = type;} // yield to output
+	|	
+	  ~( parent -:Contains-> type; ) // if not found 
+	  
+	  p:Node -:Contains-> parent; // match parent
+	  :FindHierarchy(p, type); // recursive call with parent
+	
+  )
+
+}
+
+// find or create element in parent of type 
+pattern FindNameHierarchy(parent : Node, type : Node, var name : string, def ret : Node)
+{
+  (
+	// search for parent contains node of that type	  
+	  parent -:Contains-> type;
+	  t:NamedNode<type>; // try cast to type
+	 
+	  if {t.name == name;} // if name is equal to search
+	  
+	  yield {yield ret = t;} // return
+	|
+	  negative
+	  {
+	    // if not found
+		parent -:Contains-> type;
+	  }
+	  
+	  p:Node -:Contains-> parent; // get parent
+	  :FindNameHierarchy(p, type, name, yield ret); // recursive call with parent
+  )
+}
+
+pattern FindQualified(ref tar : array<string>, def ret : StateMachineNode)
+{
+	n:NamedNode;
+	:QualifiedRec(n, tar, 0, yield ret);
+}
+
+pattern FindQualifiedType(ref tar : array<string>, type : Node)
+{
+	n:NamedNode;
+	:QualifiedRecType(n, tar, 0, type);
+}
+
+pattern QualifiedRec(state : NamedNode, ref tar : array<string>, var idx : int, def ret : StateMachineNode)
+{
+	if { state.name == tar[idx];} // if name of this child equal current path at index
+	(	   
+		if {idx < tar.size() - 1;} // is not at end of array			
+		state -:Contains-> t:NamedNode; // find named node contained in state
+		:QualifiedRec(t, tar, idx + 1, yield ret); // recursive search for path at next index
+	|	    
+		if {idx >= tar.size() - 1;}        // index at end of array 									
+		yield { yield ret = state; } // yield result
+	)
+}
+
+pattern QualifiedRecType(state : NamedNode, ref tar : array<string>, var idx : int, type : Node)
+{
+	if { state.name == tar[idx];} // if name of this child equal current path at index
+	(	  
+		if {idx < tar.size() - 1;} // is not at 0 index or at end of array
+		
+		state -:Contains-> t:NamedNode; // find named node contained in state
+		:QualifiedRecType(t, tar, idx + 1, type); // recursive search for path at next index
+	 |
+		if {idx >= tar.size() - 1;}        // index at end of array 
+		state -:Contains-> type;			
+		//yield { yield ret = type; } // yield result
+	 
+	)
+}
+
+// find qualified target state.substate or state.pseudo syntax
+test FindNamed(var name : string) : (NamedNode)
+{
+  t:NamedNode;  
+  
+  if { t.name == name; }   
+  return (t);
+}
+
+function getLCA(u : State, v : State) : State
+{
+	return ((State)LCAfunc(adjacentIncoming(u, Contains).peek(0), adjacentIncoming(v, Contains).peek(0), u.depth - 1, v.depth - 1));
+}
+
+pattern LCA(u : StateMachineNode, v : StateMachineNode, def lca : StateMachineNode)
+{
+	hom(u, v);
+	// (
+		// if {u == v;}
+		// lca -:Contains-> u;
+	// |
+		// if {u != v;}
+	:LCArec(u, v, yield lca, u.depth, v.depth);
+	//)
+}
+
+pattern LCArec2(u : StateMachineNode, v : StateMachineNode, def lca : StateMachineNode)
+{
+	hom(u, v);
+	(		
+		~(v <-e1:Contains- l:StateMachineNode -e2:Contains-> u;hom(u, v);hom(e1, e2);)
+		parent1:StateMachineNode -:Contains-> u;
+		parent2:StateMachineNode -:Contains-> v;
+		hom(parent1, parent2);
+		
+		:LCArec2(parent1, parent2, yield lca);
+	|				
+	    v <-e1:Contains- l:StateMachineNode -e2:Contains-> u;
+		hom(e1, e2);
+		yield {yield lca = l;}
+	)
+}
+
+pattern LCArec(u : StateMachineNode, v : StateMachineNode, def lca : StateMachineNode, var d1 : int, var d2 : int)
+{
+	hom(u, v);
+	(
+	    if { d1 > d2; }
+	 
+		parent:StateMachineNode -:Contains-> u;
+		:LCArec(parent, v, yield lca, d1 - 1, d2);
+	 |   
+		if { d1 < d2; }
+	 
+		parent:StateMachineNode -:Contains-> v;
+		:LCArec(u, parent, yield lca, d1, d2 - 1);
+     |   
+		if { d1 == d2; }	    
+		
+		:LCArec2(u, v, yield lca);
+	)
+	
+}
+
+// function LCAf(u : StateMachineNode, v : StateMachineNode) : Node
+// {
+	// return (LCAfunc(u, v, u.depth, v.depth));
+// }
+
+function LCAfunc(u : Node, v : Node, var d1 : int, var d2 : int) : Node
+{
+	if (d1 > d2)
+	{
+		def p1 : Node = adjacentIncoming(u, Contains).peek(0);
+		return (LCAfunc(p1, v, d1 - 1, d2));
+	}
+	if (d1 < d2)
+	{
+		def p2 : Node = adjacentIncoming(v, Contains).peek(0);
+		return (LCAfunc(u, p2, d1, d2 - 1));
+	} else
+	{
+		if (u != v)
+		{
+			def p1 : Node = adjacentIncoming(u, Contains).peek(0);
+			def p2 : Node = adjacentIncoming(v, Contains).peek(0);
+			return (LCAfunc(p1, p2, d1, d2));
+		} else
+		{
+			return (u);
+		}
+	}
+}
+/*
+Процедура LCA(u, v):
+    h1 := depth(u)          // depth(x) = глубина вершины x
+    h2 := depth(v)
+  
+    while h1 != h2:
+       if h1 > h2:
+          u := parent(u)
+          h1 := h1 - 1
+       else:
+          v := parent(v)
+          h2 := h2 - 1
+  
+    while u != v:
+       u := parent(u)       // parent(x) = непосредственный предок вершины x
+       v := parent(v)
+  
+    return u
+*/
+pattern FindSourceState(st : Node, def source : Node) 
+{
+  (
+		state:State -e:Transition-> st;
+	   
+		yield { yield source = state; }
+	
+	|
+		state:PseudoState -e:Transition-> st;
+		
+		:FindSourceState(state, yield source);
+  )
+  
+}

@@ -18,14 +18,38 @@ namespace Nemerle.Statechart
   {
     parser : Parser;
     loc    : Location;
-    builder : FsmBuilder;
+    //builder : FsmBuilder;
     
-    public this(parser : Parser, loc : Location, builder : FsmBuilder)
+    public this(parser : Parser, loc : Location)
     {
       this.parser = parser;
       this.loc = loc;
-      this.builder = builder;
+      //this.builder = builder;
     }
+    
+    public static ConvLocation(location : Nitra.Location, base_loc : Location) : Location
+    {
+      def startLineColumn = location.StartLineColumn;
+      def endLineColumn = location.EndLineColumn;
+      
+	    def startLine = startLineColumn.Line;
+	    def startCol = startLineColumn.Column;
+	    
+	    def endLine = endLineColumn.Line;
+	    def endCol = endLineColumn.Column;
+	    def nloc =  Location(location.Source.File.FullName, startLine, startCol, endLine, endCol);
+  //    def nloc = Nitra.Util.ToNemerleLocation(location);
+      if (base_loc.IsGeneratedOrEmpty)
+      {
+        nloc
+      } else
+      {
+	      if (nloc.Line > 1) 
+	        Location(nloc, nloc.Line + base_loc.Line - 1, nloc.Column, base_loc.Line + nloc.EndLine - 1, nloc.EndColumn) 
+	      else               
+	        Location(nloc, nloc.Line, nloc.Column + base_loc.Column, nloc.EndLine, nloc.EndColumn + base_loc.Column);
+      }
+    }    
     
     public GetLoc(pos : int) : Location
     {
@@ -34,10 +58,10 @@ namespace Nemerle.Statechart
         loc
       } else
       {
-        def loc = parser.Source.GetSourceLine(pos);
-        def offs = pos - loc.StartPos;
-        def loc = Nitra.Location(loc.Source, loc.StartPos + offs, loc.EndPos);
-        builder.ConvLocation(loc)
+        def nloc = parser.Source.GetSourceLine(pos);
+        def offs = pos - nloc.StartPos;
+        def nloc = Nitra.Location(nloc.Source, nloc.StartPos + offs, nloc.EndPos);
+        ConvLocation(nloc, loc)
       }
     }
     
@@ -85,7 +109,7 @@ namespace Nemerle.Statechart
     LocateTran(tr : StateNode.Transition) : void
     {
       | StateNode.Transition(f, e, g, a, t, _) => 
-      
+     
         Locate(tr);
         when (a is Some(a))
         {
@@ -101,12 +125,15 @@ namespace Nemerle.Statechart
     
     Locate(node : LocatedNode) : void
     {
-      node.Location = GetLoc(node.pos);
+       node.Location = GetLoc(node.pos);
     }
     
     Locate(node : IEnumerable[LocatedNode]) : void
     {
-      node.Iter(Locate)
+      foreach (n in node)
+      {
+          Locate(n)
+      }
     }
     
     public Locate(fsm : StateNode.StateMachine) : void
@@ -127,6 +154,7 @@ namespace Nemerle.Statechart
         Locate(st);
         Locate(st.attributes);
         Locate(st.defer);
+        st.include |> Locate;
         foreach (evt in st.defer) Locate(evt.evt);
         Locate(st.do_activity);
         def act = st.entry.Map(x => x.action) + st.exit.Map(x => x.action);

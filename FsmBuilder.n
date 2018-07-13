@@ -25,8 +25,8 @@ namespace Nemerle.Statechart
     {
       this(ty, typer, top);
       this.fsm = fsm;
-      parser = Parser();
-      locator = Locator(parser, loc, this);
+      parser = Parser(FsmAnalyser.Flags);
+      locator = Locator(parser, loc);
     }
 
     public this(ty : TypeBuilder, typer : Typer, top : TopDeclaration)
@@ -34,18 +34,26 @@ namespace Nemerle.Statechart
       this.ty = ty;
       this.top = top;
       this.typer = typer;
-      parser = Parser();
-      locator = Locator(parser, loc, this);
+      parser = Parser(FsmAnalyser.Flags);
+      locator = Locator(parser, loc);
     }
 
+    public this(file : string)
+    {
+      this.file = file;
+      //this.files = files ?? HashSet();
+      parser = Parser(FsmAnalyser.Flags);
+      locator = Locator(parser, loc)
+    }
+    
     [Accessor]
     mutable fsm : StateNode.StateMachine;
 
     AttributesAndMods : AttributesAndModifiers
     {
       get
-      {
-        top.ParsedAttributsAndModifiers
+      {        
+        top?.ParsedAttributsAndModifiers
       }
     }
 
@@ -64,28 +72,39 @@ namespace Nemerle.Statechart
           | _                      => None()
         }
         
-        AttributesAndMods.ParsedCustomAttributes.FindMap(find_func)
+        if (AttributesAndMods != null)
+        {
+          AttributesAndMods.ParsedCustomAttributes.FindMap(find_func)
+        }
+        else None()
       }
     }
 
     loc : Location
     {
+      [Memoize]
       get
       {
-        if (attribute is Some(a)) a.Location else top.Location;
+        if (file != null) 
+        {
+          def idx = Location.AddFile(file);
+          Location(idx, TextPoint(0, 0))
+        } else
+        if (attribute is Some(a)) a.Location else top?.Location;
       }
     }
-
-    [Memoized]
+    
     public body : string
     {
+      [Memoize]
       get
       {
+        if (ty != null)
         match (attribute)
         {
           | Some(<[ $(str : string) ]>) => str
           | _                           => null
-        }
+        } else File.ReadAllText(file)
       }
     }
 
@@ -105,46 +124,110 @@ namespace Nemerle.Statechart
       }
     }
     
-    public ConvLocation(location : Nitra.Location) : Location
+    //files : HashSet[string];
+    
+    ParseFile(file : string) : StateNode.StateMachine
     {
-  //    def nloc = Nitra.Util.ToNemerleLocation(location);
-      def startLineColumn = location.StartLineColumn;
-	    def startLine = startLineColumn.Line;
-	    def startCol = startLineColumn.Column;
-	    def endLineColumn = location.EndLineColumn;
-	    def endLine = endLineColumn.Line;
-	    def endCol = endLineColumn.Column;
-	    def nloc =  Location(location.Source.File.FullName, startLine, startCol, endLine, endCol);
-	    def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line + loc.Line - 1, nloc.Column, loc.Line + nloc.EndLine - 1, nloc.EndColumn) 
-	               else Location(nloc, nloc.Line, nloc.Column + loc.Column, nloc.EndLine, nloc.EndColumn + loc.Column);
-      //def nloc = if (nloc.Line > 1) Location(nloc, nloc.Line - 1 + nloc.Line, nloc.Column) else Location(nloc, nloc.Line, nloc.Column + loc.Column);
-      nloc
+      def parser = Parser(FsmAnalyser.Flags);
+      try
+      {
+        def text = File.ReadAllText(file);
+        def fsm = parser.Parse(file, text)[0];
+        def locator = Locator(parser, Location.Default);
+        locator.Locate(fsm);
+        fsm
+      }
+      catch
+      {
+        | c => Message.Error($"Error opening file $file: $c");null
+      }
+      
     }
     
-    Parse() : void
+    ParseInternal(text : string) : StateNode.StateMachine
     {
-      parser.flags_map = Hashtable(FsmAnalyser.Flags);
-      parser.env = env;
-      CheckBody();
-      def text = body ?? "";
+      def (ast, err) = parser.Parse(File, text);
+      if (ast == null)
+      {
+        foreach (err in err)
+        {
+          def nloc = Locator.ConvLocation(err.Location, loc);
+          def line = nloc.Line;
+          def col  = nloc.Column;
+          Message.Error(nloc, $"Error in input at $(line):$(col): $(err.Text) of file: $File");
+        }
+        null
+      } else 
+      {
+        when (ast != null) locator.Locate(ast);
+        ast |> OpenIncludes(_, if (file != null) [file] else [])
+      }
+    }
+    
+    Parse(text : string) : void
+    {
       fsm = if (!text.IsEmpty()) 
              {
                //when (loc.File == "AlarmClockInternals.n") assert2(false);
                //assert2(false);
-               def (ast, err) = parser.Parse(loc, text);
-               if (ast == null)
-               {
-                 foreach (err in err)
-                 {
-                   def nloc = ConvLocation(err.Location);
-                   def line = nloc.Line;
-                   def col  = nloc.Column;
-                   Message.Error(nloc, $"Error in input at $(line):$(col): $(err.Text)");
-                 }
-                 null
-               } else ast
-             } else null;
-       when (fsm != null) locator.Locate(fsm);
+               ParseInternal(text)
+             } else null;       
+    }
+    
+    OpenIncludes(src : StateNode.StateMachine, parents : list[string]) : StateNode.StateMachine
+    {
+      def included = List();
+      
+      def open(s, ch : list[StateNode])
+      {
+        match (s)
+        {
+          | StateNode.State(include = (_ :: _) as i) as st => 
+              
+              def (already, other) = i.Partition(x => parents.Contains(x.file));
+              foreach (a in already)
+              {
+                Message.Error(a.Location, $"Cycle include file detected at $(a.Location)");
+              }
+              def st = st.Rebuild(ch);
+              
+              def fsms = other.Map(x => (x.file, ParseFile(x.file)));
+              def fsms = fsms.Filter((_, x) => x != null);
+              def fsms = fsms.Map((f, x) => OpenIncludes(x, f :: parents));
+              fsms |> included.AddRange;
+              
+              fsms.Fold(st, (x, a) => StateNode.Combine(a, x.state));
+              // else st;
+          | State as st                        => st.Rebuild(ch)
+          | StateNode.StateMachine as st       => st.Rebuild(ch)
+          | _                                  => s
+        }
+      }
+      
+      if (src != null)
+      {
+        def res = src.Reduce(open) :> StateNode.StateMachine;
+        included.Fold(res, (x, a) => a.AddTopDecls(x));
+      } else null
+    }
+    
+    public Parse() : void
+    {
+      //assert2(false);
+      def text = if (ty != null)
+      {
+        CheckBody();
+        def text = body ?? "";
+        //def name = Path.GetFileNameWithoutExtension(loc.File);
+        //when (!text.IsEmpty())
+        //  File.WriteAllText($"$(name)_gen.nsch", text);
+        text
+      } else
+      {
+        //_ = files.Add(file);
+        body
+      }
+      Parse(text);
     }
 
     public static GetParsedResult(ty : TypeBuilder) : FsmBuilder
@@ -187,6 +270,26 @@ namespace Nemerle.Statechart
       }
     }
     
+    
+    file : string;
+    
+    File : string
+    {
+      [Memoize]
+      get
+      {
+        if (file != null) file else loc.File
+      }
+    }
+    
+    Name : string
+    {
+      get
+      {
+        if (ty != null) ty.Name else Path.GetFileNameWithoutExtension(file)
+      }
+    }
+    
     public GetEventClasses(evt : list[StateNode.EventClassDecl]) : list[EventClass]
     {
       def find(e)
@@ -221,13 +324,44 @@ namespace Nemerle.Statechart
       when (attribute is Some() && body == null) Message.Error(attr_loc, "Body expression must be a string");
     }
     
+    public BuildGraph(other : list[FsmBuilder]) : void
+    {
+      when (fsm.flags.Logging) Console.WriteLine($"Starting analyse fsm $(Name)...");
+      when (fsm.flags.Debug) assert2(false);
+      //def mach = ty.Manager.UserData[key] :> data_type;
+      def evt_class = GetEventClasses(fsm.event_classes);
+      def mach = other.Map(x => (x.fsm.name, x.fsm));
+      def analyser = FsmAnalyser(fsm, ty, Name, mach, evt_class);
+      analyser.CreateGraph();
+      def warn = analyser.WarningMessages;
+      when (fsm.flags.Logging) Console.WriteLine($"Finish analyse with $(analyser.ErrorMessages.Count()) errors and $(warn.Count()) warnings");
+      def warn_file = $"$(Name)Warnings.log";
+      if (!warn.IsEmpty()) 
+      {
+        def text = warn.Map((_, x) => x);
+        warn.Iter(Message.Warning);
+        when (fsm.flags.Debug) File.WriteAllLines(warn_file, text);
+      } else when (fsm.flags.Debug) File.Delete(warn_file);
+      def err_file = $"$(Name)errors.log";
+      if (analyser.Error)
+      {
+        def err = analyser.ErrorMessages;
+        def text = err.Map((_, x) => x);
+        when (fsm.flags.Debug) System.IO.File.WriteAllLines(err_file, text);
+        err.Iter(Message.Error)
+      } else
+      {
+        when (fsm.flags.Debug) File.Delete(err_file)
+      }
+    }
+    
     public Build() : void
     {
       when (fsm.flags.Logging) Console.WriteLine($"Starting analyse fsm $(ty.Name)...");
       when (fsm.flags.Debug) assert2(false);
       def mach = ty.Manager.UserData[key] :> data_type;
       def evt_class = GetEventClasses(fsm.event_classes);
-      def analyser = FsmAnalyser(fsm, ty.Name, mach.Map((x, y) => (x, y.fsm)), evt_class);
+      def analyser = FsmAnalyser(fsm, ty, ty.Name, mach.Map((x, y) => (x, y.fsm)), evt_class);
       analyser.Analyse();
       def warn = analyser.WarningMessages;
       when (fsm.flags.Logging) Console.WriteLine($"Finish analyse with $(analyser.ErrorMessages.Count()) errors and $(warn.Count()) warnings");
@@ -265,6 +399,8 @@ namespace Nemerle.Statechart
 
     }
 
+    
+    
     public static ParseAll(ty : TypeBuilder, typer : Typer) : void
     {
       def types = ty.Manager.Hierarchy.TopTypeBuilders();
@@ -283,35 +419,10 @@ namespace Nemerle.Statechart
         }
       }
     }
-
+      
     static MergePartial(fsm : list[StateNode.StateMachine]) : StateNode.StateMachine
     {
-      def merge_states(a, b)
-      {
-        def entry = a.entry + b.entry;
-        def exit = a.exit + b.exit;
-        def tran = a.transitions + b.transitions;
-        def doact = a.do_activity + b.do_activity;
-        def err = a.errors + b.errors;
-        def defer = a.defer + b.defer;
-        def pseudo = a.pseudo_states + b.pseudo_states;
-        def sub = a.sub_states + b.sub_states;
-        def pos = Math.Min(a.pos, b.pos);
-        StateNode.State(pos, null, None(), [], entry, exit, tran, doact, defer, sub, pseudo, StateType.State(), err)
-      }
-
-      def merge(a, b)
-      {
-        def pos = Math.Min(a.pos, b.pos);
-        def flags = MachineFlags(a.flags.flags | b.flags.flags, a.flags.errors + b.flags.errors);
-        def aname = a.name ?? "";
-        def bname = b.name ?? "";
-        def name = if (aname.Length > bname.Length) aname else bname;
-        def state = merge_states(a.state, b.state);
-        StateNode.StateMachine(pos, flags, name, state, a.usings + b.usings, a.event_decls + b.event_decls, a.event_classes + b.event_classes, a.errors + b.errors);
-      }
-
-      fsm.Reduce(merge)
+      fsm.Reduce(StateNode.Combine)
     }
 
   }

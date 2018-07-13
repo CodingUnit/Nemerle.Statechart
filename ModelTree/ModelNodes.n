@@ -69,8 +69,10 @@ namespace Nemerle.Statechart
 
     public Parts : list[string]
     {
+      [Memoize]
       get
       {
+        
         match (this)
         {
           | Name             => name :: []
@@ -81,14 +83,10 @@ namespace Nemerle.Statechart
 
     public FullName : string
     {
+      [Memoize]
       get
       {
-        match (this)
-        {
-          | Name(name = n)                      => n
-          | QualifiedName(parts = [], name = n) => n
-          | QualifiedName(parts = p, name = n)  => $<#..$(p;".").$n#>
-        }
+        $<#..$(Parts;".")#>
       }
     }
 
@@ -218,10 +216,20 @@ namespace Nemerle.Statechart
     | Completion
     | Timed { time_expr : TimedExpr; }
 
+    public static None : TransitionEvent
+    {
+      [Memoize]
+      get
+      {
+        Normal(-1, null, [])
+      }
+    }
+    
     public override ToString() : string 
     { 
       match (this)
       {
+        | Normal(name = null)          => ""
         | Normal(name = n, parms = []) => n
         | Normal(name = n, parms = p)  => $"$n(..$p)"
         | Completion                   => "Completion"
@@ -312,10 +320,30 @@ namespace Nemerle.Statechart
   [Record]
   public class JunctionNode : LocatedNode, IGeneralTree[JunctionNode]
   {
+    [NeedChange(action, to)]
+    [NeedChange]
     public guard  : GuardNode;
+    [NeedChange]
     public action : option[Actions];
+    [NeedChange]
     public to     : TargetType;
 
+    public ExecStr : string
+    {
+      [Memoize]
+      get
+      {
+        def action = if (action is Some(a)) $" / $a" else "";
+        def guard = if (guard.ToString().IsEmpty()) "" else $" $guard";
+        $"$guard$action"
+      }
+    }
+    
+    public override ToString() : string
+    {
+      $"$ExecStr => $to"
+    }
+    
     public Current : JunctionNode
     {
       get
@@ -340,18 +368,20 @@ namespace Nemerle.Statechart
   [Record]
   public variant PseudoStateModelNode : LocatedNode
   {
-    | Initial { tran : list[StateNode.Transition]; }
+    | Initial { [NeedChange] tran : list[StateNode.Transition]; }
     | History
       {
         type : HistoryType;
+        [NeedChange]
         default : option[StateNode.Transition];
       }
 
-    | Fork {target : list[TargetType];}
-    | Join { name : string; sources : list[NameIdentifier]; tran : StateNode.Transition; }
+    | Fork { [NeedChange] target : list[TargetType];}
+    | Join { name : string; sources : list[NameIdentifier]; [NeedChange] tran : StateNode.Transition; }
     | Junction
       {
         name  : string;
+        [NeedChange]
         nodes : list[JunctionNode];
         type  : JunctionType;
 
@@ -360,7 +390,7 @@ namespace Nemerle.Statechart
           get
           {
             def type = TypeName(type);
-            if (name !=null) $"$type$name" else $"Unnamed$type"
+            if (name != null) $"$type$name" else $"Unnamed$type"
           }
         }
 
@@ -374,8 +404,8 @@ namespace Nemerle.Statechart
         override ToString() : string {Name}
       }
 
-    | EntryPoint { name : string; tran : StateNode.Transition; }
-    | ExitPoint { name : string; tran : option[StateNode.Transition]; }
+    | EntryPoint { name : string; [NeedChange] tran : StateNode.Transition; }
+    | ExitPoint { name : string; [NeedChange] tran : option[StateNode.Transition]; }
     | Terminate 
 
   }
@@ -385,6 +415,7 @@ namespace Nemerle.Statechart
   {
     | PseudoState 
       {
+        [NeedChange]
         node : PseudoStateModelNode;
       }
     | Final
@@ -398,10 +429,90 @@ namespace Nemerle.Statechart
         name : string;
       }
     //| SubMachine {machine : StateNode.State; state : string;}
-    | Qualified {parent : string; target : TargetType;}
+    | Qualified 
+      {
+        parent : string; 
+        target : TargetType;
+        
+        public FinalPath : list[string] * TargetType
+        {
+          [Memoize]
+          get
+          {
+            def loop(t, res)
+            {
+              match (t)
+              {
+                | TargetType.Qualified(p, t) => loop(t, p :: res)
+                | t                          => match (t)
+                                                {
+                                                  | PseudoState(Join(name = n))
+                                                  | PseudoState(Junction(name = n))
+                                                  | PseudoState(EntryPoint(name = n))
+                                                  | PseudoState(ExitPoint(name = n))
+                                                  | Named(name = n)                   => ((n :: res).Rev(), null)
+                                                  | _                                 => (res.Rev(), t)
+                                                }
+              }
+            }
+            
+            loop(this, [])
+          }
+        }
+        
+        public PathName : string
+        {
+          [Memoize]
+          get
+          {
+            def path = Path[0];
+            $<#..$(path;".")#>
+          }
+        }
+        
+        public Path : list[string] * TargetType
+        {
+          [Memoize]
+          get
+          {
+            def loop(t, res)
+            {
+              match (t)
+              {
+                | TargetType.Qualified(p, t) => loop(t, p :: res)
+                | _                          => (res.Rev(), t)
+              }
+            }
+
+            loop(this, [])
+          }
+        }
+      }
     | Self
     | NoTarget
 
+    str : string
+    {
+      [Memoize]
+      get
+      {
+        match (this)
+        {
+          | Final          => "Final"
+          | Named(n)       => n
+          | Qualified as q => def (p, t) = q.Path; 
+                              $<#..$(p;".").$t#>
+          | Self           => "Self"
+          | NoTarget       => "NoTarget"
+          | PseudoState(p) => $"$p"
+        }
+      }
+    }
+    
+    public override ToString() : string
+    {
+      str
+    }
   }
 
 }

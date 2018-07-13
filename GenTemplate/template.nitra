@@ -1,0 +1,112 @@
+﻿namespace Nemerle.Statechart.Grammar
+{
+  syntax module Base
+  {
+    using Nitra.Core;
+    using Nitra;
+    using Nitra.CStyleComments;
+    
+    
+	  extend token IgnoreToken
+    {
+     | [SplitAtCompletionPosition] SpaceToken = Spaces;
+    }
+
+    /*extend token IgnoreToken
+    {
+      | [SpanClass(Comment)] SingleLineComment = SingleLineComment;
+      | [SpanClass(Comment)] MultiLineComment;
+    }*/
+
+		regex UnicodeLineSeparator      = '\u2028';
+    regex UnicodeParagraphSeparator = '\u2029';
+    regex NewLineCharacter          = '\n' | '\r' | UnicodeLineSeparator | UnicodeParagraphSeparator;
+    regex NewLine                   = "\r\n" | NewLineCharacter;
+    //regex Whitespace                = [Zs] | '\t' | '\v' | '\f' | '\uFEFF';
+    regex Space                     = Whitespace | NewLineCharacter;
+    regex Spaces                    = Space+;
+
+    //void s = Spaces*;                // optional spacer
+
+    regex Whitespace = [Zs] | '\t' | '\v' | '\f';
+    //regex Spaces     = Whitespace*;
+
+		token String
+		{
+			| Single = '\'' (!'\'' Any)* '\''
+			| Double = '"' (!'"' Any)* '"'
+		}
+
+	  regex Integer  = '0' | ['1'..'9'] ['0'..'9']*;
+	  alias Numeric = Integer;
+
+    [SpanClass(Number)]
+    regex FloatingNumber = "-"? Integer Fraction? Exponent?
+    {
+      regex Digits   = ['0'..'9']+;
+      regex Fraction = "." Digits;
+      regex Exponent = ("E" | "e") ("-" | "+")? Digits;
+    }
+
+    regex KeywordToken =   EventNotKeywords | "state"    | "else"     | "flags"      | "name"    | "region"
+                           | "and"          | "history"  | "defer"    | "terminate"  | "X"       | "x"      
+                           | "join"         | "junction" | "choice"   | "merge"      | "event" Spaces "class" 
+                           | "event"        | "using"    | "submachine" | "state_conc";
+
+    regex EventNotKeywords =   "(X)"       | "(x)"        | "entry:"   | "exit:" | "entry"
+                            | "exit"       | "0"          | "initial"  | "do"    | "(H*)"
+                            | "(H)"        | "deferred"   | "$>"       | "$<"
+                            | "completion" | "_";
+
+    regex PseudoKeywords = "exit:"  | "(X)" | "(x)" | "history";
+
+    token QualifiedIdentifier = !TargetKeyword IdentifierBody
+    {
+      regex TargetTokens = PseudoKeywords | "self" | "$0" | "final" | "H" | "h" | "H*" | "h*" | "X" | "x";
+      token TargetKeyword = TargetTokens !IdentifierPartCharacters;
+    }
+
+    regex IdentifierBody = IdentifierStartCharacter IdentifierPartCharacters*;
+
+/*
+    regex LetterCharacter           = [Lu, Ll, Lt, Lm, Lo, Nl];
+    regex CombiningCharacter        = [Mn, Mc];
+    regex DecimalDigitCharacter     = [Nd];
+    regex ConnectingCharacter       = [Pc];
+    regex FormattingCharacter       = [Cf];
+*/
+
+		regex HexDigit                            = ['0'..'9', 'a'..'f', 'A'..'F'];
+		regex UnicodeEscapeSequence_u             = "\\u" HexDigit HexDigit HexDigit HexDigit;
+    regex UnicodeEscapeSequence_U             = "\\U" HexDigit HexDigit HexDigit HexDigit HexDigit HexDigit HexDigit HexDigit;
+    regex UnicodeEscapeSequence               = UnicodeEscapeSequence_u | UnicodeEscapeSequence_U;
+
+    regex IdentifierStartCharacter  = LetterCharacter | "_" | UnicodeEscapeSequence;
+		regex IdentifierPartCharacters  = LetterCharacter | DecimalDigitCharacter | ConnectingCharacter | CombiningCharacter | FormattingCharacter | UnicodeEscapeSequence | '-';
+/*
+    regex IdentifierPartCharacters  = LetterCharacter 
+                                      | DecimalDigitCharacter
+                                      | ConnectingCharacter 
+                                      | CombiningCharacter
+                                      | FormattingCharacter
+                                      | '-';
+*/
+    token EventIdentifier = !Keyword IdentifierBody
+    {
+      token Keyword = EventNotKeywords !IdentifierPartCharacters;
+    }
+
+	  token Identifier = !Keyword !'=' IdentifierBody
+    {
+      token Keyword = KeywordToken !IdentifierPartCharacters;
+    }
+    
+    token AnyIdentifier = IdentifierBody;
+
+    syntax FullyQualified = (QualifiedIdentifier; '.')+;
+    syntax FullyQualifiedAny = (AnyIdentifier; '.')+;
+
+    syntax Attributes = '[' (Identifier; ',')+ ']';
+
+  }
+}
