@@ -16,7 +16,8 @@ rule CreateComb()
 				{
 					if (typeof(i) == AndConf)
 					{						
-						create_comb(((AndConf)i).oper);
+						(def ci : AndConf) = sub_region_sort((AndConf)i);
+						create_comb(ci.oper);
 					} else
 					if (typeof(i) >= State)
 					{
@@ -26,7 +27,8 @@ rule CreateComb()
 			} else
 			if (typeof(comb) == AndConf)
 			{
-				create_comb(((AndConf)comb).oper);
+				(def ccomb : AndConf) = sub_region_sort((AndConf)comb);
+				create_comb(ccomb.oper);
 			} else
 			if (typeof(comb) >= State)
 			{
@@ -37,36 +39,44 @@ rule CreateComb()
 	}
 }
 
-procedure create_comb(ref n : set<Node>)
+procedure create_comb(ref n : set<Node>) : Node
 {
 	def prev : Node;
+	def first_node : Node;
     def var first : boolean = true;
-	for (i : State in n)
+	for (i : Node in n)
 	{
 		def new_st : ActiveState;
-		(def cpy : State) = addCopy(i);
-		if (typeof(i) != SubRegion && typeof(i) != ConcurrentState)
+		if (typeof(i) >= State)
 		{
-			if (first)
+			(def cpy : State) = addCopy(i);
+			if (typeof(i) != SubRegion && typeof(i) != ConcurrentState)
 			{
-				(new_st) = retype(cpy, ActiveBaseState);
+				if (first)
+				{
+					(new_st) = retype(cpy, ActiveBaseState);
+				} else
+				{
+					(new_st) = retype(cpy, ActiveState);
+				}
 			} else
+			if (typeof(i) == SubRegion)
 			{
-				(new_st) = retype(cpy, ActiveState);
+				(def nst : ActiveSubRegionState) = retype(cpy, ActiveSubRegionState);
+				nst.idx = ((SubRegion)i).idx;
+				new_st = nst;				
+			} else
+			if (typeof(i) == ConcurrentState)
+			{
+				
+				(def nst : ActiveRegionState) = retype(cpy, ActiveRegionState);
+				nst.regions_count = ((ConcurrentState)i).regions_count;
+				new_st = nst;				
 			}
 		} else
-		if (typeof(i) == SubRegion)
-		{
-			(def nst : ActiveSubRegionState) = retype(cpy, ActiveSubRegionState);
-			nst.idx = ((SubRegion)i).idx;
-			new_st = nst;				
-		} else
-		if (typeof(i) == ConcurrentState)
+		if (typeof(i) == AndConf)
 		{
 			
-			(def nst : ActiveRegionState) = retype(cpy, ActiveRegionState);
-			nst.regions_count = ((ConcurrentState)i).regions_count;
-			new_st = nst;				
 		}
 		// new_st.id 	= i.id;
 		// new_st.name = i.name;
@@ -81,11 +91,12 @@ procedure create_comb(ref n : set<Node>)
 			add(And, prev, new_st);			
 		} else 
 		{
+			first_node = new_st;
 			first = false;
 		}
 		prev = new_st;
 	}
-	return;
+	return (first_node);
 }
 
 procedure sub_region_sort(n : AndConf) : (Node)
@@ -97,15 +108,18 @@ procedure sub_region_sort(n : AndConf) : (Node)
 		if (typeof(i) == ConcurrentState)
 		{
 			def st : ConcurrentState = (ConcurrentState)i;
-			//res.add(i);
-			def sub_reg : set<Node> = adjacentOutgoing(st, Region);
-			(def nst : AndConf) = add(AndConf);
-			for (s : SubRegion in sub_reg)
+			res.rem(i); // remove from result set
+			def ref sub_reg : set<Node> = adjacentOutgoing(st, Region); // get sub regions
+			(def nst : AndConf) = add(AndConf); // add new and conf node
+			for (s : SubRegion in sub_reg) // for each sub region
 			{
-				(def n : AndConf) = add(AndConf);
-				n.oper = oper & s.sub_states;
-				n.oper.add(s);
-				nst.oper.add(n);
+				(def nn : AndConf) = add(AndConf); // create new and conf
+				n.oper = oper & set<Node>(s.sub_states); // intersection of elements and recursive sub states of sub region
+				n.oper.add(s); // add sub region to this set
+				res \= nn.oper; // remove this set from result set
+				(def rn : AndConf) = sub_region_sort(n); // recursive check in sub region				
+				nst.oper.add(rn); // add and node to result set				
+				
 			}
 			
 			nst.oper.add(i);
@@ -116,7 +130,15 @@ procedure sub_region_sort(n : AndConf) : (Node)
 		}
 	}
 	
-	return (null);
+	if (oper == res)
+	{
+		return (n);
+	} else
+	{
+		(def nr : AndConf) = add(AndConf); // add new and conf node
+		nr.oper = res;
+		return (nr);
+	}	
 }
 
 procedure get_comb(n : State) : (Node)
