@@ -26,7 +26,7 @@ rule CreateComb()
 			} else
 			if (typeof(comb) == AndConf)
 			{
-				create_comb(((AndConf)comb).oper);
+				create_comb(sub_region_sort((AndConf)comb).oper);
 			} else
 			if (typeof(comb) >= State)
 			{
@@ -88,19 +88,43 @@ procedure create_comb(ref n : set<Node>)
 	return;
 }
 
-procedure sub_region_sort(n : AndConf) : (Node)
+procedure sub_region_sort(n : AndConf) : (AndConf)
 {
 	def ref oper : set<Node> = n.oper;
+	def ref res : set<Node> = copy(oper);
 	for (i : Node in oper)
 	{
-		if (typeof(i) == ConcurrentState)
+		if (typeof(i) == ConcurrentState) // found concurrent state
 		{
 			def st : ConcurrentState = (ConcurrentState)i;
-			def sub_reg : set<Node> = adjacentOutgoing(st, Region);
+			res.rem(i); // remove from result set
+			def sub_reg : set<Node> = adjacentOutgoing(st, Region); // get sub regions
+			(def nst : AndConf) = add(AndConf); // add new and conf node
+			for (s : SubRegion in sub_reg) // for each sub region
+			{
+				(def n : AndConf) = add(AndConf); // create new and conf
+				n.oper = oper & s.sub_states; // intersection of elements and recursive sub states of sub region
+				n.oper.add(s); // add sub region to this set
+				res \= n.oper; // remove this set from result set
+				(def rn : AndConf) = sub_region_sort(n); // recursive check in sub region				
+				nst.oper.add(rn); // add and node to result set				
+				
+			}
+			
+			nst.oper.add(i);
+			res.add(nst);
 		}
 	}
 	
-	return (null);
+	if (oper == res)
+	{
+		return (n);
+	} else
+	{
+		(def n : AndConf) = add(AndConf); // add new and conf node
+		nr.oper = res;
+		return (nr);
+	}	
 }
 
 procedure get_comb(n : State) : (Node)

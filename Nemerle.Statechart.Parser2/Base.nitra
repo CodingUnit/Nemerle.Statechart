@@ -14,14 +14,25 @@
 		| Double = '"' Str=(!'"' Any)* '"' {override Value = GetText(Str); }
 	}
 
-	regex Integer  = ['0'..'9']+;
+	regex Digits  = ['0'..'9']+;
+
+  token Integer = Digits
+  {
+    Value() : int = int.Parse(GetText(Digits));
+    missing Value = 0;
+  }
+
 	alias Numeric = Integer;
 
   [SpanClass(Number)]
-  regex FloatingNumber = "-"? Integer Fraction? Exponent?
+  token FloatingNumber = "-"? Digits Fraction? Exponent?
   {
-    regex Fraction = "." Integer;
-    regex Exponent = ("E" | "e") ("-" | "+")? Integer;
+    regex Fraction = "." Digits;
+    regex Exponent = ("E" | "e") ("-" | "+")? Digits;
+
+    missing Value = 0;
+
+    Value() : double = GetText() |> double.Parse;
   }
 
   regex KeywordToken =   EventNotKeywords | "state"    | "else"     | "flags"      | "name"    | "region"
@@ -66,8 +77,10 @@
 
   token NameIdentifier 
   {
-	| AnyIdentifier 
-	| String
+    Value() : string;
+
+	  | AnyIdentifier {override Value = AnyIdentifier.GetText();}
+	  | String {override Value = String.Value();}
   }
 
   syntax FullyQualified = (QualifiedIdentifier; '.')+;
