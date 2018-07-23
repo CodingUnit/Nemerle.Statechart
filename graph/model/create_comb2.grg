@@ -42,6 +42,7 @@ procedure create_comb_and(comb : AndConf) : (Node)
 	(def ccomb : AndConf) = sub_region_sort((AndConf)comb);
 	def ref op : set<StateMachineNode> = set<StateMachineNode>(ccomb.oper);
 	def ref oparr : array<Node> = array<Node>(op.asArray().orderAscendingBy<depth>());
+	emit("create_comb_and:", print_oper(comb), "sorted", oparr);
 	(def res : Node) = create_comb(oparr);
 	return (res);
 }
@@ -86,13 +87,19 @@ procedure create_comb(ref n : array<Node>) : (Node)
 			def and : AndConf = (AndConf)i;
 			def ref st : set<ConcurrentState> = set<ConcurrentState>(and.oper);
 			def ref sub : set<AndConf> = set<AndConf>(and.oper);
+			emit("conc_comb:", print_oper(and));
 			if (!st.empty() && !sub.empty())
 			{
 				def stc : ConcurrentState = st.peek(0);
+				(def cpy1 : Node) = addCopy(stc);
+				(def nst : ActiveRegionState) = retype(cpy1, ActiveRegionState);
+				nst.regions_count = stc.regions_count;
+				new_st = nst;
+				emit("st:", nameof(nst));
 				for (sr : AndConf in sub)
 				{
 					(def f : Node) = create_comb_and(sr);
-					add(And, stc, f);
+					add(And, nst, f);
 				}
 			}
 		}
@@ -120,7 +127,8 @@ procedure create_comb(ref n : array<Node>) : (Node)
 procedure sub_region_sort(n : AndConf) : (AndConf)
 {
 	def ref oper : set<Node> = n.oper;
-	def ref res : set<Node> = set<Node>{};
+	emit("sort:", oper);
+	def ref res : set<Node> = copy(oper);
 	for (i : Node in oper)
 	{
 		if (typeof(i) == ConcurrentState)
