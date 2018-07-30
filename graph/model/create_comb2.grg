@@ -42,7 +42,7 @@ procedure create_comb_and(comb : AndConf) : (Node)
 	(def ccomb : AndConf) = sub_region_sort((AndConf)comb);
 	def ref op : set<StateMachineNode> = set<StateMachineNode>(ccomb.oper);
 	def ref oparr : array<Node> = array<Node>(op.asArray().orderAscendingBy<depth>());
-	emit("create_comb_and:", print_oper(comb), "sorted", oparr);
+	emit("\ncreate_comb_and:", print_oper(comb), " \nsorted:", print_arr(oparr));
 	(def res : Node) = create_comb(oparr);
 	return (res);
 }
@@ -87,7 +87,7 @@ procedure create_comb(ref n : array<Node>) : (Node)
 			def and : AndConf = (AndConf)i;
 			def ref st : set<ConcurrentState> = set<ConcurrentState>(and.oper);
 			def ref sub : set<AndConf> = set<AndConf>(and.oper);
-			emit("conc_comb:", print_oper(and));
+			emit("\nconc_comb:", print_oper(and));
 			if (!st.empty() && !sub.empty())
 			{
 				def stc : ConcurrentState = st.peek(0);
@@ -95,7 +95,7 @@ procedure create_comb(ref n : array<Node>) : (Node)
 				(def nst : ActiveRegionState) = retype(cpy1, ActiveRegionState);
 				nst.regions_count = stc.regions_count;
 				new_st = nst;
-				emit("st:", nameof(nst));
+				emit("\nst:", nameof(nst));
 				for (sr : AndConf in sub)
 				{
 					(def f : Node) = create_comb_and(sr);
@@ -127,7 +127,7 @@ procedure create_comb(ref n : array<Node>) : (Node)
 procedure sub_region_sort(n : AndConf) : (AndConf)
 {
 	def ref oper : set<Node> = n.oper;
-	emit("sort:", oper);
+	emit("\nsort:", print_set(oper));
 	def ref res : set<Node> = copy(oper);
 	for (i : Node in oper)
 	{
@@ -158,11 +158,13 @@ procedure sub_region_sort(n : AndConf) : (AndConf)
 	
 	if (oper == res)
 	{
+		emit("\rres:", print_oper(n));
 		return (n);
 	} else
 	{
 		(def nr : AndConf) = add(AndConf); // add new and conf node
 		nr.oper = res;
+		emit("\rres:", print_oper(nr));
 		return (nr);
 	}	
 }
@@ -220,6 +222,46 @@ procedure get_comb(n : State) : (Node)
 	}	
 }
 
+function print_arr(ref x : array<Node>) : string
+{
+	def var str : string = "[";
+	def var first : boolean = true;
+	for (i : Node in x)
+	{
+		if (first)
+		{
+			str = str + print_oper(i);
+			first = false;
+		} else
+		{
+			str = str + ", " + print_oper(i);
+		}
+		
+	}
+	str = str + "]";
+	return (str);
+}
+
+function print_set(ref x : set<Node>) : string
+{
+	def var str : string = "{";
+	def var first : boolean = true;
+	for (i : Node in x)
+	{
+		if (first)
+		{
+			str = str + print_oper(i);
+			first = false;
+		} else
+		{
+			str = str + ", " + print_oper(i);
+		}
+		
+	}
+	str = str + "}";
+	return (str);
+}
+
 function print_oper(x : Node) : string
 {
 	def var str : string = "";
@@ -227,8 +269,7 @@ function print_oper(x : Node) : string
 	if (typeof(x) == AndConf)
 	{
 		def ref oper : set<Node> = ((AndConf)x).oper;
-		str = "(";
-		first = true;
+		str = "(";		
 		for (i : Node in oper)
 		{
 			if (first)
@@ -260,12 +301,18 @@ function print_oper(x : Node) : string
 		}
 		str = str + ")";
 	} else
-	if (typeof(x) >= State)
+	if (typeof(x) >= NamedNode)
+	{
+		def p : NamedNode = (NamedNode)x;
+		str = p.name;
+	} else
+	if (typeof(x) >= Node)
 	{
 		str = nameof(x);
-	}
+	}	
 	return (str);
 }
+
 
 procedure or_comb(x : Node, y : Node) : (Node)
 {
