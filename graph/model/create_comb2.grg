@@ -128,31 +128,43 @@ procedure sub_region_sort(n : AndConf) : (AndConf)
 {
 	def ref oper : set<Node> = n.oper;
 	emit("\nsort:", print_set(oper));
-	def ref res : set<Node> = copy(oper);
+	def ref res : set<Node> = set<Node>{};
+	def ref filt : set<Node> = set<Node>{};
 	for (i : Node in oper)
 	{
-		if (typeof(i) == ConcurrentState)
+		if (typeof(i) == ConcurrentState && !(i in filt))
 		{
 			def st : ConcurrentState = (ConcurrentState)i;
-			res.rem(i); // remove from result set
+			filt.add(i);
+			//res.rem(i); // remove from result set
+			emit("\nfilt1:", print_set(filt));
 			def ref sub_reg : set<Node> = adjacentOutgoing(st, Region); // get sub regions
-			(def nst : AndConf) = add(AndConf); // add new and conf node
+			emit("\nsub_reg:", print_set(sub_reg));
+			(def nst : AndConf) = add(AndConf); // add new and conf node			
 			for (s : SubRegion in sub_reg) // for each sub region
 			{
 				(def nn : AndConf) = add(AndConf); // create new and conf
-				n.oper = oper & set<Node>(s.sub_states); // intersection of elements and recursive sub states of sub region
-				n.oper.add(s); // add sub region to this set
-				res \= nn.oper; // remove this set from result set
-				(def rn : AndConf) = sub_region_sort(n); // recursive check in sub region				
+				emit("\nsub:", print_set(set<Node>(s.sub_states)));
+				nn.oper = oper & set<Node>(s.sub_states); // intersection of elements and recursive sub states of sub region				
+				nn.oper.add(s); // add sub region to this set
+				emit("\nn.oper:", print_oper(nn));
+				//res \= nn.oper; // remove this set from result set
+				filt |= nn.oper;
+				emit("\nfilt:", print_set(filt));
+				(def rn : AndConf) = sub_region_sort(nn); // recursive check in sub region				
 				nst.oper.add(rn); // add and node to result set				
-				
 			}
 			
 			nst.oper.add(i);
+			emit("\nnst:", print_oper(nst));
 			res.add(nst);
+			emit("\nres_iter:", print_set(res));
 		} else
 		{
-			res.add(i);
+			if (!(i in filt))
+			{
+				res.add(i);
+			}
 		}
 	}
 	
