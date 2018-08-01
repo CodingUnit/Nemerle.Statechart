@@ -16,7 +16,8 @@ rule CreateComb()
 				{
 					if (typeof(i) == AndConf)
 					{												
-						create_comb_and((AndConf)i);
+						(def ccomb : AndConf) = sub_region_sort((AndConf)i);
+						create_comb_and(ccomb);
 					} else
 					if (typeof(i) >= State)
 					{
@@ -26,21 +27,29 @@ rule CreateComb()
 			} else
 			if (typeof(comb) == AndConf)
 			{
-				create_comb_and((AndConf)comb);
+				(def ccomb : AndConf) = sub_region_sort((AndConf)comb);
+				create_comb_and(ccomb);
 			} else
 			if (typeof(comb) >= State)
 			{
 				create_comb(array<Node>[comb]);
-			}
+			}			
+			exec([ClearAndConf]);
 		}
 		
 	}
 }
 
+rule ClearAndConf()
+{
+	n:Oper;
+	
+	replace{}
+}
+
 procedure create_comb_and(comb : AndConf) : (Node)
 {
-	(def ccomb : AndConf) = sub_region_sort((AndConf)comb);
-	def ref op : set<StateMachineNode> = set<StateMachineNode>(ccomb.oper);
+	def ref op : set<StateMachineNode> = set<StateMachineNode>(comb.oper);
 	def ref oparr : array<Node> = array<Node>(op.asArray().orderAscendingBy<depth>());
 	emit("\ncreate_comb_and:", print_oper(comb), " \nsorted:", print_arr(oparr));
 	(def res : Node) = create_comb(oparr);
@@ -58,28 +67,30 @@ procedure create_comb(ref n : array<Node>) : (Node)
 		if (typeof(i) >= State)
 		{
 			(def cpy : Node) = addCopy(i);
-			if (typeof(i) != SubRegion && typeof(i) != ConcurrentState)
-			{
-				if (first)
-				{
-					(new_st) = retype(cpy, ActiveBaseState);
-				} else
-				{
-					(new_st) = retype(cpy, ActiveState);
-				}
-			} else
 			if (typeof(i) == SubRegion)
 			{
 				(def nst : ActiveSubRegionState) = retype(cpy, ActiveSubRegionState);
+				emit("\nsub region create:", print_oper(nst));
 				nst.idx = ((SubRegion)i).idx;
 				new_st = nst;				
 			} else
 			if (typeof(i) == ConcurrentState)
 			{
-				
 				(def nst : ActiveRegionState) = retype(cpy, ActiveRegionState);
+				emit("\nconc state create:", print_oper(nst));
 				nst.regions_count = ((ConcurrentState)i).regions_count;
 				new_st = nst;				
+			} else // if state
+			{
+				if (first)
+				{
+					emit("\nbase state create:", print_oper(cpy));
+					(new_st) = retype(cpy, ActiveBaseState);
+				} else
+				{
+					emit("\nstate create:", print_oper(cpy));
+					(new_st) = retype(cpy, ActiveState);
+				}
 			}
 		} else
 		if (typeof(i) == AndConf)
@@ -93,13 +104,16 @@ procedure create_comb(ref n : array<Node>) : (Node)
 				def stc : ConcurrentState = st.peek(0);
 				(def cpy1 : Node) = addCopy(stc);
 				(def nst : ActiveRegionState) = retype(cpy1, ActiveRegionState);
+				emit("\ncreate st:", print_oper(nst));
 				nst.regions_count = stc.regions_count;
 				new_st = nst;
-				emit("\nst:", nameof(nst));
+				
 				for (sr : AndConf in sub)
 				{
-					(def f : Node) = create_comb_and(sr);
+					(def f : Node) = create_comb_and(sr);					
+					emit(print_oper(nst), "\nedge:", print_oper(f));
 					add(And, nst, f);
+					//Debug::halt("create one and conf");
 				}
 			}
 		}
@@ -130,39 +144,50 @@ procedure sub_region_sort(n : AndConf) : (AndConf)
 	emit("\nsort:", print_set(oper));
 	def ref res : set<Node> = set<Node>{};
 	def ref filt : set<Node> = set<Node>{};
-	for (i : Node in oper)
+	def var min_depth : int = Math::intMax();
+	for (i : StateMachineNode in oper)
 	{
-		if (typeof(i) == ConcurrentState && !(i in filt))
+		if (!(i in filt))
 		{
-			def st : ConcurrentState = (ConcurrentState)i;
-			filt.add(i);
-			//res.rem(i); // remove from result set
-			emit("\nfilt1:", print_set(filt));
-			def ref sub_reg : set<Node> = adjacentOutgoing(st, Region); // get sub regions
-			emit("\nsub_reg:", print_set(sub_reg));
-			(def nst : AndConf) = add(AndConf); // add new and conf node			
-			for (s : SubRegion in sub_reg) // for each sub region
+			if (typeof(i) == ConcurrentState)
 			{
-				(def nn : AndConf) = add(AndConf); // create new and conf
-				emit("\nsub:", print_set(set<Node>(s.sub_states)));
-				nn.oper = oper & set<Node>(s.sub_states); // intersection of elements and recursive sub states of sub region				
-				nn.oper.add(s); // add sub region to this set
-				emit("\nn.oper:", print_oper(nn));
-				//res \= nn.oper; // remove this set from result set
-				filt |= nn.oper;
-				emit("\nfilt:", print_set(filt));
-				(def rn : AndConf) = sub_region_sort(nn); // recursive check in sub region				
-				nst.oper.add(rn); // add and node to result set				
-			}
-			
-			nst.oper.add(i);
-			emit("\nnst:", print_oper(nst));
-			res.add(nst);
-			emit("\nres_iter:", print_set(res));
-		} else
-		{
-			if (!(i in filt))
+				def st : ConcurrentState = (ConcurrentState)i;
+				filt.add(i);
+				//res.rem(i); // remove from result set
+				emit("\nfilt1:", print_set(filt));
+				def ref sub_reg : set<Node> = adjacentOutgoing(st, Region); // get sub regions
+				emit("\nsub_reg:", print_set(sub_reg));
+				(def nst : AndConf) = add(AndConf); // add new and conf node			
+				nst.depth = st.depth; // depth like state
+				if (st.depth < min_depth) 
+				{	
+					min_depth = st.depth; // min depth calc
+				}
+				for (s : SubRegion in sub_reg) // for each sub region
+				{
+					(def nn : AndConf) = add(AndConf); // create new and conf
+					nn.depth = s.depth;					
+					emit("\nsub:", print_set(set<Node>(s.sub_states)));
+					nn.oper = oper & set<Node>(s.sub_states); // intersection of elements and recursive sub states of sub region				
+					nn.oper.add(s); // add sub region to this set
+					emit("\nn.oper:", print_oper(nn));
+					//res \= nn.oper; // remove this set from result set
+					filt |= nn.oper;
+					emit("\nfilt:", print_set(filt));
+					(def rn : AndConf) = sub_region_sort(nn); // recursive check in sub region				
+					nst.oper.add(rn); // add and node to result set				
+				}
+				
+				nst.oper.add(i);
+				emit("\nnst:", print_oper(nst));
+				res.add(nst);
+				emit("\nres_iter:", print_set(res));
+			} else
 			{
+				if (i.depth < min_depth) 
+				{
+					min_depth = i.depth; // min depth calc
+				}
 				res.add(i);
 			}
 		}
@@ -176,6 +201,7 @@ procedure sub_region_sort(n : AndConf) : (AndConf)
 	{
 		(def nr : AndConf) = add(AndConf); // add new and conf node
 		nr.oper = res;
+		nr.depth = min_depth;
 		emit("\rres:", print_oper(nr));
 		return (nr);
 	}	
