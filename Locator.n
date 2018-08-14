@@ -65,18 +65,17 @@ namespace Nemerle.Statechart
       }
     }
     
-    LocateTarget(t : TargetType) : void
+    LocateTarget(t : TargetType) : TargetType
     {
-      Locate(t);
-      match (t)
+      match (Locate(t))
       {
-        | TargetType.Qualified(_, t) => LocateTarget(t)
-        | TargetType.PseudoState(n)  => LocatePseudo(n)
-        | _                          => ()
+        | TargetType.Qualified(_, t) as tar => LocateTarget(t) |> tar.ChangeTarget
+        | TargetType.PseudoState(n) as tar  => LocatePseudo(n) |> tar.ChangeNode
+        | _                                 => t
       }
     }
     
-    LocatePseudo(node : PseudoStateModelNode) : void
+    LocatePseudo(node : PseudoStateModelNode) : PseudoStateModelNode
     {
       Locate(node);
       match (node)
@@ -106,34 +105,31 @@ namespace Nemerle.Statechart
       }
     }
     
-    LocateTran(tr : StateNode.Transition) : void
+    LocateTran(tr : StateNode.Transition) : StateNode.Transition
     {
       | StateNode.Transition(f, e, g, a, t, _) => 
      
-        Locate(tr);
-        when (a is Some(a))
+        def tr = Locate(tr);
+        def a = if (a is Some(a))
         {
-          Locate(a);
-          Locate(a.actions);
-        }
-        Locate(e);
-        LocateTarget(f);
-        Locate(g);
-        Locate(t);
-        LocateTarget(t);
+          Locate(a) |> _.ChangeActions(Locate(a.actions)) |> Some
+        } else a;
+        def e = Locate(e);
+        def f = LocateTarget(f);
+        def g = Locate(g);
+        def t = Locate(t);
+        def t = LocateTarget(t);
+        tr.ChangeEvtFromGuardActionTo(e, f, g, a, t)
     }
     
-    Locate(node : LocatedNode) : void
+    Locate[T](node : T) : T where T : LocatedNode
     {
-       node.Location = GetLoc(node.pos);
+       (GetLoc(node.pos) |> node.ChangeLocation) :> T
     }
     
-    Locate(node : IEnumerable[LocatedNode]) : void
+    Locate[T](node : list[T]) : list[T] where T : LocatedNode
     {
-      foreach (n in node)
-      {
-          Locate(n)
-      }
+      node.Map(Locate)
     }
     
     public Locate(fsm : StateNode.StateMachine) : void
