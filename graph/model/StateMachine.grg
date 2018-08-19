@@ -6,28 +6,25 @@
 #using "Config.gm"
 
 #include "find.grg"
-//#include "create_comb.grg"
+//#include "create_comb.grg"                                    
 #include "config.grg"
 #include "tran_path.grg"
 #include "create_comb2.grg"
 
-rule IdCorrect()
+rule CreateIds()
 {
 	n:StateMachineNode;
-	n2:StateMachineNode;
 	
-	if {n.id == n2.id;}
+	if {n.id == 0;}
 	
 	modify
-	{
-		eval
-		{
-			n.id = n2.id + 1;
-		}
+	{		
+		exec(::id = 1 ;> (::id) = CreateId(::id)*);
 	}
+	
 }
 
-rule CreateId()
+rule CreateId(var id : int) : (int)
 {
 	n:StateMachineNode;
 	
@@ -37,11 +34,11 @@ rule CreateId()
 	{		
 		eval 
 		{			
-			n.id = uniqueof(n);
+			n.id = id;
 		}
-		//def var idx : int = 1;
-		//yield {idx}
+		return (id + 1);
 	}
+	
 }
 
 
@@ -467,7 +464,6 @@ rule ResolveNames()
 rule ResolveQualifiedNames()
 {  
   st:Node -e:Edge \ Contains->  not_resolved:Unresolved; // node that points to unresolved  
-  //if {typeof(e) != Contains;}
 	// search for qualified path node, return last node of that path 
   if {not_resolved.name.indexOf(".") != -1;}
   def res:StateMachineNode;
@@ -482,23 +478,19 @@ rule ResolveQualifiedNames()
 
 rule ResolveNames2()
 {
- 
   st:Node <-e:Edge \ Contains- not_resolved:Unresolved; // node that points to unresolved
-  //res:NamedNode \ Unresolved;
 	// search for qualified path node, return last node of that path
-  //if {typeof(e) != ;}
   res:NamedNode;
   hom(st, res);
-  //:FindQualifiedParent(st, not_resolved.name.asArray("."), yield res);	
   if {res.name == not_resolved.name;}
   if (isReachable(st, res, Contains));
   
   replace
   {
 	st <-e-! res; // create edge to resolved			
-	//delete(not_resolved); // delete unresolved	
   }
 }
+
 // replace target node with source with nested containment
 procedure Replace(src : NamedNode, target : NamedNode)
 {	    
@@ -532,17 +524,17 @@ rule MarkSubMachines()
 	modify { submachine_type -:SubMachineInstance-> st; } // create instance edge
 }
 
-rule MergeSubmachine()
+rule MergeSubmachineExitPoint()
 {
 	-:SubMachineInstance-> st:State; // search for type and instances  
 	n2:ExitPoint <-:Contains- st -:Contains-> n1:ExitPoint;
 
 	if {n1.name == n2.name;}
 
-	modify { st -:Contains-> :ExitPoint<n1, n2>; exec([MergeSubmachine2]);}
+	modify { st -:Contains-> :ExitPoint<n1, n2>; }
 }
 
-rule MergeSubmachine2()
+rule MergeSubmachineEntryPoint()
 {
 	-:SubMachineInstance-> st:State; // search for type and instances  
 	n2:EntryPoint <-:Contains- st -:Contains-> n1:EntryPoint;
@@ -634,49 +626,49 @@ pattern CreateDepthRec(n : StateMachineNode, var depth : int)
   modify { eval { n.depth = depth; } }
 }
 
-pattern DelTree(n : Node) 
-{
-	iterated
-	{
-		n --> child:Node;
+// pattern DelTree(n : Node) 
+// {
+	// iterated
+	// {
+		// n --> child:Node;
 		
-		t:DelTree(child);
+		// t:DelTree(child);
 		
-		modify
-		{
-			t();
-		}		
-	}
+		// modify
+		// {
+			// t();
+		// }		
+	// }
 	
-	modify
-	{
-		delete(n);
-	}
-}
+	// modify
+	// {
+		// delete(n);
+	// }
+// }
 
-pattern CopyTree(n : Node, -ee:Edge->) modify(res : Node)
-{
-	iterated
-	{
-		n -e:Edge-> child:Node;
+// pattern CopyTree(n : Node, -ee:Edge->) modify(res : Node)
+// {
+	// iterated
+	// {
+		// n -e:Edge-> child:Node;
 		
-		t:CopyTree(child, e);
+		// t:CopyTree(child, e);
 		
-		modify
-		{				 
-			t(nn);
-		}
-	}	
+		// modify
+		// {				 
+			// t(nn);
+		// }
+	// }	
 		
-	modify
-	{
-		//delete(n);
-		res -:typeof(ee)-> nn:copy<n>;
-		//eval { yield res = nn; }
-		//src --> nop:copy<n>;			
-	}
+	// modify
+	// {
+		// //delete(n);
+		// res -:typeof(ee)-> nn:copy<n>;
+		// //eval { yield res = nn; }
+		// //src --> nop:copy<n>;			
+	// }
 				
-}
+// }
 
 
 rule CreateAutoInitial()
@@ -701,20 +693,25 @@ rule CreateSubStates()
 	modify
 	{
 		eval
-		{			
-			def ref nodes : set<State> = set<State>{};
-			//def ref src : set<Node> = ;
-			for (s : State in reachableOutgoing(state, Substate))
-			{
-				nodes.add(s);
-			}
-			state.sub_states = nodes;
+		{
+			state.sub_states = set<State>(reachableOutgoing(state, Substate));
 		}
 	}
 	
 }
 
-rule CreateTranId()
+rule CreateTranIds()
+{
+	-t:Transition->;
+	if {t.id == 0;}
+	
+	modify
+	{		
+		exec(::id = 1 ;> (::id) = SetTranId(::id)*);
+	}
+}
+
+rule SetTranId(var id : int) : (int)
 {
 	-t:Transition->;
 	
@@ -724,24 +721,9 @@ rule CreateTranId()
 	{
 		eval
 		{
-			t.id = uniqueof(t);
+			t.id = id;
 		}
-	}
-}
-
-rule CorrectTranId()
-{
-	-t:Transition->;
-	-t2:Transition->;
-	
-	if {t.id == t2.id;}
-	
-	modify
-	{
-		eval
-		{
-			t.id = t2.id + 1;
-		}
+		return (id + 1);
 	}
 }
 

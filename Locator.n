@@ -77,100 +77,99 @@ namespace Nemerle.Statechart
     
     LocatePseudo(node : PseudoStateModelNode) : PseudoStateModelNode
     {
-      Locate(node);
-      match (node)
+      match (Locate(node) :> PseudoStateModelNode)
       {
-        | PseudoStateModelNode.Initial(p)            => p.Iter(LocateTran);
-        | PseudoStateModelNode.History(default = t)  => t.Iter(LocateTran);
-        | PseudoStateModelNode.Fork(t)               => t.Iter(LocateTarget)
-        | PseudoStateModelNode.Join(_, _, t)         => LocateTran(t)
-        | PseudoStateModelNode.Junction(nodes = n)   => foreach (n in n)
-                                                        {
-                                                          | JunctionNode(g, a, t) => Locate(n);
-                                                                                     Locate(g);
-                                                                                     when (a is Some(a))
-                                                                                     {
-                                                                                       Locate(a);
-                                                                                       Locate(a.actions);
-                                                                                     }
-                                                                                     Locate(t);
-                                                                                     LocateTarget(t);
-                                                        }
-        | PseudoStateModelNode.EntryPoint(_, null)    => ()
-        | PseudoStateModelNode.EntryPoint(_, tr)      => Locate(tr);
-                                                         LocateTran(tr)
-        | PseudoStateModelNode.ExitPoint(_, tr)       => tr.Iter(Locate);
-                                                         tr.Iter(LocateTran)
-        | _                                           => ()
+        | PseudoStateModelNode.Initial(p) as n           => p.Map(LocateTran) |> n.ChangeTran
+        | PseudoStateModelNode.History(default = t) as n => t.Map(LocateTran) |> n.ChangeDefault
+        | PseudoStateModelNode.Fork(t) as n              => t.Map(LocateTarget) |> n.ChangeTarget
+        | PseudoStateModelNode.Join(_, _, t) as n        => LocateTran(t) |> n.ChangeTran
+        | PseudoStateModelNode.Junction(nodes = n) as j  => 
+                                                            def locate(n)
+                                                            {
+                                                              | JunctionNode(g, a, t) as n => def n = Locate(n) :> JunctionNode;
+                                                                                              def g = Locate(g) :> GuardNode;
+                                                                                              def a = a.Map(LocateAction);
+                                                                                              def t = Locate(t) :> TargetType |> LocateTarget;
+                                                                                              n.ChangeGuardActionTo(g, a, t)
+                                                            }
+                                                            
+                                                            n.Map(locate) |> j.ChangeNodes
+        | PseudoStateModelNode.EntryPoint(_, null) as n => n
+        | PseudoStateModelNode.EntryPoint(_, tr) as n   => Locate(tr) :> StateNode.Transition |> LocateTran |> n.ChangeTran
+        | PseudoStateModelNode.ExitPoint(_, tr) as n    => tr.Map(x => Locate(x) :> StateNode.Transition) |> _.Map(LocateTran) |> n.ChangeTran
+        | n                                             => n
       }
+    }
+    
+    LocateAction(a : Actions) : Actions
+    {
+      Locate(a) :> Actions |> _.ChangeActions(Locate(a.actions))
     }
     
     LocateTran(tr : StateNode.Transition) : StateNode.Transition
     {
       | StateNode.Transition(f, e, g, a, t, _) => 
      
-        def tr = Locate(tr);
-        def a = if (a is Some(a))
-        {
-          Locate(a) |> _.ChangeActions(Locate(a.actions)) |> Some
-        } else a;
+        def tr = Locate(tr) :> StateNode.Transition;
+        def a = a.Map(LocateAction);
         def e = Locate(e);
         def f = LocateTarget(f);
-        def g = Locate(g);
-        def t = Locate(t);
+        def g = Locate(g) :> GuardNode;
+        def t = Locate(t) :> TargetType;
         def t = LocateTarget(t);
         tr.ChangeEvtFromGuardActionTo(e, f, g, a, t)
     }
     
-    Locate[T](node : T) : T where T : LocatedNode
+    LocateImpl(node : LocatedNode) : LocatedNode
     {
-       (GetLoc(node.pos) |> node.ChangeLocation) :> T
+       GetLoc(node.pos) |> node.ChangeLocation
+    }
+    
+    Locate(node : LocatedNode) : LocatedNode
+    {
+       GetLoc(node.pos) |> node.ChangeLocation
     }
     
     Locate[T](node : list[T]) : list[T] where T : LocatedNode
     {
-      node.Map(Locate)
+      node.Map(x => Locate(x) :> T)
     }
     
-    public Locate(fsm : StateNode.StateMachine) : void
+    public Locate(fsm : StateNode.StateMachine) : StateNode.StateMachine
     {
-      Locate(fsm : LocatedNode);
-      Locate(fsm.usings);
-      Locate(fsm.event_classes);
-      Locate(fsm.event_decls);
-      foreach (StateNode.Error(n) in fsm.errors)
+      assert2(false);
+      def fsm = GetLoc(fsm.pos) |> fsm.ChangeLocation;
+      def fsm = Locate(fsm.usings) |> fsm.ChangeUsings;
+      def fsm = Locate(fsm.event_classes) |> fsm.ChangeEventClasses;
+      def fsm = Locate(fsm.event_decls) |> fsm.ChangeEventDecls;
+      def fsm = fsm.errors.Map(x => Locate(x) :> StateNode.Error) |> fsm.ChangeErrors;
+      
+      
+      def locate(st : StateNode, childs)
       {
-        Locate(n)
+        match (st)
+        {
+          | StateNode.State as st => 
+        
+              def st = Locate(st.attributes) |> st.ChangeAttributes;
+              def defer = st.defer.Map(x => Locate(x.evt) |> x.ChangeEvt);
+              def st = Locate(defer) |> st.ChangeDefer;
+              def st = Locate(st.include) |> st.ChangeInclude;
+              def st = defer |> st.ChangeDefer;
+              def st = Locate(st.do_activity) |> st.ChangeDoActivity;
+              def st = Locate(st.entry.Map(x => LocateAction(x.action) |> x.ChangeAction)) |> st.ChangeEntry;
+              def st = Locate(st.exit.Map(x => LocateAction(x.action) |> x.ChangeAction)) |> st.ChangeExit;
+              def st = Locate(st.errors) |> st.ChangeErrors;
+              def pseudo = Locate(st.pseudo_states);
+              def st = pseudo.Map(x => LocatePseudo(x.node) |> x.ChangeNode) |> st.ChangePseudoStates;
+              def tran = Locate(st.transitions);
+              def st = tran.Map(LocateTran) |> st.ChangeTransitions;
+              Locate(st) :> StateNode.State |> _.Rebuild(childs)
+          | x => x
+        }
       }
       
-      def iter = TreeUtils.GetBreadthFirstEnumerable(fsm.state, _.sub_states);
-      
-      foreach (st in iter)
-      {
-        Locate(st);
-        Locate(st.attributes);
-        Locate(st.defer);
-        st.include |> Locate;
-        foreach (evt in st.defer) Locate(evt.evt);
-        Locate(st.do_activity);
-        def act = st.entry.Map(x => x.action) + st.exit.Map(x => x.action);
-        foreach (a in act)
-        {
-          Locate(a);
-          Locate(a.actions);
-        }
-        Locate(st.entry);
-        Locate(st.errors);
-        foreach (StateNode.Error(n) in st.errors)
-        {
-          Locate(n)
-        }
-        Locate(st.exit);
-        Locate(st.pseudo_states);
-        Locate(st.transitions);
-        st.transitions.Iter(LocateTran);
-        st.pseudo_states.Iter(x => LocatePseudo(x.node));
-      }
+      fsm.state.Reduce(locate) :> StateNode.StateMachine;//TreeUtils.R(fsm.state, _.sub_states);
     }
 
   }

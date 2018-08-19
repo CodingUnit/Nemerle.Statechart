@@ -2,7 +2,7 @@
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
-
+using Nemerle;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -47,6 +47,7 @@ namespace Nemerle.Statechart
     | History
   }
 
+  [NeedChange]
   [Record]
   public variant StateNode : LocatedNode, IGeneralTree[StateNode]
   {
@@ -76,10 +77,8 @@ namespace Nemerle.Statechart
     | StateMachine
       {
         flags : MachineFlags;
-        [NeedChange]
         name  : string;
         [NeedChange(Id)]
-        [NeedChange]
         state : State;
         usings : list[Using] = [];
         event_decls : list[EventDecl] = [];
@@ -90,7 +89,7 @@ namespace Nemerle.Statechart
         {
           def flags = MachineFlags(flags.flags | b.flags.flags, flags.errors + b.flags.errors);
           def name = if (name != null) name else b.name;
-          StateNode.StateMachine(pos, location, flags, name, state, usings + b.usings, event_decls + b.event_decls, event_classes + b.event_classes, errors + b.errors)
+          StateNode.StateMachine(pos, location, Id, flags, name, state, usings + b.usings, event_decls + b.event_decls, event_classes + b.event_classes, errors + b.errors)
         }
         
         GetErrors() : IEnumerable[Error]
@@ -113,29 +112,30 @@ namespace Nemerle.Statechart
         
     | State
       {
-        this(pos : int, n : string, type : StateType) { base(pos);name = n; this.type = type; }
+        this(pos : int, n : string, type : StateType) { base(pos, Location.Default, -1);name = n; this.type = type; }
         
-        [NeedChange]
-        name          : string;
+        public static name_lens : Lens[StateNode.State, string]
+        {
+          [Memoize]
+          get
+          {
+            Lens(_.name, _.ChangeName(_))
+          }
+        }
+        
+        name          : string;        
         parent        : option[string] = None();
         attributes    : list[StateAttribute] = [];
-        [NeedChange]
         entry         : list[Entry] = [];
-        [NeedChange]
         exit          : list[Exit] = [];
-        [NeedChange]
         transitions   : list[Transition] = [];
-        [NeedChange]
         do_activity   : list[DoActivity] = [];
         defer         : list[Defer] = [];
         [NeedChange(Id, pseudo_states)]
-        [NeedChange]
         sub_states    : list[State] = [];
-        [NeedChange]
         pseudo_states : list[PseudoState] = [];
         type          : StateType;
         errors        : list[Error] = [];
-        [NeedChange]
         include       : list[Include] = [];
      
         public Rebuild(ch : list[StateNode]) : StateNode.State
@@ -148,7 +148,7 @@ namespace Nemerle.Statechart
         
         public Instantiate(submachine : State) : State
         {
-          State(pos, location, name, parent, attributes, 
+          State(pos, location, Id, name, parent, attributes, 
                 entry, 
                 exit, 
                 transitions + submachine.transitions, 
@@ -169,30 +169,24 @@ namespace Nemerle.Statechart
     | Entry
       {
         attrib : ActionFlags;
-        [NeedChange]
         action : Actions;
       }
     | Exit
       {
         attrib : ActionFlags;
-        [NeedChange]
         action : Actions;
       }
-    | Defer { evt : list[TransitionEvent]; }
+    | Defer { [NeedChange] evt : list[TransitionEvent]; }
     | Error { node : StateNode; }
     | DoActivity {[NeedChange] action : Actions;flags : ActivityFlag;}
     | Transition
       {
-        [NeedChange]
         from   : TargetType;
         [NeedChange(from, guard, action, to)]
         evt    : list[TransitionEvent] = [];
         [NeedChange(action, to)]
-        [NeedChange]
         guard  : GuardNode;
-        [NeedChange]
         action : option[Actions];
-        [NeedChange]
         to     : TargetType;
         kind   : TransitionKind;
         
@@ -223,7 +217,7 @@ namespace Nemerle.Statechart
         
         public override ToString() : string { Str }
       }
-    | PseudoState { [NeedChange] node : PseudoStateModelNode; }
+    | PseudoState { node : PseudoStateModelNode; }
     | Region
     | Sequence { lst : list[StateNode]; }
     
@@ -250,7 +244,7 @@ namespace Nemerle.Statechart
       def bname = b.name ?? "";
       def name = if (aname.Length > bname.Length) aname else bname;
       def state = State.Combine(a.state, b.state);
-      StateNode.StateMachine(pos, flags, name, state, a.usings + b.usings, a.event_decls + b.event_decls, a.event_classes + b.event_classes, a.errors + b.errors);
+      StateNode.StateMachine(pos, a.Id, flags, name, state, a.usings + b.usings, a.event_decls + b.event_decls, a.event_classes + b.event_classes, a.errors + b.errors);
     }
 
         
@@ -266,13 +260,13 @@ namespace Nemerle.Statechart
       def sub = a.sub_states + b.sub_states;
       def pos = if (a.location.File == b.location.File) Math.Min(a.pos, b.pos) else b.pos;
       def include = a.include + b.include;
-      StateNode.State(pos, null, None(), [], entry, exit, tran, doact, defer, sub, pseudo, StateType.State(), err, include)
+      StateNode.State(pos, a.Id, null, None(), [], entry, exit, tran, doact, defer, sub, pseudo, StateType.State(), err, include)
     }    
     
-    [RecordIgnore]
-    [NeedChange]
+    //[RecordIgnore]
+    //[NeedChange]
     public Id : int;
-    
+
     public override Equals(obj : object) : bool
     {
       this == obj
