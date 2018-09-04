@@ -14,8 +14,9 @@ using CommonLib.Macros;
 
 namespace Nemerle.Statechart
 {
-
-
+  
+  using CommonLib.Macros.LensUtils;
+  
   [Record]
   public variant StateType
   {
@@ -47,6 +48,7 @@ namespace Nemerle.Statechart
     | History
   }
 
+  [Lens]
   [NeedChange]
   [Record]
   public variant StateNode : LocatedNode, IGeneralTree[StateNode]
@@ -85,12 +87,16 @@ namespace Nemerle.Statechart
         event_classes : list[EventClassDecl] = [];
         errors : list[Error];
         
+        //public static state_lens : Lens[StateNode.StateMachine, State] = Lens(_.state, _.ChangeState(_));
+        
         public AddTopDecls(b : StateMachine) : StateMachine
         {
           def flags = MachineFlags(flags.flags | b.flags.flags, flags.errors + b.flags.errors);
           def name = if (name != null) name else b.name;
           StateNode.StateMachine(pos, location, Id, flags, name, state, usings + b.usings, event_decls + b.event_decls, event_classes + b.event_classes, errors + b.errors)
         }
+        
+        type t = StateNode.State;
         
         GetErrors() : IEnumerable[Error]
         {
@@ -114,7 +120,8 @@ namespace Nemerle.Statechart
       {
         this(pos : int, n : string, type : StateType) { base(pos, Location.Default, -1);name = n; this.type = type; }
         
-        public static name_lens : Lens[StateNode.State, string] = Lens(_.name, _.ChangeName(_));
+        //public static transitions_lens : Lens[StateNode.State, list[Transition]] = Lens(_.transitions, _.ChangeTransitions(_));
+        //public static name_lens : Lens[StateNode.State, string] = Lens(_.name, _.ChangeName(_));
         //{
         //  [Memoize]
         //  get
@@ -141,6 +148,8 @@ namespace Nemerle.Statechart
      
         public Rebuild(ch : list[StateNode]) : StateNode.State
         {
+          //def lens = transitions_lens >> Transition.guard_lens >> GuardNode.ParseString.expr_lens;
+          //def a = lens.Map(this, _ + "123");
           if (sub_states != ch : object)
           {
             ChangeSubStates(ch.Map(x => x :> StateNode.State));
@@ -182,6 +191,8 @@ namespace Nemerle.Statechart
     | DoActivity {[NeedChange] action : Actions;flags : ActivityFlag;}
     | Transition
       {
+        //public static guard_lens : Lens[StateNode.Transition, GuardNode] = Lens(_.guard, _.ChangeGuard(_));
+        
         from   : TargetType;
         [NeedChange(from, guard, action, to)]
         evt    : list[TransitionEvent] = [];
