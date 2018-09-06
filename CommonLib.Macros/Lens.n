@@ -11,6 +11,13 @@ namespace CommonLib.Macros
 {
   public module LensUtils
   {
+    
+    
+    public static ToList[T, T2, T3](l1 : Lens[T, T2], l2 : Lens[T, T3]) : list[Lens[T, object]]
+    {
+      [l1.Cast(), l2.Cast()]
+    }
+    
     public static @>>[T, T2, T3, TR] (l1 : Lens[T, T2], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T3 : T2
     {
       def optset(x : T2, r)
@@ -72,11 +79,7 @@ namespace CommonLib.Macros
     {
       def get(x)
       {
-        match (l1.Get(x))
-        {
-          | Some(x) => l2.Get(x)
-          | _       => None()
-        }
+        if (l1.Get(x) is Some(x)) l2.Get(x) else None()
       }
       
       def set = (a, r) => l1.Update(a, l2.Set(_, r));
@@ -131,10 +134,17 @@ namespace CommonLib.Macros
     
     public type Type = T;
     
+    public Cast[T2]() : Lens[T, T2] where Res : T2
+    {
+      def get = x => Get(x) :> T2;
+      def set = (x, y) => Set(x, y :> Res);
+      Lens(get, set)
+    }    
+    
     public Update(a : T, f : Res -> Res) : T
     {
       def value = a     |> Get;
-      def value  = value |> f;
+      def value = value |> f;
       Set(a, value)
     }
     
@@ -148,7 +158,7 @@ namespace CommonLib.Macros
     
     public Update(a : T, f : Res -> Res) : T
     {
-      def value = a     |> Get;
+      def value = a |> Get;
       if (value is Some(v)) 
       {
         Set(a, v |> f)
@@ -179,7 +189,7 @@ namespace CommonLib.Macros
     public Map(a : T, f : Res -> Res) : T
     {
       def value = a |> Get;
-      def value  = value.Select(f);
+      def value = value.Select(f);
       Set(a, value)
     }
     

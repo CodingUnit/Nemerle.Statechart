@@ -105,25 +105,26 @@ namespace CommonLib.Macros
         }
     }
 
-    public DoTransform2(typer : Typer, typeBuilder : TypeBuilder, aliases : list[PExpr]) : void
+    public DoTransform2(_typer : Typer, typeBuilder : TypeBuilder, aliases : list[PExpr]) : void
     {
-      //assert2(false);
+      //  assert2(false);
       def opts = typeBuilder.GetVariantOptions();
+      def name = typeBuilder.Name;
       foreach (o in opts)
       {
         def fields = o.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
-        def ty = typeBuilder.GetSuperTypes();
+        //def ty = typeBuilder.GetSuperTypes();
         
         def fields = fields.Filter(x => typeBuilder.IsDerivedFrom(x.DeclaringType));
         foreach (f in fields)
         {
-          | FieldBuilder as f => create_cons(o, f, aliases)
+          | FieldBuilder as f => create_cons(o, f, aliases, $"_$name")
           | _ => ()
         }    
       }
     }
     
-    public DoTransform(typer : Typer, typeBuilder : TypeBuilder, aliases : list[PExpr]) : void
+    public DoTransform(_typer : Typer, typeBuilder : TypeBuilder, _aliases : list[PExpr]) : void
     {
       //assert2(false);
       
@@ -140,7 +141,7 @@ namespace CommonLib.Macros
                 foreach (f in fields)
                 {
                   | ClassMember.Field as f => gen_field(f)
-                  | _ => ()
+                  | _                      => ()
                 }
         | _ =>  foreach (o in opts)
                 {
@@ -148,7 +149,7 @@ namespace CommonLib.Macros
                   foreach (f in fields)
                   {
                     | ClassMember.Field as f => gen_field(f)
-                    | _ => ()
+                    | _                      => ()
                   }    
                 }
       }
@@ -156,7 +157,7 @@ namespace CommonLib.Macros
       
     }
     
-    create_cons(t : TypeBuilder, f : IField, aliases : list[PExpr]) : void
+    create_cons(t : TypeBuilder, f : IField, aliases : list[PExpr], prefix : string = "") : void
     {
       def get_short_name(name)
       {
@@ -169,7 +170,7 @@ namespace CommonLib.Macros
         
       def names = fields.Map(x => (x.Name, x.GetMemType()));
       def cnames = names.Map((x, _) => ToCamel(x));
-      def fname = $<#..$(cnames;"")#>;
+      def fname = $<#..$(cnames;"")$prefix#>;
       def name = $"Change$fname";
       def sname = names.Map((x, y) => (get_short_name(x), y));
       def sname = sname.Map((x, t) => <[ parameter: $(x : usesite) : $(t : typed) ]>);
