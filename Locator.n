@@ -137,16 +137,25 @@ namespace Nemerle.Statechart
       node.Map(x => Locate(x) :> T)
     }
     
+    Locate(node : object) : object
+    {
+      | LocatedNode as n  => Locate(n)
+      | x is list[object] => x.Map(Locate)
+      | IEnumerable as n  => n.Map(x : object => Locate(x))
+      | n                 => n
+    }
+    
     public Locate(fsm : StateNode.StateMachine) : StateNode.StateMachine
     {
       //assert2(false);
-      def lst = StateMachine.lens_list_StateNode;
       
-      def fsm = GetLoc(fsm.pos) |> fsm.ChangeLocation;
-      def fsm = Locate(fsm.usings) |> fsm.ChangeUsings;
-      def fsm = Locate(fsm.event_classes) |> fsm.ChangeEventClasses;
-      def fsm = Locate(fsm.event_decls) |> fsm.ChangeEventDecls;
-      def fsm = fsm.errors.Map(x => Locate(x) :> StateNode.Error) |> fsm.ChangeErrors;
+      def lst = StateMachine.lens_list_StateNode;
+      def fsm = lst.Fold(fsm, (x, a) => x.Update(a, Locate));
+      def fsm = Locate(fsm : LocatedNode);//GetLoc(fsm.pos) |> fsm.ChangeLocation;
+      //def fsm = Locate(fsm.usings) |> fsm.ChangeUsings;
+      //def fsm = Locate(fsm.event_classes) |> fsm.ChangeEventClasses;
+      //def fsm = Locate(fsm.event_decls) |> fsm.ChangeEventDecls;
+      //def fsm = fsm.errors.Map(x => Locate(x) :> StateNode.Error) |> fsm.ChangeErrors;
       
       
       def locate(st : StateNode, childs)
@@ -155,18 +164,23 @@ namespace Nemerle.Statechart
         {
           | StateNode.State as st => 
         
-              def st = Locate(st.attributes) |> st.ChangeAttributes;
+              def lst = StateNode.State.lens_list_StateNode;
+              def st = lst.Fold(st, _.Update(_, Locate));
+              
+              
+              //def st = Locate(st.attributes) |> st.ChangeAttributes;
+              State.defer_lens.Map(st, x => Locate(x.ElementAt));
               def defer = st.defer.Map(x => Locate(x.evt) |> x.ChangeEvt);
               def st = Locate(defer) |> st.ChangeDefer;
-              def st = Locate(st.include) |> st.ChangeInclude;
+              //def st = Locate(st.include) |> st.ChangeInclude;
               def st = defer |> st.ChangeDefer;
-              def st = Locate(st.do_activity) |> st.ChangeDoActivity;
+              //def st = Locate(st.do_activity) |> st.ChangeDoActivity;
               def st = Locate(st.entry.Map(x => LocateAction(x.action) |> x.ChangeAction)) |> st.ChangeEntry;
               def st = Locate(st.exit.Map(x => LocateAction(x.action) |> x.ChangeAction)) |> st.ChangeExit;
-              def st = Locate(st.errors) |> st.ChangeErrors;
-              def pseudo = Locate(st.pseudo_states);
+              //def st = Locate(st.errors) |> st.ChangeErrors;
+              //def pseudo = Locate(st.pseudo_states);
               def st = pseudo.Map(x => LocatePseudo(x.node) |> x.ChangeNode) |> st.ChangePseudoStates;
-              def tran = Locate(st.transitions);
+              //def tran = Locate(st.transitions);
               def st = tran.Map(LocateTran) |> st.ChangeTransitions;
               Locate(st) :> StateNode.State |> _.Rebuild(childs)
           | x => x
