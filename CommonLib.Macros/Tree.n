@@ -22,7 +22,7 @@ namespace CommonLib.Macros
     
   public interface IGeneralTree[T]
   {
-    ChildNodes : IEnumerable[IGeneralTree[T]] {get;}
+    ChildNodes : EnumerableLens[T, T] {get;}
   }
   
   public abstract class IImmutableTree[T]
@@ -270,19 +270,19 @@ namespace CommonLib.Macros
 
     
     
-    public GetPreOrderEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T]
+    public GetPreOrderEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T] where T : IGeneralTree[T]
     {
-      GetPreOrderEnumerable(tree, _.ChildNodes).Select(x => x :> T)
+      GetPreOrderEnumerable(tree, x => x.ChildNodes.Get(x :> T)).Select(x => x :> T)
     }
     
-    public GetPostOrderEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T]
+    public GetPostOrderEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T] where T : IGeneralTree[T]
     {
-      GetPostOrderEnumerable(tree, _.ChildNodes).Select(x => x :> T)
+      GetPostOrderEnumerable(tree, x => x.ChildNodes.Get(x :> T)).Select(x => x :> T)
     }
 
-    public GetPostOrderIter[T](this tree : IGeneralTree[T]) : IEnumerable[IGeneralTree[T]]
+    public GetPostOrderIter[T](this tree : IGeneralTree[T]) : IEnumerable[IGeneralTree[T]] where T : IGeneralTree[T]
     {
-      GetPostOrderEnumerable(tree, _.ChildNodes)
+      GetPostOrderEnumerable(tree, x => x.ChildNodes.Get(x :> T))
     }
     
     public GetPostOrderIter[T](this tree : IImmutableTree[T]) : IEnumerable[IImmutableTree[T]]
@@ -295,9 +295,9 @@ namespace CommonLib.Macros
       GetPreOrderEnumerable(tree, _.ChildNodes).Select(x => x :> T)
     }
     
-    public  GetBreadthFirstEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T]
+    public  GetBreadthFirstEnumerable[T](this tree : IGeneralTree[T]) : IEnumerable[T] where T : IGeneralTree[T]
     {
-      GetBreadthFirstEnumerable(tree, _.ChildNodes).Select(x => x :> T)
+      GetBreadthFirstEnumerable(tree, x => x.ChildNodes.Get(x :> T)).Select(x => x :> T)
     }
     
     public GetEnumerable[T](tree : T, childs : T -> IEnumerable[T], TraversalType : TreeTraversalType) : IEnumerable[T]
@@ -478,12 +478,23 @@ namespace CommonLib.Macros
       fold(node)
     }
     
-    public Reduce[T](this tree : IGeneralTree[T], folder : T * list[T] -> T) : T
+    public Reduce[T](this tree : IGeneralTree[T], folder : T * list[T] -> T) : T where T : IGeneralTree[T]
     {
       def fold_func(x : IGeneralTree[_])
       {
-        def childs = x.ChildNodes.Map(fold_func);
-        folder(x :> T, childs)
+        def x = x.ChildNodes.Map(x :> T, x => fold_func(x : IGeneralTree[_])) : IGeneralTree[T];
+        folder(x :> T, x.ChildNodes.Get(x :> T).NToList())
+      }
+
+      fold_func(tree)
+    }
+    
+    public Reduce[T](this tree : IGeneralTree[T], folder : T -> T) : T where T : IGeneralTree[T]
+    {
+      def fold_func(x : IGeneralTree[_])
+      {
+        def x = x.ChildNodes.Map(x :> T, x => fold_func(x : IGeneralTree[_])) : IGeneralTree[T];
+        folder(x :> T)
       }
 
       fold_func(tree)

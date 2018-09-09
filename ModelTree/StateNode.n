@@ -228,20 +228,32 @@ namespace Nemerle.Statechart
     | Region
     | Sequence { lst : list[StateNode]; }
     
-    public ChildNodes : IEnumerable[StateNode]
+    public ChildNodes : EnumerableLens[StateNode, StateNode]
     {
       [Memoize]
       get
       {
-        match (this)
-        {
-          | StateNode.StateMachine(state = s) => [s]
-          | State(sub_states = s)             => s
-          | Sequence(s)                       => s.AsEnumerable()
-          | _                                 => Enumerable.Empty()
-        }
-      }
+        def st1 = StateMachine.state_lens.ConvertEnum(x => ListUtils.SingleElement(x : StateNode), x => x.First() :> State).ToBase();
+        def st2 = State.sub_states_lens.ConvertEnum(_ : IEnumerable[StateNode], _.Map(_ :> State)).ToBase();
+        def st3 = Sequence.lst_lens.ConvertEnum(x => x, _.NToList()).ToBase();
+        (st1 | st2 | st3).ToEnum()
+      }//EnumerableLens(_.ChildNodes, _.Rebuild(_));
     }
+    
+    //public ChildNodes : IEnumerable[StateNode]
+    //{
+    //  [Memoize]
+    //  get
+    //  {
+    //    match (this)
+    //    {
+    //      | StateNode.StateMachine as st => StateMachine.state_lens.Get(st) |> ListUtils.SingleElement
+    //      | State as st                  => State.sub_states_lens.Get(st)
+    //      | Sequence as st               => Sequence.lst_lens.Get(st)
+    //      | _                                 => Enumerable.Empty()
+    //    }
+    //  }
+    //}
     
     public static Combine(a : StateMachine, b : StateMachine) : StateMachine
     {
