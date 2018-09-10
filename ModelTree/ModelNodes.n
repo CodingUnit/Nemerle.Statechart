@@ -14,7 +14,7 @@ using CommonLib.Macros;
 namespace Nemerle.Statechart
 {
 
-//using StateNode;
+  using CommonLib.Macros.LensUtils;
 
   [Lens]
   [Record]
@@ -343,15 +343,13 @@ namespace Nemerle.Statechart
   }
 
 
+  [Lens]
   [Record]
   public class JunctionNode : LocatedNode, IGeneralTree[JunctionNode]
   {
-    [NeedChange(action, to)]
-    [NeedChange]
+    //[NeedChange(action, to)]
     public guard  : GuardNode;
-    [NeedChange]
     public action : option[Actions];
-    [NeedChange]
     public to     : TargetType;
 
     public ExecStr : string
@@ -378,36 +376,39 @@ namespace Nemerle.Statechart
       }
     }
 
-    public ChildNodes : IEnumerable[IGeneralTree[JunctionNode]]
+    public ChildNodes : EnumerableLens[JunctionNode, JunctionNode]
     {
+      [Memoize]
       get
       {
-        match (to)
-        {
-          | TargetType.PseudoState(PseudoStateModelNode.Junction(nodes = n)) => n
-          | _                                                                => Enumerable.Empty()
-        }
+        JunctionNode.to_lens 
+        >> TargetType.PseudoState.node_lens 
+        >> PseudoStateModelNode.Junction.nodes_lens
+        //match (to)
+        //{
+        //  | TargetType.PseudoState(PseudoStateModelNode.Junction(nodes = n)) => n
+        //  | _                                                                => Enumerable.Empty()
+        //}
       }
     }
   }
 
+  [Lens]
   [Record]
   public variant PseudoStateModelNode : LocatedNode
   {
-    | Initial { [NeedChange] tran : list[StateNode.Transition]; }
+    | Initial { tran : list[StateNode.Transition]; }
     | History
       {
         type : HistoryType;
-        [NeedChange]
         default : option[StateNode.Transition];
       }
 
-    | Fork { [NeedChange] target : list[TargetType];}
-    | Join { name : string; sources : list[NameIdentifier]; [NeedChange] tran : StateNode.Transition; }
+    | Fork { target : list[TargetType];}
+    | Join { name : string; sources : list[NameIdentifier]; tran : StateNode.Transition; }
     | Junction
       {
         name  : string;
-        [NeedChange]
         nodes : list[JunctionNode];
         type  : JunctionType;
 
@@ -430,8 +431,8 @@ namespace Nemerle.Statechart
         override ToString() : string {Name}
       }
 
-    | EntryPoint { name : string; [NeedChange] tran : StateNode.Transition; }
-    | ExitPoint { name : string; [NeedChange] tran : option[StateNode.Transition]; }
+    | EntryPoint { name : string; tran : StateNode.Transition; }
+    | ExitPoint { name : string; tran : option[StateNode.Transition]; }
     | Terminate 
 
   }
