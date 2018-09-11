@@ -12,96 +12,83 @@ namespace CommonLib.Macros
   public module LensUtils
   {
     
-    public static FilterType[T, T2, T3](this l1 : IEnumerable[Lens[T, T2]], obj : T) : IEnumerable[Lens[T, T3]] where T3 : T2
-    {
-      l1.Where(x => x.Get(obj) is T3).Select(x => x.Cast())
-    }
     
-    public static Update[T, T2, T3, T4](this l1 : IEnumerable[Lens[T, T2]], obj : T, func : T2 -> T2) : T
+    public ToPartial[T, TR](this l1 : Lens[T, option[TR]]) : PartialLens[T, TR]
+    {
+      def get = l1.Get;
+      def set = (x, y) => l1.Set(x, Some(y));
+      PartialLens(get, set)
+    }   
+
+    public OptToEnum[T, TR](this l1 : Lens[T, option[TR]]) : EnumerableLens[T, TR]
+    {
+      def get = x => l1.Get(x).ToEnum();
+      def set = (x, y) => l1.Set(x, y.FromEnum());
+      EnumerableLens(get, set)
+    }
+
+    public FilterType[T, T2, T3](this l1 : IEnumerable[Lens[T, T2]], obj : T) : IEnumerable[Lens[T, T3]] where T3 : T2
+    {
+      l1.Where(x => x.Get(obj) is T3).Select(_.Cast())
+    }
+
+    public Update[T, T2, T3, T4](this l1 : IEnumerable[Lens[T, T2]], obj : T, func : T2 -> T2) : T
     {
       l1.Fold(obj, _.Update(_, func))
     }
-   
-    public static ToList[T, T2, T3, T4](l1 : Lens[T, T2], l2 : Lens[T, T3]) : list[Lens[T, T4]]
+
+    public ToList[T, T2, T3, T4](l1 : Lens[T, T2], l2 : Lens[T, T3]) : list[Lens[T, T4]]
     {
       [l1.Cast(), l2.Cast()]
     }
-    
-    public static CombineEnum[T, T2, T3, T4](this l1 : Lens[T, T2], l2 : Lens[T, T3]) : IEnumerable[Lens[T, T4]]
+
+    public CombineEnum[T, T2, T3, T4](this l1 : Lens[T, T2], l2 : Lens[T, T3]) : IEnumerable[Lens[T, T4]]
     {
       yield l1.Cast();
       yield l2.Cast();
     }
-    
-    public static CombineEnum[T, T2, T3, T4](this l1 : IEnumerable[Lens[T, T4]], l2 : Lens[T, T3]) : IEnumerable[Lens[T, T4]]
+
+    public CombineEnum[T, T2, T3, T4](this l1 : IEnumerable[Lens[T, T4]], l2 : Lens[T, T3]) : IEnumerable[Lens[T, T4]]
     {
       foreach (l in l1) yield l;
       yield l2.Cast()
     }
-    
-    public static @%+[T, T2, T3, T4](l1 : Lens[T, T2], l2 : Lens[T, T3]) : IEnumerable[Lens[T, T4]]
+
+    public @%+[T, T2, T3, T4](l1 : Lens[T, T2], l2 : Lens[T, T3]) : IEnumerable[Lens[T, T4]]
     {
       CombineEnum(l1, l2)
     }
-    
-    public static @%+[T, T2, T3, T4](l1 : IEnumerable[Lens[T, T4]], l2 : Lens[T, T3]) : IEnumerable[Lens[T, T4]]
+
+    public @%+[T, T2, T3, T4](l1 : IEnumerable[Lens[T, T4]], l2 : Lens[T, T3]) : IEnumerable[Lens[T, T4]]
     {
       CombineEnum(l1, l2)
     }
-    
-    
-    public static @|[T, T2, T3, TR](l1 : Lens[T2, TR], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T2 : T where T3 : T
+
+
+    public @|[T, T2, T3, TR](l1 : Lens[T2, TR], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T2 : T where T3 : T
+    {
+      Match.[T, T2, T3, TR](l1, l2)
+    }
+
+    public @|[T, T2, T3, TR](l1 : EnumerableLens[T2, TR], l2 : EnumerableLens[T3, TR]) : EnumerableLens[T, TR] where T2 : T where T3 : T
     {
       Match.[T, T2, T3, TR](l1, l2)
     }
     
-    public static @|[T, T2, TR](l1 : PartialLens[T, TR], l2 : Lens[T2, TR]) : PartialLens[T, TR] where T2 : T
+    public @|[T, T2, TR](l1 : PartialLens[T, TR], l2 : Lens[T2, TR]) : PartialLens[T, TR] where T2 : T
     {
       Match.[T, T2, TR](l1, l2)
     }
-    
-    public static Match[T, T2, TR] (l1 : PartialLens[T, TR], l2 : Lens[T2, TR]) : PartialLens[T, TR] where T2 : T
+
+    public Match[T, T2, T3, TR] (l1 : EnumerableLens[T2, TR], l2 : EnumerableLens[T3, TR]) : EnumerableLens[T, TR] where T2 : T where T3 : T
     {
       def get(x : T)
       {
-        match (l1.Get(x))
-        {
-          | Some as x => x
-          | _         => match (x)
-                         {
-                          | x is T2   => Some(l2.Get(x))
-                          | _         => None()
-                         }
-        }
+        | x is T2 => l1.Get(x)
+        | x is T3 => l2.Get(x)
+        | _       => Enumerable.Empty()
       }
-      
-      def set(a : T, r)
-      {
-        match (l1.Set(a, r))
-        {
-          | x is T2 => l2.Set(x, r)
-          | x       => x
-        }
-      }
-      
-      PartialLens(get, set)
-    }
-    
-    public static ToEnum[T, TR](this l1 : PartialLens[T, IEnumerable[TR]]) : EnumerableLens[T, TR]
-    {
-      def get = x => l1.Get(x).WithDefault(Enumerable.Empty());
-      EnumerableLens(get, l1.Set)
-    }
-    
-    public static Match[T, T2, T3, TR] (l1 : Lens[T2, TR], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T2 : T where T3 : T
-    {
-      def get(x : T)
-      {
-        | x is T2 => Some(l1.Get(x))
-        | x is T3 => Some(l2.Get(x))
-        | _       => None()
-      }
-      
+
       def set(a : T, r)
       {
         match (a)
@@ -110,37 +97,91 @@ namespace CommonLib.Macros
           | x is T3 => l2.Set(x, r)
           | _       => a
         }
-        
       }
-      
-      PartialLens(get, set)
+
+      EnumerableLens(get, set)
     }
     
-    public static @>>[T, T2, T3, TR] (l1 : Lens[T, T2], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T3 : T2
+    public Match[T, T2, TR] (l1 : PartialLens[T, TR], l2 : Lens[T2, TR]) : PartialLens[T, TR] where T2 : T
+    {
+      def get(x : T)
+      {
+        match (l1.Get(x))
+        {
+          | Some as x => x
+          | _     => match (x)
+              {
+                | x is T2  => Some(l2.Get(x))
+                | _     => None()
+              }
+        }
+      }
+
+      def set(a : T, r)
+      {
+        match (l1.Set(a, r))
+        {
+          | x is T2 => l2.Set(x, r)
+          | x    => x
+        }
+      }
+
+      PartialLens(get, set)
+    }
+
+    public ToEnum[T, TR](this l1 : PartialLens[T, IEnumerable[TR]]) : EnumerableLens[T, TR]
+    {
+      def get = x => l1.Get(x).WithDefault(Enumerable.Empty());
+      EnumerableLens(get, l1.Set)
+    }
+
+    public Match[T, T2, T3, TR] (l1 : Lens[T2, TR], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T2 : T where T3 : T
+    {
+      def get(x : T)
+      {
+        | x is T2 => Some(l1.Get(x))
+        | x is T3 => Some(l2.Get(x))
+        | _       => None()
+      }
+
+      def set(a : T, r)
+      {
+        match (a)
+        {
+          | x is T2 => l1.Set(x, r)
+          | x is T3 => l2.Set(x, r)
+          | _       => a
+        }
+      }
+
+      PartialLens(get, set)
+    }
+
+    public @>>[T, T2, T3, TR] (l1 : Lens[T, T2], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T3 : T2
     {
       def optset(x : T2, r)
       {
         match (x)
         {
           | y is T3 => l2.Set(y, r) : T2
-          | _       => x
+          | _    => x
         }
       }
-      
+
       def get(x)
       {
         match (l1.Get(x))
         {
           | x is T3 => Some(l2.Get(x))
-          | _       => None()
+          | _    => None()
         }
       }
       def set = (a, r) => l1.Update(a, optset(_, r));//l2.Set >> l1.Update;
 
       PartialLens(get, set)
     }
-    
-    public static @>>[T, T2, T3, TR] (l1 : Lens[T, IEnumerable[T2]], l2 : Lens[T3, TR]) : EnumerableLens[T, TR] where T3 : T2
+
+    public @>>[T, T2, T3, TR] (l1 : Lens[T, IEnumerable[T2]], l2 : Lens[T3, TR]) : EnumerableLens[T, TR] where T3 : T2
     {
       def get(x)
       {
@@ -153,11 +194,11 @@ namespace CommonLib.Macros
           match (lst.First())
           {
             | _ is T3 => lst.Select(x => l2.Get(x :> T3))
-            | _       => Enumerable.Empty()
+            | _    => Enumerable.Empty()
           }
         }
-      }                  
-      
+      }         
+
       def set(a, r)
       {
         def value = a |> l1.Get;
@@ -169,140 +210,140 @@ namespace CommonLib.Macros
           match (value.First())
           {
             | _ is T3 => def value = value.Select(_ :> T3);
-                         def zip = value.ZipLazy(r);
-                         def value = zip.Map(l2.Set);
-                         l1.Set(a, value)
-            | _       => a
+            def zip = value.ZipLazy(r);
+            def value = zip.Map(l2.Set);
+            l1.Set(a, value)
+            | _    => a
           }
         }
       }
-      
+
       EnumerableLens(get, set)
     }
 
-    public static @>>[T, T2, TR] (l1 : PartialLens[T, T2], l2 : PartialLens[T2, TR]) : PartialLens[T, TR]
+    public @>>[T, T2, TR] (l1 : PartialLens[T, T2], l2 : PartialLens[T2, TR]) : PartialLens[T, TR]
     {
       def get(x)
       {
         if (l1.Get(x) is Some(x)) l2.Get(x) else None()
       }
-      
+
       def set = (a, r) => l1.Update(a, l2.Set(_, r));
-      
+
       PartialLens(get, set)
     }
-    
-    public static @>>[T, T2, TR] (l1 : PartialLens[T, T2], l2 : Lens[T2, TR]) : PartialLens[T, TR]
+
+    public @>>[T, T2, TR] (l1 : PartialLens[T, T2], l2 : Lens[T2, TR]) : PartialLens[T, TR]
     {
       def get = x => l1.Get(x).Map(l2.Get);
       def set = (a, r) => l1.Update(a, l2.Set(_, r));
-      
+
       PartialLens(get, set)
     }
-    
-    public static @>>[T, T2, T3, TR] (l1 : PartialLens[T, T2], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T3 : T2
+
+    public @>>[T, T2, T3, TR] (l1 : PartialLens[T, T2], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T3 : T2
     {
       def get(x)
       {
         match (l1.Get(x))
         {
           | Some(x is T3) => Some(l2.Get(x))
-          | _             => None()
+          | _       => None()
         }
       }
-      
+
       def optset(x : T2, r)
       {
         match (x)
         {
           | x is T3 => l2.Set(x, r) : T2
-          | _       => x
+          | _    => x
         }
-        
-        
+
+
       }
-      
+
       def set = (a, r) => l1.Update(a, optset(_, r));
-      
+
       PartialLens(get, set)
     }
-    
-    public static @>>[T, T2, TR] (l1 : Lens[T, T2], l2 : PartialLens[T2, TR]) : PartialLens[T, TR]
+
+    public @>>[T, T2, TR] (l1 : Lens[T, T2], l2 : PartialLens[T2, TR]) : PartialLens[T, TR]
     {
       def get = l1.Get >> l2.Get;
       def set = (a, r) => l1.Update(a, l2.Set(_, r));
       PartialLens(get, set)
     }
-    
-    public static @>>[T, T2, TR] (l1 : Lens[T, T2], l2 : Lens[T2, TR]) : Lens[T, TR]
+
+    public @>>[T, T2, TR] (l1 : Lens[T, T2], l2 : Lens[T2, TR]) : Lens[T, TR]
     {
       def get = l1.Get >> l2.Get;
       def set = (a, r) => l1.Update(a, l2.Set(_, r));//l2.Set >> l1.Update;
       Lens(get, set)
     }
-    
-    public static @>>[T, T2, TR] (l1 : Lens[T, list[T2]], l2 : Lens[T2, TR]) : EnumerableLens[T, TR]
+
+    public @>>[T, T2, TR] (l1 : Lens[T, list[T2]], l2 : Lens[T2, TR]) : EnumerableLens[T, TR]
     {
       def get = x => l1.Get(x).Select(l2.Get);
       def set = (a, r) => l1.Update(a, x => x.ZipLazy(r).Map(l2.Set));
       EnumerableLens(get, set)
     }
-    
-    public static @>>[T, T2, TR] (l1 : Lens[T, list[T2]], l2 : Lens[T2, list[TR]]) : EnumerableLens[T, TR]
+
+    public @>>[T, T2, TR] (l1 : Lens[T, list[T2]], l2 : Lens[T2, list[TR]]) : EnumerableLens[T, TR]
     {
       def get = x => l1.Get(x).SelectMany(x => l2.Get(x));
-      
+
       def set(a, r)
       {
         def update(x)
         {
-          def len    = x.Select(x => l2.Get(x).Length);
+          def len  = x.Select(x => l2.Get(x).Length);
           def unflat = r.Unflat(len);
-          def res    = x.ZipLazy(unflat);
+          def res  = x.ZipLazy(unflat);
           res.Map((x, y) => l2.Set(x, y.NToList()));
         }
         l1.Update(a, update);
       }
-      
+
       EnumerableLens(get, set)
     }
-    
-    public static @>>[T, T2, T3, TR] (l1 : Lens[T, T2], l2 : Lens[T3, list[TR]]) : EnumerableLens[T, TR] where T3 : T2
+
+    public @>>[T, T2, T3, TR] (l1 : Lens[T, T2], l2 : Lens[T3, list[TR]]) : EnumerableLens[T, TR] where T3 : T2
     {
       def optset(x : T2, r)
       {
         match (x)
         {
           | y is T3 => l2.Set(y, r.NToList()) : T2
-          | _       => x
+          | _    => x
         }
       }
-      
+
       def get(x)
       {
         match (l1.Get(x))
         {
           | x is T3 => l2.Get(x)
-          | _       => Enumerable.Empty()
+          | _    => Enumerable.Empty()
         }
       }
-      
+
       def set = (a, r) => l1.Update(a, optset(_, r));//l2.Set >> l1.Update;
 
       EnumerableLens(get, set)
     }
-    
-    public static @>>[T, T2, T3, TR] (l1 : PartialLens[T, T2], l2 : Lens[T3, list[TR]]) : EnumerableLens[T, TR] where T3 : T2
+
+    public @>>[T, T2, T3, TR] (l1 : PartialLens[T, T2], l2 : Lens[T3, list[TR]]) : EnumerableLens[T, TR] where T3 : T2
     {
       def optset(x : T2, r)
       {
         match (x)
         {
           | y is T3 => l2.Set(y, r.NToList()) : T2
-          | _       => x
+          | _    => x
         }
       }
-      
+
       def get(x)
       {
         match (l1.Get(x))
@@ -311,113 +352,140 @@ namespace CommonLib.Macros
           | _             => Enumerable.Empty()
         }
       }
-      
+
       def set = (a, r) => l1.Update(a, optset(_, r));//l2.Set >> l1.Update;
 
       EnumerableLens(get, set)
     }
-    
-    public static @>>|[T, T2, T3, TR] (l1 : Lens[T, T2], l2 : Lens[T3, list[TR]]) : PartialLens[T, list[TR]] where T3 : T2
+
+    public @>>|[T, T2, T3, TR] (l1 : Lens[T, T2], l2 : Lens[T3, list[TR]]) : PartialLens[T, list[TR]] where T3 : T2
     {
       def optset(x : T2, r)
       {
         match (x)
         {
           | y is T3 => l2.Set(y, r.NToList()) : T2
-          | _       => x
+          | _    => x
         }
       }
-      
+
       def get(x)
       {
         match (l1.Get(x))
         {
           | x is T3 => Some(l2.Get(x))
-          | _       => None()
+          | _    => None()
         }
       }
-      
+
       def set = (a, r) => l1.Update(a, optset(_, r));//l2.Set >> l1.Update;
 
       PartialLens(get, set)
     }
-    
-    public static @>>|[T, T2, TR] (l1 : Lens[T, list[T2]], l2 : Lens[T2, list[TR]]) : Lens[T, list[list[TR]]]
+
+    public @>>|[T, T2, TR] (l1 : Lens[T, list[T2]], l2 : Lens[T2, list[TR]]) : Lens[T, list[list[TR]]]
     {
       def get = x => l1.Get(x).Map(l2.Get);
       def set = (a, r) => l1.Update(a, x => x.ZipLazy(r).Map(l2.Set));
-      
+
       Lens(get, set)
     }
-    //public static @>>[T, T2, TR] (l1 : ListLens[T, T2], l2 : ListLens[T2, TR]) : EnumerableLens[T, TR]
-    //{
-    //  def get = x => l1.Get(x).SelectMany(x => l2.Get(x));
-      
-    //  def set(a, r)
-    //  {
-    //    def update(x)
-    //    {
-    //      def len    = x.Select(x => l2.Get(x).Length);
-    //      def unflat = r.Unflat(len);
-    //      def res    = x.ZipLazy(unflat);
-    //      res.Map((x, y) => l2.Set(x, y.NToList()));
-    //    }
-    //    l1.Update(a, update);
-    //  }
-      
-    //  EnumerableLens(get, set)
-    //}
-    //public static @>>[T, T2, TR] (l1 : ListLens[T, T2], l2 : Lens[T2, TR]) : Lens[T, IEnumerable[TR]]
-    //{
-    //  def get = x => l1.Get(x).Select(l2.Get);
-    //  def set = (a, r) => l1.Update(a, x => x.ZipLazy(r).Map(l2.Set));
-    //  Lens(get, set)
-    //}
+  //public @>>[T, T2, TR] (l1 : ListLens[T, T2], l2 : ListLens[T2, TR]) : EnumerableLens[T, TR]
+  //{
+  // def get = x => l1.Get(x).SelectMany(x => l2.Get(x));
+
+  // def set(a, r)
+  // {
+  //  def update(x)
+  //  {
+  //   def len  = x.Select(x => l2.Get(x).Length);
+  //   def unflat = r.Unflat(len);
+  //   def res  = x.ZipLazy(unflat);
+  //   res.Map((x, y) => l2.Set(x, y.NToList()));
+  //  }
+  //  l1.Update(a, update);
+  // }
+
+  // EnumerableLens(get, set)
+  //}
+  //public @>>[T, T2, TR] (l1 : ListLens[T, T2], l2 : Lens[T2, TR]) : Lens[T, IEnumerable[TR]]
+  //{
+  // def get = x => l1.Get(x).Select(l2.Get);
+  // def set = (a, r) => l1.Update(a, x => x.ZipLazy(r).Map(l2.Set));
+  // Lens(get, set)
+  //}
   }
-  /// <summary>
-  /// Description of Lens.
-  /// </summary>
+/// <summary>
+/// Description of Lens.
+/// </summary>
   [Record]
   public class Lens[T, Res]
   {
     public Get : T -> Res;
-    public Set : T * Res -> T;
+    public Set : T * Res -> T;    
     
+    public ToBasePartial[T2]() : PartialLens[T2, Res] where T : T2
+    {
+      def get(x : T2)
+      {
+        | x is T => Some(Get(x))
+        | _      => None()
+      }
+
+      def set(x : T2, r : Res)
+      {
+        match (x)
+        {
+          | x is T => Set(x, r) :> T2
+          | _   => x
+        }
+      }
+
+      PartialLens(get, set);
+    }
+
     public ToBase[T2]() : Lens[T2, Res] where T : T2
     {
       def get = x => Get(x :> T);
       def set = (x, r) => Set(x :> T, r) :> T2;
       Lens(get, set)
     }
-    
+
     public ConvertEnum[T2](to : Res -> IEnumerable[T2], from : IEnumerable[T2] -> Res) : EnumerableLens[T, T2]
     {
       def get = Get >> to;
       def set = (x, y) => Set(x, y |> from);
       EnumerableLens(get, set)
     }
-    
+
+    public ToEnum() : EnumerableLens[T, Res]
+    {
+      def get = x => Get(x) |> ListUtils.SingleElement;
+      def set = (x, y) => if (y.Count() >= 1) Set(x, y.First()) else x;
+      EnumerableLens(get, set)
+    }
+
     public Convert[T2](to : Res -> T2, from : T2 -> Res) : Lens[T, T2]
     {
       def get = Get >> to;
       def set = (x, y) => Set(x, y |> from);
       Lens(get, set)
     }
-    
+
     public Cast[T2]() : Lens[T, T2] where Res : T2
     {
       def get = x => Get(x) :> T2;
       def set = (x, y) => Set(x, y :> Res);
       Lens(get, set)
-    }    
-    
+    }  
+
     public Update(a : T, f : Res -> Res) : T
     {
-      def value = a     |> Get;
+      def value = a   |> Get;
       def value = value |> f;
       Set(a, value)
     }
-    
+
   }
 
   [Record]
@@ -425,7 +493,7 @@ namespace CommonLib.Macros
   {
     public Get : T -> option[Res];
     public Set : T * Res -> T;
-    
+
     public Update(a : T, f : Res -> Res) : T
     {
       def value = a |> Get;
@@ -436,22 +504,49 @@ namespace CommonLib.Macros
     }
   }
 
-  /// <summary>
-  /// Description of Lens.
-  /// </summary>
+/// <summary>
+/// Description of Lens.
+/// </summary>
+// public type ListLens[T, Res] = Lens[T, list[Res]];
   [Record]
   public class ListLens[T, Res] : Lens[T, list[Res]]
   {
+
+    public new ToBasePartial[T2]() : ListLens[T2, Res] where T : T2
+    {
+      def get(x : T2)
+      {
+        | x is T => Get(x)
+        | _      => []
+      }
+
+      def set(x : T2, r)
+      {
+        match (x)
+        {
+          | x is T => Set(x, r) :> T2
+          | _      => x
+        }
+      }
+
+      ListLens(get, set);
+    }
     
     public Map(a : T, f : Res -> Res) : T
     {
       def value = a |> Get;
-      def value  = value.Map(f);
+      def value = value.Map(f);
       Set(a, value)
     }
-    
+
+    public new ToEnum() : EnumerableLens[T, Res]
+    {
+      EnumerableLens(Get, (x, y) => Set(x, y.NToList()))
+    }
   }
-  
+
+//public type EnumerableLens[T, Res] = Lens[T, IEnumerable[Res]];
+
   [Record]
   public class EnumerableLens[T, Res] : Lens[T, IEnumerable[Res]]
   {
@@ -461,13 +556,13 @@ namespace CommonLib.Macros
       def set = (x, r) => Set(x :> T, r) :> T2;
       EnumerableLens(get, set)
     }
-    
+
     public Map(a : T, f : Res -> Res) : T
     {
       def value = a |> Get;
       def value = value.Select(f);
       Set(a, value)
     }
-    
+
   }
 }

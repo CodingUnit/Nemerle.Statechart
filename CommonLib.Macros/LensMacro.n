@@ -104,7 +104,7 @@ namespace CommonLib.Macros
         def name = typeBuilder.Name;
         foreach (f in base_fields)
         {
-          | FieldBuilder as f => create_cons(typer, t, f, aliases, $"_$name")
+          | FieldBuilder as f => ()//create_cons(typer, t, f, aliases, $"_$name")
           | _                 => ()
         }
         def list_name = $"lens_list_$(name)";
@@ -116,7 +116,7 @@ namespace CommonLib.Macros
         //def change_name = $"Change$fnameup$prefix";
         //def name = $"$(fname)$(prefix)_lens";
       
-        def fnames = fields_inst.Select(x => $"$(x.Name)_lens").Concat(base_fields.Select(x => $"$(x.Name)_$(name)_lens"));
+        def fnames = fields_inst.Select(x => $"$(x.Name)_lens");//.Concat(base_fields.Select(x => $"$(x.Name)_$(name)_lens"));
         def fcode = fnames.Select(x => <[ $(x : usesite).Cast() ]>);
         def fcode = <[ [..$fcode]]>;
         def type = <[ list[Lens[$(ty : typed), object]] ]>;//Lens(_.$(fname : usesite), _.$(change_name : usesite)(_))
@@ -146,24 +146,12 @@ namespace CommonLib.Macros
     create_cons(_typer : Typer, t : TypeBuilder, f : FieldBuilder, _aliases : list[PExpr], prefix : string = "") : void
     {
       //assert2(false);
-      //def fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy).Rev();
-      //def fields = fields.Exclude(have_record_ignore);
-      //def fields = f :: fields.Filter(x => aliases.Exists(y => y.ToString() == x.Name));
-        
-      //def names = fields.Map(x => (x.Name, x.GetMemType()));
-      //def cnames = names.Map((x, _) => ToCamel(x));
       def fname = $<#$(f.Name)#>;
       def fnameup = NeedChangeImpl.ToCamel(fname);
       def change_name = $"Change$fnameup$prefix";
       def name = $"$(fname)$(prefix)_lens";
-      //def sname = names.Map((x, y) => (get_short_name(x), y));
-      //def sname = sname.Map((x, t) => <[ parameter: $(x : usesite) : $(t : typed) ]>);
-      //def chlist = names.Map((x, y) => (x.TrimStart('_'), get_short_name(x), y));
       def type = t.GetMemType();
       def ftype = f.GetMemType();
-      
-      //def list_type = typer.BindFixedType(<[ list[_] ]>);
-      //def enum_type = typer.BindFixedType(<[ IEnumerable[_] ]>);
       def (ltype, type) = match (f.Ast.ty)
       {
         | <[ list[$t]]>        => (<[ ListLens ]>, <[ ListLens[$(type : typed), $t] ]>)
@@ -171,11 +159,6 @@ namespace CommonLib.Macros
         | _                    => (<[ Lens ]>, <[ Lens[$(type : typed), $(ftype : typed)] ]>);
       }
         
-      //def clist = chlist.Map((x, y, _) => (x, y));
-      //def body = CreateNewInst(t, null, clist);
-      //def chlist = names.Map((x, y) => (x, get_short_name(x), y));
-      //def check_list = chlist.Map((x, y, t) => if (t.IsValueType) <[ ! $(x : usesite).Equals($(y : usesite)) ]> else <[ $(x : usesite) : object != $(y : usesite) ]>);
-      //def check = check_list.Reduce((x, a) => <[ $x || $a ]>);
       _ = t.DefineWithSource(<[ decl: public static $(name : usesite) : $(type) = $ltype(_.$(fname : usesite), _.$(change_name : usesite)(_))]>);
     }
       

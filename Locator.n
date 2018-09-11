@@ -14,6 +14,7 @@ namespace Nemerle.Statechart
 {
   using StateNode;
   using CommonLib.Macros.LensUtils;
+  using PseudoStateModelNode;
   /// <summary>
   /// Description of Locator.
   /// </summary>
@@ -70,22 +71,33 @@ namespace Nemerle.Statechart
     
     LocateTarget(t : TargetType) : TargetType
     {
-      match (Locate(t))
+      //TargetType.PseudoState.node_lens.ToBasePartial().Update(t, LocatePseudo) |>
+      //TargetType.Qualified.target_lens.ToBasePartial().Update(_, LocateTarget)
+      match (LocateT(t))
       {
-        | TargetType.Qualified(_, t) as tar => LocateTarget(t) |> tar.ChangeTarget
-        | TargetType.PseudoState(n) as tar  => LocatePseudo(n) |> tar.ChangeNode
-        | _                                 => t
+        | TargetType.Qualified   as t => TargetType.Qualified.target_lens.Update(t, LocateTarget)//LocateTarget(t) |> tar.ChangeTarget
+        | TargetType.PseudoState as t => TargetType.PseudoState.node_lens.Update(t, LocatePseudo)//LocatePseudo(n) |> tar.ChangeNode
+        | _                           => t
       }
     }
     
+    
+    
     LocatePseudo(node : PseudoStateModelNode) : PseudoStateModelNode
     {
-      match (Locate(node) :> PseudoStateModelNode)
+      def tran = Initial.tran_lens.ToEnum() | History.default_lens.OptToEnum() 
+                 | Join.tran_lens.ToEnum()  | EntryPoint.tran_lens.ToEnum()    | ExitPoint.tran_lens.OptToEnum();
+      //def hist = ;
+      //def t = ;
+      //def tr = ;
+      def node = Fork.target_lens.ToBasePartial().Map(node, LocateTarget);
+      def node = tran.Map(node, LocateTran);
+      match (LocateT(node))
       {
-        | PseudoStateModelNode.Initial(p) as n           => p.Map(LocateTran) |> n.ChangeTran
-        | PseudoStateModelNode.History(default = t) as n => t.Map(LocateTran) |> n.ChangeDefault
-        | PseudoStateModelNode.Fork(t) as n              => t.Map(LocateTarget) |> n.ChangeTarget
-        | PseudoStateModelNode.Join(_, _, t) as n        => LocateTran(t) |> n.ChangeTran
+        //| PseudoStateModelNode.Initial(p) as n           => p.Map(LocateTran) |> n.ChangeTran
+        //| PseudoStateModelNode.History(default = t) as n => t.Map(LocateTran) |> n.ChangeDefault
+        //| PseudoStateModelNode.Fork(t) as n              => t.Map(LocateTarget) |> n.ChangeTarget
+        //| PseudoStateModelNode.Join(_, _, t) as n        => LocateTran(t) |> n.ChangeTran
         | PseudoStateModelNode.Junction(nodes = n) as j  => 
                                                             def locate(n)
                                                             {
@@ -97,50 +109,56 @@ namespace Nemerle.Statechart
                                                             }
                                                             
                                                             n.Map(locate) |> j.ChangeNodes
-        | PseudoStateModelNode.EntryPoint(_, null) as n => n
-        | PseudoStateModelNode.EntryPoint(_, tr) as n   => Locate(tr) :> StateNode.Transition |> LocateTran |> n.ChangeTran
-        | PseudoStateModelNode.ExitPoint(_, tr) as n    => tr.Map(x => Locate(x) :> StateNode.Transition) |> _.Map(LocateTran) |> n.ChangeTran
+        //| PseudoStateModelNode.EntryPoint(_, null) as n => n
+        //| PseudoStateModelNode.EntryPoint(_, tr) as n   => Locate(tr) :> StateNode.Transition |> LocateTran |> n.ChangeTran
+        //| PseudoStateModelNode.ExitPoint(_, tr) as n    => tr.Map(x => Locate(x) :> StateNode.Transition) |> _.Map(LocateTran) |> n.ChangeTran
         | n                                             => n
       }
     }
     
     LocateAction(a : Actions) : Actions
     {
-      Locate(a) :> Actions |> _.ChangeActions(Locate(a.actions))
+      Actions.actions_lens.Map(a, LocateT)
+      //Locate(a) :> Actions |> _.ChangeActions(Locate(a.actions))
     }
     
     LocateTran(tr : StateNode.Transition) : StateNode.Transition
     {
-      def lst = StateNode.Transition.lens_list_StateNode;
-      def lst = lst.Where(x => x.Get(tr) is LocatedNode).Select(_.Cast());
-      //| StateNode.Transition(f, e, g, a, t, _) => 
-      (Locate(tr) :> StateNode.Transition) |>
-      lst.Update(_, x => Locate(x : LocatedNode)) |>
-      Transition.action_lens.Update(_, x => x.Map(LocateAction)) |>
-      Transition.from_lens.CombineEnum(Transition.to_lens).Update(_, LocateTarget);
+      if (tr != null)
+      {
+        def lst = StateNode.Transition.lens_list_StateNode.FilterType();//Where(x => x.Get(tr) is LocatedNode).Select(_.Cast());
+        //| StateNode.Transition(f, e, g, a, t, _) => 
+        LocateT(tr) |>
+        lst.Update(_, x => Locate(x : LocatedNode)) |>
+        Transition.action_lens.Update(_, x => x.Map(LocateAction)) |>
+        Transition.from_lens.CombineEnum(Transition.to_lens).Update(_, LocateTarget);
+      } else null
       //def g = Locate(g) :> GuardNode;
       //def t = Locate(t) :> TargetType;
       //def t = LocateTarget(t);
       //tr.ChangeEvtFromGuardActionTo(e, f, g, a, t)
     }
     
-    LocateImpl(node : LocatedNode) : LocatedNode
-    {
-       GetLoc(node.pos) |> node.ChangeLocation
-    }
+    //LocateImpl(node : LocatedNode) : LocatedNode
+    //{
+    //   GetLoc(node.pos) |> node.ChangeLocation
+    //}
     
     Locate(node : LocatedNode) : LocatedNode
     {
-       GetLoc(node.pos) |> node.ChangeLocation
+      LocatedNode.location_lens.Set(node, GetLoc(node.pos))
+       //GetLoc(node.pos) |> node.ChangeLocation
     }
     
     Locate[T](node : list[T]) : list[T] where T : LocatedNode
     {
-      node.Map(x => Locate(x) :> T)
+      node.Map(LocateT)
     }
     
-    Locate[T](node : T) : T where T : LocatedNode
+    LocateT[T](node : T) : T where T : LocatedNode
     {
+      //node.;
+      //Set(node, GetLoc(node.pos))
       Locate(node : LocatedNode) :> T
     }
     
@@ -156,20 +174,20 @@ namespace Nemerle.Statechart
     {
       //assert2(false);
       
-      def lst = StateMachine.lens_list_StateNode.Where(x => x.Get(fsm) is LocatedNode).Select(_.Cast());
+      def lst = StateMachine.lens_list_StateNode.FilterType(fsm);//Where(x => x.Get(fsm) is LocatedNode).Select(_.Cast());
       def fsm = lst.Update(fsm, x => Locate(x : LocatedNode));
-      def fsm = Locate(fsm : LocatedNode);//GetLoc(fsm.pos) |> fsm.ChangeLocation;
+      def fsm = Locate(fsm : LocatedNode) :> StateMachine;//GetLoc(fsm.pos) |> fsm.ChangeLocation;
       //def fsm = Locate(fsm.usings) |> fsm.ChangeUsings;
       //def fsm = Locate(fsm.event_classes) |> fsm.ChangeEventClasses;
       //def fsm = Locate(fsm.event_decls) |> fsm.ChangeEventDecls;
       //def fsm = fsm.errors.Map(x => Locate(x) :> StateNode.Error) |> fsm.ChangeErrors;
       
       
-      def locate(st : StateNode)
+      def locate(st : StateNode) : StateNode
       {
         | StateNode.State as st => 
         
-              def lst : IEnumerable[Lens[StateNode.State, LocatedNode]] = StateNode.State.lens_list_StateNode.FilterType(st);//Where(x => x.Get(st) is LocatedNode).Select(_.Cast());
+              def lst = StateNode.State.lens_list_StateNode.FilterType(st);//Where(x => x.Get(st) is LocatedNode).Select(_.Cast());
               def defer = State.defer_lens >> Defer.evt_lens;
               def pseudo = State.pseudo_states_lens >> PseudoState.node_lens;
               def tran = State.transitions_lens;
@@ -178,10 +196,9 @@ namespace Nemerle.Statechart
               def entry_act = entry >> Actions.actions_lens;
               def exit_act = entry >> Actions.actions_lens;
               
-              def lst : IEnumerable[Lens[StateNode.State, LocatedNode]] = lst %+ defer %+ pseudo %+ entry %+ exit %+ entry_act %+ exit_act;
-              def st = lst.Update(st, Locate);
-              def st = pseudo.Map(st, LocatePseudo);
-              def st = tran.Map(st, LocateTran);
+              def lst = lst %+ defer %+ pseudo %+ entry %+ exit %+ entry_act %+ exit_act;
+              def st = lst.Update(st, x => Locate(x : LocatedNode));
+              pseudo.Map(st, LocatePseudo) |> tran.Map(_, LocateTran) |> LocateT
               //def st = defer.Map(st, Locate);
               //def defer = st.defer.Map(x => Locate(x.evt) |> x.ChangeEvt);
               ///def st = Locate(defer) |> st.ChangeDefer;
@@ -195,7 +212,7 @@ namespace Nemerle.Statechart
               //def st = pseudo.Map(x => LocatePseudo(x.node) |> x.ChangeNode) |> st.ChangePseudoStates;
               //def tran = Locate(st.transitions);
               //def st = tran.Map(LocateTran) |> st.ChangeTransitions;
-              Locate(st)// :> StateNode.State |> _.Rebuild(childs)
+         | _ => st
       }
       
       fsm.state.Reduce(locate) :> StateNode.StateMachine;//TreeUtils.R(fsm.state, _.sub_states);
