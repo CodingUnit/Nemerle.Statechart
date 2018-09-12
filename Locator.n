@@ -92,23 +92,38 @@ namespace Nemerle.Statechart
       //def tr = ;
       def node = Fork.target_lens.ToBasePartial().Map(node, LocateTarget);
       def node = tran.Map(node, LocateTran);
+      def junc = Junction.nodes_lens.ToBasePartial();
+      def act   = junc >> JunctionNode.action_lens.ToPartial();
+      def guard = junc >> JunctionNode.guard_lens;
+      def tar   = junc >> JunctionNode.to_lens;
+      
       match (LocateT(node))
       {
         //| PseudoStateModelNode.Initial(p) as n           => p.Map(LocateTran) |> n.ChangeTran
         //| PseudoStateModelNode.History(default = t) as n => t.Map(LocateTran) |> n.ChangeDefault
         //| PseudoStateModelNode.Fork(t) as n              => t.Map(LocateTarget) |> n.ChangeTarget
         //| PseudoStateModelNode.Join(_, _, t) as n        => LocateTran(t) |> n.ChangeTran
-        | PseudoStateModelNode.Junction(nodes = n) as j  => 
+        | PseudoStateModelNode.Junction as j  => 
                                                             def locate(n)
                                                             {
-                                                              | JunctionNode(g, a, t) as n => def n = Locate(n) :> JunctionNode;
-                                                                                              def g = Locate(g) :> GuardNode;
-                                                                                              def a = a.Map(LocateAction);
-                                                                                              def t = Locate(t) :> TargetType |> LocateTarget;
-                                                                                              n.ChangeGuardActionTo(g, a, t)
+                                                              //| JunctionNode(g, a, t) as n => def n = Locate(n) :> JunctionNode;
+                                                              //                                def g = Locate(g) :> GuardNode;
+                                                              //                                def a = a.Map(LocateAction);
+                                                              //                                def t = Locate(t) :> TargetType |> LocateTarget;
+                                                              //n.ChangeGuardActionTo(g, a, t)
+                                                              def loc(n)
+                                                              {
+                                                                def node  = act.Map(node, LocateAction);
+                                                                def node  = guard.Map(node, LocateT);
+                                                                def node  = tar.Map(node, LocateTarget);
+                                                              }
+                                                              
+                                                              n.Reduce(loc)
                                                             }
                                                             
-                                                            n.Map(locate) |> j.ChangeNodes
+                                                            //def j = TreeUtils.Reduce(j, x : Junction => x.nodes.AsEnumerable(), locate);
+                                                            Junction.nodes_lens.Map(j, locate)
+                                                            //n.Map(locate) |> j.ChangeNodes
         //| PseudoStateModelNode.EntryPoint(_, null) as n => n
         //| PseudoStateModelNode.EntryPoint(_, tr) as n   => Locate(tr) :> StateNode.Transition |> LocateTran |> n.ChangeTran
         //| PseudoStateModelNode.ExitPoint(_, tr) as n    => tr.Map(x => Locate(x) :> StateNode.Transition) |> _.Map(LocateTran) |> n.ChangeTran
