@@ -11,6 +11,20 @@ namespace CommonLib.Macros
 {
   public module LensUtils
   {
+    //public ToTreeLens[T, Res](this l1 : Lens[T, list[Res]]) : TreeLens[T, Res] where Res : IGeneralTree[Res]
+    //{
+    //}
+    
+    public Mapper[T, Res](this l1 : EnumerableLens[T, option[Res]], func : Res -> Res) : Mapper[T]
+    {
+      Mapper(x => l1.Map(x, _.Map(func)))
+    }
+    
+    public Mapper[T, Res](this l1 : Lens[T, option[Res]], func : Res -> Res) : Mapper[T]
+    {
+      Mapper(x => l1.Update(x, _.Map(func)))
+    }
+    
     public Map[T, TR](this l1 : EnumerableLens[T, option[TR]], obj : T, func : TR -> TR) : T
     {
       l1.Map(obj, _.Map(func))
@@ -367,7 +381,7 @@ namespace CommonLib.Macros
 
       EnumerableLens(get, set)
     }
-
+    
     public @>>|[T, T2, T3, TR] (l1 : Lens[T, T2], l2 : Lens[T3, list[TR]]) : PartialLens[T, list[TR]] where T3 : T2
     {
       def optset(x : T2, r)
@@ -400,6 +414,17 @@ namespace CommonLib.Macros
 
       Lens(get, set)
     }
+    
+    public @Combine[T](l1 : Mapper[T], l2 : Mapper[T]) : Mapper[T]
+    {
+      Mapper(l1.func >> l2.func)
+    }
+    
+    public @+[T](l1 : Mapper[T], l2 : Mapper[T]) : Mapper[T]
+    {
+      Combine(l1, l2)
+    }
+    
   //public @>>[T, T2, TR] (l1 : ListLens[T, T2], l2 : ListLens[T2, TR]) : EnumerableLens[T, TR]
   //{
   // def get = x => l1.Get(x).SelectMany(x => l2.Get(x));
@@ -434,6 +459,11 @@ namespace CommonLib.Macros
     public Get : T -> Res;
     public Set : T * Res -> T;    
     
+    public Mapper(func : Res -> Res) : Mapper[T]
+    {
+      Mapper(Update(_, func))
+    }
+      
     public ToBasePartial[T2]() : PartialLens[T2, Res] where T : T2
     {
       def get(x : T2)
@@ -504,6 +534,11 @@ namespace CommonLib.Macros
     public Get : T -> option[Res];
     public Set : T * Res -> T;
 
+    public Mapper(func : Res -> Res) : Mapper[T]
+    {
+      Mapper(Update(_, func))
+    }
+    
     public Update(a : T, f : Res -> Res) : T
     {
       def value = a |> Get;
@@ -522,6 +557,11 @@ namespace CommonLib.Macros
   public class ListLens[T, Res] : Lens[T, list[Res]]
   {
 
+    public Mapper(func : Res -> Res) : Mapper[T]
+    {
+      Mapper(Map(_, func))
+    }
+    
     public new ToBasePartial[T2]() : ListLens[T2, Res] where T : T2
     {
       def get(x : T2)
@@ -567,5 +607,36 @@ namespace CommonLib.Macros
       Set(a, value)
     }
 
+    public Mapper(func : Res -> Res) : Mapper[T]
+    {
+      Mapper(Map(_, func))
+    }
+  }
+  
+  [Record]
+  public class TreeLens[T, Res] : Lens[T, IGeneralTree[Res]] where Res : IGeneralTree[Res]
+  {
+    public Map(a : T, f : Res -> Res) : T
+    {
+      def value = a |> Get;
+      def value = value.Reduce(f);
+      Set(a, value)
+    }
+    
+    public Mapper(func : Res -> Res) : Mapper[T]
+    {
+      Mapper(Map(_, func))
+    }
+  }
+  
+  [Record]
+  public class Mapper[T]
+  {
+    public func : T -> T;
+    
+    public apply(p : T) : T
+    {
+      func(p)
+    }
   }
 }

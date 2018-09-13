@@ -85,18 +85,15 @@ namespace Nemerle.Statechart
     
     LocatePseudo(node : PseudoStateModelNode) : PseudoStateModelNode
     {
-      def tran = Initial.tran_lens.ToEnum() | History.default_lens.OptToEnum() 
-                 | Join.tran_lens.ToEnum()  | EntryPoint.tran_lens.ToEnum()    | ExitPoint.tran_lens.OptToEnum();
-      //def hist = ;
-      //def t = ;
-      //def tr = ;
-      def node = Fork.target_lens.ToBasePartial().Map(node, LocateTarget);
-      def node = tran.Map(node, LocateTran);
+      def tran = Initial.tran_lens.ToEnum() | History.default_lens.OptToEnum() | Join.tran_lens.ToEnum()  | EntryPoint.tran_lens.ToEnum()    | ExitPoint.tran_lens.OptToEnum();
       def junc = Junction.nodes_lens.ToBasePartial();
-      def act   = junc >> JunctionNode.action_lens;
-      def guard = junc >> JunctionNode.guard_lens;
-      def tar   = junc >> JunctionNode.to_lens;
+      def mapper = JunctionNode.action_lens.Mapper(LocateAction) + JunctionNode.guard_lens.Mapper(LocateT) + JunctionNode.to_lens.Mapper(LocateTarget) + Mapper(LocateT);
       
+      Fork.target_lens.ToBasePartial().Map(node, LocateTarget) |>
+      tran.Map(_, LocateTran) |> 
+      junc.Map(_, _.Reduce(mapper.func)) |>
+      LocateT
+      /*
       match (LocateT(node))
       {
         //| PseudoStateModelNode.Initial(p) as n           => p.Map(LocateTran) |> n.ChangeTran
@@ -126,7 +123,7 @@ namespace Nemerle.Statechart
         //| PseudoStateModelNode.EntryPoint(_, tr) as n   => Locate(tr) :> StateNode.Transition |> LocateTran |> n.ChangeTran
         //| PseudoStateModelNode.ExitPoint(_, tr) as n    => tr.Map(x => Locate(x) :> StateNode.Transition) |> _.Map(LocateTran) |> n.ChangeTran
         | n                                             => n
-      }
+      }*/
     }
     
     LocateAction(a : Actions) : Actions
