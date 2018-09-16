@@ -9,25 +9,37 @@ using System.Linq;
 
 namespace CommonLib.Macros
 {
+  using TreeUtils;
+  
   public module LensUtils
   {
     //public ToTreeLens[T, Res](this l1 : Lens[T, list[Res]]) : TreeLens[T, Res] where Res : IGeneralTree[Res]
     //{
     //}
     
+    public Mapper[T, Res](this l1 : IEnumerable[Lens[T, Res]], func : Res -> Res) : Mapper[T]
+    {
+      Mapper(l1.Update(_, func))
+    }
+    
     public Mapper[T, Res](this l1 : EnumerableLens[T, option[Res]], func : Res -> Res) : Mapper[T]
     {
-      Mapper(x => l1.Map(x, _.Map(func)))
+      Mapper(l1.Map(_, _.Map(func)))
     }
     
     public Mapper[T, Res](this l1 : Lens[T, option[Res]], func : Res -> Res) : Mapper[T]
     {
-      Mapper(x => l1.Update(x, _.Map(func)))
+      Mapper(l1.Update(_, _.Map(func)))
     }
     
     public Map[T, TR](this l1 : EnumerableLens[T, option[TR]], obj : T, func : TR -> TR) : T
     {
       l1.Map(obj, _.Map(func))
+    }
+    
+    public Map[T, TR](this l1 : Lens[T, option[TR]], a : T, f : TR -> TR) : T
+    {
+      l1.Update(a, x => x.Map(f))
     }
     
     public Map[T, TR](this l1 : Lens[T, list[TR]], a : T, f : TR -> TR) : T
@@ -88,13 +100,39 @@ namespace CommonLib.Macros
       CombineEnum(l1, l2)
     }
 
-
+    
+      
+    public @|>[T](l1 : T, map : Mapper[T]) : T
+    {
+      l1 |> map.func
+    }
+    
+    public @|[T, T2, TB](l1 : Mapper[T], l2 : Mapper[T2]) : Mapper[TB]
+    {
+      def mapper_or_impl(x : TB, l1 : T -> T, l2 : T2 -> T2) : TB
+      {
+        match (x)
+        {
+          | x is T  => l1(x) :> TB
+          | x is T2 => l2(x) :> TB
+          | x       => x
+        }
+      }
+      
+      Mapper(mapper_or_impl(_, l1.func, l2.func))
+    }
+    
     public @|[T, T2, T3, TR](l1 : Lens[T2, TR], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T2 : T where T3 : T
     {
       Match.[T, T2, T3, TR](l1, l2)
     }
 
-    public @|[T, T2, T3, TR](l1 : EnumerableLens[T2, TR], l2 : EnumerableLens[T3, TR]) : EnumerableLens[T, TR] where T2 : T where T3 : T
+     public @|[T, T2, TR](l1 : Matcher[T, TR], l2 : EnumerableLens[T2, TR]) : Matcher[T, TR] where T2 : T
+    {
+      Match.[T, T2, TR](l1, l2)
+    }
+    
+    public @%|[T, T2, T3, TR](l1 : EnumerableLens[T2, TR], l2 : EnumerableLens[T3, TR]) : Matcher[T, TR] where T2 : T where T3 : T
     {
       Match.[T, T2, T3, TR](l1, l2)
     }
@@ -104,7 +142,27 @@ namespace CommonLib.Macros
       Match.[T, T2, TR](l1, l2)
     }
 
-    public Match[T, T2, T3, TR] (l1 : EnumerableLens[T2, TR], l2 : EnumerableLens[T3, TR]) : EnumerableLens[T, TR] where T2 : T where T3 : T
+    public Match[T, T2, TR] (l1 : Matcher[T, TR], l2 : EnumerableLens[T2, TR]) : Matcher[T, TR] where T2 : T
+    {
+      def get(x : T)
+      {
+        | x is T2 => l2.Get(x)
+        | x       => l1.Get(x)
+      }
+
+      def set(a : T, r)
+      {
+        match (a)
+        {
+          | x is T2 => l2.Set(x, r)
+          | x       => l1.Set(x, r)
+        }
+      }
+
+      Matcher(get, set)
+    }
+    
+    public Match[T, T2, T3, TR] (l1 : EnumerableLens[T2, TR], l2 : EnumerableLens[T3, TR]) : Matcher[T, TR] where T2 : T where T3 : T
     {
       def get(x : T)
       {
@@ -123,7 +181,7 @@ namespace CommonLib.Macros
         }
       }
 
-      EnumerableLens(get, set)
+      Matcher(get, set)
     }
     
     public Match[T, T2, TR] (l1 : PartialLens[T, TR], l2 : Lens[T2, TR]) : PartialLens[T, TR] where T2 : T
@@ -638,5 +696,21 @@ namespace CommonLib.Macros
     {
       func(p)
     }
+  }
+  
+  [Record]
+  public class Mapper2[T, T2]
+  {
+    public func : T -> T2;
+    
+    public apply(p : T) : T2
+    {
+      func(p)
+    }
+  }
+  
+  [Record]
+  public class Matcher[T, TR] : EnumerableLens[T, TR]
+  {
   }
 }
