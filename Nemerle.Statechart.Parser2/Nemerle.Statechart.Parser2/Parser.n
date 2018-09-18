@@ -141,7 +141,7 @@ namespace Nemerle.Statechart
               | PseudoState.Initial.Nested.InitialTarget.Simple(SimpleTarget = t)                                       => 
                  match (GetSimpleTarget(t))
                  {
-                   | Some(t) => StateNode.Transition(pos, TargetType.NoTarget(-1), [], guard, act, t, TransitionKind.Local) :: []
+                   | Some(t) => StateNode.Transition(pos, 0, TargetType.NoTarget(-1), [], guard, act, t, TransitionKind.Local) :: []
                    | _       => []
                  }
                
@@ -150,7 +150,7 @@ namespace Nemerle.Statechart
                  match (GetJunctionTarget(t, JunctionType.Junction))
                  {
                    | Some(TargetType.PseudoState(PseudoStateModelNode.Junction as j)) => 
-                       j.nodes.Map(x => StateNode.Transition(x.pos, TargetType.NoTarget(-1), [], x.guard, x.action, x.to, TransitionKind.Local))
+                       j.nodes.Map(x => StateNode.Transition(x.pos, 0, TargetType.NoTarget(-1), [], x.guard, x.action, x.to, TransitionKind.Local))
                    | _ => []
                  }
               | _ => []
@@ -186,7 +186,7 @@ namespace Nemerle.Statechart
         | PseudoState.Terminate => PseudoStateModelNode.Terminate(pos)
         | _ => null
       }
-      if (pseudo != null) Some(StateNode.PseudoState(pos, pseudo)) else None()
+      if (pseudo != null) Some(StateNode.PseudoState(pos, 0, pseudo)) else None()
     }
 
     GetParent(par : MainParseTree.Parent) : option[string]
@@ -255,7 +255,7 @@ namespace Nemerle.Statechart
         | [] with decls = []
         | [decls] => CreateState(ast.Location.StartPos, attr, name, decls, type, parent) 
         | r       => def regs = r.Map(x => CreateState(ast.Location.StartPos, [], null, x, StateType.SubRegion(), None()));
-                     StateNode.State(ast.Location.StartPos, name, parent, attr, [], [], [], [], [], regs, [], StateType.Region(), err ?? [], []);
+                     StateNode.State(ast.Location.StartPos, 0, name, parent, attr, [], [], [], [], [], regs, [], StateType.Region(), err ?? [], []);
       }
       //
     }
@@ -265,7 +265,7 @@ namespace Nemerle.Statechart
       def decls = decls.Map(x => x.Partition(x => x is RegionsParseTree.StateConcDecl.DelimiterErr));
       def reg_err = decls.Map(x => x[0]).Flatten();
       def decls = decls.Map(x => x[1].Map(x => (x :> RegionsParseTree.StateConcDecl.StateDecl).StateDecl));
-      def reg_err = reg_err.Map(x => StateNode.Error(x.Location.StartPos, StateNode.Region(x.Location.StartPos)));
+      def reg_err = reg_err.Map(x => StateNode.Error(x.Location.StartPos, 0, StateNode.Region(x.Location.StartPos, 0)));
       (decls, reg_err)
     }
     
@@ -289,16 +289,16 @@ namespace Nemerle.Statechart
           | StateDecl.DeferrableEvent(DeferrableEvent = EventsParseTree.DeferrableEvent.Deferrable(SimpleEventList = e))
           | StateDecl.DeferrableEvent(DeferrableEvent = EventsParseTree.DeferrableEvent.Deferred(SimpleEventList = e)) =>
               def lst = e.EventIdentifiersData[0].Map(x => TransitionEvent.Normal(x.Location.StartPos, x.GetText(), []));
-              StateNode.Defer(d.Location.StartPos, lst) |> defer.Add
+              StateNode.Defer(d.Location.StartPos, 0, lst) |> defer.Add
           | StateDecl.DoActivity as d => 
               def act = GetActions(d.ActList);
-              StateNode.DoActivity(d.Location.StartPos, act, ActivityFlag.None) |> do_act.Add
+              StateNode.DoActivity(d.Location.StartPos, 0, act, ActivityFlag.None) |> do_act.Add
           | StateDecl.Entry as e => 
               def act = GetActions(e.Entry.ActList);
-              StateNode.Entry(d.Location.StartPos, ActionFlags.None, act) |> entry.Add
+              StateNode.Entry(d.Location.StartPos, 0, ActionFlags.None, act) |> entry.Add
           | StateDecl.Exit as e => 
               def act = GetActions(e.Exit.ActList);
-              StateNode.Exit(d.Location.StartPos, ActionFlags.None, act) |> exit.Add
+              StateNode.Exit(d.Location.StartPos, 0, ActionFlags.None, act) |> exit.Add
           | StateDecl.PseudoState as p => match (CreatePseudo(p.PseudoState))
                                         {
                                           | Some(p) => pseudo.Add(p)
@@ -339,10 +339,10 @@ namespace Nemerle.Statechart
                                                                def st = CreateState(st, st.AnyIdentifier, st.ParentOptData, st.AttributesOptData, decls, StateType.Region());
                                                                states.Add(st)
           | StateDecl.Control(Control = Control.Include(String = Double(SData = i))) 
-          | StateDecl.Control(Control = Control.Include(String = Single(SData = i))) => StateNode.Include(d.Location.StartPos, i) |> include.Add
+          | StateDecl.Control(Control = Control.Include(String = Single(SData = i))) => StateNode.Include(d.Location.StartPos, 0, i) |> include.Add
           | _ => ()
         }
-      StateNode.State(pos, name, parent, attr, entry.NToList(), exit.NToList(), tran.NToList(), do_act.NToList(), defer.NToList(), states.NToList(), pseudo.NToList(), type, err.NToList(), include.NToList())
+      StateNode.State(pos, 0, name, parent, attr, entry.NToList(), exit.NToList(), tran.NToList(), do_act.NToList(), defer.NToList(), states.NToList(), pseudo.NToList(), type, err.NToList(), include.NToList())
     }
 
     CreateRegion(reg : RegionsParseTree.Regions) : list[StateNode.State] * list[StateNode.Error]

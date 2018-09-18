@@ -45,19 +45,19 @@ namespace Nemerle.Statechart
     ConvertTree(ast : MainParseTree.StateMachine) : StateNode.StateMachine
     {
       mutable flags = MachineFlag.None;
-      mutable event_class = [];
-      mutable event_decls = [];
-      mutable names = [];
-      mutable usings = [];
-      mutable st_decl = [];
-      mutable err = [];
+      mutable event_class = List();
+      mutable event_decls = List();
+      mutable names = List();
+      mutable usings = List();
+      mutable st_decl = List();
+      mutable err = List();
       def decls = ast.StateMachineDecls;
       foreach (d in decls)
         {
           | Flags(AnyIdentifiersData = (a, _))                                                         => def data = GetLocatedText(a);
                                                                                                           def fl = GetFlags(data.NToList());
                                                                                                           when (fl.ParseDebug) assert2(false);
-                                                                                                          unless (fl.errors.IsEmpty()) err ::= StateNode.Flags(d.Location.StartPos, fl);
+                                                                                                          unless (fl.errors.IsEmpty()) StateNode.Flags(d.Location.StartPos, 0, fl) |> err.Add;
                                                                                                           flags |= fl.flags;
           | EventClass(EventClass = EventsParseTree.EventClass(FullyQualifiedAny = f, EventListOptData = o)) => 
                                                                                                           def n = GetNameIdentifier(f);
@@ -66,35 +66,35 @@ namespace Nemerle.Statechart
                                                                                                                       | Some(EventsParseTree.EventClass.Nested.EventList(EventIdentifiersData = (e, _))) => GetLocatedText(e)
                                                                                                                       | _                                                                                => []
                                                                                                                     }
-                                                                                                          event_class ::= StateNode.EventClassDecl(d.Location.StartPos, n, evt.NToList())
+                                                                                                          StateNode.EventClassDecl(d.Location.StartPos, 0, n, evt.NToList()) |> event_class.Add
           | EventDecl(EventDecl = EventsParseTree.EventDecl(EventIdentifier = a, AnyIdentifiersData = (t, _)))          => 
                                                                                                           def name = a.GetText();
                                                                                                           def lst = GetLocatedText(t).NToList();
-                                                                                                          event_decls ::= StateNode.EventDecl(d.Location.StartPos, name, lst);
+                                                                                                          StateNode.EventDecl(d.Location.StartPos, 0, name, lst) |> event_decls.Add
           | Name(NameIdentifier = n)                                                                         => 
               match (n)
               {
                 | Name.Nested.NameIdentifier.CommaIdentifier(String = Double(SData = i)) 
-                | Name.Nested.NameIdentifier.CommaIdentifier(String = Single(SData = i)) => names ::= StateNode.Name(d.Location.StartPos, i);
+                | Name.Nested.NameIdentifier.CommaIdentifier(String = Single(SData = i)) => StateNode.Name(d.Location.StartPos, 0, i) |> names.Add
                 | Name.Nested.NameIdentifier.AnyIdentifier(AnyIdentifier = i) => 
                     def name = i.GetText();
-                    names ::= StateNode.Name(d.Location.StartPos, name);
+                    StateNode.Name(d.Location.StartPos, 0, name) |> names.Add
                 | _                                                          => ();
               }
           | Using(FullyQualifiedAny =  f)                                                                => def data = GetNameIdentifier(f);
-                                                                                                            usings ::= StateNode.Using(d.Location.StartPos, data.FullName)
-          | StateDecl as d                                                                               => st_decl ::= d.StateDecl;
+                                                                                                            StateNode.Using(d.Location.StartPos, 0, data.FullName) |> usings.Add
+          | StateDecl as d                                                                               => d.StateDecl |> st_decl.Add
           | _                                                                                            => ()
         }
-      def st = CreateState(ast.Location.StartPos, [], null, st_decl.Rev(), StateType.State(), None());
+      def st = CreateState(ast.Location.StartPos, [], null, st_decl.NToList(), StateType.State(), None());
       def (name, error) = if (names.IsEmpty()) (null, []) else 
       {
-        def name = names.Rev();
-        (name.Head, name.Tail);
+        def name = names;
+        (name.First(), name.Skip(1));
       }
-      def error = error.Map(_ : StateNode) + err;
-      def error = error.Map(x => StateNode.Error(x.pos, x));
-      StateNode.StateMachine(ast.Location.StartPos, MachineFlags(flags, []), name?.name, st, usings.Rev(), event_decls.Rev(), event_class.Rev(), error.Rev())
+      def error = error.Map(_ : StateNode).Concat(err);
+      def error = error.Map(x => StateNode.Error(x.pos, 0, x));
+      StateNode.StateMachine(ast.Location.StartPos, 0, MachineFlags(flags, []), name?.name, st, usings.NToList(), event_decls.NToList(), event_class.NToList(), error)
     }
 
   }

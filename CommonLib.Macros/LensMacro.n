@@ -87,26 +87,21 @@ namespace CommonLib.Macros
     public DoTransform2(typer : Typer, typeBuilder : TypeBuilder, aliases : list[PExpr]) : void
     {
       //assert2(false);
-      
       def gen_fields(t)
       {
-        def fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
+        def fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);        
         //def fields_inst = t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic);
         //def base_fields = fields.Except(fields_inst);
         def base_fields = fields.Filter(x => typeBuilder.IsDerivedFrom(x.DeclaringType) && x.DeclaringType != t : object);
         def fields_inst = fields.Filter(x => !x.Name.StartsWith("_N_cached_value_") && !x.Name.StartsWith("_N_is_cached_"));
         def fields_inst = fields_inst.Except(base_fields);
-        foreach (f in fields_inst)
-        {
-          | FieldBuilder as f => create_cons(typer, t, f, aliases)
-          | _                 => ()
-        }
+        def oper = fields_inst.Map(x => if (x is FieldBuilder as x) create_cons(typer, t, x, aliases) else <[]>);
         def name = typeBuilder.Name;
-        foreach (f in base_fields)
-        {
-          | FieldBuilder as f => ()//create_cons(typer, t, f, aliases, $"_$name")
-          | _                 => ()
-        }
+        //foreach (f in base_fields)
+        //{
+        //  | FieldBuilder as f => ()//create_cons(typer, t, f, aliases, $"_$name")
+        //  | _                 => ()
+        //}
         def list_name = $"lens_list_$(name)";
         def ty = t.GetMemType();
         
@@ -116,34 +111,59 @@ namespace CommonLib.Macros
         //def change_name = $"Change$fnameup$prefix";
         //def name = $"$(fname)$(prefix)_lens";
       
-        def fnames = fields_inst.Select(x => $"$(x.Name)_lens");//.Concat(base_fields.Select(x => $"$(x.Name)_$(name)_lens"));
-        def fcode = fnames.Select(x => <[ $(x : usesite).Cast() ]>);
-        def fcode = <[ [..$fcode]]>;
-        def type = <[ list[Lens[$(ty : typed), object]] ]>;//Lens(_.$(fname : usesite), _.$(change_name : usesite)(_))
-        _ = t.DefineWithSource(<[ decl: public static $(list_name : usesite) : $(type) = $fcode ]>);
+        if (fields_inst.IsEmpty())
+        {
+          (t, <[]>)
+        } else
+        {
+          def fnames = fields_inst.Select(x => $"$(x.Name)_lens");//.Concat(base_fields.Select(x => $"$(x.Name)_$(name)_lens"));
+          def fcode = fnames.Select(x => <[ $(x : usesite).Cast() ]>);
+          def fcode = <[ [..$fcode]]>;
+          def type = <[ list[Lens[$(ty : typed), object]] ]>;//Lens(_.$(fname : usesite), _.$(change_name : usesite)(_))
+          _ = t.DefineWithSource(<[ decl: public static $(list_name : usesite) : $(type); ]>);
+          def fcode = <[ $(list_name : usesite) = $fcode ]>;
+          def expr = <[ {..$oper} $fcode ]>;
+          (t, expr)
+        }
       }
       
+      def gen_ctor(t, e)
+      {
+        def cons = t.GetConstructors(BindingFlags.Static);
+        if (cons.IsEmpty())
+        {
+          if (e is <[]>) () else
+          {
+            _ = t.DefineWithSource(<[ decl: static this()
+                                    {
+                                      $e
+                                    }]>);
+          }
+        } else
+        {
+          def builder = cons.Head :> MethodBuilder;
+          builder.Body = <[ $(builder.Body); $e ]>;
+        }
+      }
       
       def opts = typeBuilder.GetVariantOptions();
       match (opts)
       {
-        | []   => gen_fields(typeBuilder)
-        | opts => foreach (o in opts)
-                  {
-                    gen_fields(o)
-                  }
+        | []   => def (x, y) = gen_fields(typeBuilder);
+                  gen_ctor(x, y)
+        | opts => opts.Map(gen_fields).Iter(gen_ctor)
       }
       
       
     }
     
-    public DoTransform(_typer : Typer, typeBuilder : TypeBuilder, _aliases : list[PExpr]) : void
+    public DoTransform(_typer : Typer, typeBuilder : TypeBuilder, aliases : list[PExpr]) : void
     {
       when (!typeBuilder.Ast.ParsedAttributsAndModifiers.ParsedCustomAttributes.Exists(x => x is <[ NeedChange ]>))
-             typeBuilder.AddMacroAttribute(<[ NeedChange ]>);
+             typeBuilder.AddMacroAttribute(<[ NeedChange(..$aliases) ]>);
     }
     
-    create_cons(_typer : Typer, t : TypeBuilder, f : FieldBuilder, _aliases : list[PExpr], prefix : string = "") : void
+    create_cons(_typer : Typer, t : TypeBuilder, f : FieldBuilder, _aliases : list[PExpr], prefix : string = "") : PExpr
     {
       //assert2(false);
       def fname = $<#$(f.Name)#>;
@@ -159,7 +179,8 @@ namespace CommonLib.Macros
         | _                    => (<[ Lens ]>, <[ Lens[$(type : typed), $(ftype : typed)] ]>);
       }
         
-      _ = t.DefineWithSource(<[ decl: public static $(name : usesite) : $(type) = $ltype(_.$(fname : usesite), _.$(change_name : usesite)(_))]>);
+      _ = t.DefineWithSource(<[ decl: public static $(name : usesite) : $(type)]>);
+      <[ $(name : usesite) = $ltype(_.$(fname : usesite), _.$(change_name : usesite)(_)) ]>
     }
       
     
