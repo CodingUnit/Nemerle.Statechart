@@ -10,7 +10,7 @@ using CommonLib.Macros;
 
 namespace Nemerle.Statechart
 {
-
+  using CommonLib.Macros.LensUtils;
 
   /// <summary>
   /// Description of ActiveConfig.
@@ -32,15 +32,15 @@ namespace Nemerle.Statechart
 
     ActiveConfigProc : ActiveConfigProcessor = ActiveConfigProcessor();
 
-    PseudoCreate(p : HPseudoState, trav : ConfigTraverser) : void
+    PseudoCreate(p : HPseudoState, trav : ConfigTraverser) : HPseudoState
     {
       match (p)
       {
-        | HPseudoState.History(d, t) as h => 
-            def tran = d.Map(x => trav.InitialTransition(x));
-            def res = PseudoState.History(tran, t, h.state);
-            p.PseudoState = res; 
-        | _ => ()
+        | HPseudoState.History as p => 
+          def tran = HPseudoState.History.default_lens.ToPartial().ToBase().Get(p).Map(trav.InitialTransition);//Get(p).Map(x => trav.InitialTransition(x));
+              //def tran = d.Map(x => trav.InitialTransition(x));
+          def res = PseudoState.History(tran, p.type, p.state);
+          HPseudoState.History.PseudoState_lens.Set(p, res)
       }
     }
     
@@ -52,7 +52,7 @@ namespace Nemerle.Statechart
         def trav = ConfigTraverser(transitions, ActiveConfigProc);
         foreach (st in finite_automatas)
         {
-          foreach (st in st.history.Value) PseudoCreate(st, trav);
+          st.history = st.history.Map(x => PseudoCreate(x, trav) :> HPseudoState.History);
         }
         trav.Start();
         InitialTransition = trav.InitialTransition(init);

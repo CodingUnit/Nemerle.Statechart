@@ -10,6 +10,7 @@ using CommonLib.Macros;
 
 namespace Nemerle.Statechart
 {
+  using CommonLib.Macros.LensUtils;
   /// <summary>
   /// Description of Transform.
   /// </summary>
@@ -85,32 +86,54 @@ namespace Nemerle.Statechart
       def other = fsms.SelectMany(x => x.states.SelectMany(x => x.transitions)).NToList();
       def tran = tran + other;
       transitions = tran.Distinct().NToList();
-      def join = transitions.FoldLeft([], (x, a) => if (x.Source is HTarget.PseudoState(HPseudoState.Join as j)) (x, j) :: a else a);
-      foreach ((tr, j) in join)
+      
+      
+      def process(tr)
       {
-        j.transition = tr;
-        foreach (st in j.states)
-        {
-          st.join_transitions ::= j
-        }
+        | HTransition(Source = HTarget.PseudoState(HPseudoState.Join as j))  =>
+        
+          def lens = HTransition.Source_lens >> HTarget.PseudoState.node_lens >> HPseudoState.Join.transition_lens;
+          //if (x.Source is  (x, j) :: a
+          def tr = lens.Set(tr, tr);
+          def lens = HTransition.Source_lens >> HTarget.PseudoState.node_lens;
+          def j = lens.Get(tr).Value :> HPseudoState.Join;
+          //j.transition = tr;
+          foreach (st in j.states)
+          {
+            st.join_transitions = j :: st.join_transitions;
+          }
+          tr
+          
+        | _ => tr
       }
+
+      transitions = transitions.Map(process);
+      
       CreateDecisionTree();
     }
 
     CreateDecisionTree() : void
     {
-      foreach (tr in transitions)
+      def mapping(tr)
       {
-        match (tr.Target)
-        {
-          | HTarget.PseudoState(HPseudoState.Junction as j) => DecisionNode.create_decision_tree(j, tr);
-                                                               foreach (HJunctionNode.Target(HTarget.PseudoState(HPseudoState.Junction as j)) in j.tree.GetBreadthFirstEnumerable())
-                                                               {
-                                                                 DecisionNode.create_decision_tree(j, tr);
-                                                               }
-          | _                                               => ()
-        }
-      }
+          def lens = HTransition.Target_lens >> HTarget.PseudoState.node_lens;
+          def tr = lens.DownCast().Update(tr, DecisionNode.create_decision_tree(_, tr));
+                                                               
+          def create(x)
+          {
+            def tree = HJunctionNode.Target.target_lens.ToBasePartial() >> HTarget.PseudoState.node_lens;
+            tree.DownCast().Update(x, DecisionNode.create_decision_tree(_, tr));
+          }
+                                                               
+          def tree = HTransition.Target_lens >> HTarget.PseudoState.node_lens >> HPseudoState.Junction.tree_lens;
+          tree.Update(tr, _.Reduce(create))
+                                                               //foreach (HJunctionNode.Target(HTarget.PseudoState(HPseudoState.Junction as j)) in j.tree.GetBreadthFirstEnumerable())
+                                                               //{
+                                                                 
+                                                               //}
+       }
+        
+       transitions = transitions.Map(mapping)
     }
     
     TransformFsm() : void

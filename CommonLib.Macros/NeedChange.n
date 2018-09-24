@@ -66,7 +66,7 @@ namespace CommonLib.Macros
         fields.Where(x => x.attr_func(x => x.Exists(_ is <[ NeedChange ]>)));
       }
       def fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
-      def fields = fields.Filter(x => !x.Name.StartsWith("_N_cached_value_") && !x.Name.StartsWith("_N_is_cached_"));
+      def fields = fields.Filter(x => !x.Name.StartsWith("_N_cached_value_") && !x.Name.StartsWith("_N_is_cached_") && !x.Attributes.HasFlag(NemerleModifiers.Mutable));
       def base_fields = type.GetDirectSuperTypes().SelectMany(get_base_change_fields);
       fields.Concat(base_fields)
     }
@@ -111,20 +111,41 @@ namespace CommonLib.Macros
     public DoTransform2(_typer : Typer, typeBuilder : TypeBuilder, aliases : list[PExpr]) : void
     {
       //  assert2(false);
-      def opts = typeBuilder.GetVariantOptions().AppendElem(typeBuilder);
+      def opts = typeBuilder.GetVariantOptions();
       def name = typeBuilder.Name;
-      foreach (o in opts)
+      match (opts)
       {
-        def fields = o.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
-        //def ty = typeBuilder.GetSuperTypes();
+        | [] => 
+            def fields = typeBuilder.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
+            //def ty = typeBuilder.GetSuperTypes();
         
-        def fields = fields.Filter(x => typeBuilder.IsDerivedFrom(x.DeclaringType));
-        foreach (f in fields)
-        {
-          | FieldBuilder as f => create_cons(o, f, aliases, $"_$name")
-          | _ => ()
-        }    
+            def fields = fields.Filter(x => !x.Attributes.HasFlag(NemerleModifiers.Mutable));
+            def (base_fields, other) = fields.Select(x => x :> FieldBuilder).PartitionLazy(x => typeBuilder.IsDerivedFrom(x.DeclaringType) && typeBuilder != x.DeclaringType : object);
+        
+            foreach (f in base_fields)
+            {
+              create_cons(typeBuilder, f, aliases, "")//$"_$name")
+            }
+        | opts => 
+        
+            foreach (o in opts)
+            {
+                def fields = o.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
+            //def ty = typeBuilder.GetSuperTypes();
+        
+                def fields = fields.Filter(x => !x.Attributes.HasFlag(NemerleModifiers.Mutable));
+                //def (base_fields, other) = fields.Select(x => x :> FieldBuilder).PartitionLazy(x => typeBuilder.IsDerivedFrom(x.DeclaringType) && typeBuilder != x.DeclaringType : object);
+                def (base_fields, other) = fields.Select(x => x :> FieldBuilder).PartitionLazy(x => o.IsDerivedFrom(x.DeclaringType) && o != x.DeclaringType : object);
+        
+                foreach (f in base_fields)
+                {
+                  create_cons(o, f, aliases, "")//$"_$name")
+                } 
+            }
+        
       }
+      //def opts = if (opts.IsEmpty()) opts.AppendElem(typeBuilder) else opts;
+      
     }
     
     public DoTransform(_typer : Typer, typeBuilder : TypeBuilder, _aliases : list[PExpr]) : void
@@ -160,7 +181,7 @@ namespace CommonLib.Macros
       
     }
     
-    create_cons(t : TypeBuilder, f : IField, aliases : list[PExpr], prefix : string = "") : void
+    create_cons(t : TypeBuilder, f : IField, aliases : list[PExpr], prefix : string = null) : void
     {
       def get_short_name(name)
       {
@@ -169,6 +190,7 @@ namespace CommonLib.Macros
       
       def fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy).Rev();
       //def fields = fields.Exclude(have_record_ignore);
+      def fields = fields.Exclude(x => x.Attributes.HasFlag(NemerleModifiers.Mutable));
       def fields = f :: fields.Filter(x => aliases.Exists(y => y.ToString() == x.Name));
         
       def names = fields.Map(x => (x.Name, x.GetMemType()));

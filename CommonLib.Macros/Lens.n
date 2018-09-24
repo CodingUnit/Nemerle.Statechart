@@ -32,6 +32,11 @@ namespace CommonLib.Macros
       Mapper(l1.Update(_, _.Map(func)))
     }
     
+    public Map[T, TR](this l1 : PartialLens[T, option[TR]], obj : T, func : TR -> TR) : T
+    {
+      l1.Update(obj, _.Map(func))
+    }
+    
     public Map[T, TR](this l1 : EnumerableLens[T, option[TR]], obj : T, func : TR -> TR) : T
     {
       l1.Map(obj, _.Map(func))
@@ -107,7 +112,7 @@ namespace CommonLib.Macros
     
     public @>>[T](map1 : Mapper[T], map2 : Mapper[T]) : Mapper[T]
     {
-      Mapper(map1.func >> map2.func)
+      map1.Combine(map2)
     }
     
     public @|>[T](l1 : T, map : Mapper[T]) : T
@@ -479,16 +484,11 @@ namespace CommonLib.Macros
       def set = (a, r) => l1.Update(a, x => x.ZipLazy(r).Map(l2.Set));
 
       Lens(get, set)
-    }
-    
-    public @Combine[T](l1 : Mapper[T], l2 : Mapper[T]) : Mapper[T]
-    {
-      Mapper(l1.func >> l2.func)
-    }
+    }    
     
     public @+[T](l1 : Mapper[T], l2 : Mapper[T]) : Mapper[T]
     {
-      Combine(l1, l2)
+      l1.Combine(l2)
     }
     
   //public @>>[T, T2, TR] (l1 : ListLens[T, T2], l2 : ListLens[T2, TR]) : EnumerableLens[T, TR]
@@ -605,6 +605,37 @@ namespace CommonLib.Macros
       Mapper(Update(_, func))
     }
     
+    public ToBase[T2]() : PartialLens[T2, Res] where T : T2
+    {
+      def get(x : T2)
+      {
+        | x is T => Get(x)
+        | _      => None()
+      }
+
+      def set(x : T2, r)
+      {
+        match (x)
+        {
+          | x is T => Set(x, r) :> T2
+          | _      => x
+        }
+      }
+
+      PartialLens(get, set);
+    }
+    
+    public DownCast[T2]() : PartialLens[T, T2]
+    {
+      def get = x => match (Get(x))
+                     {
+                       | Some(x is T2) => Some(x)
+                       | _             => None()
+                     };
+      def set = (x, y) => Set(x, y :> Res);
+      PartialLens(get, set)
+    }  
+    
     public Update(a : T, f : Res -> Res) : T
     {
       def value = a |> Get;
@@ -666,6 +697,26 @@ namespace CommonLib.Macros
       EnumerableLens(get, set)
     }
 
+    public new ToBasePartial[T2]() : EnumerableLens[T2, Res] where T : T2
+    {
+      def get(x : T2)
+      {
+        | x is T => Get(x)
+        | _      => Enumerable.Empty()
+      }
+
+      def set(x : T2, r)
+      {
+        match (x)
+        {
+          | x is T => Set(x, r) :> T2
+          | _      => x
+        }
+      }
+
+      EnumerableLens(get, set)
+    }    
+    
     public Map(a : T, f : Res -> Res) : T
     {
       def value = a |> Get;
@@ -704,6 +755,11 @@ namespace CommonLib.Macros
     {
       func(p)
     }
+    
+    public Combine(l2 : Mapper[T]) : Mapper[T]
+    {
+      Mapper(func >> l2.func)
+    }
   }
   
   [Record]
@@ -715,6 +771,8 @@ namespace CommonLib.Macros
     {
       func(p)
     }
+    
+    
   }
   
   [Record]

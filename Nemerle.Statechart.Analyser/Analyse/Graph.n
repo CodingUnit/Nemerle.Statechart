@@ -17,6 +17,8 @@ using de.unika.ipd.grGen.Model_StateMachine;
 
 namespace Nemerle.Statechart
 {
+  using CommonLib.Macros.LensUtils;
+  using Nemerle.Builtins.Function;
   /// <summary>
   /// Description of Graph.
   /// </summary>
@@ -122,7 +124,9 @@ namespace Nemerle.Statechart
                               def node = create_node(create_name(PseudoStateNode.Junction.GetUnnamedName(t)), parent, func);
                               ConnectJunction(j, node :> LGSPNode); // connect junction targets
                               node
-          | PseudoState(EntryPoint(name = n)) => graph.CreateNodeUnresolvedEntryPoint(create_name(n)) |> set_attr(_, x => x.name = n) |> contains(parent_or_src, _)
+          | PseudoState(EntryPoint(name = n)) => graph.CreateNodeUnresolvedEntryPoint(create_name(n)) |> 
+                                                 set_attr(_, x => x.name = n) |>
+                                                 contains(parent_or_src, _);
           | PseudoState(ExitPoint(name = n))  => graph.CreateNodeUnresolvedExitPoint(create_name(n)) |> set_attr(_, x => x.name = n) |> contains(parent_or_src, _)
           | PseudoState(Join(name = n))
           | PseudoState(Junction(name = n))
@@ -303,16 +307,13 @@ namespace Nemerle.Statechart
       2) For all states, get all pseudo states and create edges connecting them
       3) For all states, create transition edges from states to targets
       */
-
-      def create_id(x, childs)
+      def create_id(x)
       {
-        match (x)
-        {
-          | StateNode.State as st        => def pseudo = st.pseudo_states.Map(_.ChangeId(get_id()));
-                                            st.ChangeSubStatesIdPseudoStates(childs.Map(_ :> StateNode.State), get_id(), pseudo) : StateNode
-          | StateNode.StateMachine as st => st.ChangeStateId(childs.First() :> StateNode.State, get_id())
-          | _                            => x
-        }
+        def state = StateNode.State.Id_lens.ToBasePartial().Mapper(_ => get_id());
+        def pseudo = StateNode.State.pseudo_states_lens >> StateNode.PseudoState.Id_lens;
+        def pseudo = pseudo.ToBasePartial().Mapper(_ => get_id());
+        def mach = StateNode.StateMachine.Id_lens.ToBasePartial().Mapper(_ => get_id());
+        x |> mach |> state |> pseudo
       }
 
       def prepare(fsm)

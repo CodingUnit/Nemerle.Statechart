@@ -16,12 +16,14 @@ namespace CommonLib.Macros
   [MacroUsage(MacroPhase.BeforeTypedMembers, MacroTargets.Class)]
   macro Lens(typeBuilder : TypeBuilder, params pars : list[PExpr])
   {
+    when (pars is [<[ debug ]>] ) assert2(false);
     LensImpl.DoTransform(Macros.ImplicitCTX(), typeBuilder, pars)
   }
 
   [MacroUsage(MacroPhase.WithTypedMembers, MacroTargets.Class)]
   macro Lens(typeBuilder : TypeBuilder, params pars : list[PExpr])
   {
+    when (pars is [<[ debug ]>] ) assert2(false);
     LensImpl.DoTransform2(Macros.ImplicitCTX(), typeBuilder, pars)
   }
   
@@ -92,12 +94,13 @@ namespace CommonLib.Macros
         def fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);        
         //def fields_inst = t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic);
         //def base_fields = fields.Except(fields_inst);
+        def fields = fields.Exclude(x => x.Attributes.HasFlag(NemerleModifiers.Mutable));
         def base_fields = fields.Filter(x => typeBuilder.BaseType.CompareTo(x.DeclaringType) == 0);//fields.Filter(x => typeBuilder.IsDerivedFrom(x.DeclaringType) && x.DeclaringType != t : object);
         def fields_inst = fields.Filter(x => !x.Name.StartsWith("_N_cached_value_") && !x.Name.StartsWith("_N_is_cached_"));
         def fields_inst = fields_inst.Except(base_fields);
         def oper = fields_inst.Map(x => if (x is FieldBuilder as x) create_cons(typer, t, x, aliases) else <[]>);
         def name = typeBuilder.Name;
-        def oper = base_fields.Map(x => if (x is FieldBuilder as x) create_cons(typer, t, x, aliases) else <[]>) + oper;
+        //def oper = base_fields.Map(x => if (x is FieldBuilder as x) create_cons(typer, t, x, aliases) else <[]>) + oper;
         //foreach (f in base_fields)
         //{
         //  | FieldBuilder as f => create_cons(typer, t, f, aliases, "")//$"_$name")
