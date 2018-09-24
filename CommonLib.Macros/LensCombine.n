@@ -14,6 +14,14 @@ namespace CommonLib.Macros
   /// </summary>
   partial public module LensUtils
   {
+    public @>>[T, T2, TR] (l1 : Lens[T, option[T2]], l2 : Lens[T2, list[TR]]) : EnumerableLens[T, TR]
+    {
+      def get = x => l1.Get(x).Map(l2.Get).WithDefault(Enumerable.Empty());
+      def set = (a, r) => l1.Update(a, x => x.Map(l2.Set(_, r.NToList())));//l2.Set >> l1.Update;
+
+      EnumerableLens(get, set)
+    }
+    
     public @>>[T, T2, T3, TR] (l1 : Lens[T, T2], l2 : Lens[T3, TR]) : PartialLens[T, TR] where T3 : T2
     {
       def optset(x : T2, r)
@@ -30,7 +38,7 @@ namespace CommonLib.Macros
         match (l1.Get(x))
         {
           | x is T3 => Some(l2.Get(x))
-          | _    => None()
+          | _       => None()
         }
       }
       def set = (a, r) => l1.Update(a, optset(_, r));//l2.Set >> l1.Update;
@@ -213,6 +221,25 @@ namespace CommonLib.Macros
         def update(x)
         {
           def len  = x.Select(y => l2.Get(y).Count());
+          def unflat = r.Unflat(len);
+          def res  = x.ZipLazy(unflat);
+          res.Map((x, y) => l2.Set(x, y.NToList()));
+        }
+        l1.Update(a, update);
+      }
+
+      EnumerableLens(get, set)
+    }
+    
+    public @>>[T, T2, T3, TR] (l1 : Lens[T, IEnumerable[T2]], l2 : Lens[T3, list[TR]]) : EnumerableLens[T, TR]
+    {
+      def get = x => l1.Get(x).Where(x : T2 => x is T3).SelectMany(x => l2.Get(x :> T3));
+
+      def set(a, r)
+      {
+        def update(x)
+        {
+          def len  = x.Select(y => l2.Get(y).Length);
           def unflat = r.Unflat(len);
           def res  = x.ZipLazy(unflat);
           res.Map((x, y) => l2.Set(x, y.NToList()));
