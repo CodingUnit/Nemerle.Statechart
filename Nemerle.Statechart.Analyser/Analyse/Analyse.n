@@ -245,13 +245,27 @@ namespace Nemerle.Statechart
       
       def parse(x)
       {
+        def junc = State.pseudo_states_lens >> PseudoState.node_lens >>. PseudoStateModelNode.Junction.nodes_lens;
+        
         def entry = State.entry_lens >> Entry.action_lens >> Actions.actions_lens;// >>. FsmAction.ParseString.expr_lens;
         def exit  = State.exit_lens >> Exit.action_lens >> Actions.actions_lens;
         def doact = State.do_activity_lens >> DoActivity.action_lens >> Actions.actions_lens;
-        def tranact = Transition.action_lens >> Actions.actions_lens;
-        def juncacts = State.pseudo_states_lens >> PseudoState.node_lens >> PseudoStateModelNode.Junction.nodes_lens;// >> JunctionNode.action_lens;// >> Actions.actions_lens;
-        def act = act.ToBasePartial();
+        def tranact = State.transitions_lens >> Transition.action_lens >> Actions.actions_lens;
+        
+        
+        def reduce_junc(x)
+        {
+          def act = JunctionNode.action_lens;
+          def guard = JunctionNode.guard_lens;
+          x
+        }
+        
+        def st = junc.Map(x, x => x.Reduce(reduce_junc));
+        def junc_acts = junc >> JunctionNode.action_lens;
+        def junc_guards = junc >> JunctionNode.guard_lens;
+        //def act = act.ToBasePartial();
         //def act = act.DownCast.[FsmAction.ParseString]();
+        def act = entry %+ exit %+ doact %+ tranact;
         def act = act.DownMap(x, x : FsmAction.ParseString => MainParser.ParseExpr(Env, x.expr) |> FsmAction.Expr(x.pos, _));
         //act.Map(x, x => x.actions.Map(x => if (Fsm)));
         null : StateNode

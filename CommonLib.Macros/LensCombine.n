@@ -231,7 +231,7 @@ namespace CommonLib.Macros
       EnumerableLens(get, set)
     }
     
-    public @>>[T, T2, T3, TR] (l1 : Lens[T, IEnumerable[T2]], l2 : Lens[T3, list[TR]]) : EnumerableLens[T, TR]
+    public @>>.[T, T2, T3, TR] (l1 : Lens[T, IEnumerable[T2]], l2 : Lens[T3, list[TR]]) : EnumerableLens[T, TR] where T3 : T2
     {
       def get = x => l1.Get(x).Where(x : T2 => x is T3).SelectMany(x => l2.Get(x :> T3));
 
@@ -239,12 +239,56 @@ namespace CommonLib.Macros
       {
         def update(x)
         {
-          def len  = x.Select(y => l2.Get(y).Length);
+          def len  = x.Where(x : T2 => x is T3).Select(y => l2.Get(y :> T3).Length);
           def unflat = r.Unflat(len);
           def res  = x.ZipLazy(unflat);
-          res.Map((x, y) => l2.Set(x, y.NToList()));
+          res.Select((x, y) => l2.Set(x :> T3, y.NToList()) : T2);
         }
         l1.Update(a, update);
+      }
+
+      EnumerableLens(get, set)
+    }
+    
+    public @>>[T, T2, T3, TR] (l1 : Lens[T, IEnumerable[T2]], l2 : Lens[T3, option[TR]]) : EnumerableLens[T, TR] where T3 : T2
+    {
+      def get = x => l1.Get(x).Where(x : T2 => x is T3).MapOpt(x => l2.Get(x :> T3));
+
+      def set(a, r)
+      {
+        
+        def update(x)
+        {
+          def data = x.Where(x : T2 => if (x is T3) l2.Get(x :> T3).HasValue else false);
+          //def len  = x.Where(x : T2 => x is T3).Select(y => l2.Get(y :> T3).Length);
+          //def unflat = r.Unflat(len);
+          def res  = data.ZipLazy(r);
+          res.Select((x, y) => l2.Set(x :> T3, Some(y)))
+        }
+        
+        l1.Update(a, update)
+      }
+
+      EnumerableLens(get, set)
+    }
+    
+    public @>>[T, T2, TR] (l1 : Lens[T, list[T2]], l2 : Lens[T2, option[TR]]) : EnumerableLens[T, TR]
+    {
+      def get = x => l1.Get(x).MapOpt(x => l2.Get(x));
+
+      def set(a, r)
+      {
+        
+        def update(x)
+        {
+          def data = x.Where(x => l2.Get(x).HasValue);
+          //def len  = x.Where(x : T2 => x is T3).Select(y => l2.Get(y :> T3).Length);
+          //def unflat = r.Unflat(len);
+          def res  = data.ZipLazy(r);
+          res.Map((x, y) => l2.Set(x, Some(y)))
+        }
+        
+        l1.Update(a, update)
       }
 
       EnumerableLens(get, set)
@@ -261,9 +305,10 @@ namespace CommonLib.Macros
           def len  = x.Select(y => l2.Get(y).Length);
           def unflat = r.Unflat(len);
           def res  = x.ZipLazy(unflat);
-          res.Map((x, y) => l2.Set(x, y.NToList()));
+          res.Map((x, y) => l2.Set(x, y.NToList()))
         }
-        l1.Update(a, update);
+        
+        l1.Update(a, update)
       }
 
       EnumerableLens(get, set)
