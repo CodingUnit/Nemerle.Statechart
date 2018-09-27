@@ -243,21 +243,31 @@ namespace Nemerle.Statechart
       //  t.ChangeGuardActionTo(guard, act, to)
       //}
       
-      def parse(x)
+      def parse_act(x : FsmAction.ParseString)
+      {
+        MainParser.ParseExpr(Env, x.expr) |> FsmAction.Expr(x.pos, _)
+      }
+      
+      def parse_guard(x : GuardNode.ParseString)
+      {
+        MainParser.ParseExpr(Env, x.expr) |> GuardNode.Expr(x.pos, _)
+      }
+      
+      def parse(x : StateNode)
       {
         def junc = State.pseudo_states_lens >> PseudoState.node_lens >>. PseudoStateModelNode.Junction.nodes_lens;
+        def junc = junc.ToBasePartial();
         
-        def entry = State.entry_lens >> Entry.action_lens >> Actions.actions_lens;// >>. FsmAction.ParseString.expr_lens;
-        def exit  = State.exit_lens >> Exit.action_lens >> Actions.actions_lens;
-        def doact = State.do_activity_lens >> DoActivity.action_lens >> Actions.actions_lens;
+        def entry = State.entry_lens         >> Entry.action_lens      >> Actions.actions_lens;// >>. FsmAction.ParseString.expr_lens;
+        def exit  = State.exit_lens          >> Exit.action_lens       >> Actions.actions_lens;
+        def doact = State.do_activity_lens   >> DoActivity.action_lens >> Actions.actions_lens;
         def tranact = State.transitions_lens >> Transition.action_lens >> Actions.actions_lens;
-        
         
         def reduce_junc(x)
         {
-          def act = JunctionNode.action_lens;
+          def act = JunctionNode.action_lens >> Actions.actions_lens;
           def guard = JunctionNode.guard_lens;
-          x
+          x |> act.DownMap(_, parse_act) |> guard.DownMap(_, parse_guard)
         }
         
         def st = junc.Map(x, x => x.Reduce(reduce_junc));
@@ -266,9 +276,9 @@ namespace Nemerle.Statechart
         //def act = act.ToBasePartial();
         //def act = act.DownCast.[FsmAction.ParseString]();
         def act = entry %+ exit %+ doact %+ tranact;
-        def act = act.DownMap(x, x : FsmAction.ParseString => MainParser.ParseExpr(Env, x.expr) |> FsmAction.Expr(x.pos, _));
+        def act = act.DownMap(x, parse_act);
         //act.Map(x, x => x.actions.Map(x => if (Fsm)));
-        null : StateNode
+        act
         //match (x)
         //{
         //   | State as st                  => def entry = st.entry.Map(x => map_actions(x.action) |> x.ChangeAction);
@@ -286,7 +296,7 @@ namespace Nemerle.Statechart
         //}
       }
       
-      fsm.Reduce(parse) :> StateNode.StateMachine
+     fsm.Reduce(parse) :> StateNode.StateMachine
     }
     
     public Analyse() : void

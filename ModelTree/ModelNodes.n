@@ -381,7 +381,7 @@ namespace Nemerle.Statechart
       [Memoize]
       get
       {
-        JunctionNode.to_lens >> TargetType.PseudoState.node_lens >> PseudoStateModelNode.Junction.nodes_lens
+        (JunctionNode.to_lens >>? TargetType.PseudoState.node_lens) >> PseudoStateModelNode.Junction.nodes_lens;
         //match (to)
         //{
         //  | TargetType.PseudoState(PseudoStateModelNode.Junction(nodes = n)) => n
@@ -437,7 +437,7 @@ namespace Nemerle.Statechart
 
   [Lens]
   [Record]
-  public variant TargetType : LocatedNode
+  public variant TargetType : LocatedNode, IGeneralTree[TargetType]
   {
     | PseudoState { node : PseudoStateModelNode; }
     | Final
@@ -524,6 +524,36 @@ namespace Nemerle.Statechart
           | NoTarget       => "NoTarget"
           | PseudoState(p) => $"$p"
         }
+      }
+    }
+    
+    public Current : TargetType
+    {
+      get
+      {
+        this
+      }
+    }
+    
+    public ChildNodes : EnumerableLens[TargetType, TargetType]
+    {
+      [Memoize]
+      get
+      {
+        def pseudo = PseudoState.node_lens;
+        def tran = StateNode.Transition.to_lens;
+        def en = PseudoStateModelNode.EntryPoint.tran_lens.ToEnum();
+        def ex = PseudoStateModelNode.ExitPoint.tran_lens.ToEnumOpt();
+        def fork = (pseudo >> PseudoStateModelNode.Fork.target_lens);
+        def hist = PseudoStateModelNode.History.default_lens.ToEnumOpt();
+        def init = PseudoStateModelNode.Initial.tran_lens;
+        def join = PseudoStateModelNode.Join.tran_lens;
+        def junc = pseudo >> PseudoStateModelNode.Junction.nodes_lens >> JunctionNode.to_lens;
+        def lens = ex | en | hist | init | join;
+        def tar = pseudo >> lens >> tran;
+        def tar = tar | fork | junc;
+        def qual = Qualified.target_lens.ToEnum();
+        tar | qual
       }
     }
     
