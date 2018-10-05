@@ -22,7 +22,8 @@ namespace Nemerle.Statechart
   using CommonLib.Macros.ListUtils;
   using CommonLib.Macros.LensUtils;
   using StateNode;
-
+  using Nemerle.Builtins.Function;
+  
   [NotifyPropertyChange]
   partial class FsmAnalyser : INotifyPropertyChanged
   {
@@ -255,13 +256,14 @@ namespace Nemerle.Statechart
       
       def parse(x : StateNode)
       {
-        def junc = State.pseudo_states_lens >> PseudoState.node_lens >>. PseudoStateModelNode.Junction.nodes_lens;
-        def junc = junc.ToBasePartial();
+        def junc = (State.pseudo_states_lens >> PseudoState.node_lens >>. PseudoStateModelNode.Junction.nodes_lens) |> _.ToBasePartial();
         
-        def entry = State.entry_lens         >> Entry.action_lens      >> Actions.actions_lens;// >>. FsmAction.ParseString.expr_lens;
-        def exit  = State.exit_lens          >> Exit.action_lens       >> Actions.actions_lens;
-        def doact = State.do_activity_lens   >> DoActivity.action_lens >> Actions.actions_lens;
-        def tranact = State.transitions_lens >> Transition.action_lens >> Actions.actions_lens;
+        def entry   = State.entry_lens.ToBasePartial()       >> Entry.action_lens      >> Actions.actions_lens;// >>. FsmAction.ParseString.expr_lens;
+        def exit    = State.exit_lens.ToBasePartial()        >> Exit.action_lens       >> Actions.actions_lens;
+        def doact   = State.do_activity_lens.ToBasePartial() >> DoActivity.action_lens >> Actions.actions_lens;
+        def tranact = State.transitions_lens.ToBasePartial() >> Transition.action_lens >> Actions.actions_lens;
+        def entrypt = PseudoStateModelNode.EntryPoint.tran_lens >> Transition.action_lens >> Actions.actions_lens;
+        def exitpt  = PseudoStateModelNode.ExitPoint.tran_lens >> Transition.action_lens >> Actions.actions_lens;
         
         def reduce_junc(x)
         {
@@ -270,9 +272,7 @@ namespace Nemerle.Statechart
           x |> act.DownMap(_, parse_act) |> guard.DownMap(_, parse_guard)
         }
         
-        def st = junc.Map(x, x => x.Reduce(reduce_junc));
-        def junc_acts = junc >> JunctionNode.action_lens;
-        def junc_guards = junc >> JunctionNode.guard_lens;
+        def st = junc.Map(x, _.Reduce(reduce_junc));
         //def act = act.ToBasePartial();
         //def act = act.DownCast.[FsmAction.ParseString]();
         def act = entry %+ exit %+ doact %+ tranact;
